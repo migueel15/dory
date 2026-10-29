@@ -23,7 +23,7 @@ func Middleware(svc service.Service, cfg config.Config) func(http.Handler) http.
 	}
 }
 
-// Register owns /api/auth/login and /api/auth/logout; API must not register them.
+// Register owns /api/auth/login, /api/auth/logout and /api/auth/me; API must not register them.
 func Register(mux *http.ServeMux, svc service.Service, cfg config.Config) {}
 
 // Command handles user/token subcommands. handled=false means unknown command.

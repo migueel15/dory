@@ -1,0 +1,2172 @@
+openapi: "3.0.3"
+info:
+  title: "Dory MVP API"
+  version: "0.1.0"
+  description: "REST contract over internal/service. Deletes archive records; each mutation atomically appends an audit event. Lists are bare arrays. Read operations require read permission; mutations require write (admin includes both). Credential hashes are never exposed."
+servers:
+  -
+    url: "/api"
+security:
+  -
+    sessionCookie: []
+  -
+    bearerAuth: []
+paths:
+  "/projects":
+    get:
+      operationId: "listProjects"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      parameters:
+        -
+          name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 100
+            minimum: 1
+            maximum: 1000
+        -
+          name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 0
+            minimum: 0
+        -
+          name: "include_archived"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        -
+          name: "filter"
+          in: "query"
+          description: "JSON object of exact domain field matches; arrays use containment."
+          content:
+            application/json:
+              schema:
+                type: "object"
+                additionalProperties: true
+    post:
+      operationId: "createProject"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectInput"
+      description: "Upsert by optional client-generated ID. Returns 200 for both insert and replacement. Appends an audit event."
+  "/projects/{id}":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+          format: "uuid"
+    get:
+      operationId: "getProject"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+    put:
+      operationId: "putProject"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectInput"
+      description: "Full replacement/upsert; path ID wins and a conflicting body ID is rejected. Omitted fields use defaults. Archived records cannot be restored. Appends an audit event."
+    delete:
+      operationId: "archiveProject"
+      responses:
+        "204":
+          description: "Archived; an audit event is appended"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+  "/repositories":
+    get:
+      operationId: "listRepositorys"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/Repository"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      parameters:
+        -
+          name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 100
+            minimum: 1
+            maximum: 1000
+        -
+          name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 0
+            minimum: 0
+        -
+          name: "include_archived"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        -
+          name: "filter"
+          in: "query"
+          description: "JSON object of exact domain field matches; arrays use containment."
+          content:
+            application/json:
+              schema:
+                type: "object"
+                additionalProperties: true
+    post:
+      operationId: "createRepository"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Repository"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RepositoryInput"
+      description: "Upsert by optional client-generated ID. Returns 200 for both insert and replacement. Appends an audit event."
+  "/repositories/{id}":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+          format: "uuid"
+    get:
+      operationId: "getRepository"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Repository"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+    put:
+      operationId: "putRepository"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Repository"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RepositoryInput"
+      description: "Full replacement/upsert; path ID wins and a conflicting body ID is rejected. Omitted fields use defaults. Archived records cannot be restored. Appends an audit event."
+    delete:
+      operationId: "archiveRepository"
+      responses:
+        "204":
+          description: "Archived; an audit event is appended"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+  "/environments":
+    get:
+      operationId: "listEnvironments"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/Environment"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      parameters:
+        -
+          name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 100
+            minimum: 1
+            maximum: 1000
+        -
+          name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 0
+            minimum: 0
+        -
+          name: "include_archived"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        -
+          name: "filter"
+          in: "query"
+          description: "JSON object of exact domain field matches; arrays use containment."
+          content:
+            application/json:
+              schema:
+                type: "object"
+                additionalProperties: true
+    post:
+      operationId: "createEnvironment"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Environment"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnvironmentInput"
+      description: "Upsert by optional client-generated ID. Returns 200 for both insert and replacement. Appends an audit event."
+  "/environments/{id}":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+          format: "uuid"
+    get:
+      operationId: "getEnvironment"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Environment"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+    put:
+      operationId: "putEnvironment"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Environment"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnvironmentInput"
+      description: "Full replacement/upsert; path ID wins and a conflicting body ID is rejected. Omitted fields use defaults. Archived records cannot be restored. Appends an audit event."
+    delete:
+      operationId: "archiveEnvironment"
+      responses:
+        "204":
+          description: "Archived; an audit event is appended"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+  "/repository-locations":
+    get:
+      operationId: "listRepositoryLocations"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/RepositoryLocation"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      parameters:
+        -
+          name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 100
+            minimum: 1
+            maximum: 1000
+        -
+          name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 0
+            minimum: 0
+        -
+          name: "include_archived"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        -
+          name: "filter"
+          in: "query"
+          description: "JSON object of exact domain field matches; arrays use containment."
+          content:
+            application/json:
+              schema:
+                type: "object"
+                additionalProperties: true
+    post:
+      operationId: "createRepositoryLocation"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepositoryLocation"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RepositoryLocationInput"
+      description: "Upsert by optional client-generated ID. Returns 200 for both insert and replacement. Appends an audit event."
+  "/repository-locations/{id}":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+          format: "uuid"
+    get:
+      operationId: "getRepositoryLocation"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepositoryLocation"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+    put:
+      operationId: "putRepositoryLocation"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepositoryLocation"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RepositoryLocationInput"
+      description: "Full replacement/upsert; path ID wins and a conflicting body ID is rejected. Omitted fields use defaults. Archived records cannot be restored. Appends an audit event."
+    delete:
+      operationId: "archiveRepositoryLocation"
+      responses:
+        "204":
+          description: "Archived; an audit event is appended"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+  "/features":
+    get:
+      operationId: "listFeatures"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/Feature"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      parameters:
+        -
+          name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 100
+            minimum: 1
+            maximum: 1000
+        -
+          name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 0
+            minimum: 0
+        -
+          name: "include_archived"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        -
+          name: "filter"
+          in: "query"
+          description: "JSON object of exact domain field matches; arrays use containment."
+          content:
+            application/json:
+              schema:
+                type: "object"
+                additionalProperties: true
+    post:
+      operationId: "createFeature"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feature"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeatureInput"
+      description: "Upsert by optional client-generated ID. Returns 200 for both insert and replacement. Appends an audit event."
+  "/features/{id}":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+          format: "uuid"
+    get:
+      operationId: "getFeature"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feature"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+    put:
+      operationId: "putFeature"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feature"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeatureInput"
+      description: "Full replacement/upsert; path ID wins and a conflicting body ID is rejected. Omitted fields use defaults. Archived records cannot be restored. Appends an audit event."
+    delete:
+      operationId: "archiveFeature"
+      responses:
+        "204":
+          description: "Archived; an audit event is appended"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+  "/items":
+    get:
+      operationId: "listItems"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/Item"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      parameters:
+        -
+          name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 100
+            minimum: 1
+            maximum: 1000
+        -
+          name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 0
+            minimum: 0
+        -
+          name: "include_archived"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        -
+          name: "filter"
+          in: "query"
+          description: "JSON object of exact domain field matches; arrays use containment."
+          content:
+            application/json:
+              schema:
+                type: "object"
+                additionalProperties: true
+    post:
+      operationId: "createItem"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ItemInput"
+      description: "Upsert by optional client-generated ID. Returns 200 for both insert and replacement. Appends an audit event."
+  "/items/{id}":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+          format: "uuid"
+    get:
+      operationId: "getItem"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+    put:
+      operationId: "putItem"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ItemInput"
+      description: "Full replacement/upsert; path ID wins and a conflicting body ID is rejected. Omitted fields use defaults. Archived records cannot be restored. Appends an audit event."
+    delete:
+      operationId: "archiveItem"
+      responses:
+        "204":
+          description: "Archived; an audit event is appended"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+  "/memories":
+    get:
+      operationId: "listMemorys"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/Memory"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      parameters:
+        -
+          name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 100
+            minimum: 1
+            maximum: 1000
+        -
+          name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 0
+            minimum: 0
+        -
+          name: "include_archived"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        -
+          name: "filter"
+          in: "query"
+          description: "JSON object of exact domain field matches; arrays use containment."
+          content:
+            application/json:
+              schema:
+                type: "object"
+                additionalProperties: true
+    post:
+      operationId: "createMemory"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Memory"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryInput"
+      description: "Upsert by optional client-generated ID. Returns 200 for both insert and replacement. Appends an audit event."
+  "/memories/{id}":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+          format: "uuid"
+    get:
+      operationId: "getMemory"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Memory"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+    put:
+      operationId: "putMemory"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Memory"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryInput"
+      description: "Full replacement/upsert; path ID wins and a conflicting body ID is rejected. Omitted fields use defaults. Archived records cannot be restored. Appends an audit event."
+    delete:
+      operationId: "archiveMemory"
+      responses:
+        "204":
+          description: "Archived; an audit event is appended"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+  "/links":
+    get:
+      operationId: "listLinks"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/Link"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      parameters:
+        -
+          name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 100
+            minimum: 1
+            maximum: 1000
+        -
+          name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 0
+            minimum: 0
+        -
+          name: "include_archived"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        -
+          name: "filter"
+          in: "query"
+          description: "JSON object of exact domain field matches; arrays use containment."
+          content:
+            application/json:
+              schema:
+                type: "object"
+                additionalProperties: true
+    post:
+      operationId: "createLink"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Link"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkInput"
+      description: "Upsert by optional client-generated ID. Returns 200 for both insert and replacement. Appends an audit event."
+  "/links/{id}":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+          format: "uuid"
+    get:
+      operationId: "getLink"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Link"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+    put:
+      operationId: "putLink"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Link"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkInput"
+      description: "Full replacement/upsert; path ID wins and a conflicting body ID is rejected. Omitted fields use defaults. Archived records cannot be restored. Appends an audit event."
+    delete:
+      operationId: "archiveLink"
+      responses:
+        "204":
+          description: "Archived; an audit event is appended"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+  "/search":
+    get:
+      operationId: "search"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/SearchHit"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      parameters:
+        -
+          name: "q"
+          in: "query"
+          schema:
+            type: "string"
+          required: true
+        -
+          name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 100
+            maximum: 1000
+            minimum: 1
+        -
+          name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 0
+            minimum: 0
+  "/events/stream":
+    get:
+      operationId: "streamEvents"
+      description: "SSE audit stream ordered by event ID. Each message has id, event: change and JSON Event data. Resume using after or Last-Event-ID (header takes precedence). Heartbeat comments are allowed."
+      parameters:
+        -
+          name: "after"
+          in: "query"
+          schema:
+            type: "integer"
+            format: "int64"
+            minimum: 0
+            default: 0
+        -
+          name: "entity_type"
+          in: "query"
+          schema:
+            type: "string"
+        -
+          name: "Last-Event-ID"
+          in: "header"
+          schema:
+            type: "integer"
+            format: "int64"
+            minimum: 0
+      responses:
+        "200":
+          description: "Audit stream"
+          content:
+            text/event-stream:
+              schema:
+                type: "string"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+  "/auth/login":
+    post:
+      operationId: "login"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+          headers:
+            Set-Cookie:
+              description: "Session cookie; HttpOnly, Secure, SameSite=Lax, Path=/"
+              schema:
+                type: "string"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+        "429":
+          description: "Too many login attempts"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              required:
+                - "username"
+                - "password"
+              properties:
+                username:
+                  type: "string"
+                password:
+                  type: "string"
+                  format: "password"
+                  writeOnly: true
+  "/auth/logout":
+    post:
+      operationId: "logout"
+      responses:
+        "204":
+          description: "Session archived and cookie expired using Set-Cookie"
+          headers:
+            Set-Cookie:
+              schema:
+                type: "string"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+  "/auth/me":
+    get:
+      operationId: "me"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+components:
+  responses:
+    Error400:
+      description: "Invalid input"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Error401:
+      description: "Authentication required"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Error403:
+      description: "Insufficient permission"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Error404:
+      description: "Resource not found"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Error409:
+      description: "Conflict"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Error500:
+      description: "Internal error"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  securitySchemes:
+    sessionCookie:
+      type: "apiKey"
+      in: "cookie"
+      name: "dory_session"
+    bearerAuth:
+      type: "http"
+      scheme: "bearer"
+  schemas:
+    EntityType:
+      type: "string"
+      enum:
+        - "project"
+        - "repository"
+        - "environment"
+        - "feature"
+        - "item"
+        - "memory"
+    Error:
+      type: "object"
+      required:
+        - "error"
+      properties:
+        error:
+          type: "object"
+          required:
+            - "code"
+            - "message"
+          properties:
+            code:
+              type: "string"
+            message:
+              type: "string"
+    Project:
+      type: "object"
+      required:
+        - "id"
+        - "created_at"
+        - "updated_at"
+        - "archived_at"
+        - "slug"
+        - "name"
+        - "description"
+        - "status"
+        - "stack"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+          readOnly: true
+        created_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        updated_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        archived_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+          readOnly: true
+        slug:
+          type: "string"
+        name:
+          type: "string"
+        description:
+          type: "string"
+          default: ""
+        status:
+          type: "string"
+          default: "active"
+        stack:
+          type: "array"
+          items:
+            type: "string"
+    ProjectInput:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "slug"
+        - "name"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        slug:
+          type: "string"
+        name:
+          type: "string"
+        description:
+          type: "string"
+          default: ""
+        status:
+          type: "string"
+          default: "active"
+        stack:
+          type: "array"
+          items:
+            type: "string"
+    Repository:
+      type: "object"
+      required:
+        - "id"
+        - "created_at"
+        - "updated_at"
+        - "archived_at"
+        - "project_id"
+        - "remote_url"
+        - "default_branch"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+          readOnly: true
+        created_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        updated_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        archived_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+          readOnly: true
+        project_id:
+          type: "string"
+          format: "uuid"
+        remote_url:
+          type: "string"
+        default_branch:
+          type: "string"
+          default: "main"
+    RepositoryInput:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "project_id"
+        - "remote_url"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        project_id:
+          type: "string"
+          format: "uuid"
+        remote_url:
+          type: "string"
+        default_branch:
+          type: "string"
+          default: "main"
+    Environment:
+      type: "object"
+      required:
+        - "id"
+        - "created_at"
+        - "updated_at"
+        - "archived_at"
+        - "name"
+        - "os"
+        - "access"
+        - "agents_available"
+        - "notes"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+          readOnly: true
+        created_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        updated_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        archived_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+          readOnly: true
+        name:
+          type: "string"
+        os:
+          type: "string"
+          default: ""
+        access:
+          type: "string"
+          default: ""
+        agents_available:
+          type: "array"
+          items:
+            type: "string"
+        notes:
+          type: "string"
+          default: ""
+    EnvironmentInput:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "name"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        name:
+          type: "string"
+        os:
+          type: "string"
+          default: ""
+        access:
+          type: "string"
+          default: ""
+        agents_available:
+          type: "array"
+          items:
+            type: "string"
+        notes:
+          type: "string"
+          default: ""
+    RepositoryLocation:
+      type: "object"
+      required:
+        - "id"
+        - "created_at"
+        - "updated_at"
+        - "archived_at"
+        - "repository_id"
+        - "environment_id"
+        - "path"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+          readOnly: true
+        created_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        updated_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        archived_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+          readOnly: true
+        repository_id:
+          type: "string"
+          format: "uuid"
+        environment_id:
+          type: "string"
+          format: "uuid"
+        path:
+          type: "string"
+    RepositoryLocationInput:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "repository_id"
+        - "environment_id"
+        - "path"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        repository_id:
+          type: "string"
+          format: "uuid"
+        environment_id:
+          type: "string"
+          format: "uuid"
+        path:
+          type: "string"
+    Feature:
+      type: "object"
+      required:
+        - "id"
+        - "created_at"
+        - "updated_at"
+        - "archived_at"
+        - "project_id"
+        - "title"
+        - "body_md"
+        - "code_refs"
+        - "status"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+          readOnly: true
+        created_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        updated_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        archived_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+          readOnly: true
+        project_id:
+          type: "string"
+          format: "uuid"
+        title:
+          type: "string"
+        body_md:
+          type: "string"
+          default: ""
+        code_refs:
+          type: "array"
+          items:
+            type: "string"
+        status:
+          type: "string"
+          enum:
+            - "implemented"
+            - "deprecated"
+          default: "implemented"
+    FeatureInput:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "project_id"
+        - "title"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        project_id:
+          type: "string"
+          format: "uuid"
+        title:
+          type: "string"
+        body_md:
+          type: "string"
+          default: ""
+        code_refs:
+          type: "array"
+          items:
+            type: "string"
+        status:
+          type: "string"
+          enum:
+            - "implemented"
+            - "deprecated"
+          default: "implemented"
+    Item:
+      type: "object"
+      required:
+        - "id"
+        - "created_at"
+        - "updated_at"
+        - "archived_at"
+        - "project_id"
+        - "raw_text"
+        - "title"
+        - "body_md"
+        - "tags"
+        - "status"
+        - "priority"
+        - "source"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+          readOnly: true
+        created_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        updated_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        archived_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+          readOnly: true
+        project_id:
+          type: "string"
+          format: "uuid"
+          nullable: true
+        raw_text:
+          type: "string"
+          default: ""
+        title:
+          type: "string"
+        body_md:
+          type: "string"
+          default: ""
+        tags:
+          type: "array"
+          items:
+            type: "string"
+        status:
+          type: "string"
+          enum:
+            - "inbox"
+            - "triaged"
+            - "ready"
+            - "in_progress"
+            - "done"
+            - "archived"
+          default: "inbox"
+        priority:
+          type: "integer"
+          format: "int32"
+          default: 0
+        source:
+          type: "string"
+          default: "manual"
+    ItemInput:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "title"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        project_id:
+          type: "string"
+          format: "uuid"
+          nullable: true
+        raw_text:
+          type: "string"
+          default: ""
+        title:
+          type: "string"
+        body_md:
+          type: "string"
+          default: ""
+        tags:
+          type: "array"
+          items:
+            type: "string"
+        status:
+          type: "string"
+          enum:
+            - "inbox"
+            - "triaged"
+            - "ready"
+            - "in_progress"
+            - "done"
+            - "archived"
+          default: "inbox"
+        priority:
+          type: "integer"
+          format: "int32"
+          default: 0
+        source:
+          type: "string"
+          default: "manual"
+    Memory:
+      type: "object"
+      required:
+        - "id"
+        - "created_at"
+        - "updated_at"
+        - "archived_at"
+        - "scope"
+        - "scope_id"
+        - "content"
+        - "tags"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+          readOnly: true
+        created_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        updated_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        archived_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+          readOnly: true
+        scope:
+          type: "string"
+          enum:
+            - "global"
+            - "project"
+            - "environment"
+        scope_id:
+          type: "string"
+          format: "uuid"
+          nullable: true
+        content:
+          type: "string"
+        tags:
+          type: "array"
+          items:
+            type: "string"
+    MemoryInput:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "scope"
+        - "content"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        scope:
+          type: "string"
+          enum:
+            - "global"
+            - "project"
+            - "environment"
+        scope_id:
+          type: "string"
+          format: "uuid"
+          nullable: true
+        content:
+          type: "string"
+        tags:
+          type: "array"
+          items:
+            type: "string"
+      description: "Global scope requires null scope_id; project and environment require a UUID scope_id."
+    Link:
+      type: "object"
+      required:
+        - "id"
+        - "created_at"
+        - "updated_at"
+        - "archived_at"
+        - "from_id"
+        - "from_type"
+        - "to_id"
+        - "to_type"
+        - "kind"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+          readOnly: true
+        created_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        updated_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        archived_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+          readOnly: true
+        from_id:
+          type: "string"
+          format: "uuid"
+        from_type:
+          $ref: "#/components/schemas/EntityType"
+        to_id:
+          type: "string"
+          format: "uuid"
+        to_type:
+          $ref: "#/components/schemas/EntityType"
+        kind:
+          type: "string"
+    LinkInput:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "from_id"
+        - "from_type"
+        - "to_id"
+        - "to_type"
+        - "kind"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        from_id:
+          type: "string"
+          format: "uuid"
+        from_type:
+          $ref: "#/components/schemas/EntityType"
+        to_id:
+          type: "string"
+          format: "uuid"
+        to_type:
+          $ref: "#/components/schemas/EntityType"
+        kind:
+          type: "string"
+    User:
+      type: "object"
+      required:
+        - "id"
+        - "username"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+          readOnly: true
+        created_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        updated_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        archived_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+          readOnly: true
+        username:
+          type: "string"
+    Event:
+      type: "object"
+      required:
+        - "id"
+        - "entity_type"
+        - "entity_id"
+        - "actor"
+        - "change"
+        - "at"
+      properties:
+        id:
+          type: "integer"
+          format: "int64"
+        entity_type:
+          type: "string"
+        entity_id:
+          type: "string"
+          format: "uuid"
+        actor:
+          type: "string"
+        change:
+          type: "object"
+          additionalProperties: true
+        at:
+          type: "string"
+          format: "date-time"
+    SearchHit:
+      type: "object"
+      required:
+        - "entity_type"
+        - "entity_id"
+        - "content"
+        - "rank"
+      properties:
+        entity_type:
+          type: "string"
+        entity_id:
+          type: "string"
+          format: "uuid"
+        content:
+          type: "object"
+          additionalProperties: true
+        rank:
+          type: "number"
+          format: "float"
