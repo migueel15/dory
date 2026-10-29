@@ -1,0 +1,8 @@
+[Unit]
+Description=Backup de la base de datos de dory
+After=docker.service
+
+[Service]
+Type=oneshot
+User=miguel
+ExecStart=/home/miguel/.local/bin/dory-backup

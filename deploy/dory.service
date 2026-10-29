@@ -1,0 +1,20 @@
+[Unit]
+Description=dory, memoria y tareas para agentes
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=miguel
+Environment=DORY_CONFIG=/home/miguel/.config/dory/config.toml
+EnvironmentFile=/home/miguel/.config/dory/dory.env
+ExecStart=/home/miguel/.local/bin/dory serve
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

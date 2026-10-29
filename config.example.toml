@@ -1,0 +1,16 @@
+# Copia este fichero a ~/.config/dory/config.toml.
+# Cada clave se puede sobrescribir con una variable DORY_* (ver deploy/dory.env.example).
+
+# Dirección de escucha (DORY_LISTEN). Déjala en localhost y publícala con Tailscale.
+listen = "127.0.0.1:8080"
+
+# Cadena de conexión a Postgres (DORY_DATABASE_URL).
+# Mejor definirla en el fichero de entorno, porque lleva la contraseña.
+# database_url = "postgres://dory:CAMBIAME@127.0.0.1:5432/dory?sslmode=disable"
+
+# Cookie de sesión solo por HTTPS (DORY_COOKIE_SECURE). Ponla en false solo si
+# accedes por HTTP plano, por ejemplo en pruebas locales.
+cookie_secure = true
+
+# Duración de la sesión web (DORY_SESSION_TTL), formato de Go: "168h" = 7 días.
+session_ttl = "168h"
