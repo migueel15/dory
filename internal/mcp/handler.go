@@ -127,7 +127,7 @@ type itemInput struct {
 	ID        string   `json:"id,omitempty" jsonschema:"Optional client UUID for idempotent upsert"`
 	ProjectID *string  `json:"project_id,omitempty"`
 	RawText   string   `json:"raw_text,omitempty"`
-	Title     string   `json:"title"`
+	Title     string   `json:"title,omitempty" jsonschema:"Optional; derived from the first line of raw_text (max 80 chars) when missing"`
 	BodyMd    string   `json:"body_md,omitempty"`
 	Tags      []string `json:"tags,omitempty"`
 	Status    string   `json:"status,omitempty"`
@@ -145,6 +145,19 @@ type moveInput struct {
 
 func validStatus(status string) bool {
 	return slices.Contains([]string{"inbox", "triaged", "ready", "in_progress", "done", "archived"}, status)
+}
+
+// deriveTitle takes the first non-empty line of text, cut to 80 characters.
+func deriveTitle(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			if r := []rune(line); len(r) > 80 {
+				return strings.TrimSpace(string(r[:80]))
+			}
+			return line
+		}
+	}
+	return ""
 }
 func putItem(ctx context.Context, svc service.Service, item service.Item) (any, error) {
 	if item.Status != "" && !validStatus(item.Status) {
@@ -266,6 +279,72 @@ type linkInput struct {
 	Kind     string `json:"kind"`
 }
 
+type projectUpsert struct {
+	ID          string    `json:"id,omitempty" jsonschema:"Existing project UUID to update; omit to create"`
+	Slug        *string   `json:"slug,omitempty"`
+	Name        *string   `json:"name,omitempty"`
+	Description *string   `json:"description,omitempty"`
+	Status      *string   `json:"status,omitempty" jsonschema:"Project status, e.g. active"`
+	Stack       *[]string `json:"stack,omitempty"`
+}
+type environmentUpsert struct {
+	ID              string    `json:"id,omitempty" jsonschema:"Existing environment UUID to update; omit to create"`
+	Name            *string   `json:"name,omitempty"`
+	Os              *string   `json:"os,omitempty"`
+	Access          *string   `json:"access,omitempty"`
+	AgentsAvailable *[]string `json:"agents_available,omitempty"`
+	Notes           *string   `json:"notes,omitempty"`
+}
+type memoryUpdate struct {
+	ID      string    `json:"id" jsonschema:"Memory UUID"`
+	Content *string   `json:"content,omitempty"`
+	Tags    *[]string `json:"tags,omitempty"`
+	Scope   *string   `json:"scope,omitempty" jsonschema:"global, project or environment"`
+	ScopeID *string   `json:"scope_id,omitempty" jsonschema:"UUID required for project or environment scope"`
+}
+type repositoryUpsert struct {
+	ID            string  `json:"id,omitempty" jsonschema:"Existing repository UUID to update; omit to create"`
+	ProjectID     *string `json:"project_id,omitempty"`
+	RemoteURL     *string `json:"remote_url,omitempty"`
+	DefaultBranch *string `json:"default_branch,omitempty"`
+}
+type locationInput struct {
+	RepositoryID  string `json:"repository_id"`
+	EnvironmentID string `json:"environment_id"`
+	Path          string `json:"path" jsonschema:"Absolute checkout path in that environment"`
+}
+
+// set overwrites dst only when the caller sent the field.
+func set[T any](dst *T, src *T) {
+	if src != nil {
+		*dst = *src
+	}
+}
+
+// loadOrNew returns the existing record when id is given, or a zero value to create.
+func loadOrNew[T any](ctx context.Context, r service.Resource[T], id string) (T, error) {
+	var zero T
+	if id == "" {
+		return zero, nil
+	}
+	return r.Get(ctx, id)
+}
+func archiveTool[T any](s *sdk.Server, name, description string, r service.Resource[T]) {
+	add(s, name, description, func(ctx context.Context, in idInput) (any, error) {
+		err := r.Archive(ctx, auth.Actor(ctx), in.ID)
+		return map[string]any{"id": in.ID, "archived": err == nil}, err
+	})
+}
+func validMemoryScope(scope string, scopeID *string) bool {
+	if !slices.Contains([]string{"global", "project", "environment"}, scope) {
+		return false
+	}
+	if scope == "global" {
+		return scopeID == nil
+	}
+	return scopeID != nil && *scopeID != ""
+}
+
 // Handler returns the transport mounted by cmd/dory at /mcp. Stateless requests
 // avoid keeping authentication-independent sessions between HTTP requests.
 func Handler(svc service.Service) http.Handler {
@@ -305,6 +384,9 @@ func Handler(svc service.Service) http.Handler {
 		if in.Source == "" {
 			in.Source = "mcp"
 		}
+		if strings.TrimSpace(in.Title) == "" {
+			in.Title = deriveTitle(in.RawText)
+		}
 		return putItem(ctx, svc, service.Item{Record: service.Record{ID: in.ID}, ProjectID: in.ProjectID, RawText: in.RawText, Title: in.Title, BodyMd: in.BodyMd, Tags: in.Tags, Status: in.Status, Priority: in.Priority, Source: in.Source})
 	})
 	add(s, "update_item", "Patch an item while preserving omitted fields.", func(ctx context.Context, in updateInput) (any, error) { return updateItem(ctx, svc, in) })
@@ -336,6 +418,81 @@ func Handler(svc service.Service) http.Handler {
 			return nil, service.ErrInvalid
 		}
 		return svc.Memories().Put(ctx, auth.Actor(ctx), service.Memory{Scope: in.Scope, ScopeID: in.ScopeID, Content: in.Content, Tags: in.Tags})
+	})
+	add(s, "upsert_project", "Create a project, or update one by id changing only the fields sent. Fields: slug, name, description, status, stack.", func(ctx context.Context, in projectUpsert) (any, error) {
+		p, err := loadOrNew(ctx, svc.Projects(), in.ID)
+		if err != nil {
+			return nil, err
+		}
+		p.ID = in.ID
+		set(&p.Slug, in.Slug)
+		set(&p.Name, in.Name)
+		set(&p.Description, in.Description)
+		set(&p.Status, in.Status)
+		set(&p.Stack, in.Stack)
+		return svc.Projects().Put(ctx, auth.Actor(ctx), p)
+	})
+	archiveTool(s, "archive_project", "Soft archive a project by UUID.", svc.Projects())
+	add(s, "upsert_environment", "Create an environment (machine), or update one by id changing only the fields sent. Fields: name, os, access, agents_available, notes.", func(ctx context.Context, in environmentUpsert) (any, error) {
+		e, err := loadOrNew(ctx, svc.Environments(), in.ID)
+		if err != nil {
+			return nil, err
+		}
+		e.ID = in.ID
+		set(&e.Name, in.Name)
+		set(&e.Os, in.Os)
+		set(&e.Access, in.Access)
+		set(&e.AgentsAvailable, in.AgentsAvailable)
+		set(&e.Notes, in.Notes)
+		return svc.Environments().Put(ctx, auth.Actor(ctx), e)
+	})
+	archiveTool(s, "archive_environment", "Soft archive an environment by UUID.", svc.Environments())
+	add(s, "update_memory", "Edit an existing memory by UUID, changing only the fields sent (content, tags, scope, scope_id).", func(ctx context.Context, in memoryUpdate) (any, error) {
+		m, err := svc.Memories().Get(ctx, in.ID)
+		if err != nil {
+			return nil, err
+		}
+		set(&m.Content, in.Content)
+		set(&m.Tags, in.Tags)
+		if in.Scope != nil {
+			m.Scope = *in.Scope
+			if *in.Scope == "global" && in.ScopeID == nil {
+				m.ScopeID = nil
+			}
+		}
+		if in.ScopeID != nil {
+			m.ScopeID = in.ScopeID
+		}
+		if m.Content == "" || !validMemoryScope(m.Scope, m.ScopeID) {
+			return nil, service.ErrInvalid
+		}
+		return svc.Memories().Put(ctx, auth.Actor(ctx), m)
+	})
+	archiveTool(s, "archive_memory", "Soft archive a memory by UUID.", svc.Memories())
+	add(s, "upsert_repository", "Create a repository, or update one by id changing only the fields sent. Fields: project_id, remote_url, default_branch.", func(ctx context.Context, in repositoryUpsert) (any, error) {
+		r, err := loadOrNew(ctx, svc.Repositories(), in.ID)
+		if err != nil {
+			return nil, err
+		}
+		r.ID = in.ID
+		set(&r.ProjectID, in.ProjectID)
+		set(&r.RemoteUrl, in.RemoteURL)
+		set(&r.DefaultBranch, in.DefaultBranch)
+		return svc.Repositories().Put(ctx, auth.Actor(ctx), r)
+	})
+	add(s, "set_repository_location", "Set where a repository is checked out in an environment; updates the existing location for that repository and environment or creates it.", func(ctx context.Context, in locationInput) (any, error) {
+		if in.RepositoryID == "" || in.EnvironmentID == "" || in.Path == "" {
+			return nil, service.ErrInvalid
+		}
+		existing, err := svc.RepositoryLocations().List(ctx, service.Filter{Fields: map[string]any{"repository_id": in.RepositoryID, "environment_id": in.EnvironmentID}, Limit: 1})
+		if err != nil {
+			return nil, err
+		}
+		loc := service.RepositoryLocation{RepositoryID: in.RepositoryID, EnvironmentID: in.EnvironmentID, Path: in.Path}
+		if len(existing) > 0 {
+			loc.ID = existing[0].ID
+		}
+		return svc.RepositoryLocations().Put(ctx, auth.Actor(ctx), loc)
 	})
 	add(s, "recall", "Full text search of memories, optionally filtered by scope and scope_id, with pagination.", func(ctx context.Context, in recallInput) (any, error) { return recall(ctx, svc, in) })
 	add(s, "link", "Create a directed link between domain entities.", func(ctx context.Context, in linkInput) (any, error) {

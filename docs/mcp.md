@@ -52,6 +52,6 @@ T3 Code y los agentes deben ejecutarse en una máquina con acceso a la URL de do
 
 ## Herramientas disponibles
 
-`session_start`, `list_projects`, `get_project`, `list_items`, `get_item`, `create_item`, `update_item`, `move_item`, `archive_item`, `list_features`, `upsert_feature`, `list_environments`, `get_environment`, `list_repositories`, `remember`, `recall`, `link`.
+`session_start`, `list_projects`, `get_project`, `list_items`, `get_item`, `create_item`, `update_item`, `move_item`, `archive_item`, `list_features`, `upsert_feature`, `list_environments`, `get_environment`, `list_repositories`, `remember`, `update_memory`, `archive_memory`, `recall`, `link`, `upsert_project`, `archive_project`, `upsert_environment`, `archive_environment`, `upsert_repository`, `set_repository_location`.
 
 Se recomienda que el agente llame a `session_start` al empezar cada sesión.
