@@ -1,0 +1,75 @@
+import type { components } from "./schema";
+
+type S = components["schemas"];
+export type Project = S["Project"];
+export type ProjectInput = S["ProjectInput"];
+export type Environment = S["Environment"];
+export type EnvironmentInput = S["EnvironmentInput"];
+export type Repository = S["Repository"];
+export type Feature = S["Feature"];
+export type FeatureInput = S["FeatureInput"];
+export type Item = S["Item"];
+export type ItemInput = Partial<S["ItemInput"]> & { title: string };
+export type Memory = S["Memory"];
+export type MemoryInput = S["MemoryInput"];
+export type User = S["User"];
+export type ItemStatus = Item["status"];
+
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method,
+    credentials: "same-origin",
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => null);
+    throw new ApiError(res.status, e?.error?.message ?? res.statusText);
+  }
+  return res.status === 204 ? (undefined as T) : res.json();
+}
+
+const q = (filter?: Record<string, unknown>) =>
+  filter ? `?filter=${encodeURIComponent(JSON.stringify(filter))}&limit=1000` : "?limit=1000";
+
+// Recurso CRUD genérico: list/create/update(PUT)/archive.
+function resource<T extends { id: string }, I>(path: string) {
+  return {
+    list: (filter?: Record<string, unknown>) => req<T[]>("GET", path + q(filter)),
+    create: (b: I) => req<T>("POST", path, b),
+    update: (id: string, b: I) => req<T>("PUT", `${path}/${id}`, b),
+    archive: (id: string) => req<void>("DELETE", `${path}/${id}`),
+  };
+}
+
+export const api = {
+  login: (username: string, password: string) => req<User>("POST", "/auth/login", { username, password }),
+  logout: () => req<void>("POST", "/auth/logout"),
+  me: () => req<User>("GET", "/auth/me"),
+  projects: resource<Project, ProjectInput>("/projects"),
+  environments: resource<Environment, EnvironmentInput>("/environments"),
+  repositories: resource<Repository, S["RepositoryInput"]>("/repositories"),
+  features: resource<Feature, FeatureInput>("/features"),
+  items: resource<Item, ItemInput>("/items"),
+  memories: resource<Memory, MemoryInput>("/memories"),
+};
+
+// Convierte un Item en su Input para PUT (que reemplaza el recurso).
+export const itemInput = (i: Item, patch: Partial<ItemInput> = {}): ItemInput => ({
+  id: i.id,
+  project_id: i.project_id,
+  raw_text: i.raw_text,
+  title: i.title,
+  body_md: i.body_md,
+  tags: i.tags,
+  status: i.status,
+  priority: i.priority,
+  source: i.source,
+  ...patch,
+});
