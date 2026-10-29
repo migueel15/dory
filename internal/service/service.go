@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/migueel15/dory/internal/store"
-	"time"
 )
 
 var ErrNotFound = errors.New("resource not found")
@@ -27,10 +29,10 @@ type Filter struct {
 // All writes require an authenticated actor and atomically append an audit event.
 // PasswordHash and SecretHash are INTERNAL values: transports must redact them.
 type Resource[T any] interface {
-	Get(context.Context, string) (T, error)
-	List(context.Context, Filter) ([]T, error)
-	Put(context.Context, string, T) (T, error)
-	Archive(context.Context, string, string) error
+	Get(ctx context.Context, id string) (T, error)
+	List(ctx context.Context, filter Filter) ([]T, error)
+	Put(ctx context.Context, actor string, value T) (T, error)
+	Archive(ctx context.Context, actor, id string) error
 }
 type Event struct {
 	ID         int64           `json:"id"`
@@ -109,6 +111,10 @@ func decode[T any](raw []byte, err error) (v T, e error) {
 		return v, ErrNotFound
 	}
 	if err != nil {
+		var dbErr *pgconn.PgError
+		if errors.As(err, &dbErr) && (dbErr.Code == "22P02" || dbErr.Code == "23502" || dbErr.Code == "23514" || dbErr.Code == "23503") {
+			return v, fmt.Errorf("%w: %s", ErrInvalid, dbErr.Message)
+		}
 		return v, err
 	}
 	return v, json.Unmarshal(raw, &v)
@@ -196,6 +202,31 @@ func (r resource[T]) mutate(ctx context.Context, actor, operation string, fn fun
 }
 func (r resource[T]) Put(ctx context.Context, actor string, v T) (T, error) {
 	raw, err := json.Marshal(v)
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+	// Domain slices marshal as null when unset; SQL array extraction needs [].
+	var payload map[string]any
+	if err = json.Unmarshal(raw, &payload); err != nil {
+		var zero T
+		return zero, err
+	}
+	for _, key := range []string{"tags", "stack", "agents_available", "code_refs", "permissions"} {
+		if value, exists := payload[key]; exists && value == nil {
+			payload[key] = []string{}
+		}
+	}
+	defaults := map[string]map[string]string{
+		"project": {"status": "active"}, "repository": {"default_branch": "main"},
+		"feature": {"status": "implemented"}, "item": {"status": "inbox", "source": "manual"},
+	}
+	for key, value := range defaults[r.kind] {
+		if payload[key] == "" {
+			payload[key] = value
+		}
+	}
+	raw, err = json.Marshal(payload)
 	if err != nil {
 		var zero T
 		return zero, err
