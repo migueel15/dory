@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 
+	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/service"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -31,6 +33,13 @@ func (in listInput) filter() service.Filter {
 // errors. Results include JSON text for clients that do not read structured data.
 func add[I any](server *sdk.Server, name, description string, fn func(context.Context, I) (any, error)) {
 	sdk.AddTool(server, &sdk.Tool{Name: name, Description: description}, func(ctx context.Context, _ *sdk.CallToolRequest, in I) (*sdk.CallToolResult, any, error) {
+		scope := "write"
+		if strings.HasPrefix(name, "list_") || strings.HasPrefix(name, "get_") || name == "recall" || name == "session_start" {
+			scope = "read"
+		}
+		if !auth.Allowed(ctx, scope) {
+			return nil, nil, fmt.Errorf("permiso %q requerido", scope)
+		}
 		value, err := fn(ctx, in)
 		if err != nil {
 			return nil, nil, err
@@ -141,7 +150,7 @@ func putItem(ctx context.Context, svc service.Service, item service.Item) (any, 
 	if item.Status != "" && !validStatus(item.Status) {
 		return nil, fmt.Errorf("%w: unknown item status", service.ErrInvalid)
 	}
-	return svc.Items().Put(ctx, "mcp", item)
+	return svc.Items().Put(ctx, auth.Actor(ctx), item)
 }
 func updateItem(ctx context.Context, svc service.Service, in updateInput) (any, error) {
 	item, err := svc.Items().Get(ctx, in.ID)
@@ -270,7 +279,9 @@ func Handler(svc service.Service) http.Handler {
 	listTool(s, "list_repositories", "List repositories; filter by project_id if needed.", svc.Repositories())
 	add(s, "get_project", "Get project by UUID or slug with repositories, features, project memories and open items.", func(ctx context.Context, in struct {
 		ID string `json:"id" jsonschema:"Project UUID or slug"`
-	}) (any, error) { return projectContext(ctx, svc, in.ID) })
+	}) (any, error) {
+		return projectContext(ctx, svc, in.ID)
+	})
 	add(s, "session_start", "Load global memories and available projects; optionally include project context by UUID or slug.", func(ctx context.Context, in projectInput) (any, error) {
 		memories, err := all(ctx, svc.Memories(), service.Filter{Fields: map[string]any{"scope": "global"}})
 		if err != nil {
@@ -304,14 +315,14 @@ func Handler(svc service.Service) http.Handler {
 		return updateItem(ctx, svc, updateInput{ID: in.ID, Changes: map[string]any{"status": in.Status}})
 	})
 	add(s, "archive_item", "Soft archive an item by UUID.", func(ctx context.Context, in idInput) (any, error) {
-		err := svc.Items().Archive(ctx, "mcp", in.ID)
+		err := svc.Items().Archive(ctx, auth.Actor(ctx), in.ID)
 		return map[string]any{"id": in.ID, "archived": err == nil}, err
 	})
 	add(s, "upsert_feature", "Create or fully replace a feature; supply its UUID to update it.", func(ctx context.Context, in featureInput) (any, error) {
 		if in.Status != "" && in.Status != "implemented" && in.Status != "deprecated" {
 			return nil, service.ErrInvalid
 		}
-		return svc.Features().Put(ctx, "mcp", service.Feature{Record: service.Record{ID: in.ID}, ProjectID: in.ProjectID, Title: in.Title, BodyMd: in.BodyMd, CodeRefs: in.CodeRefs, Status: in.Status})
+		return svc.Features().Put(ctx, auth.Actor(ctx), service.Feature{Record: service.Record{ID: in.ID}, ProjectID: in.ProjectID, Title: in.Title, BodyMd: in.BodyMd, CodeRefs: in.CodeRefs, Status: in.Status})
 	})
 	add(s, "remember", "Store a memory with global, project or environment scope.", func(ctx context.Context, in memoryInput) (any, error) {
 		if !slices.Contains([]string{"global", "project", "environment"}, in.Scope) || in.Content == "" {
@@ -324,11 +335,11 @@ func Handler(svc service.Service) http.Handler {
 		} else if in.ScopeID == nil || *in.ScopeID == "" {
 			return nil, service.ErrInvalid
 		}
-		return svc.Memories().Put(ctx, "mcp", service.Memory{Scope: in.Scope, ScopeID: in.ScopeID, Content: in.Content, Tags: in.Tags})
+		return svc.Memories().Put(ctx, auth.Actor(ctx), service.Memory{Scope: in.Scope, ScopeID: in.ScopeID, Content: in.Content, Tags: in.Tags})
 	})
 	add(s, "recall", "Full text search of memories, optionally filtered by scope and scope_id, with pagination.", func(ctx context.Context, in recallInput) (any, error) { return recall(ctx, svc, in) })
 	add(s, "link", "Create a directed link between domain entities.", func(ctx context.Context, in linkInput) (any, error) {
-		return svc.Links().Put(ctx, "mcp", service.Link{FromID: in.FromID, FromType: in.FromType, ToID: in.ToID, ToType: in.ToType, Kind: in.Kind})
+		return svc.Links().Put(ctx, auth.Actor(ctx), service.Link{FromID: in.FromID, FromType: in.FromType, ToID: in.ToID, ToType: in.ToType, Kind: in.Kind})
 	})
 	return sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return s }, &sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 }

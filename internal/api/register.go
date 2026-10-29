@@ -4,11 +4,12 @@ package api
 import (
 	"net/http"
 
+	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/service"
 )
 
-// actor identifies the writer in audit events until the auth slice supplies one.
-func actor(*http.Request) string { return "web" }
+// actor identifies the writer in audit events using the authenticated identity.
+func actor(r *http.Request) string { return auth.Actor(r.Context()) }
 
 // Register mounts /api routes; auth owns /api/auth/* on the same mux.
 func Register(mux *http.ServeMux, svc service.Service) {
