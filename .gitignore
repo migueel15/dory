@@ -1,0 +1,13 @@
+# Binarios Go
+/dory
+*.exe
+*.test
+*.out
+
+# Frontend
+node_modules/
+web/dist/
+
+# Entorno
+.env
+*.env
