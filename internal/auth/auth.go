@@ -142,7 +142,7 @@ func Middleware(svc service.Service, cfg config.Config) func(http.Handler) http.
 				return
 			}
 			// Reject cross-origin browser mutations, including requests to logout.
-			if v.session != "" && scope == "write" && !sameOrigin(r) {
+			if v.session != "" && scope == "write" && !sameOrigin(r, cfg) {
 				failure(w, 403)
 				return
 			}
@@ -150,13 +150,17 @@ func Middleware(svc service.Service, cfg config.Config) func(http.Handler) http.
 		})
 	}
 }
-func sameOrigin(r *http.Request) bool {
+func sameOrigin(r *http.Request, cfg config.Config) bool {
 	if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
 		return false
 	}
 	origin := r.Header.Get("Origin")
 	if origin == "" {
 		return true
+	}
+	// Behind a TLS-terminating proxy r.TLS is nil, so the configured public origin is the source of truth.
+	if cfg.PublicOrigin != "" {
+		return origin == cfg.PublicOrigin
 	}
 	u, err := url.Parse(origin)
 	scheme := "http"

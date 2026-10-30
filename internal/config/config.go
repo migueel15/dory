@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/pelletier/go-toml/v2"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -14,6 +15,7 @@ type Config struct {
 	Listen         string        `toml:"listen"`
 	DatabaseURL    string        `toml:"database_url"`
 	CookieSecure   bool          `toml:"cookie_secure"`
+	PublicOrigin   string        `toml:"public_origin"`
 	SessionTTL     time.Duration `toml:"-"`
 	SessionTTLText string        `toml:"session_ttl"`
 }
@@ -39,7 +41,7 @@ func Load() (Config, error) {
 	} else if explicit || !os.IsNotExist(err) {
 		return c, err
 	}
-	for key, target := range map[string]*string{"DORY_LISTEN": &c.Listen, "DORY_DATABASE_URL": &c.DatabaseURL, "DORY_SESSION_TTL": &c.SessionTTLText} {
+	for key, target := range map[string]*string{"DORY_LISTEN": &c.Listen, "DORY_DATABASE_URL": &c.DatabaseURL, "DORY_SESSION_TTL": &c.SessionTTLText, "DORY_PUBLIC_ORIGIN": &c.PublicOrigin} {
 		if v, ok := os.LookupEnv(key); ok {
 			*target = v
 		}
@@ -64,5 +66,22 @@ func Load() (Config, error) {
 	if err != nil || c.SessionTTL <= 0 {
 		return c, fmt.Errorf("session_ttl must be a positive duration")
 	}
+	if c.PublicOrigin != "" {
+		if err = validateOrigin(c.PublicOrigin); err != nil {
+			return c, fmt.Errorf("public_origin: %w", err)
+		}
+	}
 	return c, nil
+}
+
+// validateOrigin accepts scheme://host[:port] only, the form browsers send in Origin.
+func validateOrigin(origin string) error {
+	u, err := url.Parse(origin)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("must be an http or https URL")
+	}
+	if u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		return fmt.Errorf("must contain only scheme and host, without path, query or credentials")
+	}
+	return nil
 }
