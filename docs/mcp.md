@@ -66,3 +66,9 @@ Se recomienda que el agente llame a `session_start` al empezar cada sesión.
 - Memoria resumida (`recall`): `id`, `kind`, `title`, `tags` y los 200 primeros caracteres de `content`.
 
 Con `view: "full"` se devuelven los registros completos, como antes. `get_item` siempre devuelve el item entero.
+
+## Respuestas de escritura y contexto de proyecto
+
+`create_item`, `update_item` y `move_item` devuelven `{id, status, updated_at}`. Con `return: "full"` devuelven el item completo.
+
+`get_project` y `session_start` usan la vista resumida para los items abiertos y las memorias. Los cuerpos se leen con `get_item` y `recall` con `view: "full"`.

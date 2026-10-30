@@ -93,3 +93,22 @@ func summarizeHits(hits []service.SearchHit) ([]memorySummary, error) {
 	}
 	return result, nil
 }
+
+// writeReturn shortens item write replies to what the caller needs to go on.
+type writeReturn struct {
+	Return string `json:"return,omitempty" jsonschema:"short (default: id, status, updated_at) or full"`
+}
+
+// check runs before the write so an invalid option never applies changes.
+func (w writeReturn) check() error {
+	if w.Return != "" && w.Return != "short" && w.Return != "full" {
+		return fmt.Errorf("%w: return must be short or full", service.ErrInvalid)
+	}
+	return nil
+}
+func (w writeReturn) reply(item service.Item, err error) (any, error) {
+	if err != nil || w.Return == "full" {
+		return item, err
+	}
+	return map[string]any{"id": item.ID, "status": item.Status, "updated_at": item.UpdatedAt}, nil
+}

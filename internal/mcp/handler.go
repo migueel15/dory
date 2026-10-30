@@ -141,8 +141,8 @@ type projectDetail struct {
 	Project      service.Project      `json:"project"`
 	Repositories []service.Repository `json:"repositories"`
 	Features     []featureSummary     `json:"features"`
-	Memories     []service.Memory     `json:"memories"`
-	OpenItems    []service.Item       `json:"open_items"`
+	Memories     []memorySummary      `json:"memories"`
+	OpenItems    []itemSummary        `json:"open_items"`
 }
 
 func projectContext(ctx context.Context, svc service.Service, key string) (projectDetail, error) {
@@ -170,19 +170,20 @@ func projectContext(ctx context.Context, svc service.Service, key string) (proje
 	if err != nil {
 		return result, err
 	}
-	result.Memories, err = all(ctx, svc.Memories(), service.Filter{Fields: map[string]any{"scope": "project", "scope_id": result.Project.ID}, Limit: 1000})
+	memories, err := all(ctx, svc.Memories(), service.Filter{Fields: map[string]any{"scope": "project", "scope_id": result.Project.ID}, Limit: 1000})
 	if err != nil {
 		return result, err
 	}
+	result.Memories = mapAll(memories, summarizeMemory)
 	items, err := all(ctx, svc.Items(), f)
 	if err != nil {
 		return result, err
 	}
 	open := map[string]int{}
-	result.OpenItems = []service.Item{}
+	result.OpenItems = []itemSummary{}
 	for _, item := range items {
 		if item.Status != "done" && item.Status != "cancelled" {
-			result.OpenItems = append(result.OpenItems, item)
+			result.OpenItems = append(result.OpenItems, summarizeItem(item))
 			if item.FeatureID != nil {
 				open[*item.FeatureID]++
 			}
@@ -267,37 +268,37 @@ func putItem(ctx context.Context, svc service.Service, item service.Item) (servi
 	}
 	return svc.Items().Put(ctx, auth.Actor(ctx), item)
 }
-func updateItem(ctx context.Context, svc service.Service, in updateInput) (any, error) {
+func updateItem(ctx context.Context, svc service.Service, in updateInput) (service.Item, error) {
 	item, err := svc.Items().Get(ctx, in.ID)
 	if err != nil {
-		return nil, err
+		return service.Item{}, err
 	}
 	raw, err := json.Marshal(item)
 	if err != nil {
-		return nil, err
+		return service.Item{}, err
 	}
 	var fields map[string]json.RawMessage
 	if err = json.Unmarshal(raw, &fields); err != nil {
-		return nil, err
+		return service.Item{}, err
 	}
 	for key, value := range in.Changes {
 		if !slices.Contains([]string{"project_id", "feature_id", "raw_text", "title", "body_md", "progress", "refs", "tags", "status", "blocked_reason", "priority", "source"}, key) {
-			return nil, fmt.Errorf("%w: field %s cannot be changed", service.ErrInvalid, key)
+			return service.Item{}, fmt.Errorf("%w: field %s cannot be changed", service.ErrInvalid, key)
 		}
 		if value == nil && key != "project_id" && key != "feature_id" {
-			return nil, fmt.Errorf("%w: only project_id and feature_id may be null", service.ErrInvalid)
+			return service.Item{}, fmt.Errorf("%w: only project_id and feature_id may be null", service.ErrInvalid)
 		}
 		fields[key], err = json.Marshal(value)
 		if err != nil {
-			return nil, err
+			return service.Item{}, err
 		}
 	}
 	raw, err = json.Marshal(fields)
 	if err != nil {
-		return nil, err
+		return service.Item{}, err
 	}
 	if err = json.Unmarshal(raw, &item); err != nil {
-		return nil, fmt.Errorf("%w: %v", service.ErrInvalid, err)
+		return service.Item{}, fmt.Errorf("%w: %v", service.ErrInvalid, err)
 	}
 	return putItem(ctx, svc, item)
 }
@@ -619,7 +620,7 @@ func Handler(svc service.Service) http.Handler {
 		if err != nil {
 			return nil, err
 		}
-		result := map[string]any{"memories": memories, "projects": projects}
+		result := map[string]any{"memories": mapAll(memories, summarizeMemory), "projects": projects}
 		if in.Project == "" && (in.RemoteURL != "" || in.Path != "") {
 			if in.Project, err = findProject(ctx, svc, in.RemoteURL, in.Path); err != nil {
 				return nil, err
@@ -637,11 +638,31 @@ func Handler(svc service.Service) http.Handler {
 		}
 		return result, nil
 	})
-	add(s, "create_item", "Create or idempotently upsert an item; defaults to inbox and source mcp.", func(ctx context.Context, in itemInput) (any, error) {
-		return createItem(ctx, svc, in)
+	add(s, "create_item", "Create or idempotently upsert an item; defaults to inbox and source mcp. Returns {id, status, updated_at} unless return is full.", func(ctx context.Context, in struct {
+		itemInput
+		writeReturn
+	}) (any, error) {
+		if err := in.check(); err != nil {
+			return nil, err
+		}
+		return in.reply(createItem(ctx, svc, in.itemInput))
 	})
-	add(s, "update_item", "Patch an item while preserving omitted fields.", func(ctx context.Context, in updateInput) (any, error) { return updateItem(ctx, svc, in) })
-	add(s, "move_item", "Change an item's workflow status while preserving its other fields; blocked needs blocked_reason.", func(ctx context.Context, in moveInput) (any, error) {
+	add(s, "update_item", "Patch an item while preserving omitted fields. Returns {id, status, updated_at} unless return is full.", func(ctx context.Context, in struct {
+		updateInput
+		writeReturn
+	}) (any, error) {
+		if err := in.check(); err != nil {
+			return nil, err
+		}
+		return in.reply(updateItem(ctx, svc, in.updateInput))
+	})
+	add(s, "move_item", "Change an item's workflow status while preserving its other fields; blocked needs blocked_reason. Returns {id, status, updated_at} unless return is full.", func(ctx context.Context, in struct {
+		moveInput
+		writeReturn
+	}) (any, error) {
+		if err := in.check(); err != nil {
+			return nil, err
+		}
 		if !validStatus(in.Status) {
 			return nil, service.ErrInvalid
 		}
@@ -649,7 +670,7 @@ func Handler(svc service.Service) http.Handler {
 		if in.BlockedReason != "" {
 			changes["blocked_reason"] = in.BlockedReason
 		}
-		return updateItem(ctx, svc, updateInput{ID: in.ID, Changes: changes})
+		return in.reply(updateItem(ctx, svc, updateInput{ID: in.ID, Changes: changes}))
 	})
 	add(s, "archive_item", "Soft archive an item by UUID.", func(ctx context.Context, in idInput) (any, error) {
 		err := svc.Items().Archive(ctx, auth.Actor(ctx), in.ID)
