@@ -59,12 +59,75 @@ func getTool[T any](s *sdk.Server, name, description string, r service.Resource[
 }
 
 type projectInput struct {
-	Project string `json:"project,omitempty" jsonschema:"Optional project UUID or slug"`
+	Project   string `json:"project,omitempty" jsonschema:"Optional project UUID or slug"`
+	RemoteURL string `json:"remote_url,omitempty" jsonschema:"Optional git remote URL used to find the project when project is omitted"`
+	Path      string `json:"path,omitempty" jsonschema:"Optional local checkout path used to find the project when project and remote_url are omitted"`
+}
+
+// normalizeRemote reduces https, ssh and scp-like git URLs to host/owner/repo.
+func normalizeRemote(url string) string {
+	url = strings.ToLower(strings.TrimSpace(url))
+	if i := strings.Index(url, "://"); i >= 0 {
+		url = url[i+3:]
+	} else if at := strings.Index(url, "@"); at >= 0 {
+		url = strings.Replace(url[at+1:], ":", "/", 1)
+	}
+	if at := strings.Index(url, "@"); at >= 0 && at < strings.Index(url+"/", "/") {
+		url = url[at+1:]
+	}
+	url = strings.TrimSuffix(strings.TrimSuffix(url, "/"), ".git")
+	if host, rest, ok := strings.Cut(url, "/"); ok {
+		host, _, _ = strings.Cut(host, ":")
+		url = host + "/" + rest
+	}
+	return url
+}
+
+// findProject resolves a project id from a remote URL, or from the repository
+// location whose path is the longest prefix of path. It returns "" when nothing matches.
+func findProject(ctx context.Context, svc service.Service, remoteURL, path string) (string, error) {
+	repos, err := all(ctx, svc.Repositories(), service.Filter{})
+	if err != nil {
+		return "", err
+	}
+	if remoteURL != "" {
+		want := normalizeRemote(remoteURL)
+		for _, repo := range repos {
+			if normalizeRemote(repo.RemoteUrl) == want {
+				return repo.ProjectID, nil
+			}
+		}
+		return "", nil
+	}
+	locations, err := all(ctx, svc.RepositoryLocations(), service.Filter{})
+	if err != nil {
+		return "", err
+	}
+	path = strings.TrimSuffix(path, "/")
+	best, repoID := -1, ""
+	for _, loc := range locations {
+		root := strings.TrimSuffix(loc.Path, "/")
+		if (path == root || strings.HasPrefix(path, root+"/")) && len(root) > best {
+			best, repoID = len(root), loc.RepositoryID
+		}
+	}
+	for _, repo := range repos {
+		if repo.ID == repoID {
+			return repo.ProjectID, nil
+		}
+	}
+	return "", nil
+}
+
+// featureSummary adds the count of open items so callers know when to close a feature.
+type featureSummary struct {
+	service.Feature
+	OpenItems int `json:"open_items"`
 }
 type projectDetail struct {
 	Project      service.Project      `json:"project"`
 	Repositories []service.Repository `json:"repositories"`
-	Features     []service.Feature    `json:"features"`
+	Features     []featureSummary     `json:"features"`
 	Memories     []service.Memory     `json:"memories"`
 	OpenItems    []service.Item       `json:"open_items"`
 }
@@ -90,7 +153,7 @@ func projectContext(ctx context.Context, svc service.Service, key string) (proje
 	if err != nil {
 		return result, err
 	}
-	result.Features, err = all(ctx, svc.Features(), f)
+	features, err := all(ctx, svc.Features(), f)
 	if err != nil {
 		return result, err
 	}
@@ -99,13 +162,24 @@ func projectContext(ctx context.Context, svc service.Service, key string) (proje
 		return result, err
 	}
 	items, err := all(ctx, svc.Items(), f)
+	if err != nil {
+		return result, err
+	}
+	open := map[string]int{}
 	result.OpenItems = []service.Item{}
 	for _, item := range items {
-		if item.Status != "done" && item.Status != "archived" {
+		if item.Status != "done" && item.Status != "cancelled" {
 			result.OpenItems = append(result.OpenItems, item)
+			if item.FeatureID != nil {
+				open[*item.FeatureID]++
+			}
 		}
 	}
-	return result, err
+	result.Features = []featureSummary{}
+	for _, feature := range features {
+		result.Features = append(result.Features, featureSummary{Feature: feature, OpenItems: open[feature.ID]})
+	}
+	return result, nil
 }
 func all[T any](ctx context.Context, r service.Resource[T], f service.Filter) ([]T, error) {
 	result := []T{}
@@ -124,27 +198,34 @@ func all[T any](ctx context.Context, r service.Resource[T], f service.Filter) ([
 }
 
 type itemInput struct {
-	ID        string   `json:"id,omitempty" jsonschema:"Optional client UUID for idempotent upsert"`
-	ProjectID *string  `json:"project_id,omitempty"`
-	RawText   string   `json:"raw_text,omitempty"`
-	Title     string   `json:"title,omitempty" jsonschema:"Optional; derived from the first line of raw_text (max 80 chars) when missing"`
-	BodyMd    string   `json:"body_md,omitempty"`
-	Tags      []string `json:"tags,omitempty"`
-	Status    string   `json:"status,omitempty"`
-	Priority  int32    `json:"priority,omitempty"`
-	Source    string   `json:"source,omitempty"`
+	ID            string   `json:"id,omitempty" jsonschema:"Optional client UUID for idempotent upsert"`
+	ProjectID     *string  `json:"project_id,omitempty"`
+	FeatureID     *string  `json:"feature_id,omitempty" jsonschema:"Optional feature the item belongs to"`
+	RawText       string   `json:"raw_text,omitempty"`
+	Title         string   `json:"title,omitempty" jsonschema:"Optional; derived from the first line of raw_text (max 80 chars) when missing"`
+	BodyMd        string   `json:"body_md,omitempty"`
+	Progress      string   `json:"progress,omitempty" jsonschema:"Short current state (branch, last commit, what is next); replaced, not appended"`
+	Tags          []string `json:"tags,omitempty"`
+	Status        string   `json:"status,omitempty" jsonschema:"inbox, triaged, ready, in_progress, blocked, done or cancelled"`
+	BlockedReason string   `json:"blocked_reason,omitempty" jsonschema:"Required when status is blocked: what blocks it and what unblocks it"`
+	Priority      int32    `json:"priority,omitempty"`
+	Source        string   `json:"source,omitempty"`
 }
 type updateInput struct {
 	ID      string         `json:"id"`
-	Changes map[string]any `json:"changes" jsonschema:"Patch fields: project_id (nullable), raw_text, title, body_md, tags, status, priority, source. Omitted fields are preserved."`
+	Changes map[string]any `json:"changes" jsonschema:"Patch fields: project_id and feature_id (nullable), raw_text, title, body_md, progress (short current state, replaced), tags, status, blocked_reason (required for blocked, cleared otherwise), priority, source. Omitted fields are preserved."`
 }
 type moveInput struct {
-	ID     string `json:"id"`
-	Status string `json:"status" jsonschema:"inbox, triaged, ready, in_progress, done or archived"`
+	ID            string `json:"id"`
+	Status        string `json:"status" jsonschema:"inbox, triaged, ready, in_progress, blocked, done or cancelled"`
+	BlockedReason string `json:"blocked_reason,omitempty" jsonschema:"Required when status is blocked"`
 }
 
 func validStatus(status string) bool {
-	return slices.Contains([]string{"inbox", "triaged", "ready", "in_progress", "done", "archived"}, status)
+	return slices.Contains([]string{"inbox", "triaged", "ready", "in_progress", "blocked", "done", "cancelled"}, status)
+}
+func validFeatureStatus(status string) bool {
+	return slices.Contains([]string{"planned", "in_progress", "implemented", "deprecated"}, status)
 }
 
 // deriveTitle takes the first non-empty line of text, cut to 80 characters.
@@ -163,6 +244,13 @@ func putItem(ctx context.Context, svc service.Service, item service.Item) (any, 
 	if item.Status != "" && !validStatus(item.Status) {
 		return nil, fmt.Errorf("%w: unknown item status", service.ErrInvalid)
 	}
+	// A blocked item must say why; leaving the state clears the reason.
+	if item.Status == "blocked" && strings.TrimSpace(item.BlockedReason) == "" {
+		return nil, fmt.Errorf("%w: blocked_reason is required for blocked items", service.ErrInvalid)
+	}
+	if item.Status != "blocked" {
+		item.BlockedReason = ""
+	}
 	return svc.Items().Put(ctx, auth.Actor(ctx), item)
 }
 func updateItem(ctx context.Context, svc service.Service, in updateInput) (any, error) {
@@ -179,11 +267,11 @@ func updateItem(ctx context.Context, svc service.Service, in updateInput) (any, 
 		return nil, err
 	}
 	for key, value := range in.Changes {
-		if !slices.Contains([]string{"project_id", "raw_text", "title", "body_md", "tags", "status", "priority", "source"}, key) {
+		if !slices.Contains([]string{"project_id", "feature_id", "raw_text", "title", "body_md", "progress", "tags", "status", "blocked_reason", "priority", "source"}, key) {
 			return nil, fmt.Errorf("%w: field %s cannot be changed", service.ErrInvalid, key)
 		}
-		if value == nil && key != "project_id" {
-			return nil, fmt.Errorf("%w: only project_id may be null", service.ErrInvalid)
+		if value == nil && key != "project_id" && key != "feature_id" {
+			return nil, fmt.Errorf("%w: only project_id and feature_id may be null", service.ErrInvalid)
 		}
 		fields[key], err = json.Marshal(value)
 		if err != nil {
@@ -206,7 +294,14 @@ type featureInput struct {
 	Title     string   `json:"title"`
 	BodyMd    string   `json:"body_md,omitempty"`
 	CodeRefs  []string `json:"code_refs,omitempty"`
-	Status    string   `json:"status,omitempty" jsonschema:"implemented (default) or deprecated"`
+	Status    string   `json:"status,omitempty" jsonschema:"planned (default), in_progress, implemented or deprecated"`
+}
+type featureUpdate struct {
+	ID       string    `json:"id" jsonschema:"Feature UUID"`
+	Title    *string   `json:"title,omitempty"`
+	BodyMd   *string   `json:"body_md,omitempty"`
+	CodeRefs *[]string `json:"code_refs,omitempty"`
+	Status   *string   `json:"status,omitempty" jsonschema:"planned, in_progress, implemented or deprecated"`
 }
 type memoryInput struct {
 	Scope   string   `json:"scope" jsonschema:"global, project or environment"`
@@ -215,15 +310,16 @@ type memoryInput struct {
 	Tags    []string `json:"tags,omitempty"`
 }
 type recallInput struct {
-	Query   string `json:"query"`
-	Scope   string `json:"scope,omitempty" jsonschema:"Optional global, project or environment scope"`
-	ScopeID string `json:"scope_id,omitempty"`
-	Limit   int32  `json:"limit,omitempty" jsonschema:"Default 100 maximum 1000"`
-	Offset  int32  `json:"offset,omitempty"`
+	Query   string   `json:"query,omitempty" jsonschema:"Full text query; optional when tags are given"`
+	Tags    []string `json:"tags,omitempty" jsonschema:"Only memories that carry all these tags"`
+	Scope   string   `json:"scope,omitempty" jsonschema:"Optional global, project or environment scope"`
+	ScopeID string   `json:"scope_id,omitempty"`
+	Limit   int32    `json:"limit,omitempty" jsonschema:"Default 100 maximum 1000"`
+	Offset  int32    `json:"offset,omitempty"`
 }
 
 func recall(ctx context.Context, svc service.Service, in recallInput) (any, error) {
-	if in.Query == "" || in.Offset < 0 || in.Limit < 0 || in.Limit > 1000 {
+	if (in.Query == "" && len(in.Tags) == 0) || in.Offset < 0 || in.Limit < 0 || in.Limit > 1000 {
 		return nil, service.ErrInvalid
 	}
 	if in.Scope != "" && !slices.Contains([]string{"global", "project", "environment"}, in.Scope) {
@@ -234,6 +330,9 @@ func recall(ctx context.Context, svc service.Service, in recallInput) (any, erro
 		limit = 100
 	}
 	result := []service.SearchHit{}
+	if in.Query == "" {
+		return recallByTags(ctx, svc, in, limit)
+	}
 	// Scope filtering precedes pagination: Search covers items/features too, so
 	// filtering a single page could incorrectly hide matching memories.
 	var skipped int32
@@ -256,6 +355,9 @@ func recall(ctx context.Context, svc service.Service, in recallInput) (any, erro
 			if in.ScopeID != "" && (memory.ScopeID == nil || *memory.ScopeID != in.ScopeID) {
 				continue
 			}
+			if !hasTags(memory.Tags, in.Tags) {
+				continue
+			}
 			if skipped < in.Offset {
 				skipped++
 				continue
@@ -269,6 +371,38 @@ func recall(ctx context.Context, svc service.Service, in recallInput) (any, erro
 			return result, nil
 		}
 	}
+}
+
+// recallByTags lists memories by tag containment when there is no text query.
+func recallByTags(ctx context.Context, svc service.Service, in recallInput, limit int32) (any, error) {
+	fields := map[string]any{"tags": in.Tags}
+	if in.Scope != "" {
+		fields["scope"] = in.Scope
+	}
+	if in.ScopeID != "" {
+		fields["scope_id"] = in.ScopeID
+	}
+	memories, err := svc.Memories().List(ctx, service.Filter{Fields: fields, Limit: limit, Offset: in.Offset})
+	if err != nil {
+		return nil, err
+	}
+	result := []service.SearchHit{}
+	for _, memory := range memories {
+		raw, err := json.Marshal(memory)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, service.SearchHit{EntityType: "memory", EntityID: memory.ID, Content: raw})
+	}
+	return result, nil
+}
+func hasTags(have, want []string) bool {
+	for _, tag := range want {
+		if !slices.Contains(have, tag) {
+			return false
+		}
+	}
+	return true
 }
 
 type linkInput struct {
@@ -352,7 +486,7 @@ func Handler(svc service.Service) http.Handler {
 	listTool(s, "list_projects", "List projects with optional field filters and pagination.", svc.Projects())
 	listTool(s, "list_items", "List items with optional field filters and pagination.", svc.Items())
 	getTool(s, "get_item", "Get an unarchived item by UUID.", svc.Items())
-	listTool(s, "list_features", "List implemented or deprecated features with optional filters.", svc.Features())
+	listTool(s, "list_features", "List features with optional filters, e.g. status planned, in_progress, implemented or deprecated.", svc.Features())
 	listTool(s, "list_environments", "List environments with optional filters.", svc.Environments())
 	getTool(s, "get_environment", "Get an environment by UUID.", svc.Environments())
 	listTool(s, "list_repositories", "List repositories; filter by project_id if needed.", svc.Repositories())
@@ -361,7 +495,7 @@ func Handler(svc service.Service) http.Handler {
 	}) (any, error) {
 		return projectContext(ctx, svc, in.ID)
 	})
-	add(s, "session_start", "Load global memories and available projects; optionally include project context by UUID or slug.", func(ctx context.Context, in projectInput) (any, error) {
+	add(s, "session_start", "Load global memories and available projects; optionally include project context by UUID or slug, or found from a git remote_url or local path (project_match is none when nothing matches).", func(ctx context.Context, in projectInput) (any, error) {
 		memories, err := all(ctx, svc.Memories(), service.Filter{Fields: map[string]any{"scope": "global"}})
 		if err != nil {
 			return nil, err
@@ -371,6 +505,14 @@ func Handler(svc service.Service) http.Handler {
 			return nil, err
 		}
 		result := map[string]any{"memories": memories, "projects": projects}
+		if in.Project == "" && (in.RemoteURL != "" || in.Path != "") {
+			if in.Project, err = findProject(ctx, svc, in.RemoteURL, in.Path); err != nil {
+				return nil, err
+			}
+			if in.Project == "" {
+				result["project_match"] = "none"
+			}
+		}
 		if in.Project != "" {
 			detail, err := projectContext(ctx, svc, in.Project)
 			if err != nil {
@@ -387,24 +529,42 @@ func Handler(svc service.Service) http.Handler {
 		if strings.TrimSpace(in.Title) == "" {
 			in.Title = deriveTitle(in.RawText)
 		}
-		return putItem(ctx, svc, service.Item{Record: service.Record{ID: in.ID}, ProjectID: in.ProjectID, RawText: in.RawText, Title: in.Title, BodyMd: in.BodyMd, Tags: in.Tags, Status: in.Status, Priority: in.Priority, Source: in.Source})
+		return putItem(ctx, svc, service.Item{Record: service.Record{ID: in.ID}, ProjectID: in.ProjectID, FeatureID: in.FeatureID, RawText: in.RawText, Title: in.Title, BodyMd: in.BodyMd, Progress: in.Progress, Tags: in.Tags, Status: in.Status, BlockedReason: in.BlockedReason, Priority: in.Priority, Source: in.Source})
 	})
 	add(s, "update_item", "Patch an item while preserving omitted fields.", func(ctx context.Context, in updateInput) (any, error) { return updateItem(ctx, svc, in) })
-	add(s, "move_item", "Change an item's workflow status while preserving its other fields.", func(ctx context.Context, in moveInput) (any, error) {
+	add(s, "move_item", "Change an item's workflow status while preserving its other fields; blocked needs blocked_reason.", func(ctx context.Context, in moveInput) (any, error) {
 		if !validStatus(in.Status) {
 			return nil, service.ErrInvalid
 		}
-		return updateItem(ctx, svc, updateInput{ID: in.ID, Changes: map[string]any{"status": in.Status}})
+		changes := map[string]any{"status": in.Status}
+		if in.BlockedReason != "" {
+			changes["blocked_reason"] = in.BlockedReason
+		}
+		return updateItem(ctx, svc, updateInput{ID: in.ID, Changes: changes})
 	})
 	add(s, "archive_item", "Soft archive an item by UUID.", func(ctx context.Context, in idInput) (any, error) {
 		err := svc.Items().Archive(ctx, auth.Actor(ctx), in.ID)
 		return map[string]any{"id": in.ID, "archived": err == nil}, err
 	})
 	add(s, "upsert_feature", "Create or fully replace a feature; supply its UUID to update it.", func(ctx context.Context, in featureInput) (any, error) {
-		if in.Status != "" && in.Status != "implemented" && in.Status != "deprecated" {
+		if in.Status != "" && !validFeatureStatus(in.Status) {
 			return nil, service.ErrInvalid
 		}
 		return svc.Features().Put(ctx, auth.Actor(ctx), service.Feature{Record: service.Record{ID: in.ID}, ProjectID: in.ProjectID, Title: in.Title, BodyMd: in.BodyMd, CodeRefs: in.CodeRefs, Status: in.Status})
+	})
+	add(s, "update_feature", "Edit an existing feature by UUID, changing only the fields sent (title, body_md, code_refs, status).", func(ctx context.Context, in featureUpdate) (any, error) {
+		f, err := svc.Features().Get(ctx, in.ID)
+		if err != nil {
+			return nil, err
+		}
+		set(&f.Title, in.Title)
+		set(&f.BodyMd, in.BodyMd)
+		set(&f.CodeRefs, in.CodeRefs)
+		set(&f.Status, in.Status)
+		if f.Title == "" || !validFeatureStatus(f.Status) {
+			return nil, service.ErrInvalid
+		}
+		return svc.Features().Put(ctx, auth.Actor(ctx), f)
 	})
 	add(s, "remember", "Store a memory with global, project or environment scope.", func(ctx context.Context, in memoryInput) (any, error) {
 		if !slices.Contains([]string{"global", "project", "environment"}, in.Scope) || in.Content == "" {
@@ -494,7 +654,7 @@ func Handler(svc service.Service) http.Handler {
 		}
 		return svc.RepositoryLocations().Put(ctx, auth.Actor(ctx), loc)
 	})
-	add(s, "recall", "Full text search of memories, optionally filtered by scope and scope_id, with pagination.", func(ctx context.Context, in recallInput) (any, error) { return recall(ctx, svc, in) })
+	add(s, "recall", "Search memories by full text query and/or tags (all must match), optionally filtered by scope and scope_id, with pagination.", func(ctx context.Context, in recallInput) (any, error) { return recall(ctx, svc, in) })
 	add(s, "link", "Create a directed link between domain entities.", func(ctx context.Context, in linkInput) (any, error) {
 		return svc.Links().Put(ctx, auth.Actor(ctx), service.Link{FromID: in.FromID, FromType: in.FromType, ToID: in.ToID, ToType: in.ToType, Kind: in.Kind})
 	})

@@ -507,10 +507,10 @@ export interface components {
             body_md: string;
             code_refs: string[];
             /**
-             * @default implemented
+             * @default planned
              * @enum {string}
              */
-            status: "implemented" | "deprecated";
+            status: "planned" | "in_progress" | "implemented" | "deprecated";
         };
         FeatureInput: {
             /** Format: uuid */
@@ -522,10 +522,10 @@ export interface components {
             body_md: string;
             code_refs?: string[];
             /**
-             * @default implemented
+             * @default planned
              * @enum {string}
              */
-            status: "implemented" | "deprecated";
+            status: "planned" | "in_progress" | "implemented" | "deprecated";
         };
         Item: {
             /** Format: uuid */
@@ -538,17 +538,23 @@ export interface components {
             readonly archived_at: string | null;
             /** Format: uuid */
             project_id: string | null;
+            /** Format: uuid */
+            feature_id: string | null;
             /** @default  */
             raw_text: string;
             title: string;
             /** @default  */
             body_md: string;
+            /** @default  */
+            progress: string;
             tags: string[];
             /**
              * @default inbox
              * @enum {string}
              */
-            status: "inbox" | "triaged" | "ready" | "in_progress" | "done" | "archived";
+            status: "inbox" | "triaged" | "ready" | "in_progress" | "blocked" | "done" | "cancelled";
+            /** @default  */
+            blocked_reason: string;
             /**
              * Format: int32
              * @default 0
@@ -562,17 +568,23 @@ export interface components {
             id?: string;
             /** Format: uuid */
             project_id?: string | null;
+            /** Format: uuid */
+            feature_id?: string | null;
             /** @default  */
             raw_text: string;
             title: string;
             /** @default  */
             body_md: string;
+            /** @default  */
+            progress: string;
             tags?: string[];
             /**
              * @default inbox
              * @enum {string}
              */
-            status: "inbox" | "triaged" | "ready" | "in_progress" | "done" | "archived";
+            status: "inbox" | "triaged" | "ready" | "in_progress" | "blocked" | "done" | "cancelled";
+            /** @default  */
+            blocked_reason: string;
             /**
              * Format: int32
              * @default 0

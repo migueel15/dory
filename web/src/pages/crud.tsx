@@ -170,7 +170,7 @@ function FeatureForm({ feature, projectId, onClose }: { feature?: Feature; proje
   const [title, setTitle] = useState(feature?.title ?? "");
   const [body, setBody] = useState(feature?.body_md ?? "");
   const [refs, setRefs] = useState(feature?.code_refs.join(", ") ?? "");
-  const [status, setStatus] = useState<Feature["status"]>(feature?.status ?? "implemented");
+  const [status, setStatus] = useState<Feature["status"]>(feature?.status ?? "planned");
   const data = { project_id: projectId, title, body_md: body, code_refs: csv(refs), status };
   const save = useSave("features", () => (feature ? api.features.update(feature.id, { id: feature.id, ...data }) : api.features.create(data)), onClose);
   const arch = useSave("features", () => api.features.archive(feature!.id), onClose);
@@ -181,7 +181,7 @@ function FeatureForm({ feature, projectId, onClose }: { feature?: Feature; proje
       <Label text="Referencias de código (coma)"><Input value={refs} onChange={(e) => setRefs(e.target.value)} /></Label>
       <Label text="Estado">
         <select className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" value={status} onChange={(e) => setStatus(e.target.value as Feature["status"])}>
-          <option>implemented</option><option>deprecated</option>
+          <option>planned</option><option>in_progress</option><option>implemented</option><option>deprecated</option>
         </select>
       </Label>
       <Footer onClose={onClose} onSave={() => save.mutate()} onArchive={feature && (() => arch.mutate())} error={save.error ?? arch.error} disabled={!title.trim()} />

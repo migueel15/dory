@@ -46,14 +46,17 @@ type Feature struct {
 }
 type Item struct {
 	Record
-	ProjectID *string  `json:"project_id"`
-	RawText   string   `json:"raw_text"`
-	Title     string   `json:"title"`
-	BodyMd    string   `json:"body_md"`
-	Tags      []string `json:"tags"`
-	Status    string   `json:"status"`
-	Priority  int32    `json:"priority"`
-	Source    string   `json:"source"`
+	ProjectID     *string  `json:"project_id"`
+	FeatureID     *string  `json:"feature_id"`
+	RawText       string   `json:"raw_text"`
+	Title         string   `json:"title"`
+	BodyMd        string   `json:"body_md"`
+	Progress      string   `json:"progress"`
+	Tags          []string `json:"tags"`
+	Status        string   `json:"status"`
+	BlockedReason string   `json:"blocked_reason"`
+	Priority      int32    `json:"priority"`
+	Source        string   `json:"source"`
 }
 type Memory struct {
 	Record

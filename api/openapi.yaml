@@ -1822,9 +1822,11 @@ components:
         status:
           type: "string"
           enum:
+            - "planned"
+            - "in_progress"
             - "implemented"
             - "deprecated"
-          default: "implemented"
+          default: "planned"
     FeatureInput:
       type: "object"
       additionalProperties: false
@@ -1850,9 +1852,11 @@ components:
         status:
           type: "string"
           enum:
+            - "planned"
+            - "in_progress"
             - "implemented"
             - "deprecated"
-          default: "implemented"
+          default: "planned"
     Item:
       type: "object"
       required:
@@ -1861,11 +1865,14 @@ components:
         - "updated_at"
         - "archived_at"
         - "project_id"
+        - "feature_id"
         - "raw_text"
         - "title"
         - "body_md"
+        - "progress"
         - "tags"
         - "status"
+        - "blocked_reason"
         - "priority"
         - "source"
       properties:
@@ -1890,12 +1897,19 @@ components:
           type: "string"
           format: "uuid"
           nullable: true
+        feature_id:
+          type: "string"
+          format: "uuid"
+          nullable: true
         raw_text:
           type: "string"
           default: ""
         title:
           type: "string"
         body_md:
+          type: "string"
+          default: ""
+        progress:
           type: "string"
           default: ""
         tags:
@@ -1909,9 +1923,13 @@ components:
             - "triaged"
             - "ready"
             - "in_progress"
+            - "blocked"
             - "done"
-            - "archived"
+            - "cancelled"
           default: "inbox"
+        blocked_reason:
+          type: "string"
+          default: ""
         priority:
           type: "integer"
           format: "int32"
@@ -1932,12 +1950,19 @@ components:
           type: "string"
           format: "uuid"
           nullable: true
+        feature_id:
+          type: "string"
+          format: "uuid"
+          nullable: true
         raw_text:
           type: "string"
           default: ""
         title:
           type: "string"
         body_md:
+          type: "string"
+          default: ""
+        progress:
           type: "string"
           default: ""
         tags:
@@ -1951,9 +1976,13 @@ components:
             - "triaged"
             - "ready"
             - "in_progress"
+            - "blocked"
             - "done"
-            - "archived"
+            - "cancelled"
           default: "inbox"
+        blocked_reason:
+          type: "string"
+          default: ""
         priority:
           type: "integer"
           format: "int32"

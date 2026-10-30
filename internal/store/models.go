@@ -55,19 +55,22 @@ type Feature struct {
 }
 
 type Item struct {
-	ID           pgtype.UUID
-	ProjectID    pgtype.UUID
-	RawText      string
-	Title        string
-	BodyMd       string
-	Tags         []string
-	Status       string
-	Priority     int32
-	Source       string
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
-	ArchivedAt   pgtype.Timestamptz
-	SearchVector interface{}
+	ID            pgtype.UUID
+	ProjectID     pgtype.UUID
+	RawText       string
+	Title         string
+	BodyMd        string
+	Tags          []string
+	Status        string
+	Priority      int32
+	Source        string
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	ArchivedAt    pgtype.Timestamptz
+	SearchVector  interface{}
+	Progress      string
+	FeatureID     pgtype.UUID
+	BlockedReason string
 }
 
 type Link struct {
