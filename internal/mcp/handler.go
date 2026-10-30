@@ -54,6 +54,19 @@ func add[I any](server *sdk.Server, name, description string, fn func(context.Co
 func listTool[T any](s *sdk.Server, name, description string, r service.Resource[T]) {
 	add(s, name, description, func(ctx context.Context, in listInput) (any, error) { return r.List(ctx, in.filter()) })
 }
+func viewListTool[T, S any](s *sdk.Server, name, description string, r service.Resource[T], summarize func(T) S) {
+	add(s, name, description, func(ctx context.Context, in viewListInput) (any, error) {
+		summary, err := checkView(in.View)
+		if err != nil {
+			return nil, err
+		}
+		rows, err := r.List(ctx, in.filter())
+		if err != nil || !summary {
+			return rows, err
+		}
+		return mapAll(rows, summarize), nil
+	})
+}
 func getTool[T any](s *sdk.Server, name, description string, r service.Resource[T]) {
 	add(s, name, description, func(ctx context.Context, in idInput) (any, error) { return r.Get(ctx, in.ID) })
 }
@@ -321,9 +334,22 @@ type recallInput struct {
 	ScopeID string   `json:"scope_id,omitempty"`
 	Limit   int32    `json:"limit,omitempty" jsonschema:"Default 100 maximum 1000"`
 	Offset  int32    `json:"offset,omitempty"`
+	View    string   `json:"view,omitempty" jsonschema:"summary (default: id, kind, title, tags, first 200 characters of content) or full"`
 }
 
+// recall applies the requested view to the matching memories.
 func recall(ctx context.Context, svc service.Service, in recallInput) (any, error) {
+	summary, err := checkView(in.View)
+	if err != nil {
+		return nil, err
+	}
+	hits, err := recallHits(ctx, svc, in)
+	if err != nil || !summary {
+		return hits, err
+	}
+	return summarizeHits(hits)
+}
+func recallHits(ctx context.Context, svc service.Service, in recallInput) ([]service.SearchHit, error) {
 	if (in.Query == "" && len(in.Tags) == 0 && in.Kind == "") || !validMemoryKind(in.Kind) || in.Offset < 0 || in.Limit < 0 || in.Limit > 1000 {
 		return nil, service.ErrInvalid
 	}
@@ -379,7 +405,7 @@ func recall(ctx context.Context, svc service.Service, in recallInput) (any, erro
 }
 
 // recallByTags lists memories by tags and kind when there is no text query.
-func recallByTags(ctx context.Context, svc service.Service, in recallInput, limit int32) (any, error) {
+func recallByTags(ctx context.Context, svc service.Service, in recallInput, limit int32) ([]service.SearchHit, error) {
 	fields := map[string]any{}
 	if len(in.Tags) > 0 {
 		fields["tags"] = in.Tags
@@ -572,10 +598,10 @@ func validMemoryScope(scope string, scopeID *string) bool {
 // avoid keeping authentication-independent sessions between HTTP requests.
 func Handler(svc service.Service) http.Handler {
 	s := sdk.NewServer(&sdk.Implementation{Name: "dory", Version: "0.1.0"}, nil)
-	listTool(s, "list_projects", "List projects with optional field filters and pagination.", svc.Projects())
-	listTool(s, "list_items", "List items with optional field filters and pagination.", svc.Items())
+	viewListTool(s, "list_projects", "List projects with optional field filters and pagination; view summary (default) or full.", svc.Projects(), summarizeProject)
+	viewListTool(s, "list_items", "List items with optional field filters and pagination; view summary (default: id, title, status, project_id, feature_id, priority, tags, updated_at) or full. get_item returns the whole item.", svc.Items(), summarizeItem)
 	getTool(s, "get_item", "Get an unarchived item by UUID.", svc.Items())
-	listTool(s, "list_features", "List features with optional filters, e.g. status planned, in_progress, implemented or deprecated.", svc.Features())
+	viewListTool(s, "list_features", "List features with optional filters, e.g. status planned, in_progress, implemented or deprecated; view summary (default) or full.", svc.Features(), summarizeFeature)
 	listTool(s, "list_environments", "List environments with optional filters.", svc.Environments())
 	getTool(s, "get_environment", "Get an environment by UUID.", svc.Environments())
 	listTool(s, "list_repositories", "List repositories; filter by project_id if needed.", svc.Repositories())
@@ -726,7 +752,7 @@ func Handler(svc service.Service) http.Handler {
 		}
 		return svc.RepositoryLocations().Put(ctx, auth.Actor(ctx), loc)
 	})
-	add(s, "recall", "Search memories by full text query, tags (all must match) and/or kind, optionally filtered by scope and scope_id, with pagination.", func(ctx context.Context, in recallInput) (any, error) { return recall(ctx, svc, in) })
+	add(s, "recall", "Search memories by full text query, tags (all must match) and/or kind, optionally filtered by scope and scope_id, with pagination; view summary (default) or full.", func(ctx context.Context, in recallInput) (any, error) { return recall(ctx, svc, in) })
 	add(s, "import_batch", "Atomically create or upsert many features, items, memories and links in one call. Records are written in that order, so items may reference features of the same batch by client UUID. Any error rolls back the whole batch. Maximum 1000 records.", func(ctx context.Context, in batchInput) (any, error) {
 		return importBatch(ctx, svc, in)
 	})
