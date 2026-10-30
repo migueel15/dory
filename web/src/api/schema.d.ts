@@ -315,7 +315,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description SSE audit stream ordered by event ID. Each message has id, event: change and JSON Event data. Resume using after or Last-Event-ID (header takes precedence). Heartbeat comments are allowed. */
+        /** @description SSE audit stream ordered by event ID. Each message has id, event: change and JSON Event data. Resume using after or Last-Event-ID (header takes precedence); after=latest starts at the newest event, skipping history. Heartbeat comments are allowed. */
         get: operations["streamEvents"];
         put?: never;
         post?: never;
@@ -1979,7 +1979,7 @@ export interface operations {
     streamEvents: {
         parameters: {
             query?: {
-                after?: number;
+                after?: number | "latest";
                 entity_type?: string;
             };
             header?: {

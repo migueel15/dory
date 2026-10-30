@@ -39,7 +39,18 @@ func search(svc service.Service) http.HandlerFunc {
 // streamEvents polls the audit log and emits each new event as an SSE message.
 func streamEvents(svc service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		after, err := intParam(r, "after")
+		var after int64
+		var err error
+		if r.URL.Query().Get("after") == "latest" {
+			// Skip history: only events written from now on.
+			after, err = svc.LatestEventID(r.Context())
+			if err != nil {
+				writeServiceError(w, err)
+				return
+			}
+		} else {
+			after, err = intParam(r, "after")
+		}
 		if h := r.Header.Get("Last-Event-ID"); err == nil && h != "" {
 			after, err = strconv.ParseInt(h, 10, 64)
 			if err == nil && after < 0 {

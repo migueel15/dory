@@ -39,6 +39,17 @@ func (q *Queries) AppendEvent(ctx context.Context, arg AppendEventParams) (Event
 	return i, err
 }
 
+const latestEventID = `-- name: LatestEventID :one
+SELECT COALESCE(MAX(id), 0)::bigint FROM events
+`
+
+func (q *Queries) LatestEventID(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, latestEventID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const listEvents = `-- name: ListEvents :many
 SELECT id, entity_type, entity_id, actor, change, at FROM events WHERE id > $1 AND (CAST($2 AS text) = '' OR entity_type = $2) ORDER BY id LIMIT $3
 `

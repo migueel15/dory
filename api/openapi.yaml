@@ -1325,15 +1325,20 @@ paths:
   "/events/stream":
     get:
       operationId: "streamEvents"
-      description: "SSE audit stream ordered by event ID. Each message has id, event: change and JSON Event data. Resume using after or Last-Event-ID (header takes precedence). Heartbeat comments are allowed."
+      description: "SSE audit stream ordered by event ID. Each message has id, event: change and JSON Event data. Resume using after or Last-Event-ID (header takes precedence); after=latest starts at the newest event, skipping history. Heartbeat comments are allowed."
       parameters:
         -
           name: "after"
           in: "query"
           schema:
-            type: "integer"
-            format: "int64"
-            minimum: 0
+            oneOf:
+              -
+                type: "integer"
+                format: "int64"
+                minimum: 0
+              -
+                type: "string"
+                enum: ["latest"]
             default: 0
         -
           name: "entity_type"
