@@ -22,7 +22,7 @@ export function Projects() {
             <Card className="hover:bg-slate-50">
               <div className="font-medium">{p.name} <span className="text-xs text-slate-500">{p.slug}</span></div>
               <p className="text-sm text-slate-600">{p.description}</p>
-              <div className="mt-1 flex gap-1"><Badge>{p.status}</Badge>{p.stack.map((s) => <Badge key={s}>{s}</Badge>)}</div>
+              <div className="mt-1 flex flex-wrap gap-1"><Badge>{p.status}</Badge>{p.stack.map((s) => <Badge key={s}>{s}</Badge>)}</div>
             </Card>
           </Link>
         ))}
@@ -42,13 +42,13 @@ export function ProjectDetail() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold">{p.name} <span className="text-sm font-normal text-slate-500">{p.slug}</span></h1>
+        <div className="flex items-start justify-between gap-2">
+          <h1 className="text-xl font-bold break-words">{p.name} <span className="text-sm font-normal text-slate-500">{p.slug}</span></h1>
           <Button variant="ghost" onClick={() => setEditing(true)}>Editar</Button>
         </div>
         {p.description && <Md>{p.description}</Md>}
-        <div className="flex gap-1"><Badge>{p.status}</Badge>{p.stack.map((s) => <Badge key={s}>{s}</Badge>)}</div>
-        {repos.data?.map((r) => <div key={r.id} className="text-sm text-slate-600">⎇ {r.remote_url} <span className="text-xs">({r.default_branch})</span></div>)}
+        <div className="flex flex-wrap gap-1"><Badge>{p.status}</Badge>{p.stack.map((s) => <Badge key={s}>{s}</Badge>)}</div>
+        {repos.data?.map((r) => <div key={r.id} className="break-all text-sm text-slate-600">⎇ {r.remote_url} <span className="text-xs">({r.default_branch})</span></div>)}
       </div>
       <Board projectId={id} />
       <Features projectId={id} />

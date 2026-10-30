@@ -44,19 +44,21 @@ function Layout() {
   const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") });
   if (me.isPending) return null;
   if (!me.data) return <Login />;
-  const link = "rounded px-2 py-1 text-sm hover:bg-slate-200 [&.active]:bg-slate-900 [&.active]:text-white";
+  const link = "flex min-h-11 shrink-0 items-center rounded px-3 text-sm sm:min-h-0 sm:px-2 sm:py-1 hover:bg-slate-200 [&.active]:bg-slate-900 [&.active]:text-white";
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <nav className="flex items-center gap-1 border-b border-slate-200 bg-white px-4 py-2">
+      <nav className="flex flex-wrap items-center gap-1 border-b border-slate-200 bg-white px-2 py-2 sm:px-4">
         <span className="mr-3 font-bold">Dory</span>
-        <Link to="/" className={link}>Inbox</Link>
-        <Link to="/projects" className={link}>Proyectos</Link>
-        <Link to="/environments" className={link}>Entornos</Link>
-        <Link to="/memories" className={link}>Memorias</Link>
-        <span className="ml-auto text-sm text-slate-500">{me.data.username}</span>
+        <div className="order-last -mx-2 flex w-full gap-1 overflow-x-auto px-2 sm:order-none sm:mx-0 sm:w-auto sm:px-0">
+          <Link to="/" className={link}>Inbox</Link>
+          <Link to="/projects" className={link}>Proyectos</Link>
+          <Link to="/environments" className={link}>Entornos</Link>
+          <Link to="/memories" className={link}>Memorias</Link>
+        </div>
+        <span className="ml-auto truncate text-sm text-slate-500">{me.data.username}</span>
         <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
       </nav>
-      <main className={`mx-auto p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /></main>
+      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /></main>
     </div>
   );
 }

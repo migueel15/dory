@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { DndContext, type DragEndEvent, useDraggable, useDroppable } from "@dnd-kit/core";
+import { DndContext, type DragEndEvent, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { api, itemInput, type Item, type ItemStatus } from "../api/client";
-import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, Textarea, csv } from "../components/ui";
+import { Badge, Button, Card, ErrorText, Input, field, Label, Md, Modal, Textarea, csv } from "../components/ui";
 
 const STATUSES: ItemStatus[] = ["inbox", "triaged", "ready", "in_progress", "blocked", "done", "cancelled"];
 // Closed columns can grow to hundreds of items: show the most recent ones in pages.
@@ -46,21 +46,21 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
       <Label text="Descripción (markdown)"><Textarea value={body} onChange={(e) => setBody(e.target.value)} /></Label>
       <Label text="Progreso (estado actual)"><Input value={progress} onChange={(e) => setProgress(e.target.value)} placeholder="Rama · último commit · qué falta" /></Label>
       <Label text="Referencias (coma): PR, issue, rama"><Input value={refs} onChange={(e) => setRefs(e.target.value)} /></Label>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid gap-2 sm:grid-cols-2">
         <Label text="Estado">
-          <select className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" value={status} onChange={(e) => setStatus(e.target.value as ItemStatus)}>
+          <select className={field} value={status} onChange={(e) => setStatus(e.target.value as ItemStatus)}>
             {STATUSES.map((s) => <option key={s}>{s}</option>)}
           </select>
         </Label>
         <Label text="Prioridad"><Input type="number" value={priority} onChange={(e) => setPriority(+e.target.value)} /></Label>
         <Label text="Proyecto">
-          <select className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" value={pid} onChange={(e) => { setPid(e.target.value); setFid(""); }}>
+          <select className={field} value={pid} onChange={(e) => { setPid(e.target.value); setFid(""); }}>
             <option value="">— ninguno —</option>
             {projects.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </Label>
         <Label text="Feature">
-          <select className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" value={fid} onChange={(e) => setFid(e.target.value)} disabled={!pid}>
+          <select className={field} value={fid} onChange={(e) => setFid(e.target.value)} disabled={!pid}>
             <option value="">— ninguna —</option>
             {features.data?.map((f) => <option key={f.id} value={f.id}>{f.title}</option>)}
           </select>
@@ -107,7 +107,7 @@ export function Inbox() {
         {items.data?.map((i) => (
           <Card key={i.id} className="cursor-pointer hover:bg-slate-50">
             <div onClick={() => setEditing(i)}>
-              <div className="flex items-center gap-2"><span className="font-medium">{i.title}</span>{i.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div>
+              <div className="flex flex-wrap items-center gap-2"><span className="font-medium break-words">{i.title}</span>{i.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div>
               {i.progress && <p className="text-xs text-slate-500">{i.progress}</p>}
               {i.body_md && <Md>{i.body_md}</Md>}
             </div>
@@ -123,7 +123,7 @@ export function Inbox() {
 function Column({ status, children }: { status: ItemStatus; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   return (
-    <div ref={setNodeRef} className={`min-h-48 w-64 shrink-0 space-y-2 xl:w-auto xl:min-w-0 xl:flex-1 rounded-lg p-2 ${isOver ? "bg-blue-100" : "bg-slate-100"}`}>
+    <div ref={setNodeRef} className={`min-h-24 w-full space-y-2 sm:min-h-48 sm:w-64 sm:shrink-0 xl:w-auto xl:min-w-0 xl:flex-1 rounded-lg p-2 ${isOver ? "bg-blue-100" : "bg-slate-100"}`}>
       <h3 className="text-sm font-semibold uppercase text-slate-600">{status.replace("_", " ")}</h3>
       {children}
     </div>
@@ -135,7 +135,7 @@ function Draggable({ item, onOpen }: { item: Item; onOpen: () => void }) {
   const style = transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined;
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes} className={isDragging ? "relative z-10 opacity-80" : ""}>
-      <Card className="cursor-grab"><div onDoubleClick={onOpen} className="text-sm"><div className="font-medium">{item.title}</div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}{item.status === "blocked" && <p className="text-xs text-red-600">{item.blocked_reason}</p>}</div></Card>
+      <Card className="cursor-grab"><div onDoubleClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><span className="font-medium break-words">{item.title}</span><button className="-m-2 size-11 shrink-0 text-slate-500 sm:hidden" aria-label="Editar" onPointerDown={(e) => e.stopPropagation()} onClick={onOpen}>✎</button></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}{item.status === "blocked" && <p className="text-xs text-red-600">{item.blocked_reason}</p>}</div></Card>
     </div>
   );
 }
@@ -153,6 +153,8 @@ export function Board({ projectId }: { projectId: string }) {
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ["items"] }),
   });
+  // Touch: hold to drag so the page can still scroll; the ✎ button opens the editor.
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }));
   const onDragEnd = (e: DragEndEvent) => {
     const item = items.data?.find((i) => i.id === e.active.id);
     const status = e.over?.id as ItemStatus | undefined;
@@ -165,12 +167,12 @@ export function Board({ projectId }: { projectId: string }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold">Kanban <span className="text-xs font-normal text-slate-500">(doble clic para editar)</span></h2>
+        <h2 className="font-semibold">Kanban <span className="hidden text-xs font-normal text-slate-500 sm:inline">(doble clic para editar)</span></h2>
         <Button onClick={() => setEditing("new")}>Nuevo item</Button>
       </div>
       <ErrorText error={move.error ?? items.error} />
-      <DndContext onDragEnd={onDragEnd}>
-        <div className="flex gap-3 overflow-x-auto pb-2">
+      <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+        <div className="flex flex-col gap-3 pb-2 sm:flex-row sm:overflow-x-auto">
           {STATUSES.map((s) => {
             const col = items.data?.filter((i) => i.status === s) ?? [];
             const paged = PAGED.includes(s);
