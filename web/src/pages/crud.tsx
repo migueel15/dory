@@ -93,9 +93,9 @@ export function Environments() {
       <ErrorText error={envs.error} />
       <div className="grid gap-3 md:grid-cols-2">
         {envs.data?.map((e) => (
-          <Card key={e.id} className="cursor-pointer hover:bg-slate-50">
+          <Card key={e.id} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
             <div onClick={() => setEditing(e)} className="space-y-1">
-              <div className="font-medium">{e.name} <span className="text-xs text-slate-500">{e.os}</span></div>
+              <div className="font-medium">{e.name} <span className="text-xs text-slate-500 dark:text-slate-400">{e.os}</span></div>
               <div className="flex flex-wrap gap-1">{e.agents_available.map((a) => <Badge key={a}>{a}</Badge>)}</div>
               {e.access && <Md>{e.access}</Md>}
               {e.notes && <Md>{e.notes}</Md>}
@@ -160,7 +160,7 @@ export const memorySearch = (s: Record<string, unknown>): MemorySearch => ({
   q: typeof s.q === "string" && s.q ? s.q : undefined,
 });
 
-const select = "min-h-11 rounded-md sm:min-h-0 border border-slate-300 bg-white px-2 py-1.5 text-sm";
+const select = "min-h-11 rounded-md sm:min-h-0 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1.5 text-sm";
 
 export function Memories() {
   const [editing, setEditing] = useState<Memory | "new" | null>(null);
@@ -196,7 +196,7 @@ export function Memories() {
       <ErrorText error={mems.error} />
       <div className="space-y-2">
         {shown?.map((m) => (
-          <Card key={m.id} className="cursor-pointer hover:bg-slate-50">
+          <Card key={m.id} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
             <div onClick={() => setEditing(m)}>
               {m.title && <div className="font-medium">{m.title}</div>}
               <div className="mb-1 flex flex-wrap gap-1">
@@ -208,7 +208,7 @@ export function Memories() {
             </div>
           </Card>
         ))}
-        {shown?.length === 0 && <p className="text-sm text-slate-500">Sin memorias para estos filtros.</p>}
+        {shown?.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">Sin memorias para estos filtros.</p>}
       </div>
       {editing && <MemoryForm memory={editing === "new" ? undefined : editing} projects={projects.data ?? []} envs={envs.data ?? []} onClose={() => setEditing(null)} />}
     </div>
@@ -250,9 +250,9 @@ export function Features({ projectId }: { projectId: string }) {
       </div>
       <ErrorText error={feats.error} />
       {feats.data?.map((f) => (
-        <Card key={f.id} className="cursor-pointer hover:bg-slate-50">
+        <Card key={f.id} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
           <div onClick={() => setEditing(f)}>
-            <div className="flex flex-wrap items-center gap-2"><span className="font-medium">{f.title}</span><Badge>{f.status}</Badge>{f.code_refs.map((r) => <code key={r} className="break-all text-xs text-slate-500">{r}</code>)}</div>
+            <div className="flex flex-wrap items-center gap-2"><span className="font-medium">{f.title}</span><Badge>{f.status}</Badge>{f.code_refs.map((r) => <code key={r} className="break-all text-xs text-slate-500 dark:text-slate-400">{r}</code>)}</div>
             {f.body_md && <Md>{f.body_md}</Md>}
           </div>
         </Card>

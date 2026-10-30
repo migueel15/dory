@@ -105,15 +105,15 @@ export function Inbox() {
       <ErrorText error={add.error ?? items.error} />
       <div className="space-y-2">
         {items.data?.map((i) => (
-          <Card key={i.id} className="cursor-pointer hover:bg-slate-50">
+          <Card key={i.id} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
             <div onClick={() => setEditing(i)}>
               <div className="flex flex-wrap items-center gap-2"><span className="font-medium break-words">{i.title}</span>{i.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div>
-              {i.progress && <p className="text-xs text-slate-500">{i.progress}</p>}
+              {i.progress && <p className="text-xs text-slate-500 dark:text-slate-400">{i.progress}</p>}
               {i.body_md && <Md>{i.body_md}</Md>}
             </div>
           </Card>
         ))}
-        {items.data?.length === 0 && <p className="text-sm text-slate-500">Inbox vacío.</p>}
+        {items.data?.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">Inbox vacío.</p>}
       </div>
       {editing && <ItemForm item={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
     </div>
@@ -123,8 +123,8 @@ export function Inbox() {
 function Column({ status, children }: { status: ItemStatus; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   return (
-    <div ref={setNodeRef} className={`min-h-24 w-full space-y-2 sm:min-h-48 sm:w-64 sm:shrink-0 xl:w-auto xl:min-w-0 xl:flex-1 rounded-lg p-2 ${isOver ? "bg-blue-100" : "bg-slate-100"}`}>
-      <h3 className="text-sm font-semibold uppercase text-slate-600">{status.replace("_", " ")}</h3>
+    <div ref={setNodeRef} className={`min-h-24 w-full space-y-2 sm:min-h-48 sm:w-64 sm:shrink-0 xl:w-auto xl:min-w-0 xl:flex-1 rounded-lg p-2 ${isOver ? "bg-blue-100 dark:bg-blue-950" : "bg-slate-100 dark:bg-slate-800"}`}>
+      <h3 className="text-sm font-semibold uppercase text-slate-600 dark:text-slate-300">{status.replace("_", " ")}</h3>
       {children}
     </div>
   );
@@ -135,7 +135,7 @@ function Draggable({ item, onOpen }: { item: Item; onOpen: () => void }) {
   const style = transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined;
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes} className={isDragging ? "relative z-10 opacity-80" : ""}>
-      <Card className="cursor-grab"><div onDoubleClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><span className="font-medium break-words">{item.title}</span><button className="-m-2 size-11 shrink-0 text-slate-500 sm:hidden" aria-label="Editar" onPointerDown={(e) => e.stopPropagation()} onClick={onOpen}>✎</button></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}{item.status === "blocked" && <p className="text-xs text-red-600">{item.blocked_reason}</p>}</div></Card>
+      <Card className="cursor-grab"><div onDoubleClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><span className="font-medium break-words">{item.title}</span><button className="-m-2 size-11 shrink-0 text-slate-500 dark:text-slate-400 sm:hidden" aria-label="Editar" onPointerDown={(e) => e.stopPropagation()} onClick={onOpen}>✎</button></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}{item.status === "blocked" && <p className="text-xs text-red-600 dark:text-red-400">{item.blocked_reason}</p>}</div></Card>
     </div>
   );
 }
@@ -167,7 +167,7 @@ export function Board({ projectId }: { projectId: string }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold">Kanban <span className="hidden text-xs font-normal text-slate-500 sm:inline">(doble clic para editar)</span></h2>
+        <h2 className="font-semibold">Kanban <span className="hidden text-xs font-normal text-slate-500 dark:text-slate-400 sm:inline">(doble clic para editar)</span></h2>
         <Button onClick={() => setEditing("new")}>Nuevo item</Button>
       </div>
       <ErrorText error={move.error ?? items.error} />

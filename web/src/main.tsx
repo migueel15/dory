@@ -4,11 +4,14 @@ import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient
 import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { ApiError, api } from "./api/client";
 import { useLiveUpdates } from "./api/live";
-import { Button, ErrorText, Input, Label } from "./components/ui";
+import { Button, ErrorText, Input, Label, field } from "./components/ui";
 import { Environments, Memories, memorySearch } from "./pages/crud";
 import { Inbox } from "./pages/items";
 import { ProjectDetail, Projects } from "./pages/projects";
+import { applyTheme, useTheme, type Theme } from "./theme";
 import "./index.css";
+
+applyTheme();
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: (n, e) => !(e instanceof ApiError && e.status === 401) && n < 2, refetchOnWindowFocus: false } },
@@ -24,7 +27,7 @@ function Login() {
   });
   return (
     <form
-      className="mx-auto mt-24 w-72 space-y-3 rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+      className="mx-auto mt-24 w-72 space-y-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-sm"
       onSubmit={(e) => { e.preventDefault(); login.mutate(); }}
     >
       <h1 className="text-xl font-bold">Dory</h1>
@@ -36,6 +39,17 @@ function Login() {
   );
 }
 
+function ThemeSelect() {
+  const [theme, setTheme] = useTheme();
+  return (
+    <select aria-label="Tema" className={`${field} w-auto`} value={theme} onChange={(e) => setTheme(e.target.value as Theme)}>
+      <option value="system">Sistema</option>
+      <option value="light">Claro</option>
+      <option value="dark">Oscuro</option>
+    </select>
+  );
+}
+
 function Layout() {
   const qc = useQueryClient();
   const me = useQuery({ queryKey: ["me"], queryFn: api.me, retry: false });
@@ -44,10 +58,10 @@ function Layout() {
   const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") });
   if (me.isPending) return null;
   if (!me.data) return <Login />;
-  const link = "flex min-h-11 shrink-0 items-center rounded px-3 text-sm sm:min-h-0 sm:px-2 sm:py-1 hover:bg-slate-200 [&.active]:bg-slate-900 [&.active]:text-white";
+  const link = "flex min-h-11 shrink-0 items-center rounded px-3 text-sm sm:min-h-0 sm:px-2 sm:py-1 hover:bg-slate-200 dark:hover:bg-slate-800 [&.active]:bg-slate-900 dark:[&.active]:bg-slate-100 [&.active]:text-white dark:[&.active]:text-slate-900";
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <nav className="flex flex-wrap items-center gap-1 border-b border-slate-200 bg-white px-2 py-2 sm:px-4">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+      <nav className="flex flex-wrap items-center gap-1 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-2 sm:px-4">
         <span className="mr-3 font-bold">Dory</span>
         <div className="order-last -mx-2 flex w-full gap-1 overflow-x-auto px-2 sm:order-none sm:mx-0 sm:w-auto sm:px-0">
           <Link to="/" className={link}>Inbox</Link>
@@ -55,7 +69,8 @@ function Layout() {
           <Link to="/environments" className={link}>Entornos</Link>
           <Link to="/memories" className={link}>Memorias</Link>
         </div>
-        <span className="ml-auto truncate text-sm text-slate-500">{me.data.username}</span>
+        <span className="ml-auto truncate text-sm text-slate-500 dark:text-slate-400">{me.data.username}</span>
+        <ThemeSelect />
         <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
       </nav>
       <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /></main>
