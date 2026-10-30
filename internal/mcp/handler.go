@@ -271,6 +271,11 @@ type updateInput struct {
 	ID      string         `json:"id"`
 	Changes map[string]any `json:"changes" jsonschema:"Patch fields: project_id and feature_id (nullable), raw_text, title, body_md, progress (short current state, replaced), refs, tags, status, blocked_reason (required for blocked, cleared otherwise), priority, source. Omitted fields are preserved."`
 }
+type updatesInput struct {
+	Updates []updateInput  `json:"updates,omitempty" jsonschema:"Per-item patches: [{id, changes}]"`
+	IDs     []string       `json:"ids,omitempty" jsonschema:"Items that all receive the same changes"`
+	Changes map[string]any `json:"changes,omitempty" jsonschema:"Patch applied to every id in ids; same fields as update_item"`
+}
 type moveInput struct {
 	ID            string `json:"id"`
 	Status        string `json:"status" jsonschema:"inbox, triaged, ready, in_progress, blocked, done or cancelled"`
@@ -308,6 +313,33 @@ func putItem(ctx context.Context, svc service.Service, item service.Item) (servi
 		item.BlockedReason = ""
 	}
 	return svc.Items().Put(ctx, auth.Actor(ctx), item)
+}
+
+// updateItems applies every patch in one transaction: one failure undoes all.
+func updateItems(ctx context.Context, svc service.Service, in updatesInput) (any, error) {
+	updates := in.Updates
+	for _, id := range in.IDs {
+		updates = append(updates, updateInput{ID: id, Changes: in.Changes})
+	}
+	if len(updates) == 0 || len(updates) > 1000 {
+		return nil, fmt.Errorf("%w: send between 1 and 1000 updates", service.ErrInvalid)
+	}
+	result := make([]any, 0, len(updates))
+	err := svc.InTx(ctx, func(tx service.Service) error {
+		for i, u := range updates {
+			item, err := updateItem(ctx, tx, u)
+			if err != nil {
+				return fmt.Errorf("updates[%d] %s: %w", i, u.ID, err)
+			}
+			short, _ := writeReturn{}.reply(item, nil)
+			result = append(result, short)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 func updateItem(ctx context.Context, svc service.Service, in updateInput) (service.Item, error) {
 	item, err := svc.Items().Get(ctx, in.ID)
@@ -710,6 +742,9 @@ func Handler(svc service.Service) http.Handler {
 			return nil, err
 		}
 		return in.reply(updateItem(ctx, svc, in.updateInput))
+	})
+	add(s, "update_items", "Patch up to 1000 items in one transaction, all or nothing: updates [{id, changes}] and/or ids with shared changes. Returns [{id, status, updated_at}].", func(ctx context.Context, in updatesInput) (any, error) {
+		return updateItems(ctx, svc, in)
 	})
 	add(s, "move_item", "Change an item's workflow status while preserving its other fields; blocked needs blocked_reason. Returns {id, status, updated_at} unless return is full.", func(ctx context.Context, in struct {
 		moveInput
