@@ -5,7 +5,7 @@ import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute
 import { ApiError, api } from "./api/client";
 import { useLiveUpdates } from "./api/live";
 import { Button, ErrorText, Input, Label } from "./components/ui";
-import { Environments, Memories } from "./pages/crud";
+import { Environments, Memories, memorySearch } from "./pages/crud";
 import { Inbox } from "./pages/items";
 import { ProjectDetail, Projects } from "./pages/projects";
 import "./index.css";
@@ -67,7 +67,7 @@ const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/projects", component: Projects }),
   createRoute({ getParentRoute: () => root, path: "/projects/$id", component: ProjectDetail }),
   createRoute({ getParentRoute: () => root, path: "/environments", component: Environments }),
-  createRoute({ getParentRoute: () => root, path: "/memories", component: Memories }),
+  createRoute({ getParentRoute: () => root, path: "/memories", component: Memories, validateSearch: memorySearch }),
 ]);
 const router = createRouter({ routeTree });
 declare module "@tanstack/react-router" {

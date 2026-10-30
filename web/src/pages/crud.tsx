@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { api, type Environment, type Feature, type Memory, type Project } from "../api/client";
 import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, Textarea, csv } from "../components/ui";
 
@@ -151,25 +152,63 @@ function MemoryForm({ memory, projects, envs, onClose }: { memory?: Memory; proj
   );
 }
 
+// Filtros de la página de memorias, reflejados en la URL. scope: "global" o UUID de proyecto/entorno.
+export type MemorySearch = { scope?: string; kind?: Memory["kind"]; q?: string };
+export const memorySearch = (s: Record<string, unknown>): MemorySearch => ({
+  scope: typeof s.scope === "string" && s.scope ? s.scope : undefined,
+  kind: ["decision", "lesson", "context"].includes(s.kind as string) ? (s.kind as Memory["kind"]) : undefined,
+  q: typeof s.q === "string" && s.q ? s.q : undefined,
+});
+
+const select = "rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm";
+
 export function Memories() {
   const [editing, setEditing] = useState<Memory | "new" | null>(null);
+  const search = useSearch({ from: "/memories" });
+  const navigate = useNavigate({ from: "/memories" });
+  const setFilter = (patch: MemorySearch) => navigate({ search: memorySearch({ ...search, ...patch }), replace: true });
   const mems = useQuery({ queryKey: ["memories"], queryFn: () => api.memories.list() });
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
+  const names = new Map([...(projects.data ?? []), ...(envs.data ?? [])].map((o) => [o.id, o.name]));
+  const text = search.q?.toLowerCase() ?? "";
+  const shown = mems.data?.filter((m) =>
+    (!search.scope || (search.scope === "global" ? m.scope === "global" : m.scope_id === search.scope)) &&
+    (!search.kind || m.kind === search.kind) &&
+    (!text || [m.title, m.content, ...m.tags].some((t) => t.toLowerCase().includes(text))),
+  );
   return (
     <div className="space-y-3">
       <Header title="Memorias" onNew={() => setEditing("new")} />
+      <div className="flex flex-wrap gap-2">
+        <select className={select} value={search.scope ?? ""} onChange={(e) => setFilter({ scope: e.target.value })}>
+          <option value="">Todos los ámbitos</option>
+          <option value="global">Global</option>
+          <optgroup label="Proyectos">{projects.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</optgroup>
+          <optgroup label="Entornos">{envs.data?.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</optgroup>
+        </select>
+        <select className={select} value={search.kind ?? ""} onChange={(e) => setFilter({ kind: e.target.value as Memory["kind"] })}>
+          <option value="">Todos los tipos</option>
+          <option>decision</option><option>lesson</option><option>context</option>
+        </select>
+        <Input className="min-w-40 flex-1" placeholder="Buscar texto…" value={search.q ?? ""} onChange={(e) => setFilter({ q: e.target.value })} />
+      </div>
       <ErrorText error={mems.error} />
       <div className="space-y-2">
-        {mems.data?.map((m) => (
+        {shown?.map((m) => (
           <Card key={m.id} className="cursor-pointer hover:bg-slate-50">
             <div onClick={() => setEditing(m)}>
               {m.title && <div className="font-medium">{m.title}</div>}
-              <div className="mb-1 flex gap-1"><Badge>{m.kind}</Badge><Badge>{m.scope}</Badge>{m.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div>
+              <div className="mb-1 flex flex-wrap gap-1">
+                <Badge>{m.kind}</Badge>
+                <Badge>{m.scope}{m.scope_id && `: ${names.get(m.scope_id) ?? "?"}`}</Badge>
+                {m.tags.map((t) => <Badge key={t}>{t}</Badge>)}
+              </div>
               <Md>{m.content}</Md>
             </div>
           </Card>
         ))}
+        {shown?.length === 0 && <p className="text-sm text-slate-500">Sin memorias para estos filtros.</p>}
       </div>
       {editing && <MemoryForm memory={editing === "new" ? undefined : editing} projects={projects.data ?? []} envs={envs.data ?? []} onClose={() => setEditing(null)} />}
     </div>
