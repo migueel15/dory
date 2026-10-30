@@ -5,6 +5,9 @@ import { api, itemInput, type Item, type ItemStatus } from "../api/client";
 import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, Textarea, csv } from "../components/ui";
 
 const STATUSES: ItemStatus[] = ["inbox", "triaged", "ready", "in_progress", "blocked", "done", "cancelled"];
+// Closed columns can grow to hundreds of items: show the most recent ones in pages.
+const PAGED: ItemStatus[] = ["done", "cancelled"];
+const PAGE = 10;
 
 export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?: string | null; onClose: () => void }) {
   const qc = useQueryClient();
@@ -140,12 +143,13 @@ function Draggable({ item, onOpen }: { item: Item; onOpen: () => void }) {
 export function Board({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Item | "new" | null>(null);
+  const [limits, setLimits] = useState<Partial<Record<ItemStatus, number>>>({});
   const key = ["items", "board", projectId];
   const items = useQuery({ queryKey: key, queryFn: () => api.items.list({ project_id: projectId }) });
   const move = useMutation({
     mutationFn: ({ item, status, reason }: { item: Item; status: ItemStatus; reason: string }) => api.items.update(item.id, itemInput(item, { status, blocked_reason: reason })),
     onMutate: ({ item, status }) => {
-      qc.setQueryData<Item[]>(key, (old) => old?.map((i) => (i.id === item.id ? { ...i, status } : i)));
+      qc.setQueryData<Item[]>(key, (old) => old?.map((i) => (i.id === item.id ? { ...i, status, updated_at: new Date().toISOString() } : i)));
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ["items"] }),
   });
@@ -167,11 +171,20 @@ export function Board({ projectId }: { projectId: string }) {
       <ErrorText error={move.error ?? items.error} />
       <DndContext onDragEnd={onDragEnd}>
         <div className="flex gap-3 overflow-x-auto pb-2">
-          {STATUSES.map((s) => (
-            <Column key={s} status={s}>
-              {items.data?.filter((i) => i.status === s).sort((a, b) => b.priority - a.priority).map((i) => <Draggable key={i.id} item={i} onOpen={() => setEditing(i)} />)}
-            </Column>
-          ))}
+          {STATUSES.map((s) => {
+            const col = items.data?.filter((i) => i.status === s) ?? [];
+            const paged = PAGED.includes(s);
+            const limit = limits[s] ?? PAGE;
+            const shown = paged ? col.sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, limit) : col.sort((a, b) => b.priority - a.priority);
+            return (
+              <Column key={s} status={s}>
+                {shown.map((i) => <Draggable key={i.id} item={i} onOpen={() => setEditing(i)} />)}
+                {paged && col.length > limit && (
+                  <Button variant="ghost" className="w-full" onClick={() => setLimits((l) => ({ ...l, [s]: limit + PAGE }))}>Cargar más ({col.length - limit})</Button>
+                )}
+              </Column>
+            );
+          })}
         </div>
       </DndContext>
       {editing && <ItemForm item={editing === "new" ? undefined : editing} projectId={projectId} onClose={() => setEditing(null)} />}
