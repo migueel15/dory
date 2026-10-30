@@ -50,6 +50,7 @@ type SearchHit struct {
 }
 type Events interface {
 	ListEvents(context.Context, int64, string, int32) ([]Event, error)
+	LatestEventID(context.Context) (int64, error)
 }
 type Search interface {
 	Search(context.Context, string, int32, int32) ([]SearchHit, error)
@@ -276,6 +277,9 @@ func (b *backend) ListEvents(ctx context.Context, after int64, kind string, limi
 		result = append(result, Event{v.ID, v.EntityType, v.EntityID.String(), v.Actor, v.Change, v.At.Time})
 	}
 	return result, nil
+}
+func (b *backend) LatestEventID(ctx context.Context) (int64, error) {
+	return b.q.LatestEventID(ctx)
 }
 func (b *backend) Search(ctx context.Context, query string, limit, offset int32) ([]SearchHit, error) {
 	limit, err := page(limit, offset)

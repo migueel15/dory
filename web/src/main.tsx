@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, RouterProvider, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { ApiError, api } from "./api/client";
+import { useLiveUpdates } from "./api/live";
 import { Button, ErrorText, Input, Label } from "./components/ui";
 import { Environments, Memories } from "./pages/crud";
 import { Inbox } from "./pages/items";
@@ -39,6 +40,7 @@ function Layout() {
   const qc = useQueryClient();
   const me = useQuery({ queryKey: ["me"], queryFn: api.me, retry: false });
   const logout = useMutation({ mutationFn: api.logout, onSuccess: () => qc.clear() });
+  useLiveUpdates(!!me.data);
   if (me.isPending) return null;
   if (!me.data) return <Login />;
   const link = "rounded px-2 py-1 text-sm hover:bg-slate-200 [&.active]:bg-slate-900 [&.active]:text-white";
