@@ -68,7 +68,7 @@ func (q *Queries) ListMemory(ctx context.Context, arg ListMemoryParams) ([][]byt
 }
 
 const putMemory = `-- name: PutMemory :one
-INSERT INTO memories (id, scope, scope_id, content, tags) VALUES (COALESCE(NULLIF(CAST($1 AS jsonb)->>'id','')::uuid, gen_random_uuid()), CAST($1 AS jsonb)->>'scope', NULLIF(CAST($1 AS jsonb)->>'scope_id','')::uuid, CAST($1 AS jsonb)->>'content', ARRAY(SELECT jsonb_array_elements_text(CAST($1 AS jsonb)->'tags'))) ON CONFLICT (id) DO UPDATE SET scope = EXCLUDED.scope, scope_id = EXCLUDED.scope_id, content = EXCLUDED.content, tags = EXCLUDED.tags, updated_at = now() WHERE memories.archived_at IS NULL RETURNING (to_jsonb(memories) - 'search_vector')::jsonb AS data
+INSERT INTO memories (id, scope, scope_id, kind, title, content, tags) VALUES (COALESCE(NULLIF(CAST($1 AS jsonb)->>'id','')::uuid, gen_random_uuid()), CAST($1 AS jsonb)->>'scope', NULLIF(CAST($1 AS jsonb)->>'scope_id','')::uuid, COALESCE(NULLIF(CAST($1 AS jsonb)->>'kind',''), 'context'), COALESCE(CAST($1 AS jsonb)->>'title', ''), CAST($1 AS jsonb)->>'content', ARRAY(SELECT jsonb_array_elements_text(CAST($1 AS jsonb)->'tags'))) ON CONFLICT (id) DO UPDATE SET scope = EXCLUDED.scope, scope_id = EXCLUDED.scope_id, kind = EXCLUDED.kind, title = EXCLUDED.title, content = EXCLUDED.content, tags = EXCLUDED.tags, updated_at = now() WHERE memories.archived_at IS NULL RETURNING (to_jsonb(memories) - 'search_vector')::jsonb AS data
 `
 
 func (q *Queries) PutMemory(ctx context.Context, payload []byte) ([]byte, error) {

@@ -547,6 +547,7 @@ export interface components {
             body_md: string;
             /** @default  */
             progress: string;
+            refs: string[];
             tags: string[];
             /**
              * @default inbox
@@ -577,6 +578,7 @@ export interface components {
             body_md: string;
             /** @default  */
             progress: string;
+            refs?: string[];
             tags?: string[];
             /**
              * @default inbox
@@ -606,6 +608,13 @@ export interface components {
             scope: "global" | "project" | "environment";
             /** Format: uuid */
             scope_id: string | null;
+            /**
+             * @default context
+             * @enum {string}
+             */
+            kind: "decision" | "lesson" | "context";
+            /** @default  */
+            title: string;
             content: string;
             tags: string[];
         };
@@ -617,6 +626,13 @@ export interface components {
             scope: "global" | "project" | "environment";
             /** Format: uuid */
             scope_id?: string | null;
+            /**
+             * @default context
+             * @enum {string}
+             */
+            kind: "decision" | "lesson" | "context";
+            /** @default  */
+            title: string;
             content: string;
             tags?: string[];
         };

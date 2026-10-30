@@ -212,7 +212,7 @@ func (r resource[T]) Put(ctx context.Context, actor string, v T) (T, error) {
 		var zero T
 		return zero, err
 	}
-	for _, key := range []string{"tags", "stack", "agents_available", "code_refs", "permissions"} {
+	for _, key := range []string{"tags", "refs", "stack", "agents_available", "code_refs", "permissions"} {
 		if value, exists := payload[key]; exists && value == nil {
 			payload[key] = []string{}
 		}

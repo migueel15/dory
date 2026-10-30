@@ -52,6 +52,7 @@ type Item struct {
 	Title         string   `json:"title"`
 	BodyMd        string   `json:"body_md"`
 	Progress      string   `json:"progress"`
+	Refs          []string `json:"refs"`
 	Tags          []string `json:"tags"`
 	Status        string   `json:"status"`
 	BlockedReason string   `json:"blocked_reason"`
@@ -62,6 +63,8 @@ type Memory struct {
 	Record
 	Scope   string   `json:"scope"`
 	ScopeID *string  `json:"scope_id"`
+	Kind    string   `json:"kind"`
+	Title   string   `json:"title"`
 	Content string   `json:"content"`
 	Tags    []string `json:"tags"`
 }

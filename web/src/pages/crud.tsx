@@ -111,9 +111,11 @@ export function Environments() {
 function MemoryForm({ memory, projects, envs, onClose }: { memory?: Memory; projects: Project[]; envs: Environment[]; onClose: () => void }) {
   const [scope, setScope] = useState<Memory["scope"]>(memory?.scope ?? "global");
   const [scopeId, setScopeId] = useState(memory?.scope_id ?? "");
+  const [kind, setKind] = useState<Memory["kind"]>(memory?.kind ?? "context");
+  const [title, setTitle] = useState(memory?.title ?? "");
   const [content, setContent] = useState(memory?.content ?? "");
   const [tags, setTags] = useState(memory?.tags.join(", ") ?? "");
-  const data = { scope, scope_id: scope === "global" ? null : scopeId || null, content, tags: csv(tags) };
+  const data = { scope, scope_id: scope === "global" ? null : scopeId || null, kind, title, content, tags: csv(tags) };
   const save = useSave("memories", () => (memory ? api.memories.update(memory.id, { id: memory.id, ...data }) : api.memories.create(data)), onClose);
   const arch = useSave("memories", () => api.memories.archive(memory!.id), onClose);
   const options = scope === "project" ? projects : envs;
@@ -133,6 +135,14 @@ function MemoryForm({ memory, projects, envs, onClose }: { memory?: Memory; proj
             </select>
           </Label>
         )}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Label text="Tipo">
+          <select className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" value={kind} onChange={(e) => setKind(e.target.value as Memory["kind"])}>
+            <option>decision</option><option>lesson</option><option>context</option>
+          </select>
+        </Label>
+        <Label text="Título"><Input value={title} onChange={(e) => setTitle(e.target.value)} /></Label>
       </div>
       <Label text="Contenido (markdown)"><Textarea value={content} onChange={(e) => setContent(e.target.value)} /></Label>
       <Label text="Tags (coma)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Label>
@@ -154,7 +164,8 @@ export function Memories() {
         {mems.data?.map((m) => (
           <Card key={m.id} className="cursor-pointer hover:bg-slate-50">
             <div onClick={() => setEditing(m)}>
-              <div className="mb-1 flex gap-1"><Badge>{m.scope}</Badge>{m.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div>
+              {m.title && <div className="font-medium">{m.title}</div>}
+              <div className="mb-1 flex gap-1"><Badge>{m.kind}</Badge><Badge>{m.scope}</Badge>{m.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div>
               <Md>{m.content}</Md>
             </div>
           </Card>
