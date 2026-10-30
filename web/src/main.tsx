@@ -1,7 +1,7 @@
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Outlet, RouterProvider, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { ApiError, api } from "./api/client";
 import { useLiveUpdates } from "./api/live";
 import { Button, ErrorText, Input, Label } from "./components/ui";
@@ -41,6 +41,7 @@ function Layout() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me, retry: false });
   const logout = useMutation({ mutationFn: api.logout, onSuccess: () => qc.clear() });
   useLiveUpdates(!!me.data);
+  const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") });
   if (me.isPending) return null;
   if (!me.data) return <Login />;
   const link = "rounded px-2 py-1 text-sm hover:bg-slate-200 [&.active]:bg-slate-900 [&.active]:text-white";
@@ -55,7 +56,7 @@ function Layout() {
         <span className="ml-auto text-sm text-slate-500">{me.data.username}</span>
         <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
       </nav>
-      <main className="mx-auto max-w-6xl p-4"><Outlet /></main>
+      <main className={`mx-auto p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /></main>
     </div>
   );
 }
