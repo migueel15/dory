@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"reflect"
 	"strings"
@@ -71,5 +72,14 @@ func TestItemFilter(t *testing.T) {
 	}
 	if _, err = (itemListInput{viewListInput: viewListInput{listInput: listInput{Fields: map[string]any{"title": []any{"a"}}}}}).itemFilter(); err == nil {
 		t.Fatal("only status and id accept several values")
+	}
+}
+
+func TestUpdateItemsLimits(t *testing.T) {
+	if _, err := updateItems(context.Background(), nil, updatesInput{}); err == nil {
+		t.Fatal("an empty batch must fail")
+	}
+	if _, err := updateItems(context.Background(), nil, updatesInput{IDs: make([]string, 1001)}); err == nil {
+		t.Fatal("more than 1000 updates must fail")
 	}
 }

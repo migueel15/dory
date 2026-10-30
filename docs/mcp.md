@@ -52,7 +52,7 @@ T3 Code y los agentes deben ejecutarse en una máquina con acceso a la URL de do
 
 ## Herramientas disponibles
 
-`session_start`, `list_projects`, `get_project`, `list_items`, `get_item`, `create_item`, `update_item`, `move_item`, `archive_item`, `list_features`, `upsert_feature`, `list_environments`, `get_environment`, `list_repositories`, `remember`, `update_memory`, `archive_memory`, `recall`, `link`, `upsert_project`, `archive_project`, `upsert_environment`, `archive_environment`, `upsert_repository`, `set_repository_location`.
+`session_start`, `list_projects`, `get_project`, `list_items`, `get_item`, `create_item`, `update_item`, `update_items`, `move_item`, `archive_item`, `list_features`, `upsert_feature`, `list_environments`, `get_environment`, `list_repositories`, `remember`, `update_memory`, `archive_memory`, `recall`, `link`, `upsert_project`, `archive_project`, `upsert_environment`, `archive_environment`, `upsert_repository`, `set_repository_location`.
 
 Se recomienda que el agente llame a `session_start` al empezar cada sesión.
 
@@ -76,3 +76,7 @@ Con `view: "full"` se devuelven los registros completos, como antes. `get_item` 
 ## Filtros de `list_items`
 
 `fields` filtra por igualdad exacta; `tags` y `refs` usan contención. `status` e `id` aceptan además un array con el sentido "cualquiera de", por ejemplo `{"status": ["triaged", "in_progress"]}`. `open: true` excluye los items `done` y `cancelled`, y se combina con el resto de filtros.
+
+## Actualización en bloque
+
+`update_items` aplica hasta 1000 cambios de items en una transacción: si uno falla (id inexistente, estado desconocido, `blocked` sin `blocked_reason`), no se aplica ninguno. Acepta `updates: [{id, changes}]` y/o `ids` con unos `changes` comunes, con los mismos campos que `update_item`. Devuelve `[{id, status, updated_at}]`.
