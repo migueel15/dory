@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -41,5 +42,15 @@ func TestSummaryView(t *testing.T) {
 	m := summarizeMemory(service.Memory{Content: strings.Repeat("ñ", 250)})
 	if len([]rune(m.Content)) != 200 {
 		t.Fatalf("memory summary must keep 200 characters, got %d", len([]rune(m.Content)))
+	}
+}
+
+func TestWriteReturn(t *testing.T) {
+	if (writeReturn{Return: "other"}).check() == nil {
+		t.Fatal("unknown return must fail")
+	}
+	short, _ := writeReturn{}.reply(service.Item{Record: service.Record{ID: "x"}, BodyMd: strings.Repeat("a", 1000)}, nil)
+	if raw, _ := json.Marshal(short); len(raw) >= 300 {
+		t.Fatalf("short reply is %d bytes", len(raw))
 	}
 }
