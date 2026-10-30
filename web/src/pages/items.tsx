@@ -120,7 +120,7 @@ export function Inbox() {
 function Column({ status, children }: { status: ItemStatus; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   return (
-    <div ref={setNodeRef} className={`min-h-48 w-64 shrink-0 space-y-2 rounded-lg p-2 ${isOver ? "bg-blue-100" : "bg-slate-100"}`}>
+    <div ref={setNodeRef} className={`min-h-48 w-64 shrink-0 space-y-2 xl:w-auto xl:min-w-0 xl:flex-1 rounded-lg p-2 ${isOver ? "bg-blue-100" : "bg-slate-100"}`}>
       <h3 className="text-sm font-semibold uppercase text-slate-600">{status.replace("_", " ")}</h3>
       {children}
     </div>
