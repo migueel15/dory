@@ -1870,6 +1870,7 @@ components:
         - "title"
         - "body_md"
         - "progress"
+        - "refs"
         - "tags"
         - "status"
         - "blocked_reason"
@@ -1912,6 +1913,10 @@ components:
         progress:
           type: "string"
           default: ""
+        refs:
+          type: "array"
+          items:
+            type: "string"
         tags:
           type: "array"
           items:
@@ -1965,6 +1970,10 @@ components:
         progress:
           type: "string"
           default: ""
+        refs:
+          type: "array"
+          items:
+            type: "string"
         tags:
           type: "array"
           items:
@@ -1999,6 +2008,8 @@ components:
         - "archived_at"
         - "scope"
         - "scope_id"
+        - "kind"
+        - "title"
         - "content"
         - "tags"
       properties:
@@ -2029,6 +2040,16 @@ components:
           type: "string"
           format: "uuid"
           nullable: true
+        kind:
+          type: "string"
+          enum:
+            - "decision"
+            - "lesson"
+            - "context"
+          default: "context"
+        title:
+          type: "string"
+          default: ""
         content:
           type: "string"
         tags:
@@ -2055,6 +2076,16 @@ components:
           type: "string"
           format: "uuid"
           nullable: true
+        kind:
+          type: "string"
+          enum:
+            - "decision"
+            - "lesson"
+            - "context"
+          default: "context"
+        title:
+          type: "string"
+          default: ""
         content:
           type: "string"
         tags:

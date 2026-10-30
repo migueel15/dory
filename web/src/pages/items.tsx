@@ -11,6 +11,7 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
   const [title, setTitle] = useState(item?.title ?? "");
   const [body, setBody] = useState(item?.body_md ?? "");
   const [progress, setProgress] = useState(item?.progress ?? "");
+  const [refs, setRefs] = useState(item?.refs.join(", ") ?? "");
   const [tags, setTags] = useState(item?.tags.join(", ") ?? "");
   const [status, setStatus] = useState<ItemStatus>(item?.status ?? "inbox");
   const [priority, setPriority] = useState(item?.priority ?? 0);
@@ -21,7 +22,7 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
   const features = useQuery({ queryKey: ["features", pid], queryFn: () => api.features.list({ project_id: pid }), enabled: !!pid });
   const save = useMutation({
     mutationFn: () => {
-      const data = { title, body_md: body, progress, tags: csv(tags), status, blocked_reason: status === "blocked" ? reason : "", priority, project_id: pid || null, feature_id: (pid && fid) || null };
+      const data = { title, body_md: body, progress, refs: csv(refs), tags: csv(tags), status, blocked_reason: status === "blocked" ? reason : "", priority, project_id: pid || null, feature_id: (pid && fid) || null };
       return item ? api.items.update(item.id, itemInput(item, data)) : api.items.create({ id: crypto.randomUUID(), ...data });
     },
     onSuccess: () => {
@@ -41,6 +42,7 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
       <Label text="Título"><Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus /></Label>
       <Label text="Descripción (markdown)"><Textarea value={body} onChange={(e) => setBody(e.target.value)} /></Label>
       <Label text="Progreso (estado actual)"><Input value={progress} onChange={(e) => setProgress(e.target.value)} placeholder="Rama · último commit · qué falta" /></Label>
+      <Label text="Referencias (coma): PR, issue, rama"><Input value={refs} onChange={(e) => setRefs(e.target.value)} /></Label>
       <div className="grid grid-cols-2 gap-2">
         <Label text="Estado">
           <select className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" value={status} onChange={(e) => setStatus(e.target.value as ItemStatus)}>

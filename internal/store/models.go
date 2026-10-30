@@ -71,6 +71,7 @@ type Item struct {
 	Progress      string
 	FeatureID     pgtype.UUID
 	BlockedReason string
+	Refs          []string
 }
 
 type Link struct {
@@ -94,6 +95,8 @@ type Memory struct {
 	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
 	ArchivedAt   pgtype.Timestamptz
+	Kind         string
+	Title        string
 	SearchVector interface{}
 }
 
