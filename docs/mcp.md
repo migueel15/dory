@@ -55,3 +55,14 @@ T3 Code y los agentes deben ejecutarse en una máquina con acceso a la URL de do
 `session_start`, `list_projects`, `get_project`, `list_items`, `get_item`, `create_item`, `update_item`, `move_item`, `archive_item`, `list_features`, `upsert_feature`, `list_environments`, `get_environment`, `list_repositories`, `remember`, `update_memory`, `archive_memory`, `recall`, `link`, `upsert_project`, `archive_project`, `upsert_environment`, `archive_environment`, `upsert_repository`, `set_repository_location`.
 
 Se recomienda que el agente llame a `session_start` al empezar cada sesión.
+
+## Vistas en los listados
+
+`list_items`, `list_features`, `list_projects` y `recall` aceptan `view`: `summary` (por defecto) o `full`.
+
+- Item resumido: `id`, `title`, `status`, `project_id`, `feature_id`, `priority`, `tags`, `updated_at`.
+- Feature resumida: `id`, `project_id`, `title`, `status`, `updated_at`.
+- Proyecto resumido: `id`, `slug`, `name`, `status`, `stack`.
+- Memoria resumida (`recall`): `id`, `kind`, `title`, `tags` y los 200 primeros caracteres de `content`.
+
+Con `view: "full"` se devuelven los registros completos, como antes. `get_item` siempre devuelve el item entero.
