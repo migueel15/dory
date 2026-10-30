@@ -10,6 +10,7 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
   const qc = useQueryClient();
   const [title, setTitle] = useState(item?.title ?? "");
   const [body, setBody] = useState(item?.body_md ?? "");
+  const [progress, setProgress] = useState(item?.progress ?? "");
   const [tags, setTags] = useState(item?.tags.join(", ") ?? "");
   const [status, setStatus] = useState<ItemStatus>(item?.status ?? "inbox");
   const [priority, setPriority] = useState(item?.priority ?? 0);
@@ -17,7 +18,7 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const save = useMutation({
     mutationFn: () => {
-      const data = { title, body_md: body, tags: csv(tags), status, priority, project_id: pid || null };
+      const data = { title, body_md: body, progress, tags: csv(tags), status, priority, project_id: pid || null };
       return item ? api.items.update(item.id, itemInput(item, data)) : api.items.create({ id: crypto.randomUUID(), ...data });
     },
     onSuccess: () => {
@@ -36,6 +37,7 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
     <Modal title={item ? "Editar item" : "Nuevo item"} onClose={onClose}>
       <Label text="Título"><Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus /></Label>
       <Label text="Descripción (markdown)"><Textarea value={body} onChange={(e) => setBody(e.target.value)} /></Label>
+      <Label text="Progreso (estado actual)"><Input value={progress} onChange={(e) => setProgress(e.target.value)} placeholder="Rama · último commit · qué falta" /></Label>
       <div className="grid grid-cols-2 gap-2">
         <Label text="Estado">
           <select className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" value={status} onChange={(e) => setStatus(e.target.value as ItemStatus)}>
@@ -91,6 +93,7 @@ export function Inbox() {
           <Card key={i.id} className="cursor-pointer hover:bg-slate-50">
             <div onClick={() => setEditing(i)}>
               <div className="flex items-center gap-2"><span className="font-medium">{i.title}</span>{i.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div>
+              {i.progress && <p className="text-xs text-slate-500">{i.progress}</p>}
               {i.body_md && <Md>{i.body_md}</Md>}
             </div>
           </Card>

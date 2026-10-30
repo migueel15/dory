@@ -50,6 +50,7 @@ type Item struct {
 	RawText   string   `json:"raw_text"`
 	Title     string   `json:"title"`
 	BodyMd    string   `json:"body_md"`
+	Progress  string   `json:"progress"`
 	Tags      []string `json:"tags"`
 	Status    string   `json:"status"`
 	Priority  int32    `json:"priority"`

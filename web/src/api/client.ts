@@ -67,6 +67,7 @@ export const itemInput = (i: Item, patch: Partial<ItemInput> = {}): ItemInput =>
   raw_text: i.raw_text,
   title: i.title,
   body_md: i.body_md,
+  progress: i.progress,
   tags: i.tags,
   status: i.status,
   priority: i.priority,

@@ -543,6 +543,8 @@ export interface components {
             title: string;
             /** @default  */
             body_md: string;
+            /** @default  */
+            progress: string;
             tags: string[];
             /**
              * @default inbox
@@ -567,6 +569,8 @@ export interface components {
             title: string;
             /** @default  */
             body_md: string;
+            /** @default  */
+            progress: string;
             tags?: string[];
             /**
              * @default inbox

@@ -68,6 +68,7 @@ type Item struct {
 	UpdatedAt    pgtype.Timestamptz
 	ArchivedAt   pgtype.Timestamptz
 	SearchVector interface{}
+	Progress     string
 }
 
 type Link struct {

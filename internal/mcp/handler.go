@@ -187,6 +187,7 @@ type itemInput struct {
 	RawText   string   `json:"raw_text,omitempty"`
 	Title     string   `json:"title,omitempty" jsonschema:"Optional; derived from the first line of raw_text (max 80 chars) when missing"`
 	BodyMd    string   `json:"body_md,omitempty"`
+	Progress  string   `json:"progress,omitempty" jsonschema:"Short current state (branch, last commit, what is next); replaced, not appended"`
 	Tags      []string `json:"tags,omitempty"`
 	Status    string   `json:"status,omitempty"`
 	Priority  int32    `json:"priority,omitempty"`
@@ -194,7 +195,7 @@ type itemInput struct {
 }
 type updateInput struct {
 	ID      string         `json:"id"`
-	Changes map[string]any `json:"changes" jsonschema:"Patch fields: project_id (nullable), raw_text, title, body_md, tags, status, priority, source. Omitted fields are preserved."`
+	Changes map[string]any `json:"changes" jsonschema:"Patch fields: project_id (nullable), raw_text, title, body_md, progress (short current state, replaced), tags, status, priority, source. Omitted fields are preserved."`
 }
 type moveInput struct {
 	ID     string `json:"id"`
@@ -237,7 +238,7 @@ func updateItem(ctx context.Context, svc service.Service, in updateInput) (any, 
 		return nil, err
 	}
 	for key, value := range in.Changes {
-		if !slices.Contains([]string{"project_id", "raw_text", "title", "body_md", "tags", "status", "priority", "source"}, key) {
+		if !slices.Contains([]string{"project_id", "raw_text", "title", "body_md", "progress", "tags", "status", "priority", "source"}, key) {
 			return nil, fmt.Errorf("%w: field %s cannot be changed", service.ErrInvalid, key)
 		}
 		if value == nil && key != "project_id" {
@@ -499,7 +500,7 @@ func Handler(svc service.Service) http.Handler {
 		if strings.TrimSpace(in.Title) == "" {
 			in.Title = deriveTitle(in.RawText)
 		}
-		return putItem(ctx, svc, service.Item{Record: service.Record{ID: in.ID}, ProjectID: in.ProjectID, RawText: in.RawText, Title: in.Title, BodyMd: in.BodyMd, Tags: in.Tags, Status: in.Status, Priority: in.Priority, Source: in.Source})
+		return putItem(ctx, svc, service.Item{Record: service.Record{ID: in.ID}, ProjectID: in.ProjectID, RawText: in.RawText, Title: in.Title, BodyMd: in.BodyMd, Progress: in.Progress, Tags: in.Tags, Status: in.Status, Priority: in.Priority, Source: in.Source})
 	})
 	add(s, "update_item", "Patch an item while preserving omitted fields.", func(ctx context.Context, in updateInput) (any, error) { return updateItem(ctx, svc, in) })
 	add(s, "move_item", "Change an item's workflow status while preserving its other fields.", func(ctx context.Context, in moveInput) (any, error) {
