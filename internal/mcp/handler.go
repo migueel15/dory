@@ -119,10 +119,15 @@ func findProject(ctx context.Context, svc service.Service, remoteURL, path strin
 	return "", nil
 }
 
+// featureSummary adds the count of open items so callers know when to close a feature.
+type featureSummary struct {
+	service.Feature
+	OpenItems int `json:"open_items"`
+}
 type projectDetail struct {
 	Project      service.Project      `json:"project"`
 	Repositories []service.Repository `json:"repositories"`
-	Features     []service.Feature    `json:"features"`
+	Features     []featureSummary     `json:"features"`
 	Memories     []service.Memory     `json:"memories"`
 	OpenItems    []service.Item       `json:"open_items"`
 }
@@ -148,7 +153,7 @@ func projectContext(ctx context.Context, svc service.Service, key string) (proje
 	if err != nil {
 		return result, err
 	}
-	result.Features, err = all(ctx, svc.Features(), f)
+	features, err := all(ctx, svc.Features(), f)
 	if err != nil {
 		return result, err
 	}
@@ -157,13 +162,24 @@ func projectContext(ctx context.Context, svc service.Service, key string) (proje
 		return result, err
 	}
 	items, err := all(ctx, svc.Items(), f)
+	if err != nil {
+		return result, err
+	}
+	open := map[string]int{}
 	result.OpenItems = []service.Item{}
 	for _, item := range items {
-		if item.Status != "done" && item.Status != "archived" {
+		if item.Status != "done" && item.Status != "cancelled" {
 			result.OpenItems = append(result.OpenItems, item)
+			if item.FeatureID != nil {
+				open[*item.FeatureID]++
+			}
 		}
 	}
-	return result, err
+	result.Features = []featureSummary{}
+	for _, feature := range features {
+		result.Features = append(result.Features, featureSummary{Feature: feature, OpenItems: open[feature.ID]})
+	}
+	return result, nil
 }
 func all[T any](ctx context.Context, r service.Resource[T], f service.Filter) ([]T, error) {
 	result := []T{}
@@ -182,28 +198,34 @@ func all[T any](ctx context.Context, r service.Resource[T], f service.Filter) ([
 }
 
 type itemInput struct {
-	ID        string   `json:"id,omitempty" jsonschema:"Optional client UUID for idempotent upsert"`
-	ProjectID *string  `json:"project_id,omitempty"`
-	RawText   string   `json:"raw_text,omitempty"`
-	Title     string   `json:"title,omitempty" jsonschema:"Optional; derived from the first line of raw_text (max 80 chars) when missing"`
-	BodyMd    string   `json:"body_md,omitempty"`
-	Progress  string   `json:"progress,omitempty" jsonschema:"Short current state (branch, last commit, what is next); replaced, not appended"`
-	Tags      []string `json:"tags,omitempty"`
-	Status    string   `json:"status,omitempty"`
-	Priority  int32    `json:"priority,omitempty"`
-	Source    string   `json:"source,omitempty"`
+	ID            string   `json:"id,omitempty" jsonschema:"Optional client UUID for idempotent upsert"`
+	ProjectID     *string  `json:"project_id,omitempty"`
+	FeatureID     *string  `json:"feature_id,omitempty" jsonschema:"Optional feature the item belongs to"`
+	RawText       string   `json:"raw_text,omitempty"`
+	Title         string   `json:"title,omitempty" jsonschema:"Optional; derived from the first line of raw_text (max 80 chars) when missing"`
+	BodyMd        string   `json:"body_md,omitempty"`
+	Progress      string   `json:"progress,omitempty" jsonschema:"Short current state (branch, last commit, what is next); replaced, not appended"`
+	Tags          []string `json:"tags,omitempty"`
+	Status        string   `json:"status,omitempty" jsonschema:"inbox, triaged, ready, in_progress, blocked, done or cancelled"`
+	BlockedReason string   `json:"blocked_reason,omitempty" jsonschema:"Required when status is blocked: what blocks it and what unblocks it"`
+	Priority      int32    `json:"priority,omitempty"`
+	Source        string   `json:"source,omitempty"`
 }
 type updateInput struct {
 	ID      string         `json:"id"`
-	Changes map[string]any `json:"changes" jsonschema:"Patch fields: project_id (nullable), raw_text, title, body_md, progress (short current state, replaced), tags, status, priority, source. Omitted fields are preserved."`
+	Changes map[string]any `json:"changes" jsonschema:"Patch fields: project_id and feature_id (nullable), raw_text, title, body_md, progress (short current state, replaced), tags, status, blocked_reason (required for blocked, cleared otherwise), priority, source. Omitted fields are preserved."`
 }
 type moveInput struct {
-	ID     string `json:"id"`
-	Status string `json:"status" jsonschema:"inbox, triaged, ready, in_progress, done or archived"`
+	ID            string `json:"id"`
+	Status        string `json:"status" jsonschema:"inbox, triaged, ready, in_progress, blocked, done or cancelled"`
+	BlockedReason string `json:"blocked_reason,omitempty" jsonschema:"Required when status is blocked"`
 }
 
 func validStatus(status string) bool {
-	return slices.Contains([]string{"inbox", "triaged", "ready", "in_progress", "done", "archived"}, status)
+	return slices.Contains([]string{"inbox", "triaged", "ready", "in_progress", "blocked", "done", "cancelled"}, status)
+}
+func validFeatureStatus(status string) bool {
+	return slices.Contains([]string{"planned", "in_progress", "implemented", "deprecated"}, status)
 }
 
 // deriveTitle takes the first non-empty line of text, cut to 80 characters.
@@ -222,6 +244,13 @@ func putItem(ctx context.Context, svc service.Service, item service.Item) (any, 
 	if item.Status != "" && !validStatus(item.Status) {
 		return nil, fmt.Errorf("%w: unknown item status", service.ErrInvalid)
 	}
+	// A blocked item must say why; leaving the state clears the reason.
+	if item.Status == "blocked" && strings.TrimSpace(item.BlockedReason) == "" {
+		return nil, fmt.Errorf("%w: blocked_reason is required for blocked items", service.ErrInvalid)
+	}
+	if item.Status != "blocked" {
+		item.BlockedReason = ""
+	}
 	return svc.Items().Put(ctx, auth.Actor(ctx), item)
 }
 func updateItem(ctx context.Context, svc service.Service, in updateInput) (any, error) {
@@ -238,11 +267,11 @@ func updateItem(ctx context.Context, svc service.Service, in updateInput) (any, 
 		return nil, err
 	}
 	for key, value := range in.Changes {
-		if !slices.Contains([]string{"project_id", "raw_text", "title", "body_md", "progress", "tags", "status", "priority", "source"}, key) {
+		if !slices.Contains([]string{"project_id", "feature_id", "raw_text", "title", "body_md", "progress", "tags", "status", "blocked_reason", "priority", "source"}, key) {
 			return nil, fmt.Errorf("%w: field %s cannot be changed", service.ErrInvalid, key)
 		}
-		if value == nil && key != "project_id" {
-			return nil, fmt.Errorf("%w: only project_id may be null", service.ErrInvalid)
+		if value == nil && key != "project_id" && key != "feature_id" {
+			return nil, fmt.Errorf("%w: only project_id and feature_id may be null", service.ErrInvalid)
 		}
 		fields[key], err = json.Marshal(value)
 		if err != nil {
@@ -265,14 +294,14 @@ type featureInput struct {
 	Title     string   `json:"title"`
 	BodyMd    string   `json:"body_md,omitempty"`
 	CodeRefs  []string `json:"code_refs,omitempty"`
-	Status    string   `json:"status,omitempty" jsonschema:"implemented (default) or deprecated"`
+	Status    string   `json:"status,omitempty" jsonschema:"planned (default), in_progress, implemented or deprecated"`
 }
 type featureUpdate struct {
 	ID       string    `json:"id" jsonschema:"Feature UUID"`
 	Title    *string   `json:"title,omitempty"`
 	BodyMd   *string   `json:"body_md,omitempty"`
 	CodeRefs *[]string `json:"code_refs,omitempty"`
-	Status   *string   `json:"status,omitempty" jsonschema:"implemented or deprecated"`
+	Status   *string   `json:"status,omitempty" jsonschema:"planned, in_progress, implemented or deprecated"`
 }
 type memoryInput struct {
 	Scope   string   `json:"scope" jsonschema:"global, project or environment"`
@@ -457,7 +486,7 @@ func Handler(svc service.Service) http.Handler {
 	listTool(s, "list_projects", "List projects with optional field filters and pagination.", svc.Projects())
 	listTool(s, "list_items", "List items with optional field filters and pagination.", svc.Items())
 	getTool(s, "get_item", "Get an unarchived item by UUID.", svc.Items())
-	listTool(s, "list_features", "List implemented or deprecated features with optional filters.", svc.Features())
+	listTool(s, "list_features", "List features with optional filters, e.g. status planned, in_progress, implemented or deprecated.", svc.Features())
 	listTool(s, "list_environments", "List environments with optional filters.", svc.Environments())
 	getTool(s, "get_environment", "Get an environment by UUID.", svc.Environments())
 	listTool(s, "list_repositories", "List repositories; filter by project_id if needed.", svc.Repositories())
@@ -500,21 +529,25 @@ func Handler(svc service.Service) http.Handler {
 		if strings.TrimSpace(in.Title) == "" {
 			in.Title = deriveTitle(in.RawText)
 		}
-		return putItem(ctx, svc, service.Item{Record: service.Record{ID: in.ID}, ProjectID: in.ProjectID, RawText: in.RawText, Title: in.Title, BodyMd: in.BodyMd, Progress: in.Progress, Tags: in.Tags, Status: in.Status, Priority: in.Priority, Source: in.Source})
+		return putItem(ctx, svc, service.Item{Record: service.Record{ID: in.ID}, ProjectID: in.ProjectID, FeatureID: in.FeatureID, RawText: in.RawText, Title: in.Title, BodyMd: in.BodyMd, Progress: in.Progress, Tags: in.Tags, Status: in.Status, BlockedReason: in.BlockedReason, Priority: in.Priority, Source: in.Source})
 	})
 	add(s, "update_item", "Patch an item while preserving omitted fields.", func(ctx context.Context, in updateInput) (any, error) { return updateItem(ctx, svc, in) })
-	add(s, "move_item", "Change an item's workflow status while preserving its other fields.", func(ctx context.Context, in moveInput) (any, error) {
+	add(s, "move_item", "Change an item's workflow status while preserving its other fields; blocked needs blocked_reason.", func(ctx context.Context, in moveInput) (any, error) {
 		if !validStatus(in.Status) {
 			return nil, service.ErrInvalid
 		}
-		return updateItem(ctx, svc, updateInput{ID: in.ID, Changes: map[string]any{"status": in.Status}})
+		changes := map[string]any{"status": in.Status}
+		if in.BlockedReason != "" {
+			changes["blocked_reason"] = in.BlockedReason
+		}
+		return updateItem(ctx, svc, updateInput{ID: in.ID, Changes: changes})
 	})
 	add(s, "archive_item", "Soft archive an item by UUID.", func(ctx context.Context, in idInput) (any, error) {
 		err := svc.Items().Archive(ctx, auth.Actor(ctx), in.ID)
 		return map[string]any{"id": in.ID, "archived": err == nil}, err
 	})
 	add(s, "upsert_feature", "Create or fully replace a feature; supply its UUID to update it.", func(ctx context.Context, in featureInput) (any, error) {
-		if in.Status != "" && in.Status != "implemented" && in.Status != "deprecated" {
+		if in.Status != "" && !validFeatureStatus(in.Status) {
 			return nil, service.ErrInvalid
 		}
 		return svc.Features().Put(ctx, auth.Actor(ctx), service.Feature{Record: service.Record{ID: in.ID}, ProjectID: in.ProjectID, Title: in.Title, BodyMd: in.BodyMd, CodeRefs: in.CodeRefs, Status: in.Status})
@@ -528,7 +561,7 @@ func Handler(svc service.Service) http.Handler {
 		set(&f.BodyMd, in.BodyMd)
 		set(&f.CodeRefs, in.CodeRefs)
 		set(&f.Status, in.Status)
-		if f.Title == "" || (f.Status != "implemented" && f.Status != "deprecated") {
+		if f.Title == "" || !validFeatureStatus(f.Status) {
 			return nil, service.ErrInvalid
 		}
 		return svc.Features().Put(ctx, auth.Actor(ctx), f)

@@ -68,7 +68,7 @@ func (q *Queries) ListFeature(ctx context.Context, arg ListFeatureParams) ([][]b
 }
 
 const putFeature = `-- name: PutFeature :one
-INSERT INTO features (id, project_id, title, body_md, code_refs, status) VALUES (COALESCE(NULLIF(CAST($1 AS jsonb)->>'id','')::uuid, gen_random_uuid()), NULLIF(CAST($1 AS jsonb)->>'project_id','')::uuid, CAST($1 AS jsonb)->>'title', COALESCE(CAST($1 AS jsonb)->>'body_md', ''), ARRAY(SELECT jsonb_array_elements_text(CAST($1 AS jsonb)->'code_refs')), COALESCE(CAST($1 AS jsonb)->>'status', 'implemented')) ON CONFLICT (id) DO UPDATE SET project_id = EXCLUDED.project_id, title = EXCLUDED.title, body_md = EXCLUDED.body_md, code_refs = EXCLUDED.code_refs, status = EXCLUDED.status, updated_at = now() WHERE features.archived_at IS NULL RETURNING (to_jsonb(features) - 'search_vector')::jsonb AS data
+INSERT INTO features (id, project_id, title, body_md, code_refs, status) VALUES (COALESCE(NULLIF(CAST($1 AS jsonb)->>'id','')::uuid, gen_random_uuid()), NULLIF(CAST($1 AS jsonb)->>'project_id','')::uuid, CAST($1 AS jsonb)->>'title', COALESCE(CAST($1 AS jsonb)->>'body_md', ''), ARRAY(SELECT jsonb_array_elements_text(CAST($1 AS jsonb)->'code_refs')), COALESCE(CAST($1 AS jsonb)->>'status', 'planned')) ON CONFLICT (id) DO UPDATE SET project_id = EXCLUDED.project_id, title = EXCLUDED.title, body_md = EXCLUDED.body_md, code_refs = EXCLUDED.code_refs, status = EXCLUDED.status, updated_at = now() WHERE features.archived_at IS NULL RETURNING (to_jsonb(features) - 'search_vector')::jsonb AS data
 `
 
 func (q *Queries) PutFeature(ctx context.Context, payload []byte) ([]byte, error) {

@@ -10,7 +10,7 @@ import (
 )
 
 const archiveItem = `-- name: ArchiveItem :one
-UPDATE items SET archived_at = now(), updated_at = now(), status = 'archived' WHERE id = CAST($1 AS text)::uuid AND archived_at IS NULL RETURNING (to_jsonb(items) - 'search_vector')::jsonb AS data
+UPDATE items SET archived_at = now(), updated_at = now() WHERE id = CAST($1 AS text)::uuid AND archived_at IS NULL RETURNING (to_jsonb(items) - 'search_vector')::jsonb AS data
 `
 
 func (q *Queries) ArchiveItem(ctx context.Context, id string) ([]byte, error) {
@@ -68,7 +68,7 @@ func (q *Queries) ListItem(ctx context.Context, arg ListItemParams) ([][]byte, e
 }
 
 const putItem = `-- name: PutItem :one
-INSERT INTO items (id, project_id, raw_text, title, body_md, progress, tags, status, priority, source) VALUES (COALESCE(NULLIF(CAST($1 AS jsonb)->>'id','')::uuid, gen_random_uuid()), NULLIF(CAST($1 AS jsonb)->>'project_id','')::uuid, COALESCE(CAST($1 AS jsonb)->>'raw_text', ''), CAST($1 AS jsonb)->>'title', COALESCE(CAST($1 AS jsonb)->>'body_md', ''), COALESCE(CAST($1 AS jsonb)->>'progress', ''), ARRAY(SELECT jsonb_array_elements_text(CAST($1 AS jsonb)->'tags')), COALESCE(CAST($1 AS jsonb)->>'status', 'inbox'), COALESCE((CAST($1 AS jsonb)->>'priority')::integer, 0), COALESCE(CAST($1 AS jsonb)->>'source', 'manual')) ON CONFLICT (id) DO UPDATE SET project_id = EXCLUDED.project_id, raw_text = EXCLUDED.raw_text, title = EXCLUDED.title, body_md = EXCLUDED.body_md, progress = EXCLUDED.progress, tags = EXCLUDED.tags, status = EXCLUDED.status, priority = EXCLUDED.priority, source = EXCLUDED.source, updated_at = now() WHERE items.archived_at IS NULL RETURNING (to_jsonb(items) - 'search_vector')::jsonb AS data
+INSERT INTO items (id, project_id, feature_id, blocked_reason, raw_text, title, body_md, progress, tags, status, priority, source) VALUES (COALESCE(NULLIF(CAST($1 AS jsonb)->>'id','')::uuid, gen_random_uuid()), NULLIF(CAST($1 AS jsonb)->>'project_id','')::uuid, NULLIF(CAST($1 AS jsonb)->>'feature_id','')::uuid, COALESCE(CAST($1 AS jsonb)->>'blocked_reason', ''), COALESCE(CAST($1 AS jsonb)->>'raw_text', ''), CAST($1 AS jsonb)->>'title', COALESCE(CAST($1 AS jsonb)->>'body_md', ''), COALESCE(CAST($1 AS jsonb)->>'progress', ''), ARRAY(SELECT jsonb_array_elements_text(CAST($1 AS jsonb)->'tags')), COALESCE(CAST($1 AS jsonb)->>'status', 'inbox'), COALESCE((CAST($1 AS jsonb)->>'priority')::integer, 0), COALESCE(CAST($1 AS jsonb)->>'source', 'manual')) ON CONFLICT (id) DO UPDATE SET project_id = EXCLUDED.project_id, feature_id = EXCLUDED.feature_id, blocked_reason = EXCLUDED.blocked_reason, raw_text = EXCLUDED.raw_text, title = EXCLUDED.title, body_md = EXCLUDED.body_md, progress = EXCLUDED.progress, tags = EXCLUDED.tags, status = EXCLUDED.status, priority = EXCLUDED.priority, source = EXCLUDED.source, updated_at = now() WHERE items.archived_at IS NULL RETURNING (to_jsonb(items) - 'search_vector')::jsonb AS data
 `
 
 func (q *Queries) PutItem(ctx context.Context, payload []byte) ([]byte, error) {

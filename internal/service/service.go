@@ -219,7 +219,7 @@ func (r resource[T]) Put(ctx context.Context, actor string, v T) (T, error) {
 	}
 	defaults := map[string]map[string]string{
 		"project": {"status": "active"}, "repository": {"default_branch": "main"},
-		"feature": {"status": "implemented"}, "item": {"status": "inbox", "source": "manual"},
+		"feature": {"status": "planned"}, "item": {"status": "inbox", "source": "manual"},
 	}
 	for key, value := range defaults[r.kind] {
 		if payload[key] == "" {

@@ -4,7 +4,7 @@ import { DndContext, type DragEndEvent, useDraggable, useDroppable } from "@dnd-
 import { api, itemInput, type Item, type ItemStatus } from "../api/client";
 import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, Textarea, csv } from "../components/ui";
 
-const STATUSES: ItemStatus[] = ["inbox", "triaged", "ready", "in_progress", "done"];
+const STATUSES: ItemStatus[] = ["inbox", "triaged", "ready", "in_progress", "blocked", "done", "cancelled"];
 
 export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?: string | null; onClose: () => void }) {
   const qc = useQueryClient();
@@ -15,10 +15,13 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
   const [status, setStatus] = useState<ItemStatus>(item?.status ?? "inbox");
   const [priority, setPriority] = useState(item?.priority ?? 0);
   const [pid, setPid] = useState(item?.project_id ?? projectId ?? "");
+  const [fid, setFid] = useState(item?.feature_id ?? "");
+  const [reason, setReason] = useState(item?.blocked_reason ?? "");
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
+  const features = useQuery({ queryKey: ["features", pid], queryFn: () => api.features.list({ project_id: pid }), enabled: !!pid });
   const save = useMutation({
     mutationFn: () => {
-      const data = { title, body_md: body, progress, tags: csv(tags), status, priority, project_id: pid || null };
+      const data = { title, body_md: body, progress, tags: csv(tags), status, blocked_reason: status === "blocked" ? reason : "", priority, project_id: pid || null, feature_id: (pid && fid) || null };
       return item ? api.items.update(item.id, itemInput(item, data)) : api.items.create({ id: crypto.randomUUID(), ...data });
     },
     onSuccess: () => {
@@ -41,24 +44,31 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
       <div className="grid grid-cols-2 gap-2">
         <Label text="Estado">
           <select className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" value={status} onChange={(e) => setStatus(e.target.value as ItemStatus)}>
-            {[...STATUSES, "archived" as const].map((s) => <option key={s}>{s}</option>)}
+            {STATUSES.map((s) => <option key={s}>{s}</option>)}
           </select>
         </Label>
         <Label text="Prioridad"><Input type="number" value={priority} onChange={(e) => setPriority(+e.target.value)} /></Label>
         <Label text="Proyecto">
-          <select className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" value={pid} onChange={(e) => setPid(e.target.value)}>
+          <select className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" value={pid} onChange={(e) => { setPid(e.target.value); setFid(""); }}>
             <option value="">— ninguno —</option>
             {projects.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </Label>
+        <Label text="Feature">
+          <select className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" value={fid} onChange={(e) => setFid(e.target.value)} disabled={!pid}>
+            <option value="">— ninguna —</option>
+            {features.data?.map((f) => <option key={f.id} value={f.id}>{f.title}</option>)}
+          </select>
+        </Label>
         <Label text="Tags (coma)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Label>
       </div>
+      {status === "blocked" && <Label text="Motivo del bloqueo"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Qué lo bloquea y qué lo desbloquea" /></Label>}
       <ErrorText error={save.error ?? archive.error} />
       <div className="flex justify-between">
         {item ? <Button variant="danger" onClick={() => archive.mutate()}>Archivar</Button> : <span />}
         <div className="flex gap-2">
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button disabled={!title.trim() || save.isPending} onClick={() => save.mutate()}>Guardar</Button>
+          <Button disabled={!title.trim() || (status === "blocked" && !reason.trim()) || save.isPending} onClick={() => save.mutate()}>Guardar</Button>
         </div>
       </div>
     </Modal>
@@ -120,7 +130,7 @@ function Draggable({ item, onOpen }: { item: Item; onOpen: () => void }) {
   const style = transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined;
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes} className={isDragging ? "relative z-10 opacity-80" : ""}>
-      <Card className="cursor-grab"><div onDoubleClick={onOpen} className="text-sm"><div className="font-medium">{item.title}</div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}</div></Card>
+      <Card className="cursor-grab"><div onDoubleClick={onOpen} className="text-sm"><div className="font-medium">{item.title}</div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}{item.status === "blocked" && <p className="text-xs text-red-600">{item.blocked_reason}</p>}</div></Card>
     </div>
   );
 }
@@ -131,7 +141,7 @@ export function Board({ projectId }: { projectId: string }) {
   const key = ["items", "board", projectId];
   const items = useQuery({ queryKey: key, queryFn: () => api.items.list({ project_id: projectId }) });
   const move = useMutation({
-    mutationFn: ({ item, status }: { item: Item; status: ItemStatus }) => api.items.update(item.id, itemInput(item, { status })),
+    mutationFn: ({ item, status, reason }: { item: Item; status: ItemStatus; reason: string }) => api.items.update(item.id, itemInput(item, { status, blocked_reason: reason })),
     onMutate: ({ item, status }) => {
       qc.setQueryData<Item[]>(key, (old) => old?.map((i) => (i.id === item.id ? { ...i, status } : i)));
     },
@@ -140,7 +150,11 @@ export function Board({ projectId }: { projectId: string }) {
   const onDragEnd = (e: DragEndEvent) => {
     const item = items.data?.find((i) => i.id === e.active.id);
     const status = e.over?.id as ItemStatus | undefined;
-    if (item && status && status !== item.status) move.mutate({ item, status });
+    if (!item || !status || status === item.status) return;
+    // Blocking needs a reason; leaving blocked clears it.
+    const reason = status === "blocked" ? window.prompt("Motivo del bloqueo")?.trim() ?? "" : "";
+    if (status === "blocked" && !reason) return;
+    move.mutate({ item, status, reason });
   };
   return (
     <div className="space-y-3">
