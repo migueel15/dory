@@ -32,12 +32,13 @@ func (q *Queries) GetItem(ctx context.Context, id string) ([]byte, error) {
 }
 
 const listItem = `-- name: ListItem :many
-SELECT (to_jsonb(t) - 'search_vector')::jsonb AS data FROM items t WHERE ($1::boolean OR archived_at IS NULL) AND to_jsonb(t) @> CAST($2 AS jsonb) ORDER BY created_at, id LIMIT CAST($4 AS int) OFFSET CAST($3 AS int)
+SELECT (to_jsonb(t) - 'search_vector')::jsonb AS data FROM items t WHERE ($1::boolean OR archived_at IS NULL) AND to_jsonb(t) @> CAST($2 AS jsonb) AND NOT EXISTS (SELECT 1 FROM jsonb_each(CAST($3 AS jsonb)) e WHERE NOT e.value @> (to_jsonb(t) -> e.key)) ORDER BY created_at, id LIMIT CAST($5 AS int) OFFSET CAST($4 AS int)
 `
 
 type ListItemParams struct {
 	IncludeArchived bool
 	Filter          []byte
+	AnyOf           []byte
 	PageOffset      int32
 	PageLimit       int32
 }
@@ -46,6 +47,7 @@ func (q *Queries) ListItem(ctx context.Context, arg ListItemParams) ([][]byte, e
 	rows, err := q.db.Query(ctx, listItem,
 		arg.IncludeArchived,
 		arg.Filter,
+		arg.AnyOf,
 		arg.PageOffset,
 		arg.PageLimit,
 	)
