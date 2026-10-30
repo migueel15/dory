@@ -12,5 +12,10 @@ listen = "127.0.0.1:8080"
 # accedes por HTTP plano, por ejemplo en pruebas locales.
 cookie_secure = true
 
+# Origen público por HTTPS (DORY_PUBLIC_ORIGIN), por ejemplo si accedes detrás de un proxy
+# o de Cloudflare Tunnel. Sin proxy TLS, Dory no ve HTTPS y rechazaría el Origin.
+# Solo esquema y host, sin ruta. Déjalo vacío para el comportamiento por defecto.
+# public_origin = "https://dory.dorlab.net"
+
 # Duración de la sesión web (DORY_SESSION_TTL), formato de Go: "168h" = 7 días.
 session_ttl = "168h"

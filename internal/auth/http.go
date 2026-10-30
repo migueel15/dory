@@ -50,7 +50,7 @@ func Register(mux *http.ServeMux, svc service.Service, cfg config.Config) {
 	hashing := make(chan struct{}, 2)
 	dummy := passwordHash(secret())
 	mux.HandleFunc("POST /api/auth/login", func(w http.ResponseWriter, r *http.Request) {
-		if !sameOrigin(r) {
+		if !sameOrigin(r, cfg) {
 			failure(w, 403)
 			return
 		}
