@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -52,5 +53,23 @@ func TestWriteReturn(t *testing.T) {
 	short, _ := writeReturn{}.reply(service.Item{Record: service.Record{ID: "x"}, BodyMd: strings.Repeat("a", 1000)}, nil)
 	if raw, _ := json.Marshal(short); len(raw) >= 300 {
 		t.Fatalf("short reply is %d bytes", len(raw))
+	}
+}
+
+func TestItemFilter(t *testing.T) {
+	in := itemListInput{viewListInput: viewListInput{listInput: listInput{Fields: map[string]any{"project_id": "p", "status": []any{"ready", "done"}, "tags": []any{"x"}}}}, Open: true}
+	f, err := in.itemFilter()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(f.AnyOf["status"], []string{"ready"}) || f.Fields["project_id"] != "p" || f.Fields["tags"] == nil {
+		t.Fatalf("unexpected filter %#v", f)
+	}
+	f, _ = itemListInput{Open: true}.itemFilter()
+	if len(f.AnyOf["status"]) != 5 {
+		t.Fatalf("open must list the five open statuses, got %v", f.AnyOf["status"])
+	}
+	if _, err = (itemListInput{viewListInput: viewListInput{listInput: listInput{Fields: map[string]any{"title": []any{"a"}}}}}).itemFilter(); err == nil {
+		t.Fatal("only status and id accept several values")
 	}
 }

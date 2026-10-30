@@ -19,8 +19,10 @@ var ErrInvalid = errors.New("invalid argument")
 
 // Filter matches JSON fields exactly; tags use array containment. Limit defaults
 // to 100 (maximum 1000). Get hides archives; List can explicitly include them.
+// AnyOf keeps rows whose field equals one of the values; only items support it.
 type Filter struct {
 	Fields          map[string]any
+	AnyOf           map[string][]string
 	Limit, Offset   int32
 	IncludeArchived bool
 }
@@ -372,7 +374,14 @@ func (b *backend) Items() Resource[Item] {
 	return resource[Item]{b: b, kind: "item",
 		get: func(ctx context.Context, q *store.Queries, id string) ([]byte, error) { return q.GetItem(ctx, id) },
 		list: func(ctx context.Context, q *store.Queries, f Filter, raw []byte) ([][]byte, error) {
-			return q.ListItem(ctx, store.ListItemParams{Filter: raw, IncludeArchived: f.IncludeArchived, PageLimit: f.Limit, PageOffset: f.Offset})
+			anyOf, err := json.Marshal(f.AnyOf)
+			if err != nil {
+				return nil, err
+			}
+			if f.AnyOf == nil {
+				anyOf = []byte("{}")
+			}
+			return q.ListItem(ctx, store.ListItemParams{Filter: raw, AnyOf: anyOf, IncludeArchived: f.IncludeArchived, PageLimit: f.Limit, PageOffset: f.Offset})
 		},
 		put:     func(ctx context.Context, q *store.Queries, raw []byte) ([]byte, error) { return q.PutItem(ctx, raw) },
 		archive: func(ctx context.Context, q *store.Queries, id string) ([]byte, error) { return q.ArchiveItem(ctx, id) },

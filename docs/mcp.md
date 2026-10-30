@@ -72,3 +72,7 @@ Con `view: "full"` se devuelven los registros completos, como antes. `get_item` 
 `create_item`, `update_item` y `move_item` devuelven `{id, status, updated_at}`. Con `return: "full"` devuelven el item completo.
 
 `get_project` y `session_start` usan la vista resumida para los items abiertos y las memorias. Los cuerpos se leen con `get_item` y `recall` con `view: "full"`.
+
+## Filtros de `list_items`
+
+`fields` filtra por igualdad exacta; `tags` y `refs` usan contención. `status` e `id` aceptan además un array con el sentido "cualquiera de", por ejemplo `{"status": ["triaged", "in_progress"]}`. `open: true` excluye los items `done` y `cancelled`, y se combina con el resto de filtros.

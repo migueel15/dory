@@ -25,6 +25,47 @@ type listInput struct {
 	IncludeArchived bool           `json:"include_archived,omitempty"`
 }
 
+type itemListInput struct {
+	viewListInput
+	Open bool `json:"open,omitempty" jsonschema:"Only items not done or cancelled"`
+}
+
+// itemFilter moves status and id arrays out of the containment filter into
+// AnyOf, and narrows status to open states when open is set.
+func (in itemListInput) itemFilter() (service.Filter, error) {
+	f := in.filter()
+	f.Fields = map[string]any{}
+	f.AnyOf = map[string][]string{}
+	for key, value := range in.Fields {
+		values, isList := value.([]any)
+		if !isList || key == "tags" || key == "refs" {
+			f.Fields[key] = value
+			continue
+		}
+		if key != "status" && key != "id" {
+			return f, fmt.Errorf("%w: only status and id accept several values", service.ErrInvalid)
+		}
+		for _, v := range values {
+			text, ok := v.(string)
+			if !ok {
+				return f, fmt.Errorf("%w: %s values must be strings", service.ErrInvalid, key)
+			}
+			f.AnyOf[key] = append(f.AnyOf[key], text)
+		}
+	}
+	if in.Open {
+		statuses := f.AnyOf["status"]
+		if status, ok := f.Fields["status"].(string); ok {
+			statuses = []string{status}
+			delete(f.Fields, "status")
+		} else if statuses == nil {
+			statuses = []string{"inbox", "triaged", "ready", "in_progress", "blocked"}
+		}
+		f.AnyOf["status"] = slices.DeleteFunc(slices.Clone(statuses), func(s string) bool { return s == "done" || s == "cancelled" })
+	}
+	return f, nil
+}
+
 func (in listInput) filter() service.Filter {
 	return service.Filter{Fields: in.Fields, Limit: in.Limit, Offset: in.Offset, IncludeArchived: in.IncludeArchived}
 }
@@ -600,7 +641,21 @@ func validMemoryScope(scope string, scopeID *string) bool {
 func Handler(svc service.Service) http.Handler {
 	s := sdk.NewServer(&sdk.Implementation{Name: "dory", Version: "0.1.0"}, nil)
 	viewListTool(s, "list_projects", "List projects with optional field filters and pagination; view summary (default) or full.", svc.Projects(), summarizeProject)
-	viewListTool(s, "list_items", "List items with optional field filters and pagination; view summary (default: id, title, status, project_id, feature_id, priority, tags, updated_at) or full. get_item returns the whole item.", svc.Items(), summarizeItem)
+	add(s, "list_items", "List items with optional field filters and pagination; view summary (default: id, title, status, project_id, feature_id, priority, tags, updated_at) or full. fields.status and fields.id accept an array meaning any of; open true excludes done and cancelled. get_item returns the whole item.", func(ctx context.Context, in itemListInput) (any, error) {
+		summary, err := checkView(in.View)
+		if err != nil {
+			return nil, err
+		}
+		f, err := in.itemFilter()
+		if err != nil {
+			return nil, err
+		}
+		rows, err := svc.Items().List(ctx, f)
+		if err != nil || !summary {
+			return rows, err
+		}
+		return mapAll(rows, summarizeItem), nil
+	})
 	getTool(s, "get_item", "Get an unarchived item by UUID.", svc.Items())
 	viewListTool(s, "list_features", "List features with optional filters, e.g. status planned, in_progress, implemented or deprecated; view summary (default) or full.", svc.Features(), summarizeFeature)
 	listTool(s, "list_environments", "List environments with optional filters.", svc.Environments())
