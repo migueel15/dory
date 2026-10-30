@@ -9,10 +9,10 @@ export function Button({ variant = "default", className, ...p }: ButtonHTMLAttri
     ghost: "border border-slate-300 hover:bg-slate-100",
     danger: "border border-red-300 text-red-700 hover:bg-red-50",
   }[variant];
-  return <button {...p} className={cx("rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-50", v, className)} />;
+  return <button {...p} className={cx("min-h-11 sm:min-h-0 rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-50", v, className)} />;
 }
 
-const field = "w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm";
+export const field = "min-h-11 sm:min-h-0 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm";
 export const Input = (p: InputHTMLAttributes<HTMLInputElement>) => <input {...p} className={cx(field, p.className)} />;
 export const Textarea = (p: TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...p} className={cx(field, "min-h-24", p.className)} />;
 
@@ -32,15 +32,15 @@ export const Badge = ({ children }: { children: ReactNode }) => (
 );
 
 export const Md = ({ children }: { children: string }) => (
-  <div className="prose-sm space-y-2 text-sm [&_a]:text-blue-600 [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1 [&_h1]:text-lg [&_h1]:font-bold [&_h2]:font-semibold [&_li]:ml-4 [&_li]:list-disc [&_pre]:overflow-auto [&_pre]:bg-slate-100 [&_pre]:p-2">
+  <div className="prose-sm space-y-2 break-words text-sm [&_a]:text-blue-600 [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1 [&_h1]:text-lg [&_h1]:font-bold [&_h2]:font-semibold [&_li]:ml-4 [&_li]:list-disc [&_pre]:overflow-auto [&_pre]:bg-slate-100 [&_pre]:p-2">
     <Markdown>{children}</Markdown>
   </div>
 );
 
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
-    <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="max-h-full w-full max-w-lg space-y-3 overflow-auto rounded-lg bg-white p-4" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-2 sm:p-4" onClick={onClose}>
+      <div className="max-h-full w-full max-w-lg space-y-3 overflow-auto rounded-lg bg-white p-3 sm:p-4" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold">{title}</h2>
         {children}
       </div>

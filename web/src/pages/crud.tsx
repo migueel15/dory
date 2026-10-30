@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { api, type Environment, type Feature, type Memory, type Project } from "../api/client";
-import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, Textarea, csv } from "../components/ui";
+import { Badge, Button, Card, ErrorText, Input, field, Label, Md, Modal, Textarea, csv } from "../components/ui";
 
 // Hook compartido: guardar/archivar e invalidar la lista.
 function useSave<T>(key: string, fn: () => Promise<T>, onClose: () => void) {
@@ -122,24 +122,24 @@ function MemoryForm({ memory, projects, envs, onClose }: { memory?: Memory; proj
   const options = scope === "project" ? projects : envs;
   return (
     <Modal title={memory ? "Editar memoria" : "Nueva memoria"} onClose={onClose}>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid gap-2 sm:grid-cols-2">
         <Label text="Ámbito">
-          <select className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" value={scope} onChange={(e) => { setScope(e.target.value as Memory["scope"]); setScopeId(""); }}>
+          <select className={field} value={scope} onChange={(e) => { setScope(e.target.value as Memory["scope"]); setScopeId(""); }}>
             <option>global</option><option>project</option><option>environment</option>
           </select>
         </Label>
         {scope !== "global" && (
           <Label text={scope === "project" ? "Proyecto" : "Entorno"}>
-            <select className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" value={scopeId} onChange={(e) => setScopeId(e.target.value)}>
+            <select className={field} value={scopeId} onChange={(e) => setScopeId(e.target.value)}>
               <option value="">—</option>
               {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
             </select>
           </Label>
         )}
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid gap-2 sm:grid-cols-2">
         <Label text="Tipo">
-          <select className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" value={kind} onChange={(e) => setKind(e.target.value as Memory["kind"])}>
+          <select className={field} value={kind} onChange={(e) => setKind(e.target.value as Memory["kind"])}>
             <option>decision</option><option>lesson</option><option>context</option>
           </select>
         </Label>
@@ -160,7 +160,7 @@ export const memorySearch = (s: Record<string, unknown>): MemorySearch => ({
   q: typeof s.q === "string" && s.q ? s.q : undefined,
 });
 
-const select = "rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm";
+const select = "min-h-11 rounded-md sm:min-h-0 border border-slate-300 bg-white px-2 py-1.5 text-sm";
 
 export function Memories() {
   const [editing, setEditing] = useState<Memory | "new" | null>(null);
@@ -230,7 +230,7 @@ function FeatureForm({ feature, projectId, onClose }: { feature?: Feature; proje
       <Label text="Descripción (markdown)"><Textarea value={body} onChange={(e) => setBody(e.target.value)} /></Label>
       <Label text="Referencias de código (coma)"><Input value={refs} onChange={(e) => setRefs(e.target.value)} /></Label>
       <Label text="Estado">
-        <select className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" value={status} onChange={(e) => setStatus(e.target.value as Feature["status"])}>
+        <select className={field} value={status} onChange={(e) => setStatus(e.target.value as Feature["status"])}>
           <option>planned</option><option>in_progress</option><option>implemented</option><option>deprecated</option>
         </select>
       </Label>
@@ -252,7 +252,7 @@ export function Features({ projectId }: { projectId: string }) {
       {feats.data?.map((f) => (
         <Card key={f.id} className="cursor-pointer hover:bg-slate-50">
           <div onClick={() => setEditing(f)}>
-            <div className="flex items-center gap-2"><span className="font-medium">{f.title}</span><Badge>{f.status}</Badge>{f.code_refs.map((r) => <code key={r} className="text-xs text-slate-500">{r}</code>)}</div>
+            <div className="flex flex-wrap items-center gap-2"><span className="font-medium">{f.title}</span><Badge>{f.status}</Badge>{f.code_refs.map((r) => <code key={r} className="break-all text-xs text-slate-500">{r}</code>)}</div>
             {f.body_md && <Md>{f.body_md}</Md>}
           </div>
         </Card>
