@@ -241,13 +241,13 @@ func deriveTitle(text string) string {
 	}
 	return ""
 }
-func putItem(ctx context.Context, svc service.Service, item service.Item) (any, error) {
+func putItem(ctx context.Context, svc service.Service, item service.Item) (service.Item, error) {
 	if item.Status != "" && !validStatus(item.Status) {
-		return nil, fmt.Errorf("%w: unknown item status", service.ErrInvalid)
+		return service.Item{}, fmt.Errorf("%w: unknown item status", service.ErrInvalid)
 	}
 	// A blocked item must say why; leaving the state clears the reason.
 	if item.Status == "blocked" && strings.TrimSpace(item.BlockedReason) == "" {
-		return nil, fmt.Errorf("%w: blocked_reason is required for blocked items", service.ErrInvalid)
+		return service.Item{}, fmt.Errorf("%w: blocked_reason is required for blocked items", service.ErrInvalid)
 	}
 	if item.Status != "blocked" {
 		item.BlockedReason = ""
@@ -305,6 +305,7 @@ type featureUpdate struct {
 	Status   *string   `json:"status,omitempty" jsonschema:"planned, in_progress, implemented or deprecated"`
 }
 type memoryInput struct {
+	ID      string   `json:"id,omitempty" jsonschema:"Optional client UUID for idempotent upsert"`
 	Scope   string   `json:"scope" jsonschema:"global, project or environment"`
 	ScopeID *string  `json:"scope_id,omitempty" jsonschema:"Required UUID for project or environment scope"`
 	Kind    string   `json:"kind,omitempty" jsonschema:"decision, lesson or context (default)"`
@@ -413,6 +414,79 @@ func hasTags(have, want []string) bool {
 		}
 	}
 	return true
+}
+
+func createItem(ctx context.Context, svc service.Service, in itemInput) (service.Item, error) {
+	if in.Source == "" {
+		in.Source = "mcp"
+	}
+	if strings.TrimSpace(in.Title) == "" {
+		in.Title = deriveTitle(in.RawText)
+	}
+	return putItem(ctx, svc, service.Item{Record: service.Record{ID: in.ID}, ProjectID: in.ProjectID, FeatureID: in.FeatureID, RawText: in.RawText, Title: in.Title, BodyMd: in.BodyMd, Progress: in.Progress, Refs: in.Refs, Tags: in.Tags, Status: in.Status, BlockedReason: in.BlockedReason, Priority: in.Priority, Source: in.Source})
+}
+func putFeature(ctx context.Context, svc service.Service, in featureInput) (service.Feature, error) {
+	if in.Status != "" && !validFeatureStatus(in.Status) {
+		return service.Feature{}, service.ErrInvalid
+	}
+	return svc.Features().Put(ctx, auth.Actor(ctx), service.Feature{Record: service.Record{ID: in.ID}, ProjectID: in.ProjectID, Title: in.Title, BodyMd: in.BodyMd, CodeRefs: in.CodeRefs, Status: in.Status})
+}
+func putMemory(ctx context.Context, svc service.Service, in memoryInput) (service.Memory, error) {
+	if in.Content == "" || !validMemoryKind(in.Kind) || !validMemoryScope(in.Scope, in.ScopeID) {
+		return service.Memory{}, service.ErrInvalid
+	}
+	return svc.Memories().Put(ctx, auth.Actor(ctx), service.Memory{Record: service.Record{ID: in.ID}, Scope: in.Scope, ScopeID: in.ScopeID, Kind: in.Kind, Title: in.Title, Content: in.Content, Tags: in.Tags})
+}
+
+type batchInput struct {
+	Features []featureInput `json:"features,omitempty"`
+	Items    []itemInput    `json:"items,omitempty"`
+	Memories []memoryInput  `json:"memories,omitempty"`
+	Links    []linkInput    `json:"links,omitempty"`
+}
+
+// importBatch writes every record inside one transaction and reports the ids
+// in input order; the error names the failing record.
+func importBatch(ctx context.Context, svc service.Service, in batchInput) (any, error) {
+	if total := len(in.Features) + len(in.Items) + len(in.Memories) + len(in.Links); total == 0 || total > 1000 {
+		return nil, fmt.Errorf("%w: a batch needs between 1 and 1000 records", service.ErrInvalid)
+	}
+	result := map[string][]string{"features": {}, "items": {}, "memories": {}, "links": {}}
+	err := svc.InTx(ctx, func(tx service.Service) error {
+		for i, f := range in.Features {
+			v, err := putFeature(ctx, tx, f)
+			if err != nil {
+				return fmt.Errorf("features[%d]: %w", i, err)
+			}
+			result["features"] = append(result["features"], v.ID)
+		}
+		for i, item := range in.Items {
+			v, err := createItem(ctx, tx, item)
+			if err != nil {
+				return fmt.Errorf("items[%d]: %w", i, err)
+			}
+			result["items"] = append(result["items"], v.ID)
+		}
+		for i, m := range in.Memories {
+			v, err := putMemory(ctx, tx, m)
+			if err != nil {
+				return fmt.Errorf("memories[%d]: %w", i, err)
+			}
+			result["memories"] = append(result["memories"], v.ID)
+		}
+		for i, l := range in.Links {
+			v, err := tx.Links().Put(ctx, auth.Actor(ctx), service.Link{FromID: l.FromID, FromType: l.FromType, ToID: l.ToID, ToType: l.ToType, Kind: l.Kind})
+			if err != nil {
+				return fmt.Errorf("links[%d]: %w", i, err)
+			}
+			result["links"] = append(result["links"], v.ID)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 type linkInput struct {
@@ -538,13 +612,7 @@ func Handler(svc service.Service) http.Handler {
 		return result, nil
 	})
 	add(s, "create_item", "Create or idempotently upsert an item; defaults to inbox and source mcp.", func(ctx context.Context, in itemInput) (any, error) {
-		if in.Source == "" {
-			in.Source = "mcp"
-		}
-		if strings.TrimSpace(in.Title) == "" {
-			in.Title = deriveTitle(in.RawText)
-		}
-		return putItem(ctx, svc, service.Item{Record: service.Record{ID: in.ID}, ProjectID: in.ProjectID, FeatureID: in.FeatureID, RawText: in.RawText, Title: in.Title, BodyMd: in.BodyMd, Progress: in.Progress, Refs: in.Refs, Tags: in.Tags, Status: in.Status, BlockedReason: in.BlockedReason, Priority: in.Priority, Source: in.Source})
+		return createItem(ctx, svc, in)
 	})
 	add(s, "update_item", "Patch an item while preserving omitted fields.", func(ctx context.Context, in updateInput) (any, error) { return updateItem(ctx, svc, in) })
 	add(s, "move_item", "Change an item's workflow status while preserving its other fields; blocked needs blocked_reason.", func(ctx context.Context, in moveInput) (any, error) {
@@ -562,10 +630,7 @@ func Handler(svc service.Service) http.Handler {
 		return map[string]any{"id": in.ID, "archived": err == nil}, err
 	})
 	add(s, "upsert_feature", "Create or fully replace a feature; supply its UUID to update it.", func(ctx context.Context, in featureInput) (any, error) {
-		if in.Status != "" && !validFeatureStatus(in.Status) {
-			return nil, service.ErrInvalid
-		}
-		return svc.Features().Put(ctx, auth.Actor(ctx), service.Feature{Record: service.Record{ID: in.ID}, ProjectID: in.ProjectID, Title: in.Title, BodyMd: in.BodyMd, CodeRefs: in.CodeRefs, Status: in.Status})
+		return putFeature(ctx, svc, in)
 	})
 	add(s, "update_feature", "Edit an existing feature by UUID, changing only the fields sent (title, body_md, code_refs, status).", func(ctx context.Context, in featureUpdate) (any, error) {
 		f, err := svc.Features().Get(ctx, in.ID)
@@ -582,17 +647,7 @@ func Handler(svc service.Service) http.Handler {
 		return svc.Features().Put(ctx, auth.Actor(ctx), f)
 	})
 	add(s, "remember", "Store a memory with global, project or environment scope, a kind (decision, lesson or context) and an optional short title.", func(ctx context.Context, in memoryInput) (any, error) {
-		if !slices.Contains([]string{"global", "project", "environment"}, in.Scope) || in.Content == "" || !validMemoryKind(in.Kind) {
-			return nil, service.ErrInvalid
-		}
-		if in.Scope == "global" {
-			if in.ScopeID != nil {
-				return nil, service.ErrInvalid
-			}
-		} else if in.ScopeID == nil || *in.ScopeID == "" {
-			return nil, service.ErrInvalid
-		}
-		return svc.Memories().Put(ctx, auth.Actor(ctx), service.Memory{Scope: in.Scope, ScopeID: in.ScopeID, Kind: in.Kind, Title: in.Title, Content: in.Content, Tags: in.Tags})
+		return putMemory(ctx, svc, in)
 	})
 	add(s, "upsert_project", "Create a project, or update one by id changing only the fields sent. Fields: slug, name, description, status, stack.", func(ctx context.Context, in projectUpsert) (any, error) {
 		p, err := loadOrNew(ctx, svc.Projects(), in.ID)
@@ -672,6 +727,9 @@ func Handler(svc service.Service) http.Handler {
 		return svc.RepositoryLocations().Put(ctx, auth.Actor(ctx), loc)
 	})
 	add(s, "recall", "Search memories by full text query, tags (all must match) and/or kind, optionally filtered by scope and scope_id, with pagination.", func(ctx context.Context, in recallInput) (any, error) { return recall(ctx, svc, in) })
+	add(s, "import_batch", "Atomically create or upsert many features, items, memories and links in one call. Records are written in that order, so items may reference features of the same batch by client UUID. Any error rolls back the whole batch. Maximum 1000 records.", func(ctx context.Context, in batchInput) (any, error) {
+		return importBatch(ctx, svc, in)
+	})
 	add(s, "link", "Create a directed link between domain entities.", func(ctx context.Context, in linkInput) (any, error) {
 		return svc.Links().Put(ctx, auth.Actor(ctx), service.Link{FromID: in.FromID, FromType: in.FromType, ToID: in.ToID, ToType: in.ToType, Kind: in.Kind})
 	})

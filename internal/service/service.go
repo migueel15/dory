@@ -87,13 +87,38 @@ type Service interface {
 	Events
 	Search
 	AuthLookup
+	Transactor
+}
+
+// Transactor runs several writes atomically. Inside fn every Put opens a
+// savepoint of the outer transaction, so one failure rolls back everything.
+type Transactor interface {
+	InTx(ctx context.Context, fn func(Service) error) error
+}
+
+// db is satisfied by both the pool and an open transaction.
+type db interface {
+	store.DBTX
+	Begin(ctx context.Context) (pgx.Tx, error)
 }
 type backend struct {
-	pool *pgxpool.Pool
+	pool db
 	q    *store.Queries
 }
 
 func New(pool *pgxpool.Pool) Service { return &backend{pool, store.New(pool)} }
+
+func (b *backend) InTx(ctx context.Context, fn func(Service) error) error {
+	tx, err := b.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err = fn(&backend{tx, store.New(tx)}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
 
 var _ Service = (*backend)(nil)
 
