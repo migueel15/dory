@@ -6,6 +6,7 @@ import { ApiError, api } from "./api/client";
 import { useLiveUpdates } from "./api/live";
 import { Button, ErrorText, Input, Label } from "./components/ui";
 import { Environments, Memories, memorySearch } from "./pages/crud";
+import { QuickCapture } from "./components/capture";
 import { Attention, useAttentionCount } from "./pages/attention";
 import { Inbox } from "./pages/items";
 import { ProjectDetail, Projects } from "./pages/projects";
@@ -84,7 +85,7 @@ function Layout() {
         <ThemeToggle />
         <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
       </nav>
-      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /></main>
+      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><QuickCapture /><Outlet /></main>
     </div>
   );
 }
