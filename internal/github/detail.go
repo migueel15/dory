@@ -39,28 +39,31 @@ type Action struct {
 	Method string `json:"method"`
 }
 
-const timelineFields = `__typename
+// Issue timelines reject pull request fragments, so only shared events go here.
+const issueTimelineFields = `__typename
   ... on IssueComment { commentAuthor: author { login } createdAt body }
-  ... on PullRequestReview { reviewAuthor: author { login } createdAt body state }
-  ... on PullRequestCommit { commit { committedDate messageHeadline oid author { user { login } name } } }
   ... on ClosedEvent { actor { login } createdAt }
   ... on ReopenedEvent { actor { login } createdAt }
-  ... on MergedEvent { actor { login } createdAt }
   ... on LabeledEvent { actor { login } createdAt label { name } }
   ... on AssignedEvent { actor { login } createdAt }
-  ... on ReadyForReviewEvent { actor { login } createdAt }
-  ... on ConvertToDraftEvent { actor { login } createdAt }
-  ... on ReviewRequestedEvent { actor { login } createdAt }
   ... on CrossReferencedEvent { actor { login } createdAt source { ... on Issue { number title } ... on PullRequest { number title } } }`
 
+const pullTimelineFields = issueTimelineFields + `
+  ... on PullRequestReview { reviewAuthor: author { login } createdAt body state }
+  ... on PullRequestCommit { commit { committedDate messageHeadline oid author { user { login } name } } }
+  ... on MergedEvent { actor { login } createdAt }
+  ... on ReadyForReviewEvent { actor { login } createdAt }
+  ... on ConvertToDraftEvent { actor { login } createdAt }
+  ... on ReviewRequestedEvent { actor { login } createdAt }`
+
 const pullDetailQuery = `query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) {
-  body ` + pullFields + ` timelineItems(last: 100, itemTypes: [ISSUE_COMMENT, PULL_REQUEST_REVIEW, PULL_REQUEST_COMMIT, CLOSED_EVENT, REOPENED_EVENT, MERGED_EVENT, LABELED_EVENT, ASSIGNED_EVENT, READY_FOR_REVIEW_EVENT, CONVERT_TO_DRAFT_EVENT, REVIEW_REQUESTED_EVENT, CROSS_REFERENCED_EVENT]) { nodes { ` + timelineFields + ` } }
+  body ` + pullFields + ` timelineItems(last: 100, itemTypes: [ISSUE_COMMENT, PULL_REQUEST_REVIEW, PULL_REQUEST_COMMIT, CLOSED_EVENT, REOPENED_EVENT, MERGED_EVENT, LABELED_EVENT, ASSIGNED_EVENT, READY_FOR_REVIEW_EVENT, CONVERT_TO_DRAFT_EVENT, REVIEW_REQUESTED_EVENT, CROSS_REFERENCED_EVENT]) { nodes { ` + pullTimelineFields + ` } }
 } } }`
 
 const issueDetailQuery = `query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { issue(number: $number) {
   id number title url state updatedAt body author { login } labels(first: 10) { nodes { name } }
   closedByPullRequestsReferences(first: 10, includeClosedPrs: true) { nodes { number title } }
-  timelineItems(last: 100, itemTypes: [ISSUE_COMMENT, CLOSED_EVENT, REOPENED_EVENT, LABELED_EVENT, ASSIGNED_EVENT, CROSS_REFERENCED_EVENT]) { nodes { ` + timelineFields + ` } }
+  timelineItems(last: 100, itemTypes: [ISSUE_COMMENT, CLOSED_EVENT, REOPENED_EVENT, LABELED_EVENT, ASSIGNED_EVENT, CROSS_REFERENCED_EVENT]) { nodes { ` + issueTimelineFields + ` } }
 } } }`
 
 type wireEvent struct {

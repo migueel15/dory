@@ -67,8 +67,8 @@ func TestItemFilter(t *testing.T) {
 		t.Fatalf("unexpected filter %#v", f)
 	}
 	f, _ = itemListInput{Open: true}.itemFilter()
-	if len(f.AnyOf["status"]) != 5 {
-		t.Fatalf("open must list the five open statuses, got %v", f.AnyOf["status"])
+	if len(f.AnyOf["status"]) != 6 {
+		t.Fatalf("open must list the six open statuses, got %v", f.AnyOf["status"])
 	}
 	if _, err = (itemListInput{viewListInput: viewListInput{listInput: listInput{Fields: map[string]any{"title": []any{"a"}}}}}).itemFilter(); err == nil {
 		t.Fatal("only status and id accept several values")
