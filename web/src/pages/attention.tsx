@@ -3,8 +3,8 @@ import { Link } from "@tanstack/react-router";
 import { api } from "../api/client";
 import { Badge, Card, ErrorText } from "../components/ui";
 
-const useT3 = (enabled = true) => useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 10_000, enabled });
-const useBlocked = (enabled = true) => useQuery({ queryKey: ["items", "blocked"], queryFn: () => api.items.list({ status: "blocked" }), enabled });
+export const useT3 = (enabled = true) => useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 10_000, enabled });
+export const useBlocked = (enabled = true) => useQuery({ queryKey: ["items", "blocked"], queryFn: () => api.items.list({ status: "blocked" }), enabled });
 
 export function useAttentionCount(enabled: boolean) {
   const t3 = useT3(enabled);

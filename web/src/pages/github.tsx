@@ -58,10 +58,12 @@ const linked = (prefix: string, refs: { number: number; title: string }[]) => re
   <div className="flex flex-wrap gap-1">{refs.map((r) => <span key={r.number} title={r.title}><Badge>{prefix} #{r.number}</Badge></span>)}</div>
 );
 
+export const useGithubOpen = () => useQuery({ queryKey: ["github"], queryFn: () => api.github(), refetchInterval: 60_000, retry: false });
+
 export function Github() {
   const qc = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
-  const data = useQuery({ queryKey: ["github"], queryFn: () => api.github(), refetchInterval: 60_000, retry: false });
+  const data = useGithubOpen();
   const refresh = async () => {
     setRefreshing(true);
     try { qc.setQueryData(["github"], await api.github(true)); } finally { setRefreshing(false); }
