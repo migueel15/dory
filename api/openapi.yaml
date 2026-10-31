@@ -727,6 +727,63 @@ paths:
                 properties:
                   url:
                     type: "string"
+  "/t3/threads/{id}/context":
+    get:
+      operationId: "getT3ThreadContext"
+      summary: "Recent messages and open request of a thread"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+      responses:
+        "200":
+          description: "Context"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/T3ThreadContext"
+  "/t3/threads/{id}/messages":
+    post:
+      operationId: "sendT3ThreadMessage"
+      summary: "Send a message to a thread"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              required: ["text"]
+              properties:
+                text:
+                  type: "string"
+      responses:
+        "204":
+          description: "Sent"
+  "/t3/threads/{id}/requests/{request_id}":
+    post:
+      operationId: "respondT3ThreadRequest"
+      summary: "Approve, decline or answer the open request of a thread"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+        - {name: "request_id", in: "path", required: true, schema: {type: "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                decision:
+                  type: "string"
+                  enum: ["accept", "decline"]
+                answers:
+                  type: "object"
+                  additionalProperties: true
+      responses:
+        "204":
+          description: "Delivered"
+        "409":
+          description: "The request is no longer open"
   "/t3/status":
     get:
       operationId: "getT3Status"
@@ -2382,6 +2439,55 @@ components:
           type: "boolean"
         url:
           type: "string"
+    T3ThreadContext:
+      type: "object"
+      required: ["messages", "pending"]
+      properties:
+        messages:
+          type: "array"
+          items:
+            type: "object"
+            required: ["role", "text"]
+            properties:
+              role:
+                type: "string"
+              text:
+                type: "string"
+        pending:
+          type: "object"
+          nullable: true
+          required: ["id", "kind", "detail", "questions"]
+          properties:
+            id:
+              type: "string"
+            kind:
+              type: "string"
+            detail:
+              type: "string"
+            questions:
+              type: "array"
+              items:
+                type: "object"
+                required: ["id", "header", "question", "options", "multi_select"]
+                properties:
+                  id:
+                    type: "string"
+                  header:
+                    type: "string"
+                  question:
+                    type: "string"
+                  multi_select:
+                    type: "boolean"
+                  options:
+                    type: "array"
+                    items:
+                      type: "object"
+                      required: ["label", "description"]
+                      properties:
+                        label:
+                          type: "string"
+                        description:
+                          type: "string"
     T3Status:
       type: "object"
       required: ["instance_id", "environment_id", "base_url", "state", "version", "last_seen", "threads"]

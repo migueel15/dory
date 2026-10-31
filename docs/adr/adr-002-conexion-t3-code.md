@@ -17,6 +17,8 @@ Dory debe mostrar y manejar las instancias de T3 Code de infra, Arch Linux y Arc
 - Dory comprueba `orchestrationProtocolVersion` y, si no la admite, marca la instancia como incompatible en lugar de fallar.
 - Una instancia inaccesible se muestra como desconectada y no afecta a las demás.
 
+- Las escrituras usan `orchestration.dispatchCommand` por WebSocket (`/ws` con `wsTicket`), con una conexión por llamada. Dory solo actúa sobre hilos que ya reporta una instancia y deja registro en `events`. Las aprobaciones se limitan a aceptar o rechazar una sola petición.
+
 ## Consequences
 
 - Una actualización de T3 Code puede romper la integración hasta adaptar el conector.
