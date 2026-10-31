@@ -11,6 +11,7 @@ import (
 	"github.com/migueel15/dory/internal/config"
 	"github.com/migueel15/dory/internal/mcp"
 	"github.com/migueel15/dory/internal/service"
+	"github.com/migueel15/dory/internal/t3"
 	"github.com/migueel15/dory/migrations"
 	"github.com/migueel15/dory/web"
 	"github.com/pressly/goose/v3"
@@ -65,7 +66,9 @@ func run() error {
 		}
 		svc := service.New(pool)
 		mux := http.NewServeMux()
-		api.Register(mux, svc)
+		monitor := t3.NewMonitor(svc)
+		go monitor.Run(ctx)
+		api.Register(mux, svc, monitor)
 		auth.Register(mux, svc, cfg)
 		mux.Handle("/mcp", mcp.Handler(svc))
 		mux.Handle("/", web.Handler())

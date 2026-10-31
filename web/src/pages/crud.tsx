@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { api, type Environment, type Feature, type Memory, type Project } from "../api/client";
+import { api, type Environment, type Feature, type Memory, type Project, type T3Status } from "../api/client";
 import { Badge, Button, Card, ErrorText, Input, field, Label, Md, Modal, Textarea, csv } from "../components/ui";
 
 // Hook compartido: guardar/archivar e invalidar la lista.
@@ -84,9 +84,31 @@ function EnvironmentForm({ env, onClose }: { env?: Environment; onClose: () => v
   );
 }
 
+const stateLabels: Record<T3Status["state"], string> = { available: "Disponible", disconnected: "Desconectada", auth_failed: "Token rechazado", incompatible: "Versión incompatible" };
+
+function InstanceStatus({ status }: { status?: T3Status }) {
+  if (!status) return <div className="text-xs text-slate-500 dark:text-slate-400">T3 Code sin configurar</div>;
+  return (
+    <div className="space-y-1 text-sm" onClick={(e) => e.stopPropagation()}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge>{stateLabels[status.state]}</Badge>
+        <a className="text-xs underline" href={status.base_url} target="_blank" rel="noreferrer">Abrir T3 Code</a>
+        {status.version && <span className="text-xs text-slate-500 dark:text-slate-400">{status.version}</span>}
+      </div>
+      {status.threads.filter((t) => t.attention || t.status === "running").map((t) => (
+        <div key={t.id} className="flex items-start justify-between gap-2">
+          <span className="min-w-0 break-words">{t.title}</span>
+          <span className={`shrink-0 text-xs ${t.attention ? "text-red-600 dark:text-red-400" : "text-slate-500 dark:text-slate-400"}`}>{t.attention ? "Te necesita" : t.model}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Environments() {
   const [editing, setEditing] = useState<Environment | "new" | null>(null);
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
+  const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 10_000 });
   return (
     <div className="space-y-3">
       <Header title="Entornos" onNew={() => setEditing("new")} />
@@ -97,6 +119,7 @@ export function Environments() {
             <div onClick={() => setEditing(e)} className="space-y-1">
               <div className="font-medium">{e.name} <span className="text-xs text-slate-500 dark:text-slate-400">{e.os}</span></div>
               <div className="flex flex-wrap gap-1">{e.agents_available.map((a) => <Badge key={a}>{a}</Badge>)}</div>
+              <InstanceStatus status={t3.data?.find((s) => s.environment_id === e.id)} />
               {e.access && <Md>{e.access}</Md>}
               {e.notes && <Md>{e.notes}</Md>}
             </div>
