@@ -740,6 +740,19 @@ paths:
                 type: "array"
                 items:
                   $ref: "#/components/schemas/T3Status"
+  "/t3/usage":
+    get:
+      operationId: "getT3Usage"
+      summary: "Latest plan limits and consumption of the T3 Code instances"
+      responses:
+        "200":
+          description: "Latest polled usage"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/T3InstanceUsage"
   "/t3-instances":
     get:
       operationId: "listT3Instances"
@@ -2394,6 +2407,85 @@ components:
           type: "array"
           items:
             $ref: "#/components/schemas/T3Thread"
+    T3UsageWindow:
+      type: "object"
+      required: ["kind", "label", "used_percent", "resets_at", "window_minutes"]
+      properties:
+        kind:
+          type: "string"
+        label:
+          type: "string"
+        used_percent:
+          type: "number"
+        resets_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+        window_minutes:
+          type: "integer"
+          nullable: true
+    T3ProviderLimits:
+      type: "object"
+      required: ["provider", "name", "checked_at", "windows"]
+      properties:
+        provider:
+          type: "string"
+        name:
+          type: "string"
+        checked_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+        windows:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/T3UsageWindow"
+    T3ModelUsage:
+      type: "object"
+      required: ["provider", "model", "input_tokens", "cached_tokens", "output_tokens", "cost_usd", "cost_source"]
+      properties:
+        provider:
+          type: "string"
+        model:
+          type: "string"
+        input_tokens:
+          type: "integer"
+        cached_tokens:
+          type: "integer"
+        output_tokens:
+          type: "integer"
+        cost_usd:
+          type: "number"
+        cost_source:
+          type: "string"
+          description: "providerReported is real, modelPriced is an estimate, unpriced has no cost"
+    T3InstanceUsage:
+      type: "object"
+      required: ["instance_id", "environment_id", "fetched_at", "limits_error", "providers", "models_error", "models"]
+      properties:
+        instance_id:
+          type: "string"
+          format: "uuid"
+        environment_id:
+          type: "string"
+          format: "uuid"
+        fetched_at:
+          type: "string"
+          format: "date-time"
+        limits_error:
+          type: "string"
+          description: "Empty, or unavailable"
+        providers:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/T3ProviderLimits"
+        models_error:
+          type: "string"
+          description: "Empty, unavailable or missing_scope"
+        models:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/T3ModelUsage"
     T3Instance:
       type: "object"
       required:

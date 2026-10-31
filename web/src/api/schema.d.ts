@@ -250,6 +250,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/t3/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Latest plan limits and consumption of the T3 Code instances */
+        get: operations["getT3Usage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/t3-instances": {
         parameters: {
             query?: never;
@@ -752,6 +769,45 @@ export interface components {
             /** Format: date-time */
             last_seen: string | null;
             threads: components["schemas"]["T3Thread"][];
+        };
+        T3UsageWindow: {
+            kind: string;
+            label: string;
+            used_percent: number;
+            /** Format: date-time */
+            resets_at: string | null;
+            window_minutes: number | null;
+        };
+        T3ProviderLimits: {
+            provider: string;
+            name: string;
+            /** Format: date-time */
+            checked_at: string | null;
+            windows: components["schemas"]["T3UsageWindow"][];
+        };
+        T3ModelUsage: {
+            provider: string;
+            model: string;
+            input_tokens: number;
+            cached_tokens: number;
+            output_tokens: number;
+            cost_usd: number;
+            /** @description providerReported is real, modelPriced is an estimate, unpriced has no cost */
+            cost_source: string;
+        };
+        T3InstanceUsage: {
+            /** Format: uuid */
+            instance_id: string;
+            /** Format: uuid */
+            environment_id: string;
+            /** Format: date-time */
+            fetched_at: string;
+            /** @description Empty, or unavailable */
+            limits_error: string;
+            providers: components["schemas"]["T3ProviderLimits"][];
+            /** @description Empty, unavailable or missing_scope */
+            models_error: string;
+            models: components["schemas"]["T3ModelUsage"][];
         };
         T3Instance: {
             /** Format: uuid */
@@ -1806,6 +1862,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["T3Status"][];
+                };
+            };
+        };
+    };
+    getT3Usage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest polled usage */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["T3InstanceUsage"][];
                 };
             };
         };
