@@ -11,6 +11,7 @@ import { GithubView } from "./pages/github-detail";
 import { Github } from "./pages/github";
 import { Attention, useAttentionCount } from "./pages/attention";
 import { Home, homeSearch } from "./pages/home";
+import { Usage } from "./pages/usage";
 import { Inbox } from "./pages/items";
 import { ProjectDetail, Projects } from "./pages/projects";
 import { applyTheme, useTheme } from "./theme";
@@ -81,6 +82,7 @@ function Layout() {
           <Link to="/" activeOptions={{ exact: true }} className={link}>Inicio</Link>
           <Link to="/inbox" className={link}>Inbox</Link>
           <Link to="/attention" className={link}>Atención{attention > 0 ? ` (${attention})` : ""}</Link>
+          <Link to="/usage" className={link}>Uso</Link>
           <Link to="/github" className={link}>GitHub</Link>
           <Link to="/projects" className={link}>Proyectos</Link>
           <Link to="/environments" className={link}>Entornos</Link>
@@ -100,6 +102,7 @@ const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/", component: Home, validateSearch: homeSearch }),
   createRoute({ getParentRoute: () => root, path: "/inbox", component: Inbox }),
   createRoute({ getParentRoute: () => root, path: "/attention", component: Attention }),
+  createRoute({ getParentRoute: () => root, path: "/usage", component: Usage }),
   createRoute({ getParentRoute: () => root, path: "/github", component: Github }),
   createRoute({ getParentRoute: () => root, path: "/github/$owner/$repo/$kind/$number", component: GithubView }),
   createRoute({ getParentRoute: () => root, path: "/projects", component: Projects }),

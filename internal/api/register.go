@@ -31,6 +31,9 @@ func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *
 	mux.HandleFunc("GET /api/t3/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, monitor.Statuses())
 	})
+	mux.HandleFunc("GET /api/t3/usage", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, monitor.Usage())
+	})
 	mux.HandleFunc("POST /api/t3/instances/{id}/pair", func(w http.ResponseWriter, r *http.Request) {
 		link, err := monitor.PairingLink(r.Context(), r.PathValue("id"))
 		if err != nil {

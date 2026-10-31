@@ -44,14 +44,16 @@ type Monitor struct {
 	client *http.Client
 	mu     sync.RWMutex
 	byID   map[string]Status
+	usage  map[string]InstanceUsage
 }
 
 func NewMonitor(svc service.Service) *Monitor {
-	return &Monitor{svc: svc, client: &http.Client{Timeout: requestTimeout}, byID: map[string]Status{}}
+	return &Monitor{svc: svc, client: &http.Client{Timeout: requestTimeout}, byID: map[string]Status{}, usage: map[string]InstanceUsage{}}
 }
 
 // Run polls until ctx ends.
 func (m *Monitor) Run(ctx context.Context) {
+	go m.runUsage(ctx)
 	tick := time.NewTicker(pollInterval)
 	defer tick.Stop()
 	for {
@@ -125,6 +127,60 @@ func (m *Monitor) check(ctx context.Context, in service.T3Instance) Status {
 		log.Printf("t3: threads of %s: %v", in.BaseUrl, err)
 	}
 	return s
+}
+
+func (m *Monitor) runUsage(ctx context.Context) {
+	tick := time.NewTicker(usageInterval)
+	defer tick.Stop()
+	for {
+		m.pollUsage(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+}
+
+func (m *Monitor) pollUsage(ctx context.Context) {
+	instances, err := m.svc.T3Instances().List(ctx, service.Filter{Limit: 100})
+	if err != nil {
+		log.Printf("t3: list instances: %v", err)
+		return
+	}
+	next := make(map[string]InstanceUsage, len(instances))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, in := range instances {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c := Client{BaseURL: in.BaseUrl, Token: os.Getenv(in.TokenEnv), HTTP: m.client}
+			u, err := c.Usage(ctx, time.Now())
+			if err != nil {
+				u.LimitsError, u.ModelsError = UsageUnavailable, UsageUnavailable
+			}
+			u.InstanceID, u.EnvironmentID = in.ID, in.EnvironmentID
+			mu.Lock()
+			defer mu.Unlock()
+			next[in.ID] = u
+		}()
+	}
+	wg.Wait()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.usage = next
+}
+
+// Usage returns the latest usage read of every instance.
+func (m *Monitor) Usage() []InstanceUsage {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]InstanceUsage, 0, len(m.usage))
+	for _, u := range m.usage {
+		out = append(out, u)
+	}
+	return out
 }
 
 // Locate finds the instance that currently reports a thread.
