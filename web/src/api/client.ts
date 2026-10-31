@@ -13,6 +13,7 @@ export type ItemInput = Partial<S["ItemInput"]> & { title: string };
 export type Memory = S["Memory"];
 export type MemoryInput = S["MemoryInput"];
 export type User = S["User"];
+export type T3Status = S["T3Status"];
 export type ItemStatus = Item["status"];
 
 export class ApiError extends Error {
@@ -49,6 +50,7 @@ function resource<T extends { id: string }, I>(path: string) {
 }
 
 export const api = {
+  t3Status: () => req<T3Status[]>("GET", "/t3/status"),
   login: (username: string, password: string) => req<User>("POST", "/auth/login", { username, password }),
   logout: () => req<void>("POST", "/auth/logout"),
   me: () => req<User>("GET", "/auth/me"),

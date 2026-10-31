@@ -148,6 +148,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/t3/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Live status of the T3 Code instances */
+        get: operations["getT3Status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/t3-instances": {
         parameters: {
             query?: never;
@@ -562,6 +579,28 @@ export interface components {
             /** Format: uuid */
             environment_id: string;
             path: string;
+        };
+        T3Thread: {
+            id: string;
+            project_id: string;
+            title: string;
+            status: string;
+            model: string;
+            updated_at: string;
+            attention: boolean;
+        };
+        T3Status: {
+            /** Format: uuid */
+            instance_id: string;
+            /** Format: uuid */
+            environment_id: string;
+            base_url: string;
+            /** @enum {string} */
+            state: "available" | "disconnected" | "auth_failed" | "incompatible";
+            version: string;
+            /** Format: date-time */
+            last_seen: string | null;
+            threads: components["schemas"]["T3Thread"][];
         };
         T3Instance: {
             /** Format: uuid */
@@ -1474,6 +1513,26 @@ export interface operations {
             404: components["responses"]["Error404"];
             409: components["responses"]["Error409"];
             500: components["responses"]["Error500"];
+        };
+    };
+    getT3Status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest polled status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["T3Status"][];
+                };
+            };
         };
     };
     listT3Instances: {

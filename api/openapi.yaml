@@ -644,6 +644,19 @@ paths:
           $ref: "#/components/responses/Error409"
         "500":
           $ref: "#/components/responses/Error500"
+  "/t3/status":
+    get:
+      operationId: "getT3Status"
+      summary: "Live status of the T3 Code instances"
+      responses:
+        "200":
+          description: "Latest polled status"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/T3Status"
   "/t3-instances":
     get:
       operationId: "listT3Instances"
@@ -2098,6 +2111,49 @@ components:
           format: "uuid"
         path:
           type: "string"
+    T3Thread:
+      type: "object"
+      required: ["id", "project_id", "title", "status", "model", "updated_at", "attention"]
+      properties:
+        id:
+          type: "string"
+        project_id:
+          type: "string"
+        title:
+          type: "string"
+        status:
+          type: "string"
+        model:
+          type: "string"
+        updated_at:
+          type: "string"
+        attention:
+          type: "boolean"
+    T3Status:
+      type: "object"
+      required: ["instance_id", "environment_id", "base_url", "state", "version", "last_seen", "threads"]
+      properties:
+        instance_id:
+          type: "string"
+          format: "uuid"
+        environment_id:
+          type: "string"
+          format: "uuid"
+        base_url:
+          type: "string"
+        state:
+          type: "string"
+          enum: ["available", "disconnected", "auth_failed", "incompatible"]
+        version:
+          type: "string"
+        last_seen:
+          type: "string"
+          format: "date-time"
+          nullable: true
+        threads:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/T3Thread"
     T3Instance:
       type: "object"
       required:
