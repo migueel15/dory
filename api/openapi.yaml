@@ -810,6 +810,19 @@ paths:
                 type: "array"
                 items:
                   $ref: "#/components/schemas/T3InstanceUsage"
+  "/t3/usage/refresh":
+    post:
+      operationId: "refreshT3Usage"
+      summary: "Force a new read of plan limits and consumption"
+      responses:
+        "200":
+          description: "Usage after the forced read"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/T3InstanceUsage"
   "/t3-instances":
     get:
       operationId: "listT3Instances"

@@ -96,3 +96,14 @@ func TestUsageRejectedToken(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestRefreshProviders(t *testing.T) {
+	c := usageServer(t, "")
+	if err := c.RefreshProviders(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	c.Token = "bad"
+	if err := c.RefreshProviders(context.Background()); err != errUnauthorized {
+		t.Fatalf("err = %v", err)
+	}
+}
