@@ -588,6 +588,7 @@ export interface components {
             model: string;
             updated_at: string;
             attention: boolean;
+            url: string;
         };
         T3Status: {
             /** Format: uuid */

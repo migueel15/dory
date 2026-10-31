@@ -36,6 +36,7 @@ type Thread struct {
 	Model     string `json:"model"`
 	UpdatedAt string `json:"updated_at"`
 	Attention bool   `json:"attention"`
+	URL       string `json:"url"`
 }
 
 type wireThread struct {

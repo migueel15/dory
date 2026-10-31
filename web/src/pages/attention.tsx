@@ -27,7 +27,7 @@ export function Attention() {
       {down.map((s) => <p key={s.instance_id} className="text-sm text-slate-500 dark:text-slate-400">Sin datos de {envName(s.environment_id)}: instancia no disponible.</p>)}
       {threads.map((t) => (
         <Card key={t.id}>
-          <a href={t.status_.base_url} target="_blank" rel="noreferrer" className="block space-y-1">
+          <a href={t.url} target="_blank" rel="noreferrer" className="block space-y-1">
             <div className="font-medium break-words">{t.title}</div>
             <div className="flex flex-wrap gap-1"><Badge>{envName(t.status_.environment_id)}</Badge><Badge>{t.status}</Badge><Badge>{t.model}</Badge></div>
           </a>

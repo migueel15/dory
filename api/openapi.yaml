@@ -2113,7 +2113,7 @@ components:
           type: "string"
     T3Thread:
       type: "object"
-      required: ["id", "project_id", "title", "status", "model", "updated_at", "attention"]
+      required: ["id", "project_id", "title", "status", "model", "updated_at", "attention", "url"]
       properties:
         id:
           type: "string"
@@ -2129,6 +2129,8 @@ components:
           type: "string"
         attention:
           type: "boolean"
+        url:
+          type: "string"
     T3Status:
       type: "object"
       required: ["instance_id", "environment_id", "base_url", "state", "version", "last_seen", "threads"]
