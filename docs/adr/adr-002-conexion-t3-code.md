@@ -18,9 +18,10 @@ Dory debe mostrar y manejar las instancias de T3 Code de infra, Arch Linux y Arc
 - Una instancia inaccesible se muestra como desconectada y no afecta a las demás.
 
 - Las escrituras usan `orchestration.dispatchCommand` por WebSocket (`/ws` con `wsTicket`), con una conexión por llamada. Dory solo actúa sobre hilos que ya reporta una instancia y deja registro en `events`. Las aprobaciones se limitan a aceptar o rechazar una sola petición.
+- Dory busca instancias nuevas en el rango `DORY_T3_DISCOVERY_CIDR`, por el puerto 3773 y la ruta pública, y crea su entorno e instancia. Archivar un entorno impide que reaparezca. Los enlaces de T3 no son la fuente porque pueden estar vacíos.
 
 ## Consequences
 
 - Una actualización de T3 Code puede romper la integración hasta adaptar el conector.
 - Dory solo ve las máquinas alcanzables desde infra; Arch Linux aparece como desconectada mientras está apagada.
-- Añadir una instancia exige emitir un token y configurarlo en el despliegue.
+- Una instancia descubierta aparece sola, pero leer sus hilos exige emitir un token y configurarlo en el despliegue.
