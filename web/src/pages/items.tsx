@@ -4,7 +4,7 @@ import { DndContext, type DragEndEvent, PointerSensor, TouchSensor, useDraggable
 import { api, itemInput, type Item, type ItemStatus } from "../api/client";
 import { Badge, Button, Card, ErrorText, Input, field, Label, Md, Modal, Textarea, csv } from "../components/ui";
 
-const STATUSES: ItemStatus[] = ["inbox", "triaged", "ready", "in_progress", "blocked", "done", "cancelled"];
+const STATUSES: ItemStatus[] = ["inbox", "triaged", "ready", "in_progress", "validating", "blocked", "done", "cancelled"];
 // Closed columns can grow to hundreds of items: show the most recent ones in pages.
 const PAGED: ItemStatus[] = ["done", "cancelled"];
 const PAGE = 10;
