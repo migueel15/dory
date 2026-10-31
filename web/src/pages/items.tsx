@@ -1,3 +1,4 @@
+import { LaunchDialog } from "./launch";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DndContext, type DragEndEvent, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
@@ -11,6 +12,7 @@ const PAGE = 10;
 
 export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?: string | null; onClose: () => void }) {
   const qc = useQueryClient();
+  const [launch, setLaunch] = useState<"triage" | "implementation" | null>(null);
   const [title, setTitle] = useState(item?.title ?? "");
   const [body, setBody] = useState(item?.body_md ?? "");
   const [progress, setProgress] = useState(item?.progress ?? "");
@@ -68,6 +70,9 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
         <Label text="Tags (coma)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Label>
       </div>
       {status === "blocked" && <Label text="Motivo del bloqueo"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Qué lo bloquea y qué lo desbloquea" /></Label>}
+      {item && (item.status === "inbox" || item.status === "triaged") && <Button type="button" variant="ghost" onClick={() => setLaunch("triage")}>Analizar con un agente</Button>}
+      {item?.status === "ready" && <Button type="button" variant="ghost" onClick={() => setLaunch("implementation")}>Enviar a implementar</Button>}
+      {item && launch && <LaunchDialog items={[item]} role={launch} onClose={() => setLaunch(null)} />}
       <ErrorText error={save.error ?? archive.error} />
       <div className="flex justify-between">
         {item ? <Button variant="danger" onClick={() => archive.mutate()}>Archivar</Button> : <span />}
@@ -83,6 +88,7 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
 export function Inbox() {
   const [editing, setEditing] = useState<Item | "new" | null>(null);
   const [quick, setQuick] = useState("");
+  const [batch, setBatch] = useState(false);
   const qc = useQueryClient();
   const items = useQuery({ queryKey: ["items", "inbox"], queryFn: () => api.items.list({ status: "inbox" }) });
   const add = useMutation({
@@ -96,8 +102,12 @@ export function Inbox() {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Inbox</h1>
-        <Button onClick={() => setEditing("new")}>Nuevo item</Button>
+        <div className="flex gap-2">
+          {!!items.data?.length && <Button variant="ghost" onClick={() => setBatch(true)}>Analizar todo</Button>}
+          <Button onClick={() => setEditing("new")}>Nuevo item</Button>
+        </div>
       </div>
+      {batch && items.data && <LaunchDialog items={items.data} role="triage" onClose={() => setBatch(false)} />}
       <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (quick.trim()) add.mutate(quick.trim()); }}>
         <Input placeholder="Captura rápida…" value={quick} onChange={(e) => setQuick(e.target.value)} />
         <Button disabled={add.isPending}>Añadir</Button>

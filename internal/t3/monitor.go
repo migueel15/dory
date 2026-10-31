@@ -211,6 +211,21 @@ func (m *Monitor) ThreadClient(ctx context.Context, threadID string) (Client, er
 	return Client{BaseURL: in.BaseUrl, Token: os.Getenv(in.TokenEnv), HTTP: m.client}, nil
 }
 
+// InstanceClient returns a client for an instance that is available right now.
+func (m *Monitor) InstanceClient(ctx context.Context, id string) (Client, error) {
+	m.mu.RLock()
+	state := m.byID[id].State
+	m.mu.RUnlock()
+	if state != StateAvailable {
+		return Client{}, ErrInstanceUnavailable
+	}
+	in, err := m.svc.T3Instances().Get(ctx, id)
+	if err != nil {
+		return Client{}, err
+	}
+	return Client{BaseURL: in.BaseUrl, Token: os.Getenv(in.TokenEnv), HTTP: m.client}, nil
+}
+
 // PairingLink mints a one-time sign-in link. It runs the t3 CLI, so it only
 // works for the instance on this host (DORY_T3_LOCAL_URL); the CLI grants the
 // default scopes without storing a full access token in Dory.

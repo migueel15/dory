@@ -54,6 +54,12 @@ function resource<T extends { id: string }, I>(path: string) {
   };
 }
 
+export type T3Catalog = {
+  providers: { instance_id: string; name: string; models: { slug: string; name: string }[] }[];
+  projects: { id: string; title: string; root: string }[];
+};
+export type T3LaunchInput = { instance_id: string; project_id: string; provider: string; model: string; role: "triage" | "implementation"; worktree: boolean };
+
 export const api = {
   itemThreads: resource<S["ItemThread"], S["ItemThreadInput"]>("/item-threads"),
   github: (refresh = false) => req<S["GithubOverview"]>("GET", `/github/open${refresh ? "?refresh=true" : ""}`),
@@ -65,6 +71,8 @@ export const api = {
   t3Send: (id: string, text: string) => req<void>("POST", `/t3/threads/${id}/messages`, { text }),
   t3Respond: (id: string, requestId: string, body: { decision?: "accept" | "decline"; answers?: Record<string, unknown> }) =>
     req<void>("POST", `/t3/threads/${id}/requests/${encodeURIComponent(requestId)}`, body),
+  t3Catalog: (id: string) => req<T3Catalog>("GET", `/t3/instances/${id}/catalog`),
+  t3Launch: (itemId: string, body: T3LaunchInput) => req<{ thread_id: string }>("POST", `/items/${itemId}/launch`, body),
   t3Status: () => req<T3Status[]>("GET", "/t3/status"),
   t3Usage: () => req<T3InstanceUsage[]>("GET", "/t3/usage"),
   login: (username: string, password: string) => req<User>("POST", "/auth/login", { username, password }),
