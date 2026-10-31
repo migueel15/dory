@@ -28,6 +28,7 @@ go build -o dory ./cmd/dory
 mkdir -p "$BIN_DIR" "$CONFIG_DIR" "$DATA_DIR/backups"
 install -m 755 dory "$BIN_DIR/dory"
 install -m 755 deploy/dory-backup.sh "$BIN_DIR/dory-backup"
+install -m 755 deploy/dory-deploy.sh "$BIN_DIR/dory-deploy"
 install -m 644 docker-compose.yml "$DATA_DIR/docker-compose.yml"
 
 # Los ficheros de configuración existentes no se sobrescriben.
@@ -45,11 +46,11 @@ set -a; . "$CONFIG_DIR/dory.env"; set +a
 
 if [ "$USE_SYSTEMD" = 1 ]; then
   need sudo
-  for unit in dory.service dory-backup.service dory-backup.timer; do
+  for unit in dory.service dory-backup.service dory-backup.timer dory-deploy.service dory-deploy.timer; do
     sudo install -m 644 "deploy/$unit" "$UNIT_DIR/$unit"
   done
   sudo systemctl daemon-reload
-  sudo systemctl enable --now dory.service dory-backup.timer
+  sudo systemctl enable --now dory.service dory-backup.timer dory-deploy.timer
   sudo systemctl restart dory.service
 fi
 

@@ -17,10 +17,10 @@ scripts/install.sh
 El script se puede repetir para actualizar. Hace lo siguiente:
 
 1. Compila la web (si existe) y el binario Go.
-2. Copia `dory` y `dory-backup` a `~/.local/bin`.
+2. Copia `dory`, `dory-backup` y `dory-deploy` a `~/.local/bin`.
 3. Crea `~/.config/dory/config.toml` y `~/.config/dory/dory.env` si no existen. El segundo lleva una contraseña aleatoria y permisos 600. Nunca sobrescribe ficheros existentes.
 4. Levanta Postgres con `docker compose` y aplica las migraciones (`dory migrate up`).
-5. Instala y arranca `dory.service` y `dory-backup.timer`.
+5. Instala y arranca `dory.service`, `dory-backup.timer` y `dory-deploy.timer`.
 
 Con `--no-systemd` hace todo menos el paso 5, útil para probar sin tocar `/etc/systemd`.
 
@@ -39,7 +39,35 @@ El token se muestra una sola vez. Guárdalo para configurar el MCP (ver [mcp.md]
 ```sh
 systemctl status dory
 journalctl -u dory -f
-systemctl list-timers dory-backup.timer
+systemctl list-timers dory-backup.timer dory-deploy.timer
+```
+
+### Despliegue automático
+
+`dory-deploy.timer` comprueba cada minuto `origin/main`. Si hay un commit nuevo, `dory-deploy` hace lo siguiente en la copia limpia `~/.local/share/dory/src`, sin tocar los repositorios de trabajo:
+
+1. Ejecuta `go test ./...`.
+2. Lanza `dory-backup`.
+3. Ejecuta `scripts/install.sh`, que aplica las migraciones y reinicia el servicio y el MCP.
+4. Comprueba que `http://127.0.0.1:8080/` responde (`DORY_DEPLOY_HEALTH_URL`) y guarda el commit en `~/.local/share/dory/deployed-commit`.
+
+Para ver qué ha pasado:
+
+```sh
+journalctl -u dory-deploy -n 50
+cat ~/.local/share/dory/deployed-commit
+```
+
+Si un paso falla, el commit queda en `~/.local/share/dory/failed-commit` y no se reintenta hasta que llegue otro a `main`. Si falla antes de instalar, sigue funcionando la versión anterior. Si fallan las migraciones o el arranque, no hay rollback automático: arregla `main` o restaura el backup. Para reintentar el mismo commit:
+
+```sh
+rm ~/.local/share/dory/failed-commit
+```
+
+Para pausar los despliegues:
+
+```sh
+sudo systemctl stop dory-deploy.timer
 ```
 
 ### Backups
