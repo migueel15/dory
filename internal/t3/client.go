@@ -17,6 +17,9 @@ const protocolVersion = 2
 var (
 	errUnauthorized = errors.New("t3: token rejected")
 	errIncompatible = errors.New("t3: unsupported orchestration protocol")
+
+	// ErrThreadNotFound means no available instance reports the thread.
+	ErrThreadNotFound = errors.New("t3: thread not found")
 )
 
 // Discovery is the public identity of an instance.

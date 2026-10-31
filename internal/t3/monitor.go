@@ -197,6 +197,20 @@ func (m *Monitor) Locate(threadID string) (string, bool) {
 	return "", false
 }
 
+// ThreadClient returns a client for the instance that reports a thread, so
+// writes can only reach threads Dory is already showing.
+func (m *Monitor) ThreadClient(ctx context.Context, threadID string) (Client, error) {
+	id, ok := m.Locate(threadID)
+	if !ok {
+		return Client{}, ErrThreadNotFound
+	}
+	in, err := m.svc.T3Instances().Get(ctx, id)
+	if err != nil {
+		return Client{}, err
+	}
+	return Client{BaseURL: in.BaseUrl, Token: os.Getenv(in.TokenEnv), HTTP: m.client}, nil
+}
+
 // PairingLink mints a one-time sign-in link. It runs the t3 CLI, so it only
 // works for the instance on this host (DORY_T3_LOCAL_URL); the CLI grants the
 // default scopes without storing a full access token in Dory.

@@ -1,7 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { api } from "../api/client";
-import { Badge, Card, ErrorText } from "../components/ui";
+import { Badge, Button, Card, ErrorText, Textarea } from "../components/ui";
 
 export const useT3 = (enabled = true) => useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 10_000, enabled });
 export const useBlocked = (enabled = true) => useQuery({ queryKey: ["items", "blocked"], queryFn: () => api.items.list({ status: "blocked" }), enabled });
@@ -11,6 +12,65 @@ export function useAttentionCount(enabled: boolean) {
   const blocked = useBlocked(enabled);
   const threads = t3.data?.reduce((n, s) => n + s.threads.filter((t) => t.attention).length, 0) ?? 0;
   return threads + (blocked.data?.length ?? 0);
+}
+
+function ThreadReply({ id }: { id: string }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const qc = useQueryClient();
+  const ctx = useQuery({ queryKey: ["t3-context", id], queryFn: () => api.t3Context(id), enabled: open, refetchInterval: 5_000 });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["t3-context", id] });
+    qc.invalidateQueries({ queryKey: ["t3-status"] });
+  };
+  const send = useMutation({ mutationFn: () => api.t3Send(id, text), onSuccess: () => { setText(""); refresh(); } });
+  const respond = useMutation({
+    mutationFn: (body: Parameters<typeof api.t3Respond>[2]) => api.t3Respond(id, ctx.data!.pending!.id, body),
+    onSuccess: () => { setAnswers({}); refresh(); },
+  });
+  if (!open) return <Button variant="ghost" onClick={() => setOpen(true)}>Responder</Button>;
+  const pending = ctx.data?.pending;
+  const questions = pending?.questions ?? [];
+  return (
+    <div className="space-y-2">
+      <ErrorText error={ctx.error ?? send.error ?? respond.error} />
+      <div className="space-y-1 text-sm">
+        {ctx.data?.messages.map((m, i) => (
+          <p key={i} className="break-words whitespace-pre-wrap"><span className="text-slate-500 dark:text-slate-400">{m.role}: </span>{m.text}</p>
+        ))}
+      </div>
+      {pending && pending.kind === "user_input" && (
+        <div className="space-y-2">
+          {questions.map((q) => (
+            <div key={q.id} className="space-y-1">
+              <p className="text-sm font-medium">{q.question}</p>
+              <div className="flex flex-wrap gap-1">
+                {q.options.map((o) => (
+                  <Button key={o.label} variant={answers[q.id] === o.label ? "default" : "ghost"} title={o.description} onClick={() => setAnswers({ ...answers, [q.id]: o.label })}>{o.label}</Button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <Button disabled={respond.isPending || questions.length === 0 || questions.some((q) => !answers[q.id])} onClick={() => respond.mutate({ answers })}>Enviar respuesta</Button>
+        </div>
+      )}
+      {pending && pending.kind !== "user_input" && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Permiso solicitado: {pending.kind}</p>
+          {pending.detail
+            ? <pre className="overflow-x-auto rounded bg-slate-100 dark:bg-slate-800 p-2 text-xs">{pending.detail}</pre>
+            : <p className="text-sm text-slate-500 dark:text-slate-400">T3 no expone la acción exacta: revísala en T3.</p>}
+          <div className="flex gap-2">
+            <Button disabled={respond.isPending || !pending.detail} onClick={() => respond.mutate({ decision: "accept" })}>Aprobar</Button>
+            <Button variant="danger" disabled={respond.isPending} onClick={() => respond.mutate({ decision: "decline" })}>Rechazar</Button>
+          </div>
+        </div>
+      )}
+      <Textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Mensaje para el agente" />
+      <Button disabled={send.isPending || !text.trim()} onClick={() => send.mutate()}>Enviar mensaje</Button>
+    </div>
+  );
 }
 
 export function Attention() {
@@ -26,11 +86,12 @@ export function Attention() {
       <ErrorText error={t3.error ?? blocked.error} />
       {down.map((s) => <p key={s.instance_id} className="text-sm text-slate-500 dark:text-slate-400">Sin datos de {envName(s.environment_id)}: instancia no disponible.</p>)}
       {threads.map((t) => (
-        <Card key={t.id}>
+        <Card key={t.id} className="space-y-2">
           <a href={t.url} target="_blank" rel="noreferrer" className="block space-y-1">
             <div className="font-medium break-words">{t.title}</div>
             <div className="flex flex-wrap gap-1"><Badge>{envName(t.status_.environment_id)}</Badge><Badge>{t.status}</Badge><Badge>{t.model}</Badge></div>
           </a>
+          <ThreadReply id={t.id} />
         </Card>
       ))}
       {blocked.data?.map((i) => (

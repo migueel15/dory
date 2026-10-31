@@ -53,6 +53,8 @@ type SearchHit struct {
 type Events interface {
 	ListEvents(context.Context, int64, string, int32) ([]Event, error)
 	LatestEventID(context.Context) (int64, error)
+	// RecordEvent audits an action that happened outside the database.
+	RecordEvent(ctx context.Context, actor, kind, id string, change any) error
 }
 type Search interface {
 	Search(context.Context, string, int32, int32) ([]SearchHit, error)
@@ -284,6 +286,15 @@ func (b *backend) ListEvents(ctx context.Context, after int64, kind string, limi
 	}
 	return result, nil
 }
+func (b *backend) RecordEvent(ctx context.Context, actor, kind, id string, change any) error {
+	raw, err := json.Marshal(change)
+	if err != nil {
+		return err
+	}
+	_, err = b.q.AppendEvent(ctx, store.AppendEventParams{EntityType: kind, EntityID: id, Actor: actor, Change: raw})
+	return err
+}
+
 func (b *backend) LatestEventID(ctx context.Context) (int64, error) {
 	return b.q.LatestEventID(ctx)
 }

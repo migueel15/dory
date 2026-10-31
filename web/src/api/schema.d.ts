@@ -233,6 +233,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/t3/threads/{id}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recent messages and open request of a thread */
+        get: operations["getT3ThreadContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads/{id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a message to a thread */
+        post: operations["sendT3ThreadMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads/{id}/requests/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve, decline or answer the open request of a thread */
+        post: operations["respondT3ThreadRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/t3/status": {
         parameters: {
             query?: never;
@@ -756,6 +807,27 @@ export interface components {
             updated_at: string;
             attention: boolean;
             url: string;
+        };
+        T3ThreadContext: {
+            messages: {
+                role: string;
+                text: string;
+            }[];
+            pending: {
+                id: string;
+                kind: string;
+                detail: string;
+                questions: {
+                    id: string;
+                    header: string;
+                    question: string;
+                    multi_select: boolean;
+                    options: {
+                        label: string;
+                        description: string;
+                    }[];
+                }[];
+            } | null;
         };
         T3Status: {
             /** Format: uuid */
@@ -1843,6 +1915,92 @@ export interface operations {
                         url: string;
                     };
                 };
+            };
+        };
+    };
+    getT3ThreadContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Context */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["T3ThreadContext"];
+                };
+            };
+        };
+    };
+    sendT3ThreadMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    text: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Sent */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    respondT3ThreadRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    decision?: "accept" | "decline";
+                    answers?: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description Delivered */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request is no longer open */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
