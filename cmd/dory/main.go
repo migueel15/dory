@@ -70,7 +70,7 @@ func run() error {
 		go monitor.Run(ctx)
 		api.Register(mux, svc, monitor)
 		auth.Register(mux, svc, cfg)
-		mux.Handle("/mcp", mcp.Handler(svc))
+		mux.Handle("/mcp", mcp.Handler(svc, monitor.Locate))
 		mux.Handle("/", web.Handler())
 		server := &http.Server{Addr: cfg.Listen, Handler: auth.Middleware(svc, cfg)(mux), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 		done := make(chan error, 1)

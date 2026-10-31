@@ -6,6 +6,7 @@ import { ApiError, api } from "./api/client";
 import { useLiveUpdates } from "./api/live";
 import { Button, ErrorText, Input, Label } from "./components/ui";
 import { Environments, Memories, memorySearch } from "./pages/crud";
+import { Attention, useAttentionCount } from "./pages/attention";
 import { Inbox } from "./pages/items";
 import { ProjectDetail, Projects } from "./pages/projects";
 import { applyTheme, useTheme } from "./theme";
@@ -64,6 +65,7 @@ function Layout() {
   const logout = useMutation({ mutationFn: api.logout, onSuccess: () => qc.clear() });
   useLiveUpdates(!!me.data);
   const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") });
+  const attention = useAttentionCount(!!me.data);
   if (me.isPending) return null;
   if (!me.data) return <Login />;
   const link = "flex min-h-11 shrink-0 items-center rounded px-3 text-sm sm:min-h-0 sm:px-2 sm:py-1 hover:bg-slate-200 dark:hover:bg-slate-800 [&.active]:bg-slate-900 dark:[&.active]:bg-slate-100 [&.active]:text-white dark:[&.active]:text-slate-900";
@@ -73,6 +75,7 @@ function Layout() {
         <span className="mr-3 font-bold">Dory</span>
         <div className="order-last -mx-2 flex w-full gap-1 overflow-x-auto px-2 sm:order-none sm:mx-0 sm:w-auto sm:px-0">
           <Link to="/" className={link}>Inbox</Link>
+          <Link to="/attention" className={link}>Atención{attention > 0 ? ` (${attention})` : ""}</Link>
           <Link to="/projects" className={link}>Proyectos</Link>
           <Link to="/environments" className={link}>Entornos</Link>
           <Link to="/memories" className={link}>Memorias</Link>
@@ -89,6 +92,7 @@ function Layout() {
 const root = createRootRoute({ component: Layout });
 const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/", component: Inbox }),
+  createRoute({ getParentRoute: () => root, path: "/attention", component: Attention }),
   createRoute({ getParentRoute: () => root, path: "/projects", component: Projects }),
   createRoute({ getParentRoute: () => root, path: "/projects/$id", component: ProjectDetail }),
   createRoute({ getParentRoute: () => root, path: "/environments", component: Environments }),

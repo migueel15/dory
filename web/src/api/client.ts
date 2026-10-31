@@ -50,6 +50,7 @@ function resource<T extends { id: string }, I>(path: string) {
 }
 
 export const api = {
+  itemThreads: resource<S["ItemThread"], S["ItemThreadInput"]>("/item-threads"),
   t3Status: () => req<T3Status[]>("GET", "/t3/status"),
   login: (username: string, password: string) => req<User>("POST", "/auth/login", { username, password }),
   logout: () => req<void>("POST", "/auth/logout"),
