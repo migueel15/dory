@@ -15,3 +15,24 @@ func TestParseRemote(t *testing.T) {
 		}
 	}
 }
+
+func TestValidate(t *testing.T) {
+	cases := []struct {
+		kind string
+		a    Action
+		ok   bool
+	}{
+		{"pulls", Action{Type: "approve"}, true},
+		{"issues", Action{Type: "approve"}, false},
+		{"issues", Action{Type: "comment", Body: " "}, false},
+		{"issues", Action{Type: "close_issue"}, true},
+		{"pulls", Action{Type: "merge"}, false},
+		{"pulls", Action{Type: "merge", Method: "SQUASH"}, true},
+		{"pulls", Action{Type: "delete"}, false},
+	}
+	for _, c := range cases {
+		if err := validate(c.kind, c.a); (err == nil) != c.ok {
+			t.Errorf("%+v: %v", c, err)
+		}
+	}
+}

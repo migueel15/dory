@@ -86,13 +86,24 @@ function EnvironmentForm({ env, onClose }: { env?: Environment; onClose: () => v
 
 const stateLabels: Record<T3Status["state"], string> = { available: "Disponible", disconnected: "Desconectada", auth_failed: "Token rechazado", incompatible: "Versión incompatible" };
 
+// The tab opens before the request so browsers do not block it as a popup.
+async function openT3(status: T3Status) {
+  const tab = window.open("", "_blank");
+  try {
+    const { url } = await api.t3Pair(status.instance_id);
+    if (tab) tab.location.href = url;
+  } catch {
+    if (tab) tab.location.href = status.base_url;
+  }
+}
+
 function InstanceStatus({ status }: { status?: T3Status }) {
   if (!status) return <div className="text-xs text-slate-500 dark:text-slate-400">T3 Code sin configurar</div>;
   return (
     <div className="space-y-1 text-sm" onClick={(e) => e.stopPropagation()}>
       <div className="flex flex-wrap items-center gap-2">
         <Badge>{stateLabels[status.state]}</Badge>
-        <a className="text-xs underline" href={status.base_url} target="_blank" rel="noreferrer">Abrir T3 Code</a>
+        <button className="text-xs underline" onClick={() => openT3(status)}>Abrir T3 Code</button>
         {status.version && <span className="text-xs text-slate-500 dark:text-slate-400">{status.version}</span>}
       </div>
       {status.threads.filter((t) => t.attention || t.status === "running").map((t) => (

@@ -2,15 +2,16 @@
 package github
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,31 +31,6 @@ var (
 	remotePattern   = regexp.MustCompile(`github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?/?$`)
 )
 
-// Entry is an open issue or pull request.
-type Entry struct {
-	Repo      string `json:"repo"`
-	ProjectID string `json:"project_id"`
-	Kind      string `json:"kind"`
-	Number    int    `json:"number"`
-	Title     string `json:"title"`
-	Author    string `json:"author"`
-	URL       string `json:"url"`
-	Draft     bool   `json:"draft"`
-	UpdatedAt string `json:"updated_at"`
-}
-
-type wireEntry struct {
-	Number      int       `json:"number"`
-	Title       string    `json:"title"`
-	HTMLURL     string    `json:"html_url"`
-	Draft       bool      `json:"draft"`
-	UpdatedAt   string    `json:"updated_at"`
-	PullRequest *struct{} `json:"pull_request"`
-	User        struct {
-		Login string `json:"login"`
-	} `json:"user"`
-}
-
 // ParseRemote extracts owner/name from a GitHub remote URL.
 func ParseRemote(remote string) (string, bool) {
 	m := remotePattern.FindStringSubmatch(remote)
@@ -64,7 +40,7 @@ func ParseRemote(remote string) (string, bool) {
 	return m[1] + "/" + m[2], true
 }
 
-// Client caches the open list because it costs two requests per repository.
+// Client caches the overview because it costs one query per repository.
 type Client struct {
 	Token string
 	Base  string
@@ -72,7 +48,7 @@ type Client struct {
 	svc   service.Service
 
 	mu      sync.Mutex
-	cached  []Entry
+	cached  *Overview
 	fetched time.Time
 }
 
@@ -113,54 +89,44 @@ func (c *Client) repos(ctx context.Context) (map[string]string, error) {
 	return out, nil
 }
 
-// Open lists open issues and pull requests, newest first. Issues of the
-// GitHub API include pull requests, so one request per repository is enough.
-func (c *Client) Open(ctx context.Context) ([]Entry, error) {
-	if c.Token == "" {
-		return nil, ErrUnconfigured
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.cached != nil && time.Since(c.fetched) < cacheTTL {
-		return c.cached, nil
-	}
-	repos, err := c.repos(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := []Entry{}
-	for name, project := range repos {
-		body, err := c.get(ctx, "/repos/"+name+"/issues?state=open&per_page=100", "application/vnd.github+json")
-		if err != nil {
-			// One inaccessible repository must not hide the others.
-			log.Printf("%v", err)
-			continue
-		}
-		var wire []wireEntry
-		if err := json.Unmarshal(body, &wire); err != nil {
-			return nil, err
-		}
-		for _, w := range wire {
-			kind := "issue"
-			if w.PullRequest != nil {
-				kind = "pull"
-			}
-			out = append(out, Entry{Repo: name, ProjectID: project, Kind: kind, Number: w.Number, Title: w.Title, Author: w.User.Login, URL: w.HTMLURL, Draft: w.Draft, UpdatedAt: w.UpdatedAt})
-		}
-	}
-	slices.SortFunc(out, func(a, b Entry) int { return -cmpStrings(a.UpdatedAt, b.UpdatedAt) })
-	c.cached, c.fetched = out, time.Now()
-	return out, nil
+func sortByUpdated[T any](s []T, at func(T) string) {
+	slices.SortFunc(s, func(a, b T) int { return strings.Compare(at(b), at(a)) })
 }
 
-func cmpStrings(a, b string) int {
-	switch {
-	case a < b:
-		return -1
-	case a > b:
-		return 1
+// graphql runs a query and reports GitHub errors, whose messages explain
+// failures such as a merge blocked by branch protection.
+func (c *Client) graphql(ctx context.Context, query string, vars map[string]any, out any) error {
+	payload, err := json.Marshal(map[string]any{"query": query, "variables": vars})
+	if err != nil {
+		return err
 	}
-	return 0
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/graphql", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("github: graphql returned %d", resp.StatusCode)
+	}
+	var result struct {
+		Data   json.RawMessage `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return err
+	}
+	if len(result.Errors) > 0 {
+		return fmt.Errorf("github: %s", result.Errors[0].Message)
+	}
+	return json.Unmarshal(result.Data, out)
 }
 
 // Diff returns a pull request diff, only for registered repositories.
