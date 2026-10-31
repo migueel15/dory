@@ -148,6 +148,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/github/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Open issues and pull requests of the registered repositories */
+        get: operations["listGithubOpen"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/github/repos/{owner}/{repo}/pulls/{number}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Diff of a pull request */
+        get: operations["getGithubDiff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/t3/status": {
         parameters: {
             query?: never;
@@ -579,6 +613,18 @@ export interface components {
             /** Format: uuid */
             environment_id: string;
             path: string;
+        };
+        GithubEntry: {
+            repo: string;
+            project_id: string;
+            /** @enum {string} */
+            kind: "issue" | "pull";
+            number: number;
+            title: string;
+            author: string;
+            url: string;
+            draft: boolean;
+            updated_at: string;
         };
         T3Thread: {
             id: string;
@@ -1514,6 +1560,52 @@ export interface operations {
             404: components["responses"]["Error404"];
             409: components["responses"]["Error409"];
             500: components["responses"]["Error500"];
+        };
+    };
+    listGithubOpen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GithubEntry"][];
+                };
+            };
+        };
+    };
+    getGithubDiff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                owner: string;
+                repo: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unified diff */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        diff: string;
+                    };
+                };
+            };
         };
     };
     getT3Status: {

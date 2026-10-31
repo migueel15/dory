@@ -7,6 +7,7 @@ import { useLiveUpdates } from "./api/live";
 import { Button, ErrorText, Input, Label } from "./components/ui";
 import { Environments, Memories, memorySearch } from "./pages/crud";
 import { QuickCapture } from "./components/capture";
+import { Github } from "./pages/github";
 import { Attention, useAttentionCount } from "./pages/attention";
 import { Inbox } from "./pages/items";
 import { ProjectDetail, Projects } from "./pages/projects";
@@ -77,6 +78,7 @@ function Layout() {
         <div className="order-last -mx-2 flex w-full gap-1 overflow-x-auto px-2 sm:order-none sm:mx-0 sm:w-auto sm:px-0">
           <Link to="/" className={link}>Inbox</Link>
           <Link to="/attention" className={link}>Atención{attention > 0 ? ` (${attention})` : ""}</Link>
+          <Link to="/github" className={link}>GitHub</Link>
           <Link to="/projects" className={link}>Proyectos</Link>
           <Link to="/environments" className={link}>Entornos</Link>
           <Link to="/memories" className={link}>Memorias</Link>
@@ -94,6 +96,7 @@ const root = createRootRoute({ component: Layout });
 const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/", component: Inbox }),
   createRoute({ getParentRoute: () => root, path: "/attention", component: Attention }),
+  createRoute({ getParentRoute: () => root, path: "/github", component: Github }),
   createRoute({ getParentRoute: () => root, path: "/projects", component: Projects }),
   createRoute({ getParentRoute: () => root, path: "/projects/$id", component: ProjectDetail }),
   createRoute({ getParentRoute: () => root, path: "/environments", component: Environments }),

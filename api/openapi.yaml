@@ -644,6 +644,38 @@ paths:
           $ref: "#/components/responses/Error409"
         "500":
           $ref: "#/components/responses/Error500"
+  "/github/open":
+    get:
+      operationId: "listGithubOpen"
+      summary: "Open issues and pull requests of the registered repositories"
+      responses:
+        "200":
+          description: "Newest first"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/GithubEntry"
+  "/github/repos/{owner}/{repo}/pulls/{number}/diff":
+    get:
+      operationId: "getGithubDiff"
+      summary: "Diff of a pull request"
+      parameters:
+        - {name: "owner", in: "path", required: true, schema: {type: "string"}}
+        - {name: "repo", in: "path", required: true, schema: {type: "string"}}
+        - {name: "number", in: "path", required: true, schema: {type: "integer"}}
+      responses:
+        "200":
+          description: "Unified diff"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                required: ["diff"]
+                properties:
+                  diff:
+                    type: "string"
   "/t3/status":
     get:
       operationId: "getT3Status"
@@ -2110,6 +2142,29 @@ components:
           type: "string"
           format: "uuid"
         path:
+          type: "string"
+    GithubEntry:
+      type: "object"
+      required: ["repo", "project_id", "kind", "number", "title", "author", "url", "draft", "updated_at"]
+      properties:
+        repo:
+          type: "string"
+        project_id:
+          type: "string"
+        kind:
+          type: "string"
+          enum: ["issue", "pull"]
+        number:
+          type: "integer"
+        title:
+          type: "string"
+        author:
+          type: "string"
+        url:
+          type: "string"
+        draft:
+          type: "boolean"
+        updated_at:
           type: "string"
     T3Thread:
       type: "object"
