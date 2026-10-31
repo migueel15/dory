@@ -43,6 +43,7 @@ func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *
 		writeJSON(w, http.StatusOK, map[string]string{"url": link})
 	})
 	mountThreads(mux, svc, monitor)
+	mountLaunch(mux, svc, monitor)
 	mux.HandleFunc("GET /api/github/open", func(w http.ResponseWriter, r *http.Request) {
 		overview, err := gh.Open(r.Context(), r.URL.Query().Get("refresh") == "true")
 		if err != nil {

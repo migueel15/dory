@@ -15,6 +15,10 @@ func writeT3Error(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "not_found", err.Error())
 		return
 	}
+	if errors.Is(err, t3.ErrInstanceUnavailable) {
+		writeError(w, http.StatusConflict, "conflict", err.Error())
+		return
+	}
 	writeError(w, http.StatusBadGateway, "upstream", err.Error())
 }
 
