@@ -14,11 +14,24 @@ const (
 	roleImplementation = "implementation"
 )
 
+// triagePrompt lets the agent define the item in Dory, but stops at ready:
+// implementing it stays a deliberate click of the user.
+const triagePrompt = `Analiza esta idea consultando el código y las herramientas MCP de Dory (session_start, get_project). No cambies el código ni implementes nada.
+
+Si la idea queda clara y sin dudas que cambien el resultado, déjala definida en Dory en este mismo turno:
+1. Con update_item pon un título claro, body_md con objetivo, alcance y cómo probar, tags y project_id.
+2. Si encaja en una feature existente del proyecto, asigna su feature_id. Si es una capacidad nueva, créala con upsert_feature y asígnala. Los bugs y tareas menores no necesitan feature.
+3. Con move_item pásala a ready. No la lleves más allá: el usuario decide cuándo implementarla.
+
+Si tienes dudas que cambien el resultado, guarda solo lo que esté claro, pásala a triaged y plantea las dudas en este hilo.
+
+Termina con un resumen breve de lo que has dejado en Dory.`
+
 // launchPrompt gives the agent the item and what it may do with it.
 func launchPrompt(item service.Item, role string, worktree bool) string {
 	task := fmt.Sprintf("Item de Dory %s\nTítulo: %s\nTexto original: %s\nDescripción:\n%s\n\n", item.ID, item.Title, item.RawText, item.BodyMd)
 	if role == roleTriage {
-		return task + "Analiza esta idea y propón título, descripción, proyecto y feature en este hilo. No cambies nada en Dory ni en el código: el usuario decide si acepta la propuesta."
+		return task + triagePrompt
 	}
 	task += "Implementa este item siguiendo $dory-workflow; ya está en in_progress y vinculado a este hilo."
 	if worktree {
