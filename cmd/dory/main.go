@@ -9,6 +9,7 @@ import (
 	"github.com/migueel15/dory/internal/api"
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/config"
+	"github.com/migueel15/dory/internal/github"
 	"github.com/migueel15/dory/internal/mcp"
 	"github.com/migueel15/dory/internal/service"
 	"github.com/migueel15/dory/internal/t3"
@@ -68,7 +69,7 @@ func run() error {
 		mux := http.NewServeMux()
 		monitor := t3.NewMonitor(svc)
 		go monitor.Run(ctx)
-		api.Register(mux, svc, monitor)
+		api.Register(mux, svc, monitor, github.New(svc, os.Getenv("DORY_GITHUB_TOKEN")))
 		auth.Register(mux, svc, cfg)
 		mux.Handle("/mcp", mcp.Handler(svc, monitor.Locate))
 		mux.Handle("/", web.Handler())

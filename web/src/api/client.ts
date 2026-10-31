@@ -14,6 +14,7 @@ export type Memory = S["Memory"];
 export type MemoryInput = S["MemoryInput"];
 export type User = S["User"];
 export type T3Status = S["T3Status"];
+export type GithubEntry = S["GithubEntry"];
 export type ItemStatus = Item["status"];
 
 export class ApiError extends Error {
@@ -51,6 +52,8 @@ function resource<T extends { id: string }, I>(path: string) {
 
 export const api = {
   itemThreads: resource<S["ItemThread"], S["ItemThreadInput"]>("/item-threads"),
+  github: () => req<GithubEntry[]>("GET", "/github/open"),
+  githubDiff: (repo: string, number: number) => req<{ diff: string }>("GET", `/github/repos/${repo}/pulls/${number}/diff`),
   t3Status: () => req<T3Status[]>("GET", "/t3/status"),
   login: (username: string, password: string) => req<User>("POST", "/auth/login", { username, password }),
   logout: () => req<void>("POST", "/auth/logout"),
