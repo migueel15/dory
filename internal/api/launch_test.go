@@ -10,8 +10,12 @@ import (
 func TestLaunchPrompt(t *testing.T) {
 	item := service.Item{Title: "Idea"}
 	item.ID = "12345678-aaaa"
-	if p := launchPrompt(item, roleTriage, false); !strings.Contains(p, "No cambies nada") {
-		t.Fatalf("triage prompt allows changes: %s", p)
+	triage := launchPrompt(item, roleTriage, false)
+	if !strings.Contains(triage, "No cambies el código") {
+		t.Fatalf("triage prompt allows code changes: %s", triage)
+	}
+	if !strings.Contains(triage, "pásala a ready") || !strings.Contains(triage, "upsert_feature") {
+		t.Fatalf("triage prompt does not define the item: %s", triage)
 	}
 	if p := launchPrompt(item, roleImplementation, true); !strings.Contains(p, "dory/12345678") {
 		t.Fatalf("worktree branch missing: %s", p)
