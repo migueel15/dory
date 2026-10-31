@@ -2,10 +2,14 @@ package t3
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -135,6 +139,36 @@ func (m *Monitor) Locate(threadID string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// PairingLink mints a one-time sign-in link. It runs the t3 CLI, so it only
+// works for the instance on this host (DORY_T3_LOCAL_URL); the CLI grants the
+// default scopes without storing a full access token in Dory.
+func (m *Monitor) PairingLink(ctx context.Context, instanceID string) (string, error) {
+	in, err := m.svc.T3Instances().Get(ctx, instanceID)
+	if err != nil {
+		return "", err
+	}
+	if local := os.Getenv("DORY_T3_LOCAL_URL"); local == "" || strings.TrimRight(local, "/") != strings.TrimRight(in.BaseUrl, "/") {
+		return "", errors.New("t3: pairing is only available for the local instance")
+	}
+	bin := os.Getenv("DORY_T3_BIN")
+	if bin == "" {
+		bin = "t3"
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	raw, err := exec.CommandContext(ctx, bin, "auth", "pairing", "create", "--ttl", "5m", "--label", "dory", "--json").Output()
+	if err != nil {
+		return "", fmt.Errorf("t3: pairing command: %w", err)
+	}
+	var out struct {
+		Credential string `json:"credential"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil || out.Credential == "" {
+		return "", errors.New("t3: pairing command returned no credential")
+	}
+	return strings.TrimRight(in.BaseUrl, "/") + "/pair#token=" + url.QueryEscape(out.Credential), nil
 }
 
 // Statuses returns the latest known status of every instance.

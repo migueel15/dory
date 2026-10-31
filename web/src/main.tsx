@@ -7,6 +7,7 @@ import { useLiveUpdates } from "./api/live";
 import { Button, ErrorText, Input, Label } from "./components/ui";
 import { Environments, Memories, memorySearch } from "./pages/crud";
 import { QuickCapture } from "./components/capture";
+import { GithubView } from "./pages/github-detail";
 import { Github } from "./pages/github";
 import { Attention, useAttentionCount } from "./pages/attention";
 import { Inbox } from "./pages/items";
@@ -97,6 +98,7 @@ const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/", component: Inbox }),
   createRoute({ getParentRoute: () => root, path: "/attention", component: Attention }),
   createRoute({ getParentRoute: () => root, path: "/github", component: Github }),
+  createRoute({ getParentRoute: () => root, path: "/github/$owner/$repo/$kind/$number", component: GithubView }),
   createRoute({ getParentRoute: () => root, path: "/projects", component: Projects }),
   createRoute({ getParentRoute: () => root, path: "/projects/$id", component: ProjectDetail }),
   createRoute({ getParentRoute: () => root, path: "/environments", component: Environments }),

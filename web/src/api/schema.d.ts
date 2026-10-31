@@ -156,9 +156,43 @@ export interface paths {
             cookie?: never;
         };
         /** Open issues and pull requests of the registered repositories */
-        get: operations["listGithubOpen"];
+        get: operations["getGithubOverview"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/github/repos/{owner}/{repo}/{kind}/{number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Issue or pull request with its timeline */
+        get: operations["getGithubDetail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/github/repos/{owner}/{repo}/{kind}/{number}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Comment, review, merge or change state on GitHub */
+        post: operations["actOnGithub"];
         delete?: never;
         options?: never;
         head?: never;
@@ -176,6 +210,23 @@ export interface paths {
         get: operations["getGithubDiff"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/instances/{id}/pair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mint a one-time sign-in link for an instance */
+        post: operations["pairT3Instance"];
         delete?: never;
         options?: never;
         head?: never;
@@ -614,17 +665,70 @@ export interface components {
             environment_id: string;
             path: string;
         };
-        GithubEntry: {
+        GithubRef: {
+            number: number;
+            title: string;
+        };
+        GithubIssue: {
             repo: string;
             project_id: string;
-            /** @enum {string} */
-            kind: "issue" | "pull";
             number: number;
             title: string;
             author: string;
             url: string;
-            draft: boolean;
+            state: string;
             updated_at: string;
+            labels: string[];
+            pulls: components["schemas"]["GithubRef"][];
+        };
+        GithubPull: {
+            repo: string;
+            project_id: string;
+            number: number;
+            title: string;
+            author: string;
+            url: string;
+            state: string;
+            updated_at: string;
+            labels: string[];
+            issues: components["schemas"]["GithubRef"][];
+            draft: boolean;
+            head_ref: string;
+            base_ref: string;
+            review_decision: string;
+            approvals: number;
+            approved_by: string[];
+            changes_by: string[];
+            required_approvals: number | null;
+            review_requests: string[];
+            ci: string;
+            mergeable: string;
+            merge_state: string;
+        };
+        GithubOverview: {
+            issues: components["schemas"]["GithubIssue"][];
+            pulls: components["schemas"]["GithubPull"][];
+            fetched_at: string;
+        };
+        GithubEvent: {
+            type: string;
+            actor: string;
+            at: string;
+            body: string;
+            state: string;
+            detail: string;
+        };
+        GithubDetail: {
+            kind: string;
+            body: string;
+            issue: components["schemas"]["GithubIssue"] | null;
+            pull: components["schemas"]["GithubPull"] | null;
+            timeline: components["schemas"]["GithubEvent"][];
+        };
+        GithubAction: {
+            type: string;
+            body?: string;
+            method?: string;
         };
         T3Thread: {
             id: string;
@@ -1562,23 +1666,77 @@ export interface operations {
             500: components["responses"]["Error500"];
         };
     };
-    listGithubOpen: {
+    getGithubOverview: {
         parameters: {
-            query?: never;
+            query?: {
+                refresh?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Newest first */
+            /** @description Grouped by type, newest first */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GithubEntry"][];
+                    "application/json": components["schemas"]["GithubOverview"];
                 };
+            };
+        };
+    };
+    getGithubDetail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                owner: string;
+                repo: string;
+                kind: "issues" | "pulls";
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GithubDetail"];
+                };
+            };
+        };
+    };
+    actOnGithub: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                owner: string;
+                repo: string;
+                kind: "issues" | "pulls";
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GithubAction"];
+            };
+        };
+        responses: {
+            /** @description Applied */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -1603,6 +1761,30 @@ export interface operations {
                 content: {
                     "application/json": {
                         diff: string;
+                    };
+                };
+            };
+        };
+    };
+    pairT3Instance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Link */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        url: string;
                     };
                 };
             };
