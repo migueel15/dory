@@ -10,6 +10,7 @@ import { QuickCapture } from "./components/capture";
 import { GithubView } from "./pages/github-detail";
 import { Github } from "./pages/github";
 import { Attention, useAttentionCount } from "./pages/attention";
+import { Home, homeSearch } from "./pages/home";
 import { Inbox } from "./pages/items";
 import { ProjectDetail, Projects } from "./pages/projects";
 import { applyTheme, useTheme } from "./theme";
@@ -77,7 +78,8 @@ function Layout() {
       <nav className="flex flex-wrap items-center gap-1 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-2 sm:px-4">
         <span className="mr-3 font-bold">Dory</span>
         <div className="order-last -mx-2 flex w-full gap-1 overflow-x-auto px-2 sm:order-none sm:mx-0 sm:w-auto sm:px-0">
-          <Link to="/" className={link}>Inbox</Link>
+          <Link to="/" activeOptions={{ exact: true }} className={link}>Inicio</Link>
+          <Link to="/inbox" className={link}>Inbox</Link>
           <Link to="/attention" className={link}>Atención{attention > 0 ? ` (${attention})` : ""}</Link>
           <Link to="/github" className={link}>GitHub</Link>
           <Link to="/projects" className={link}>Proyectos</Link>
@@ -95,7 +97,8 @@ function Layout() {
 
 const root = createRootRoute({ component: Layout });
 const routeTree = root.addChildren([
-  createRoute({ getParentRoute: () => root, path: "/", component: Inbox }),
+  createRoute({ getParentRoute: () => root, path: "/", component: Home, validateSearch: homeSearch }),
+  createRoute({ getParentRoute: () => root, path: "/inbox", component: Inbox }),
   createRoute({ getParentRoute: () => root, path: "/attention", component: Attention }),
   createRoute({ getParentRoute: () => root, path: "/github", component: Github }),
   createRoute({ getParentRoute: () => root, path: "/github/$owner/$repo/$kind/$number", component: GithubView }),
