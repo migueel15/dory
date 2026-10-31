@@ -45,6 +45,9 @@ type Monitor struct {
 	mu     sync.RWMutex
 	byID   map[string]Status
 	usage  map[string]InstanceUsage
+	// polling keeps usage reads in order, so a slow read cannot replace a newer one.
+	polling   sync.Mutex
+	refreshed time.Time
 }
 
 func NewMonitor(svc service.Service) *Monitor {
@@ -133,7 +136,7 @@ func (m *Monitor) runUsage(ctx context.Context) {
 	tick := time.NewTicker(usageInterval)
 	defer tick.Stop()
 	for {
-		m.pollUsage(ctx)
+		m.pollUsage(ctx, false)
 		select {
 		case <-ctx.Done():
 			return
@@ -142,7 +145,12 @@ func (m *Monitor) runUsage(ctx context.Context) {
 	}
 }
 
-func (m *Monitor) pollUsage(ctx context.Context) {
+func (m *Monitor) pollUsage(ctx context.Context, refresh bool) {
+	m.polling.Lock()
+	defer m.polling.Unlock()
+	if refresh && time.Since(m.refreshed) < usageRefreshGap {
+		return
+	}
 	instances, err := m.svc.T3Instances().List(ctx, service.Filter{Limit: 100})
 	if err != nil {
 		log.Printf("t3: list instances: %v", err)
@@ -156,6 +164,11 @@ func (m *Monitor) pollUsage(ctx context.Context) {
 		go func() {
 			defer wg.Done()
 			c := Client{BaseURL: in.BaseUrl, Token: os.Getenv(in.TokenEnv), HTTP: m.client}
+			if refresh {
+				if err := c.RefreshProviders(ctx); err != nil {
+					log.Printf("t3: refresh providers of %s: %v", in.BaseUrl, err)
+				}
+			}
 			u, err := c.Usage(ctx, time.Now())
 			if err != nil {
 				u.LimitsError, u.ModelsError = UsageUnavailable, UsageUnavailable
@@ -167,9 +180,20 @@ func (m *Monitor) pollUsage(ctx context.Context) {
 		}()
 	}
 	wg.Wait()
+	if refresh {
+		m.refreshed = time.Now()
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.usage = next
+}
+
+// RefreshUsage forces a new read and returns it. Calls that overlap or follow
+// one within usageRefreshGap share its result. A reload cancels the request, but
+// must not store its aborted read as an unavailable instance.
+func (m *Monitor) RefreshUsage(ctx context.Context) []InstanceUsage {
+	m.pollUsage(context.WithoutCancel(ctx), true)
+	return m.Usage()
 }
 
 // Usage returns the latest usage read of every instance.

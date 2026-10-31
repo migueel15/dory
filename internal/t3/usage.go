@@ -19,6 +19,8 @@ const (
 	usageInterval = time.Minute
 	usageTimeout  = 20 * time.Second
 	usageDays     = 7
+	// usageRefreshGap limits forced reads: each one makes T3 probe its providers.
+	usageRefreshGap = 15 * time.Second
 )
 
 // Reasons why a part of the usage has no data. Details stay out of the API
@@ -137,6 +139,21 @@ func (c Client) Usage(ctx context.Context, now time.Time) (InstanceUsage, error)
 		out.ModelsError = UsageUnavailable
 	}
 	return out, nil
+}
+
+// RefreshProviders makes T3 probe its providers again, because server.getConfig
+// only returns the limits of the last probe.
+func (c Client) RefreshProviders(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, usageTimeout)
+	defer cancel()
+	ws, err := c.dial(ctx)
+	if err != nil {
+		return err
+	}
+	defer ws.CloseNow()
+	ws.SetReadLimit(-1)
+	var ignored json.RawMessage
+	return call(ctx, ws, "1", "server.refreshProviders", map[string]any{}, &ignored)
 }
 
 func (c Client) dial(ctx context.Context) (*websocket.Conn, error) {

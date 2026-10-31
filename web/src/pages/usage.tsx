@@ -1,6 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type T3InstanceUsage } from "../api/client";
-import { Badge, Card, ErrorText } from "../components/ui";
+import { Badge, Button, Card, ErrorText } from "../components/ui";
 
 const warnAt = 80;
 const alertAt = 95;
@@ -63,10 +64,17 @@ export function Usage() {
   const usage = useQuery({ queryKey: ["t3-usage"], queryFn: api.t3Usage, refetchInterval: 30_000 });
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
   const envName = (id: string) => envs.data?.find((e) => e.id === id)?.name ?? "";
+  const qc = useQueryClient();
+  const refresh = useMutation({ mutationFn: api.t3UsageRefresh, onSuccess: (data) => qc.setQueryData(["t3-usage"], data) });
+  const { mutate } = refresh;
+  useEffect(() => mutate(), [mutate]);
   return (
     <div className="space-y-3">
-      <h1 className="text-xl font-bold">Uso</h1>
-      <ErrorText error={usage.error ?? envs.error} />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-xl font-bold">Uso</h1>
+        <Button variant="ghost" disabled={refresh.isPending} onClick={() => mutate()}>{refresh.isPending ? "Actualizando…" : "Actualizar"}</Button>
+      </div>
+      <ErrorText error={usage.error ?? envs.error ?? refresh.error} />
       {usage.data?.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">Todavía no hay lecturas de uso.</p>}
       {usage.data?.map((u) => (
         <section key={u.instance_id} className="space-y-2">

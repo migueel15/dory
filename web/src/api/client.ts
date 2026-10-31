@@ -75,6 +75,7 @@ export const api = {
   t3Launch: (itemId: string, body: T3LaunchInput) => req<{ thread_id: string }>("POST", `/items/${itemId}/launch`, body),
   t3Status: () => req<T3Status[]>("GET", "/t3/status"),
   t3Usage: () => req<T3InstanceUsage[]>("GET", "/t3/usage"),
+  t3UsageRefresh: () => req<T3InstanceUsage[]>("POST", "/t3/usage/refresh"),
   login: (username: string, password: string) => req<User>("POST", "/auth/login", { username, password }),
   logout: () => req<void>("POST", "/auth/logout"),
   me: () => req<User>("GET", "/auth/me"),

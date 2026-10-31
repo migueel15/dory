@@ -318,6 +318,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/t3/usage/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Force a new read of plan limits and consumption */
+        post: operations["refreshT3Usage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/t3-instances": {
         parameters: {
             query?: never;
@@ -2034,6 +2051,26 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Latest polled usage */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["T3InstanceUsage"][];
+                };
+            };
+        };
+    };
+    refreshT3Usage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Usage after the forced read */
             200: {
                 headers: {
                     [name: string]: unknown;
