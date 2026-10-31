@@ -17,6 +17,8 @@ func Register(mux *http.ServeMux, svc service.Service) {
 	mountResource(mux, "repositories", svc.Repositories(), func(v *service.Repository) *service.Record { return &v.Record })
 	mountResource(mux, "environments", svc.Environments(), func(v *service.Environment) *service.Record { return &v.Record })
 	mountResource(mux, "repository-locations", svc.RepositoryLocations(), func(v *service.RepositoryLocation) *service.Record { return &v.Record })
+	mountResource(mux, "t3-instances", svc.T3Instances(), func(v *service.T3Instance) *service.Record { return &v.Record })
+	mountResource(mux, "item-threads", svc.ItemThreads(), func(v *service.ItemThread) *service.Record { return &v.Record })
 	mountResource(mux, "features", svc.Features(), func(v *service.Feature) *service.Record { return &v.Record })
 	mountResource(mux, "items", svc.Items(), func(v *service.Item) *service.Record { return &v.Record })
 	mountResource(mux, "memories", svc.Memories(), func(v *service.Memory) *service.Record { return &v.Record })

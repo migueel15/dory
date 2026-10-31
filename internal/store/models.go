@@ -74,6 +74,17 @@ type Item struct {
 	Refs          []string
 }
 
+type ItemThread struct {
+	ID         pgtype.UUID
+	ItemID     pgtype.UUID
+	InstanceID pgtype.UUID
+	ThreadID   string
+	Role       string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	ArchivedAt pgtype.Timestamptz
+}
+
 type Link struct {
 	ID         pgtype.UUID
 	FromID     pgtype.UUID
@@ -140,6 +151,16 @@ type Session struct {
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
 	ArchivedAt pgtype.Timestamptz
+}
+
+type T3Instance struct {
+	ID            pgtype.UUID
+	EnvironmentID pgtype.UUID
+	BaseUrl       string
+	TokenEnv      string
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	ArchivedAt    pgtype.Timestamptz
 }
 
 type User struct {

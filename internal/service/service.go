@@ -68,6 +68,8 @@ type Environments interface{ Environments() Resource[Environment] }
 type RepositoryLocations interface {
 	RepositoryLocations() Resource[RepositoryLocation]
 }
+type T3Instances interface{ T3Instances() Resource[T3Instance] }
+type ItemThreads interface{ ItemThreads() Resource[ItemThread] }
 type Features interface{ Features() Resource[Feature] }
 type Items interface{ Items() Resource[Item] }
 type Memories interface{ Memories() Resource[Memory] }
@@ -80,6 +82,8 @@ type Service interface {
 	Repositories
 	Environments
 	RepositoryLocations
+	T3Instances
+	ItemThreads
 	Features
 	Items
 	Memories
@@ -355,6 +359,38 @@ func (b *backend) RepositoryLocations() Resource[RepositoryLocation] {
 		},
 		archive: func(ctx context.Context, q *store.Queries, id string) ([]byte, error) {
 			return q.ArchiveRepositoryLocation(ctx, id)
+		},
+	}
+}
+func (b *backend) T3Instances() Resource[T3Instance] {
+	return resource[T3Instance]{b: b, kind: "t3instance",
+		get: func(ctx context.Context, q *store.Queries, id string) ([]byte, error) {
+			return q.GetT3Instance(ctx, id)
+		},
+		list: func(ctx context.Context, q *store.Queries, f Filter, raw []byte) ([][]byte, error) {
+			return q.ListT3Instance(ctx, store.ListT3InstanceParams{Filter: raw, IncludeArchived: f.IncludeArchived, PageLimit: f.Limit, PageOffset: f.Offset})
+		},
+		put: func(ctx context.Context, q *store.Queries, raw []byte) ([]byte, error) {
+			return q.PutT3Instance(ctx, raw)
+		},
+		archive: func(ctx context.Context, q *store.Queries, id string) ([]byte, error) {
+			return q.ArchiveT3Instance(ctx, id)
+		},
+	}
+}
+func (b *backend) ItemThreads() Resource[ItemThread] {
+	return resource[ItemThread]{b: b, kind: "itemthread",
+		get: func(ctx context.Context, q *store.Queries, id string) ([]byte, error) {
+			return q.GetItemThread(ctx, id)
+		},
+		list: func(ctx context.Context, q *store.Queries, f Filter, raw []byte) ([][]byte, error) {
+			return q.ListItemThread(ctx, store.ListItemThreadParams{Filter: raw, IncludeArchived: f.IncludeArchived, PageLimit: f.Limit, PageOffset: f.Offset})
+		},
+		put: func(ctx context.Context, q *store.Queries, raw []byte) ([]byte, error) {
+			return q.PutItemThread(ctx, raw)
+		},
+		archive: func(ctx context.Context, q *store.Queries, id string) ([]byte, error) {
+			return q.ArchiveItemThread(ctx, id)
 		},
 	}
 }

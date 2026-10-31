@@ -36,6 +36,19 @@ type RepositoryLocation struct {
 	EnvironmentID string `json:"environment_id"`
 	Path          string `json:"path"`
 }
+type T3Instance struct {
+	Record
+	EnvironmentID string `json:"environment_id"`
+	BaseUrl       string `json:"base_url"`
+	TokenEnv      string `json:"token_env"`
+}
+type ItemThread struct {
+	Record
+	ItemID     string `json:"item_id"`
+	InstanceID string `json:"instance_id"`
+	ThreadID   string `json:"thread_id"`
+	Role       string `json:"role"`
+}
 type Feature struct {
 	Record
 	ProjectID string   `json:"project_id"`

@@ -644,6 +644,322 @@ paths:
           $ref: "#/components/responses/Error409"
         "500":
           $ref: "#/components/responses/Error500"
+  "/t3-instances":
+    get:
+      operationId: "listT3Instances"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/T3Instance"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      parameters:
+        -
+          name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 100
+            minimum: 1
+            maximum: 1000
+        -
+          name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 0
+            minimum: 0
+        -
+          name: "include_archived"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        -
+          name: "filter"
+          in: "query"
+          description: "JSON object of exact domain field matches; arrays use containment."
+          content:
+            application/json:
+              schema:
+                type: "object"
+                additionalProperties: true
+    post:
+      operationId: "createT3Instance"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/T3Instance"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/T3InstanceInput"
+      description: "Upsert by optional client-generated ID. Returns 200 for both insert and replacement. Appends an audit event."
+  "/t3-instances/{id}":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+          format: "uuid"
+    get:
+      operationId: "getT3Instance"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/T3Instance"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+    put:
+      operationId: "putT3Instance"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/T3Instance"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/T3InstanceInput"
+      description: "Full replacement/upsert; path ID wins and a conflicting body ID is rejected. Omitted fields use defaults. Archived records cannot be restored. Appends an audit event."
+    delete:
+      operationId: "archiveT3Instance"
+      responses:
+        "204":
+          description: "Archived; an audit event is appended"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+  "/item-threads":
+    get:
+      operationId: "listItemThreads"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/ItemThread"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      parameters:
+        -
+          name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 100
+            minimum: 1
+            maximum: 1000
+        -
+          name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            default: 0
+            minimum: 0
+        -
+          name: "include_archived"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        -
+          name: "filter"
+          in: "query"
+          description: "JSON object of exact domain field matches; arrays use containment."
+          content:
+            application/json:
+              schema:
+                type: "object"
+                additionalProperties: true
+    post:
+      operationId: "createItemThread"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemThread"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ItemThreadInput"
+      description: "Upsert by optional client-generated ID. Returns 200 for both insert and replacement. Appends an audit event."
+  "/item-threads/{id}":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+          format: "uuid"
+    get:
+      operationId: "getItemThread"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemThread"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+    put:
+      operationId: "putItemThread"
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemThread"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ItemThreadInput"
+      description: "Full replacement/upsert; path ID wins and a conflicting body ID is rejected. Omitted fields use defaults. Archived records cannot be restored. Appends an audit event."
+    delete:
+      operationId: "archiveItemThread"
+      responses:
+        "204":
+          description: "Archived; an audit event is appended"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "500":
+          $ref: "#/components/responses/Error500"
   "/features":
     get:
       operationId: "listFeatures"
@@ -1782,6 +2098,126 @@ components:
           format: "uuid"
         path:
           type: "string"
+    T3Instance:
+      type: "object"
+      required:
+        - "id"
+        - "created_at"
+        - "updated_at"
+        - "archived_at"
+        - "environment_id"
+        - "base_url"
+        - "token_env"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+          readOnly: true
+        created_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        updated_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        archived_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+          readOnly: true
+        environment_id:
+          type: "string"
+          format: "uuid"
+        base_url:
+          type: "string"
+        token_env:
+          type: "string"
+    T3InstanceInput:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "environment_id"
+        - "base_url"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        environment_id:
+          type: "string"
+          format: "uuid"
+        base_url:
+          type: "string"
+        token_env:
+          type: "string"
+    ItemThread:
+      type: "object"
+      required:
+        - "id"
+        - "created_at"
+        - "updated_at"
+        - "archived_at"
+        - "item_id"
+        - "instance_id"
+        - "thread_id"
+        - "role"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+          readOnly: true
+        created_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        updated_at:
+          type: "string"
+          format: "date-time"
+          readOnly: true
+        archived_at:
+          type: "string"
+          format: "date-time"
+          nullable: true
+          readOnly: true
+        item_id:
+          type: "string"
+          format: "uuid"
+        instance_id:
+          type: "string"
+          format: "uuid"
+        thread_id:
+          type: "string"
+        role:
+          type: "string"
+          enum:
+            - "triage"
+            - "implementation"
+            - "review"
+    ItemThreadInput:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "item_id"
+        - "instance_id"
+        - "thread_id"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        item_id:
+          type: "string"
+          format: "uuid"
+        instance_id:
+          type: "string"
+          format: "uuid"
+        thread_id:
+          type: "string"
+        role:
+          type: "string"
+          enum:
+            - "triage"
+            - "implementation"
+            - "review"
     Feature:
       type: "object"
       required:
