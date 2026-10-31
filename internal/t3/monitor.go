@@ -119,6 +119,20 @@ func (m *Monitor) check(ctx context.Context, in service.T3Instance) Status {
 	return s
 }
 
+// Locate finds the instance that currently reports a thread.
+func (m *Monitor) Locate(threadID string) (string, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for id, s := range m.byID {
+		for _, t := range s.Threads {
+			if t.ID == threadID {
+				return id, true
+			}
+		}
+	}
+	return "", false
+}
+
 // Statuses returns the latest known status of every instance.
 func (m *Monitor) Statuses() []Status {
 	m.mu.RLock()

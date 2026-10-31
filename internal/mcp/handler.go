@@ -628,6 +628,38 @@ type repositoryUpsert struct {
 	RemoteURL     *string `json:"remote_url,omitempty"`
 	DefaultBranch *string `json:"default_branch,omitempty"`
 }
+type threadLinkInput struct {
+	ItemID     string `json:"item_id"`
+	ThreadID   string `json:"thread_id"`
+	InstanceID string `json:"instance_id,omitempty" jsonschema:"T3 instance UUID; found from the thread when omitted"`
+	Role       string `json:"role,omitempty" jsonschema:"triage, implementation (default) or review"`
+}
+
+func linkThread(ctx context.Context, svc service.Service, locate ThreadLocator, in threadLinkInput) (any, error) {
+	if in.ItemID == "" || in.ThreadID == "" {
+		return nil, service.ErrInvalid
+	}
+	if in.InstanceID == "" {
+		id, ok := locate(in.ThreadID)
+		if !ok {
+			return nil, fmt.Errorf("%w: thread not found in any reachable instance; pass instance_id", service.ErrInvalid)
+		}
+		in.InstanceID = id
+	}
+	existing, err := svc.ItemThreads().List(ctx, service.Filter{Fields: map[string]any{"item_id": in.ItemID, "instance_id": in.InstanceID, "thread_id": in.ThreadID}, Limit: 1})
+	if err != nil {
+		return nil, err
+	}
+	link := service.ItemThread{ItemID: in.ItemID, InstanceID: in.InstanceID, ThreadID: in.ThreadID, Role: in.Role}
+	if len(existing) > 0 {
+		link.ID = existing[0].ID
+		if in.Role == "" {
+			link.Role = existing[0].Role
+		}
+	}
+	return svc.ItemThreads().Put(ctx, auth.Actor(ctx), link)
+}
+
 type locationInput struct {
 	RepositoryID  string `json:"repository_id"`
 	EnvironmentID string `json:"environment_id"`
@@ -670,7 +702,10 @@ func validMemoryScope(scope string, scopeID *string) bool {
 
 // Handler returns the transport mounted by cmd/dory at /mcp. Stateless requests
 // avoid keeping authentication-independent sessions between HTTP requests.
-func Handler(svc service.Service) http.Handler {
+// ThreadLocator finds the T3 instance that reports a thread.
+type ThreadLocator func(threadID string) (string, bool)
+
+func Handler(svc service.Service, locate ThreadLocator) http.Handler {
 	s := sdk.NewServer(&sdk.Implementation{Name: "dory", Version: "0.1.0"}, nil)
 	viewListTool(s, "list_projects", "List projects with optional field filters and pagination; view summary (default) or full.", svc.Projects(), summarizeProject)
 	add(s, "list_items", "List items with optional field filters and pagination; view summary (default: id, title, status, project_id, feature_id, priority, tags, updated_at) or full. fields.status and fields.id accept an array meaning any of; open true excludes done and cancelled. get_item returns the whole item.", func(ctx context.Context, in itemListInput) (any, error) {
@@ -862,6 +897,9 @@ func Handler(svc service.Service) http.Handler {
 			loc.ID = existing[0].ID
 		}
 		return svc.RepositoryLocations().Put(ctx, auth.Actor(ctx), loc)
+	})
+	add(s, "link_thread", "Declare the T3 Code thread working on an item. The instance is found from the thread; pass instance_id only if it is not found. Calling it again is harmless. Role: triage, implementation (default) or review.", func(ctx context.Context, in threadLinkInput) (any, error) {
+		return linkThread(ctx, svc, locate, in)
 	})
 	add(s, "recall", "Search memories by full text query, tags (all must match) and/or kind, optionally filtered by scope and scope_id, with pagination; view summary (default) or full.", func(ctx context.Context, in recallInput) (any, error) { return recall(ctx, svc, in) })
 	add(s, "import_batch", "Atomically create or upsert many features, items, memories and links in one call. Records are written in that order, so items may reference features of the same batch by client UUID. Any error rolls back the whole batch. Maximum 1000 records.", func(ctx context.Context, in batchInput) (any, error) {
