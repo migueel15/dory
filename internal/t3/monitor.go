@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -111,6 +112,9 @@ func (m *Monitor) check(ctx context.Context, in service.T3Instance) Status {
 	switch {
 	case err == nil:
 		s.State, s.Threads = StateAvailable, threads
+		for i := range s.Threads {
+			s.Threads[i].URL = strings.TrimRight(in.BaseUrl, "/") + "/" + d.EnvironmentID + "/" + s.Threads[i].ID
+		}
 	case errors.Is(err, errUnauthorized):
 		s.State = StateAuthFailed
 	default:

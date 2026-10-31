@@ -135,7 +135,7 @@ function Draggable({ item, onOpen }: { item: Item; onOpen: () => void }) {
   const style = transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined;
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes} className={isDragging ? "relative z-10 opacity-80" : ""}>
-      <Card className="cursor-grab"><div onDoubleClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><span className="font-medium break-words">{item.title}</span><button className="-m-2 size-11 shrink-0 text-slate-500 dark:text-slate-400 sm:hidden" aria-label="Editar" onPointerDown={(e) => e.stopPropagation()} onClick={onOpen}>✎</button></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}{item.status === "blocked" && <p className="text-xs text-red-600 dark:text-red-400">{item.blocked_reason}</p>}</div></Card>
+      <Card className="cursor-grab"><div onDoubleClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><span className="font-medium break-words">{item.title}</span><button className="-m-2 size-11 shrink-0 text-slate-500 dark:text-slate-400 sm:hidden" aria-label="Editar" onPointerDown={(e) => e.stopPropagation()} onClick={onOpen}>✎</button></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}<ThreadBadges itemId={item.id} />{item.status === "blocked" && <p className="text-xs text-red-600 dark:text-red-400">{item.blocked_reason}</p>}</div></Card>
     </div>
   );
 }
@@ -192,4 +192,19 @@ export function Board({ projectId }: { projectId: string }) {
       {editing && <ItemForm item={editing === "new" ? undefined : editing} projectId={projectId} onClose={() => setEditing(null)} />}
     </div>
   );
+}
+
+// Shows the T3 threads linked to an item; both queries are shared by every card.
+function ThreadBadges({ itemId }: { itemId: string }) {
+  const links = useQuery({ queryKey: ["item-threads"], queryFn: () => api.itemThreads.list(), refetchInterval: 10_000 });
+  const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 10_000 });
+  const threads = links.data?.filter((l) => l.item_id === itemId).flatMap((l) => {
+    const thread = t3.data?.flatMap((s) => s.threads).find((t) => t.id === l.thread_id);
+    return thread ? [thread] : [];
+  }) ?? [];
+  return threads.map((t) => (
+    <a key={t.id} href={t.url} target="_blank" rel="noreferrer" title={t.title} onPointerDown={(e) => e.stopPropagation()} className={`mr-1 inline-block text-xs underline ${t.attention ? "text-red-600 dark:text-red-400" : "text-slate-500 dark:text-slate-400"}`}>
+      {t.attention ? "Te necesita" : `${t.model} · ${t.status}`}
+    </a>
+  ));
 }

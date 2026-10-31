@@ -97,7 +97,7 @@ function InstanceStatus({ status }: { status?: T3Status }) {
       </div>
       {status.threads.filter((t) => t.attention || t.status === "running").map((t) => (
         <div key={t.id} className="flex items-start justify-between gap-2">
-          <span className="min-w-0 break-words">{t.title}</span>
+          <a className="min-w-0 break-words underline" href={t.url} target="_blank" rel="noreferrer">{t.title}</a>
           <span className={`shrink-0 text-xs ${t.attention ? "text-red-600 dark:text-red-400" : "text-slate-500 dark:text-slate-400"}`}>{t.attention ? "Te necesita" : t.model}</span>
         </div>
       ))}
