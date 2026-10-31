@@ -4,11 +4,11 @@ import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient
 import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { ApiError, api } from "./api/client";
 import { useLiveUpdates } from "./api/live";
-import { Button, ErrorText, Input, Label, field } from "./components/ui";
+import { Button, ErrorText, Input, Label } from "./components/ui";
 import { Environments, Memories, memorySearch } from "./pages/crud";
 import { Inbox } from "./pages/items";
 import { ProjectDetail, Projects } from "./pages/projects";
-import { applyTheme, useTheme, type Theme } from "./theme";
+import { applyTheme, useTheme } from "./theme";
 import "./index.css";
 
 applyTheme();
@@ -39,14 +39,22 @@ function Login() {
   );
 }
 
-function ThemeSelect() {
-  const [theme, setTheme] = useTheme();
+function ThemeToggle() {
+  const [dark, setTheme] = useTheme();
+  const label = dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro";
   return (
-    <select aria-label="Tema" className={`${field} w-auto`} value={theme} onChange={(e) => setTheme(e.target.value as Theme)}>
-      <option value="system">Sistema</option>
-      <option value="light">Claro</option>
-      <option value="dark">Oscuro</option>
-    </select>
+    <Button variant="ghost" aria-label={label} title={label} onClick={() => setTheme(dark ? "light" : "dark")}>
+      <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {dark ? (
+          <>
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+          </>
+        ) : (
+          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+        )}
+      </svg>
+    </Button>
   );
 }
 
@@ -70,7 +78,7 @@ function Layout() {
           <Link to="/memories" className={link}>Memorias</Link>
         </div>
         <span className="ml-auto truncate text-sm text-slate-500 dark:text-slate-400">{me.data.username}</span>
-        <ThemeSelect />
+        <ThemeToggle />
         <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
       </nav>
       <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /></main>

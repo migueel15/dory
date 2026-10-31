@@ -9,21 +9,28 @@ const stored = (): Theme => {
   return t === "light" || t === "dark" ? t : "system";
 };
 
+const isDark = (t: Theme) => t === "dark" || (t === "system" && media.matches);
+
 export function applyTheme(t: Theme = stored()) {
-  document.documentElement.classList.toggle("dark", t === "dark" || (t === "system" && media.matches));
+  document.documentElement.classList.toggle("dark", isDark(t));
 }
 
 // Theme choice persisted in localStorage; "system" tracks the OS preference live.
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(stored);
+  const [dark, setDark] = useState(() => isDark(theme));
   useEffect(() => {
     if (theme === "system") localStorage.removeItem(KEY);
     else localStorage.setItem(KEY, theme);
-    applyTheme(theme);
+    const apply = () => {
+      applyTheme(theme);
+      setDark(isDark(theme));
+    };
+    apply();
     if (theme !== "system") return;
-    const onChange = () => applyTheme("system");
+    const onChange = apply;
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
   }, [theme]);
-  return [theme, setTheme] as const;
+  return [dark, setTheme] as const;
 }
