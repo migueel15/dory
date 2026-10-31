@@ -12,7 +12,7 @@ El MVP expresaba parte del estado con convenciones de texto: `[en curso]` en el 
 El estado se guarda en campos con valores cerrados, nunca en texto:
 
 - Features: `status` es `planned`, `in_progress`, `implemented` o `deprecated`. Lo cambia una persona o un agente de forma explícita; el servidor no lo calcula.
-- Items: `status` es `inbox`, `triaged`, `ready`, `in_progress`, `blocked`, `done` o `cancelled`. `blocked` exige `blocked_reason`, que se vacía al salir de ese estado.
+- Items: `status` es `inbox`, `triaged`, `ready`, `in_progress`, `validating`, `blocked`, `done` o `cancelled`. `validating` indica que la implementación terminó y falta comprobarla, por una persona o de forma automática. `blocked` exige `blocked_reason`, que se vacía al salir de ese estado.
 - `archived` deja de ser un estado: archivar solo oculta el registro (`archived_at`), como en el resto de entidades.
 - Un item pertenece como mucho a una feature mediante `feature_id`. Los enlaces genéricos quedan para otras relaciones.
 - El estado actual del trabajo va en `items.progress`, texto corto que se reemplaza; el historial vive en git y en la PR.

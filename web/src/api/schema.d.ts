@@ -865,7 +865,7 @@ export interface components {
              * @default inbox
              * @enum {string}
              */
-            status: "inbox" | "triaged" | "ready" | "in_progress" | "blocked" | "done" | "cancelled";
+            status: "inbox" | "triaged" | "ready" | "in_progress" | "validating" | "blocked" | "done" | "cancelled";
             /** @default  */
             blocked_reason: string;
             /**
@@ -896,7 +896,7 @@ export interface components {
              * @default inbox
              * @enum {string}
              */
-            status: "inbox" | "triaged" | "ready" | "in_progress" | "blocked" | "done" | "cancelled";
+            status: "inbox" | "triaged" | "ready" | "in_progress" | "validating" | "blocked" | "done" | "cancelled";
             /** @default  */
             blocked_reason: string;
             /**

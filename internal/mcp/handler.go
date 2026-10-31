@@ -59,7 +59,7 @@ func (in itemListInput) itemFilter() (service.Filter, error) {
 			statuses = []string{status}
 			delete(f.Fields, "status")
 		} else if statuses == nil {
-			statuses = []string{"inbox", "triaged", "ready", "in_progress", "blocked"}
+			statuses = []string{"inbox", "triaged", "ready", "in_progress", "validating", "blocked"}
 		}
 		f.AnyOf["status"] = slices.DeleteFunc(slices.Clone(statuses), func(s string) bool { return s == "done" || s == "cancelled" })
 	}
@@ -262,7 +262,7 @@ type itemInput struct {
 	Progress      string   `json:"progress,omitempty" jsonschema:"Short current state (branch, last commit, what is next); replaced, not appended"`
 	Refs          []string `json:"refs,omitempty" jsonschema:"External references: branch, PR or issue URLs, commits"`
 	Tags          []string `json:"tags,omitempty"`
-	Status        string   `json:"status,omitempty" jsonschema:"inbox, triaged, ready, in_progress, blocked, done or cancelled"`
+	Status        string   `json:"status,omitempty" jsonschema:"inbox, triaged, ready, in_progress, validating, blocked, done or cancelled"`
 	BlockedReason string   `json:"blocked_reason,omitempty" jsonschema:"Required when status is blocked: what blocks it and what unblocks it"`
 	Priority      int32    `json:"priority,omitempty"`
 	Source        string   `json:"source,omitempty"`
@@ -278,12 +278,12 @@ type updatesInput struct {
 }
 type moveInput struct {
 	ID            string `json:"id"`
-	Status        string `json:"status" jsonschema:"inbox, triaged, ready, in_progress, blocked, done or cancelled"`
+	Status        string `json:"status" jsonschema:"inbox, triaged, ready, in_progress, validating, blocked, done or cancelled"`
 	BlockedReason string `json:"blocked_reason,omitempty" jsonschema:"Required when status is blocked"`
 }
 
 func validStatus(status string) bool {
-	return slices.Contains([]string{"inbox", "triaged", "ready", "in_progress", "blocked", "done", "cancelled"}, status)
+	return slices.Contains([]string{"inbox", "triaged", "ready", "in_progress", "validating", "blocked", "done", "cancelled"}, status)
 }
 func validFeatureStatus(status string) bool {
 	return slices.Contains([]string{"planned", "in_progress", "implemented", "deprecated"}, status)
