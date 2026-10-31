@@ -28,6 +28,9 @@ type Discovery struct {
 	Label         string `json:"label"`
 	ServerVersion string `json:"serverVersion"`
 	Protocol      int    `json:"orchestrationProtocolVersion"`
+	Platform      struct {
+		OS string `json:"os"`
+	} `json:"platform"`
 }
 
 // Thread keeps only the fields of a T3 thread that Dory shows.

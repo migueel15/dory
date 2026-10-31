@@ -57,6 +57,7 @@ func NewMonitor(svc service.Service) *Monitor {
 // Run polls until ctx ends.
 func (m *Monitor) Run(ctx context.Context) {
 	go m.runUsage(ctx)
+	go m.runDiscovery(ctx)
 	tick := time.NewTicker(pollInterval)
 	defer tick.Stop()
 	for {
