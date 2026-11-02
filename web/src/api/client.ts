@@ -19,6 +19,7 @@ export type T3ThreadContext = S["T3ThreadContext"];
 export type GithubIssue = S["GithubIssue"];
 export type GithubPull = S["GithubPull"];
 export type GithubDetail = S["GithubDetail"];
+export type GithubThread = S["GithubThread"];
 export type ItemStatus = Item["status"];
 
 export class ApiError extends Error {

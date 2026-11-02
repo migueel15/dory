@@ -24,19 +24,47 @@ type Event struct {
 
 // Detail is the working view of one issue or pull request.
 type Detail struct {
-	Kind     string  `json:"kind"`
-	Body     string  `json:"body"`
-	Issue    *Issue  `json:"issue"`
-	Pull     *Pull   `json:"pull"`
-	Timeline []Event `json:"timeline"`
+	Kind     string   `json:"kind"`
+	Body     string   `json:"body"`
+	Issue    *Issue   `json:"issue"`
+	Pull     *Pull    `json:"pull"`
+	Timeline []Event  `json:"timeline"`
+	Threads  []Thread `json:"threads"`
+}
+
+// ThreadComment is one message inside a review thread.
+type ThreadComment struct {
+	Author string `json:"author"`
+	At     string `json:"at"`
+	Body   string `json:"body"`
+	URL    string `json:"url"`
+}
+
+// Thread is a review conversation on a pull request that can be resolved.
+type Thread struct {
+	ID         string          `json:"id"`
+	Path       string          `json:"path"`
+	Line       int             `json:"line"`
+	Resolved   bool            `json:"resolved"`
+	Outdated   bool            `json:"outdated"`
+	ResolvedBy string          `json:"resolved_by"`
+	Comments   []ThreadComment `json:"comments"`
 }
 
 // Action is a change requested by the user. Body is the comment or review text
 // and Method the merge method (MERGE, SQUASH or REBASE).
 type Action struct {
-	Type   string `json:"type"`
-	Body   string `json:"body"`
-	Method string `json:"method"`
+	Type     string `json:"type"`
+	Body     string `json:"body"`
+	Method   string `json:"method"`
+	ThreadID string `json:"thread_id"`
+	// Path, Line and Side (LEFT or RIGHT) place a comment on the diff;
+	// StartLine and StartSide are set for a range of lines.
+	Path      string `json:"path"`
+	Line      int    `json:"line"`
+	Side      string `json:"side"`
+	StartLine int    `json:"start_line"`
+	StartSide string `json:"start_side"`
 }
 
 // Issue timelines reject pull request fragments, so only shared events go here.
@@ -58,7 +86,51 @@ const pullTimelineFields = issueTimelineFields + `
 
 const pullDetailQuery = `query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) {
   body ` + pullFields + ` timelineItems(last: 100, itemTypes: [ISSUE_COMMENT, PULL_REQUEST_REVIEW, PULL_REQUEST_COMMIT, CLOSED_EVENT, REOPENED_EVENT, MERGED_EVENT, LABELED_EVENT, ASSIGNED_EVENT, READY_FOR_REVIEW_EVENT, CONVERT_TO_DRAFT_EVENT, REVIEW_REQUESTED_EVENT, CROSS_REFERENCED_EVENT]) { nodes { ` + pullTimelineFields + ` } }
+  reviewThreads(first: 100) { nodes { id path line originalLine isResolved isOutdated resolvedBy { login }
+    comments(first: 100) { nodes { author { login } createdAt body url } } } }
 } } }`
+
+type wireThread struct {
+	ID           string `json:"id"`
+	Path         string `json:"path"`
+	Line         *int   `json:"line"`
+	OriginalLine *int   `json:"originalLine"`
+	IsResolved   bool   `json:"isResolved"`
+	IsOutdated   bool   `json:"isOutdated"`
+	ResolvedBy   *login `json:"resolvedBy"`
+	Comments     struct {
+		Nodes []struct {
+			Author    *login `json:"author"`
+			CreatedAt string `json:"createdAt"`
+			Body      string `json:"body"`
+			URL       string `json:"url"`
+		} `json:"nodes"`
+	} `json:"comments"`
+}
+
+func threads(ws []wireThread) []Thread {
+	out := make([]Thread, 0, len(ws))
+	for _, w := range ws {
+		t := Thread{ID: w.ID, Path: w.Path, Resolved: w.IsResolved, Outdated: w.IsOutdated, Comments: []ThreadComment{}}
+		if w.Line != nil {
+			t.Line = *w.Line
+		} else if w.OriginalLine != nil {
+			t.Line = *w.OriginalLine
+		}
+		if w.ResolvedBy != nil {
+			t.ResolvedBy = w.ResolvedBy.Login
+		}
+		for _, c := range w.Comments.Nodes {
+			tc := ThreadComment{At: c.CreatedAt, Body: c.Body, URL: c.URL}
+			if c.Author != nil {
+				tc.Author = c.Author.Login
+			}
+			t.Comments = append(t.Comments, tc)
+		}
+		out = append(out, t)
+	}
+	return out
+}
 
 const issueDetailQuery = `query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { issue(number: $number) {
   id number title url state updatedAt body author { login } labels(first: 10) { nodes { name } }
@@ -157,6 +229,9 @@ func (c *Client) Detail(ctx context.Context, repo, kind string, number int) (*De
 					wirePull
 					Body     string    `json:"body"`
 					Timeline wireNodes `json:"timelineItems"`
+					Threads  struct {
+						Nodes []wireThread `json:"nodes"`
+					} `json:"reviewThreads"`
 				} `json:"pullRequest"`
 			} `json:"repository"`
 		}
@@ -169,7 +244,7 @@ func (c *Client) Detail(ctx context.Context, repo, kind string, number int) (*De
 		}
 		p := w.pull(repo, project)
 		c.fillRequired(ctx, &p)
-		return &Detail{Kind: kind, Body: w.Body, Pull: &p, Timeline: timeline(w.Timeline)}, nil
+		return &Detail{Kind: kind, Body: w.Body, Pull: &p, Timeline: timeline(w.Timeline), Threads: threads(w.Threads.Nodes)}, nil
 	case "issues":
 		var data struct {
 			Repository struct {
@@ -188,7 +263,7 @@ func (c *Client) Detail(ctx context.Context, repo, kind string, number int) (*De
 			return nil, ErrUnknownRepo
 		}
 		i := Issue{Repo: repo, ProjectID: project, Number: w.Number, Title: w.Title, Author: name(w.Author), URL: w.URL, State: w.State, UpdatedAt: w.UpdatedAt, Labels: w.Labels.names(), Pulls: w.Closed.Nodes}
-		return &Detail{Kind: kind, Body: w.Body, Issue: &i, Timeline: timeline(w.Timeline)}, nil
+		return &Detail{Kind: kind, Body: w.Body, Issue: &i, Timeline: timeline(w.Timeline), Threads: []Thread{}}, nil
 	}
 	return nil, ErrInvalid
 }
@@ -206,12 +281,24 @@ var mutations = map[string]struct {
 	"merge": {"pulls", `mutation($input: MergePullRequestInput!) { mergePullRequest(input: $input) { clientMutationId } }`, func(a Action, id string) map[string]any {
 		return map[string]any{"pullRequestId": id, "mergeMethod": a.Method}
 	}},
-	"ready":        {"pulls", `mutation($input: MarkPullRequestReadyForReviewInput!) { markPullRequestReadyForReview(input: $input) { clientMutationId } }`, pullInput},
-	"draft":        {"pulls", `mutation($input: ConvertPullRequestToDraftInput!) { convertPullRequestToDraft(input: $input) { clientMutationId } }`, pullInput},
-	"close_pull":   {"pulls", `mutation($input: ClosePullRequestInput!) { closePullRequest(input: $input) { clientMutationId } }`, pullInput},
-	"reopen_pull":  {"pulls", `mutation($input: ReopenPullRequestInput!) { reopenPullRequest(input: $input) { clientMutationId } }`, pullInput},
-	"close_issue":  {"issues", `mutation($input: CloseIssueInput!) { closeIssue(input: $input) { clientMutationId } }`, issueInput},
-	"reopen_issue": {"issues", `mutation($input: ReopenIssueInput!) { reopenIssue(input: $input) { clientMutationId } }`, issueInput},
+	"ready":       {"pulls", `mutation($input: MarkPullRequestReadyForReviewInput!) { markPullRequestReadyForReview(input: $input) { clientMutationId } }`, pullInput},
+	"draft":       {"pulls", `mutation($input: ConvertPullRequestToDraftInput!) { convertPullRequestToDraft(input: $input) { clientMutationId } }`, pullInput},
+	"close_pull":  {"pulls", `mutation($input: ClosePullRequestInput!) { closePullRequest(input: $input) { clientMutationId } }`, pullInput},
+	"reopen_pull": {"pulls", `mutation($input: ReopenPullRequestInput!) { reopenPullRequest(input: $input) { clientMutationId } }`, pullInput},
+	"reply_thread": {"pulls", `mutation($input: AddPullRequestReviewThreadReplyInput!) { addPullRequestReviewThreadReply(input: $input) { clientMutationId } }`, func(a Action, _ string) map[string]any {
+		return map[string]any{"pullRequestReviewThreadId": a.ThreadID, "body": a.Body}
+	}},
+	"comment_lines": {"pulls", `mutation($input: AddPullRequestReviewThreadInput!) { addPullRequestReviewThread(input: $input) { clientMutationId } }`, func(a Action, id string) map[string]any {
+		in := map[string]any{"pullRequestId": id, "body": a.Body, "path": a.Path, "line": a.Line, "side": a.Side, "subjectType": "LINE"}
+		if a.StartLine != 0 && (a.StartLine != a.Line || a.StartSide != a.Side) {
+			in["startLine"], in["startSide"] = a.StartLine, a.StartSide
+		}
+		return in
+	}},
+	"resolve_thread":   {"pulls", `mutation($input: ResolveReviewThreadInput!) { resolveReviewThread(input: $input) { clientMutationId } }`, threadInput},
+	"unresolve_thread": {"pulls", `mutation($input: UnresolveReviewThreadInput!) { unresolveReviewThread(input: $input) { clientMutationId } }`, threadInput},
+	"close_issue":      {"issues", `mutation($input: CloseIssueInput!) { closeIssue(input: $input) { clientMutationId } }`, issueInput},
+	"reopen_issue":     {"issues", `mutation($input: ReopenIssueInput!) { reopenIssue(input: $input) { clientMutationId } }`, issueInput},
 }
 
 const reviewMutation = `mutation($input: AddPullRequestReviewInput!) { addPullRequestReview(input: $input) { clientMutationId } }`
@@ -222,6 +309,7 @@ func review(event string) func(Action, string) map[string]any {
 	}
 }
 func pullInput(_ Action, id string) map[string]any  { return map[string]any{"pullRequestId": id} }
+func threadInput(a Action, _ string) map[string]any { return map[string]any{"threadId": a.ThreadID} }
 func issueInput(_ Action, id string) map[string]any { return map[string]any{"issueId": id} }
 
 func validate(kind string, a Action) error {
@@ -229,7 +317,14 @@ func validate(kind string, a Action) error {
 	if !ok || !slices.Contains(strings.Fields(m.kinds), kind) {
 		return ErrInvalid
 	}
-	if (a.Type == "comment" || a.Type == "request_changes") && strings.TrimSpace(a.Body) == "" {
+	if strings.HasSuffix(a.Type, "_thread") && a.ThreadID == "" {
+		return fmt.Errorf("%w: thread_id is required", ErrInvalid)
+	}
+	sides := []string{"LEFT", "RIGHT"}
+	if a.Type == "comment_lines" && (a.Path == "" || a.Line < 1 || !slices.Contains(sides, a.Side) || (a.StartLine != 0 && !slices.Contains(sides, a.StartSide))) {
+		return fmt.Errorf("%w: path, line and side are required", ErrInvalid)
+	}
+	if (a.Type == "comment" || a.Type == "request_changes" || a.Type == "reply_thread" || a.Type == "comment_lines") && strings.TrimSpace(a.Body) == "" {
 		return fmt.Errorf("%w: text is required", ErrInvalid)
 	}
 	if a.Type == "merge" && !slices.Contains([]string{"MERGE", "SQUASH", "REBASE"}, a.Method) {
