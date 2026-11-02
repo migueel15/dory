@@ -32,7 +32,7 @@ export const Badge = ({ children }: { children: ReactNode }) => (
 );
 
 export const Md = ({ children }: { children: string }) => (
-  <div className="prose-sm space-y-2 break-words text-sm [&_a]:text-blue-600 dark:[&_a]:text-blue-400 [&_code]:rounded [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:px-1 [&_h1]:text-lg [&_h1]:font-bold [&_h2]:font-semibold [&_li]:ml-4 [&_li]:list-disc [&_pre]:overflow-auto [&_pre]:bg-slate-100 dark:[&_pre]:bg-slate-800 [&_pre]:p-2">
+  <div className="prose-sm space-y-2 break-words text-sm [&_a]:text-blue-600 dark:[&_a]:text-blue-400 [&_code]:rounded [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:px-1 [&_h1]:text-lg [&_h1]:font-bold [&_h2]:font-semibold [&_li]:ml-4 [&_li]:list-disc [&_pre]:overflow-auto [&_pre]:bg-slate-100 dark:[&_pre]:bg-slate-800 [&_pre]:p-2 [&_blockquote]:border-l-4 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_blockquote]:text-slate-500 dark:[&_blockquote]:border-slate-600 dark:[&_blockquote]:text-slate-400">
     <Markdown>{children}</Markdown>
   </div>
 );

@@ -2388,8 +2388,11 @@ components:
           type: "string"
     GithubEvent:
       type: "object"
-      required: ["type", "actor", "at", "body", "state", "detail"]
+      required: ["id", "type", "actor", "at", "body", "state", "detail"]
       properties:
+        id:
+          type: "string"
+          description: "Set on comments and reviews, which can be edited."
         type:
           type: "string"
         actor:
@@ -2404,7 +2407,7 @@ components:
           type: "string"
     GithubDetail:
       type: "object"
-      required: ["kind", "body", "issue", "pull", "timeline", "threads"]
+      required: ["kind", "body", "issue", "pull", "timeline", "threads", "viewer", "assignees", "candidates", "links"]
       properties:
         kind:
           type: "string"
@@ -2426,10 +2429,49 @@ components:
           type: "array"
           items:
             $ref: "#/components/schemas/GithubThread"
+        viewer:
+          type: "string"
+          description: "GitHub login Dory acts as."
+        assignees:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/GithubUser"
+        candidates:
+          type: "array"
+          description: "Users that can be assigned or asked for a review."
+          items:
+            $ref: "#/components/schemas/GithubUser"
+        links:
+          type: "array"
+          description: "Latest issues and pull requests of the repository, to reference with #."
+          items:
+            $ref: "#/components/schemas/GithubLink"
+    GithubLink:
+      type: "object"
+      required: ["number", "title", "state", "pull"]
+      properties:
+        number:
+          type: "integer"
+        title:
+          type: "string"
+        state:
+          type: "string"
+        pull:
+          type: "boolean"
+    GithubUser:
+      type: "object"
+      required: ["id", "login"]
+      properties:
+        id:
+          type: "string"
+        login:
+          type: "string"
     GithubThreadComment:
       type: "object"
-      required: ["author", "at", "body", "url"]
+      required: ["id", "author", "at", "body", "url"]
       properties:
+        id:
+          type: "string"
         author:
           type: "string"
         at:
@@ -2464,6 +2506,9 @@ components:
       properties:
         type:
           type: "string"
+        title:
+          type: "string"
+          description: "New title for edit_pull."
         body:
           type: "string"
         method:
@@ -2482,6 +2527,14 @@ components:
         start_side:
           type: "string"
           enum: ["LEFT", "RIGHT"]
+        comment_id:
+          type: "string"
+          description: "Comment or review edited by edit_comment, edit_review and edit_thread_comment."
+        user_ids:
+          type: "array"
+          description: "User node ids for request_review, assign and unassign."
+          items:
+            type: "string"
     T3Thread:
       type: "object"
       required: ["id", "project_id", "title", "status", "model", "updated_at", "attention", "url"]

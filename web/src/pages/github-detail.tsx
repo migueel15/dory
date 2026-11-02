@@ -1,35 +1,144 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { api, type GithubDetail, type GithubPull, type GithubThread } from "../api/client";
 import { Badge, Button, Card, ErrorText, Md } from "../components/ui";
-import { PullStatus } from "./github";
+import { Avatar, PullStatus } from "./github";
 import { Diff } from "./github-diff";
+import { GithubMark, Icon, IconButton, Menu, MenuItem, Tip, UserPicker, icons, useConfirm, MentionArea } from "../components/github-ui";
 
 const labels: Record<string, string> = {
   IssueComment: "comentó", PullRequestReview: "revisó", PullRequestCommit: "hizo un commit", ClosedEvent: "cerró", ReopenedEvent: "reabrió", MergedEvent: "mergeó", LabeledEvent: "añadió la etiqueta", AssignedEvent: "asignó", ReadyForReviewEvent: "marcó como lista", ConvertToDraftEvent: "pasó a draft", ReviewRequestedEvent: "pidió revisión", CrossReferencedEvent: "referenció desde",
 };
 const reviewStates: Record<string, string> = { APPROVED: "aprobó", CHANGES_REQUESTED: "pidió cambios", COMMENTED: "comentó en la revisión", DISMISSED: "revisión descartada" };
 
-function PullActions({ pull, act, busy }: { pull: GithubPull; act: (type: string, extra?: { method?: string }) => void; busy: boolean }) {
-  const [method, setMethod] = useState("MERGE");
-  if (pull.state !== "OPEN") return pull.state === "CLOSED" ? <Button disabled={busy} onClick={() => act("reopen_pull")}>Reabrir</Button> : null;
+// canApprove is false for the author (GitHub rejects it) and for whoever
+// already approved; requesting changes again brings the button back.
+const canApprove = (pull: GithubPull, me: string) => pull.author !== me && !pull.approved_by.includes(me);
+
+type Act = (type: string, extra?: { method?: string; user_ids?: string[]; title?: string; body?: string }) => void;
+
+// ReviewPicker asks someone for a review; it sits next to the reviewers' avatars.
+function ReviewPicker({ d, act, busy }: { d: GithubDetail; act: Act; busy: boolean }) {
+  const pull = d.pull!;
+  const reviewed = new Set([...pull.approved_by, ...pull.changes_by]);
+  const users = d.candidates.filter((u) => u.login !== pull.author && !pull.review_requests.includes(u.login));
+  return <UserPicker tip="Pedir revisión" title="Pedir revisión a" users={users} disabled={busy} note={(u) => (reviewed.has(u.login) ? "de nuevo" : undefined)} onPick={(u) => act("request_review", { user_ids: [u.id] })} />;
+}
+
+// Assignees shows who owns the pull request and lets Dory's account change it.
+function Assignees({ d, act, busy }: { d: GithubDetail; act: Act; busy: boolean }) {
+  const assignable = d.candidates.filter((u) => !d.assignees.some((a) => a.id === u.id));
+  const me = assignable.find((u) => u.login === d.viewer);
+  return (
+    <div className="flex items-center gap-2">
+      <Tip text="Asignados"><span className="text-slate-400"><Icon d={icons.user} /></span></Tip>
+      <span className="flex -space-x-1.5">
+        {d.assignees.map((a) => (
+          <Tip key={a.id} text={`${a.login} · clic para quitar`}>
+            <button type="button" aria-label={`Quitar a ${a.login}`} disabled={busy} onClick={() => act("unassign", { user_ids: [a.id] })} className="group relative rounded-full">
+              <img src={`https://github.com/${a.login}.png?size=48`} alt={a.login} className="size-6 rounded-full bg-slate-200 ring-2 ring-white dark:bg-slate-700 dark:ring-slate-900" />
+              <span className="absolute inset-0 grid place-items-center rounded-full bg-red-600/80 text-white opacity-0 transition-opacity group-hover:opacity-100"><Icon d={icons.x} className="size-3" /></span>
+            </button>
+          </Tip>
+        ))}
+      </span>
+      <UserPicker tip="Asignar" title="Asignar a" users={assignable.filter((u) => u.id !== me?.id)} disabled={busy} onPick={(u) => act("assign", { user_ids: [u.id] })}
+        extra={me && ((close) => (
+          <MenuItem onClick={() => { close(); act("assign", { user_ids: [me.id] }); }}>
+            <span className="grid size-6 place-items-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"><Icon d={icons.user} className="size-3.5" /></span>
+            <span className="flex-1 font-medium">Asignármela</span>
+          </MenuItem>
+        ))} />
+    </div>
+  );
+}
+
+const methods = [
+  { value: "MERGE", name: "Merge commit", hint: "Conserva todos los commits" },
+  { value: "SQUASH", name: "Squash", hint: "Un único commit" },
+  { value: "REBASE", name: "Rebase", hint: "Commits sobre la base, sin merge" },
+];
+
+// MergeButton is a split button: the main part merges with the chosen method.
+function MergeButton({ pull, act, busy }: { pull: GithubPull; act: Act; busy: boolean }) {
+  const [method, setMethod] = useState(methods[0]);
+  const [confirm, dialog] = useConfirm();
+  const merge = () => confirm({ title: "¿Mergear la PR?", text: `${method.name} de ${pull.repo}#${pull.number} (${pull.head_ref}) en ${pull.base_ref}.`, ok: "Mergear", run: () => act("merge", { method: method.value }) });
+  return (<>{dialog}
+    <Menu align="right" trigger={(open, toggle) => (
+      <div className="inline-flex overflow-hidden rounded-lg bg-green-600 text-white shadow-sm">
+        <button type="button" disabled={busy} onClick={merge} className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium hover:bg-green-700 disabled:opacity-50">
+          <Icon d={icons.merge} /> {method.name}
+        </button>
+        <button type="button" aria-label="Elegir método de merge" disabled={busy} onClick={toggle} className={`border-l border-green-500 px-2 hover:bg-green-700 ${open ? "bg-green-700" : ""}`}>
+          <Icon d={icons.chevron} />
+        </button>
+      </div>
+    )}>
+      {(close) => methods.map((m) => (
+        <MenuItem key={m.value} onClick={() => { setMethod(m); close(); }}>
+          <span className="grid size-5 place-items-center text-green-600">{m.value === method.value && <Icon d={icons.check} />}</span>
+          <span><span className="block font-medium">{m.name}</span><span className="block text-xs text-slate-500">{m.hint}</span></span>
+        </MenuItem>
+      ))}
+    </Menu></>
+  );
+}
+
+function PullActions({ pull, me, act, busy, diff, toggleDiff }: { pull: GithubPull; me: string; act: Act; busy: boolean; diff: boolean; toggleDiff: () => void }) {
+  const [confirm, dialog] = useConfirm();
+  const view = <IconButton icon={icons.code} tip={diff ? "Ocultar diff" : "Ver diff"} tone={diff ? "active" : "plain"} onClick={toggleDiff} />;
+  if (pull.state !== "OPEN") return <>{dialog}{view}{pull.state === "CLOSED" && <IconButton icon={icons.reopen} tip="Reabrir" disabled={busy} onClick={() => confirm({ title: "¿Reabrir la PR?", text: "Volverá a estar abierta para revisión y merge.", ok: "Reabrir", run: () => act("reopen_pull") })} />}</>;
   return (
     <>
-      {pull.draft ? <Button disabled={busy} onClick={() => act("ready")}>Marcar como lista</Button> : <Button variant="ghost" disabled={busy} onClick={() => act("draft")}>Pasar a draft</Button>}
-      <Button disabled={busy} onClick={() => act("approve")}>Aprobar</Button>
-      <select aria-label="Método de merge" value={method} onChange={(e) => setMethod(e.target.value)} className="rounded border border-slate-300 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900">
-        <option value="MERGE">Merge commit</option><option value="SQUASH">Squash</option><option value="REBASE">Rebase</option>
-      </select>
-      <Button disabled={busy} onClick={() => window.confirm(`¿Mergear ${pull.repo}#${pull.number} en ${pull.base_ref}?`) && act("merge", { method })}>Mergear</Button>
-      <Button variant="danger" disabled={busy} onClick={() => window.confirm("¿Cerrar la PR sin mergear?") && act("close_pull")}>Cerrar</Button>
+      {dialog}
+      {view}
+      {pull.draft
+        ? <IconButton icon={icons.ready} tip="Marcar como lista para revisión" disabled={busy} onClick={() => confirm({ title: "¿Marcar como lista?", text: "Saldrá de draft y se avisará a los revisores.", ok: "Marcar como lista", run: () => act("ready") })} />
+        : <IconButton icon={icons.draft} tip="Pasar a draft" disabled={busy} onClick={() => confirm({ title: "¿Pasar a draft?", text: "No se podrá mergear hasta que vuelva a estar lista.", ok: "Pasar a draft", run: () => act("draft") })} />}
+      {canApprove(pull, me) && <IconButton icon={icons.check} tip="Aprobar" tone="green" disabled={busy} onClick={() => act("approve")} />}
+      <IconButton icon={icons.x} tip="Cerrar sin mergear" tone="red" disabled={busy} onClick={() => confirm({ title: "¿Cerrar la PR sin mergear?", text: "Se cerrará sin integrar los cambios. Podrás reabrirla después.", ok: "Cerrar PR", danger: true, run: () => act("close_pull") })} />
+      <span className="ml-auto"><MergeButton pull={pull} act={act} busy={busy} /></span>
     </>
   );
 }
 
-type ThreadAct = (a: { type: string; thread_id: string; body?: string }) => Promise<unknown>;
+type ThreadAct = (a: { type: string; thread_id?: string; body?: string; comment_id?: string }) => Promise<unknown>;
 
-function ThreadCard({ t, act, busy }: { t: GithubThread; act: ThreadAct; busy: boolean }) {
+// quote turns a message into a markdown quote to answer it.
+const quote = (who: string, body: string) => `> **@${who}**\n${body.trim().split("\n").map((l) => `> ${l}`).join("\n")}\n\n`;
+
+// Message is one comment: who and when, the text, and buttons to answer it
+// or, when Dory's account wrote it, to edit it in place.
+function Message({ author, verb, at, url, body, mine, editType, id, act, busy, onReply }: { author: string; verb?: string; at: string; url?: string; body: string; mine: boolean; editType: string; id: string; act: ThreadAct; busy: boolean; onReply: (q: string) => void }) {
+  const [draft, setDraft] = useState<string>();
+  const when = new Date(at).toLocaleString();
+  const small = "grid size-7 place-items-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200";
+  return (
+    <div className="group/msg">
+      <div className="mb-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+        <Avatar login={author} />
+        <span><span className="font-medium text-slate-700 dark:text-slate-200">{author}</span>{verb && ` ${verb}`} · {url ? <a href={url} target="_blank" rel="noreferrer" className="hover:underline">{when}</a> : when}</span>
+        <span className="ml-auto flex gap-0.5 opacity-60 transition-opacity group-hover/msg:opacity-100">
+          {body && <Tip text="Responder citando"><button type="button" aria-label="Responder citando" onClick={() => onReply(quote(author, body))} className={small}><Icon d={icons.reply} /></button></Tip>}
+          {mine && id && draft === undefined && <Tip text="Editar"><button type="button" aria-label="Editar" onClick={() => setDraft(body)} className={small}><Icon d={icons.edit} /></button></Tip>}
+        </span>
+      </div>
+      {draft === undefined ? <Md>{body}</Md> : (
+        <div className="space-y-2">
+          <textarea aria-label="Editar mensaje" autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setDraft(undefined)} rows={Math.min(14, draft.split("\n").length + 2)} className="w-full rounded-md border border-slate-300 bg-white p-2 font-mono text-sm dark:border-slate-600 dark:bg-slate-900" />
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setDraft(undefined)}>Cancelar</Button>
+            <Button disabled={busy || !draft.trim()} onClick={() => act({ type: editType, comment_id: id, body: draft }).then(() => setDraft(undefined))}>Guardar</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ThreadCard({ t, me, people, links, act, busy }: { t: GithubThread; me: string; people: string[]; links: GithubDetail["links"]; act: ThreadAct; busy: boolean }) {
   const [open, setOpen] = useState(!t.resolved);
   const [reply, setReply] = useState("");
   const send = () => act({ type: "reply_thread", thread_id: t.id, body: reply }).then(() => setReply(""));
@@ -51,47 +160,82 @@ function ThreadCard({ t, act, busy }: { t: GithubThread; act: ThreadAct; busy: b
       {open && <>
         {t.comments.map((c, i) => (
           <div key={i} className="mt-2 border-l-2 border-slate-200 pl-2 dark:border-slate-700">
-            <div className="text-xs text-slate-500 dark:text-slate-400">{c.author} · <a href={c.url} target="_blank" rel="noreferrer" className="underline">{new Date(c.at).toLocaleString()}</a></div>
-            <Md>{c.body}</Md>
+            <Message author={c.author} at={c.at} url={c.url} body={c.body} mine={c.author === me} editType="edit_thread_comment" id={c.id} act={act} busy={busy} onReply={(q) => setReply(q + reply)} />
           </div>
         ))}
-        <textarea aria-label="Responder en el hilo" value={reply} onChange={(e) => setReply(e.target.value)} rows={2} placeholder="Responder…" className="mt-2 w-full rounded border border-slate-300 bg-white p-2 text-sm dark:border-slate-700 dark:bg-slate-900" />
-        <Button disabled={busy || !reply.trim()} onClick={send}>Responder</Button>
+        <MentionArea people={people} links={links} aria-label="Responder en el hilo" value={reply} onValue={setReply} rows={2} placeholder="Responder…" className="mt-2 w-full rounded border border-slate-300 bg-white p-2 text-sm dark:border-slate-700 dark:bg-slate-900" />
+        <div className="flex gap-2">
+          <Button disabled={busy || !reply.trim()} onClick={send}>Responder</Button>
+          {reply && <Button variant="ghost" onClick={() => setReply("")}>Descartar</Button>}
+        </div>
       </>}
     </Card>
   );
 }
 
-function Threads({ threads, act, busy }: { threads: GithubThread[]; act: ThreadAct; busy: boolean }) {
+function Threads({ threads, me, people, links, act, busy }: { threads: GithubThread[]; me: string; people: string[]; links: GithubDetail["links"]; act: ThreadAct; busy: boolean }) {
   if (threads.length === 0) return null;
   const pending = threads.filter((t) => !t.resolved).length;
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-semibold">Conversaciones de revisión · {pending} sin resolver de {threads.length}</h2>
-      {threads.map((t) => <ThreadCard key={t.id} t={t} act={act} busy={busy} />)}
+      {threads.map((t) => <ThreadCard key={t.id} t={t} me={me} people={people} links={links} act={act} busy={busy} />)}
     </section>
   );
 }
 
-function Header({ d }: { d: GithubDetail }) {
+// Header is the single card of the pull request or issue: what it is on top,
+// its review state and people in the middle, and the actions at the bottom.
+function Header({ d, actions, act, busy }: { d: GithubDetail; actions: React.ReactNode; act: Act; busy: boolean }) {
   const e = d.pull ?? d.issue!;
+  const live = d.pull?.state === "OPEN";
+  const refs = d.pull?.issues ?? d.issue?.pulls ?? [];
+  const [owner, repo] = e.repo.split("/");
+  const [draft, setDraft] = useState<{ title: string; body: string }>();
+  const save = () => { if (draft) { act("edit_pull", draft); setDraft(undefined); } };
+  const box = "w-full rounded-md border border-slate-300 bg-white px-2 py-1 dark:border-slate-600 dark:bg-slate-900";
   return (
-    <Card>
-      <div className="flex items-start justify-between gap-2">
-        <h1 className="min-w-0 break-words text-lg font-bold">{e.title}</h1>
-        <a href={e.url} target="_blank" rel="noreferrer" className="shrink-0 text-sm underline">Abrir en GitHub</a>
+    <Card className="p-0">
+      <div className="space-y-2 p-4">
+        <div className="flex items-start gap-3">
+          <span className={`mt-0.5 shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold text-white ${stateColor[e.state] ?? "bg-slate-500"}`}>{stateName[e.state] ?? e.state}</span>
+          {draft
+            ? <input aria-label="Título" autoFocus value={draft.title} onChange={(ev) => setDraft({ ...draft, title: ev.target.value })} onKeyDown={(ev) => ev.key === "Escape" && setDraft(undefined)} className={`${box} min-w-0 flex-1 text-lg font-bold`} />
+            : <h1 className="min-w-0 flex-1 break-words text-lg font-bold leading-snug">{e.title}</h1>}
+          {d.pull && (draft ? (
+            <span className="flex shrink-0 gap-1">
+              <Tip text="Guardar"><button type="button" aria-label="Guardar" disabled={busy || !draft.title.trim()} onClick={save} className="grid size-8 place-items-center rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"><Icon d={icons.check} /></button></Tip>
+              <Tip text="Cancelar"><button type="button" aria-label="Cancelar" onClick={() => setDraft(undefined)} className="grid size-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><Icon d={icons.x} /></button></Tip>
+            </span>
+          ) : (
+            <Tip text="Editar título y descripción"><button type="button" aria-label="Editar título y descripción" onClick={() => setDraft({ title: e.title, body: d.body })} className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"><Icon d={icons.edit} /></button></Tip>
+          ))}
+          <Tip text="Abrir en GitHub"><a href={e.url} target="_blank" rel="noreferrer" aria-label="Abrir en GitHub" className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"><GithubMark /></a></Tip>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+          <Avatar login={e.author} title={`Autor: ${e.author}`} />
+          <span>{e.repo}#{e.number}</span>
+          {d.pull && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono dark:bg-slate-800">{d.pull.head_ref} → {d.pull.base_ref}</span>}
+          {e.labels.map((l) => <Badge key={l}>{l}</Badge>)}
+          {refs.map((r) => <Link key={r.number} className="underline" to="/github/$owner/$repo/$kind/$number" params={{ owner, repo, kind: d.pull ? "issues" : "pulls", number: String(r.number) }}>#{r.number} {r.title}</Link>)}
+        </div>
       </div>
-      <div className="text-xs text-slate-500 dark:text-slate-400">{e.repo}#{e.number} · {e.author}{d.pull && ` · ${d.pull.head_ref} → ${d.pull.base_ref}`}</div>
-      <div className="mt-1 flex flex-wrap gap-1"><Badge>{e.state}</Badge>{e.labels.map((l) => <Badge key={l}>{l}</Badge>)}</div>
-      {d.pull && <div className="mt-2"><PullStatus pull={d.pull} /></div>}
-      {d.pull && d.pull.approved_by.length > 0 && <div className="text-xs text-slate-500 dark:text-slate-400">Aprobada por {d.pull.approved_by.join(", ")}</div>}
-      {(d.pull?.issues ?? d.issue?.pulls ?? []).map((r) => {
-        const [owner, repo] = e.repo.split("/");
-        return <Link key={r.number} className="mr-2 text-xs underline" to="/github/$owner/$repo/$kind/$number" params={{ owner, repo, kind: d.pull ? "issues" : "pulls", number: String(r.number) }}>#{r.number} {r.title}</Link>;
-      })}
+      {d.pull && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-slate-100 px-4 py-3 dark:border-slate-800">
+          <div className="flex items-center gap-2"><PullStatus pull={d.pull} />{live && <ReviewPicker d={d} act={act} busy={busy} />}</div>
+          {live && <Assignees d={d} act={act} busy={busy} />}
+        </div>
+      )}
+      {draft
+        ? <div className="border-t border-slate-100 px-4 py-3 dark:border-slate-800"><textarea aria-label="Descripción" value={draft.body} onChange={(ev) => setDraft({ ...draft, body: ev.target.value })} rows={12} className={`${box} font-mono text-sm`} /></div>
+        : d.body && <div className="max-h-[60vh] overflow-auto border-t border-slate-100 px-4 py-3 dark:border-slate-800"><Md>{d.body}</Md></div>}
+      <div className="flex flex-wrap items-center gap-2 rounded-b-lg border-t border-slate-100 bg-slate-50 px-4 py-2.5 dark:border-slate-800 dark:bg-slate-950/40">{actions}</div>
     </Card>
   );
 }
+
+const stateColor: Record<string, string> = { OPEN: "bg-green-600", CLOSED: "bg-red-600", MERGED: "bg-purple-600" };
+const stateName: Record<string, string> = { OPEN: "Abierta", CLOSED: "Cerrada", MERGED: "Mergeada" };
 
 export function GithubView() {
   const { owner, repo, kind, number } = useParams({ strict: false }) as Record<string, string>;
@@ -99,50 +243,79 @@ export function GithubView() {
   const n = Number(number);
   const qc = useQueryClient();
   const [text, setText] = useState("");
+  const box = useRef<HTMLTextAreaElement>(null);
+  const discard = () => { setText(""); box.current?.blur(); };
+  const focusBox = () => requestAnimationFrame(() => box.current?.focus({ preventScroll: true }));
+  const write = () => { bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }); focusBox(); };
   const [showDiff, setShowDiff] = useState(false);
+  const [confirm, dialog] = useConfirm();
   const key = ["github-detail", full, kind, n];
   const detail = useQuery({ queryKey: key, queryFn: () => api.githubDetail(full, kind, n), refetchInterval: 60_000 });
+  // The floating button hides while the composer area is on screen.
+  const bottom = useRef<HTMLDivElement>(null);
+  const [atBottom, setAtBottom] = useState(false);
+  useEffect(() => {
+    const el = bottom.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => setAtBottom(e.isIntersecting));
+    io.observe(el);
+    return () => io.disconnect();
+  }, [detail.isSuccess]);
   const action = useMutation({
-    mutationFn: (a: { type: string; body?: string; method?: string; thread_id?: string }) => api.githubAct(full, kind, n, a),
+    mutationFn: (a: { type: string; title?: string; body?: string; method?: string; thread_id?: string; user_ids?: string[]; comment_id?: string }) => api.githubAct(full, kind, n, a),
     onSuccess: (_, a) => {
-      if (a.body && !a.thread_id) setText("");
+      if (a.body && !a.thread_id && !a.type.startsWith("edit_")) discard();
       qc.invalidateQueries({ queryKey: key });
       qc.invalidateQueries({ queryKey: ["github"] });
     },
   });
   const d = detail.data;
-  const act = (type: string, extra = {}) => action.mutate({ type, ...extra });
+  // People who can be mentioned: the repo's users and everyone in the conversation.
+  const people = d ? [...new Set([...d.candidates.map((u) => u.login), (d.pull ?? d.issue)!.author, ...d.timeline.map((e) => e.actor), ...d.threads.flatMap((t) => t.comments.map((c) => c.author))])].filter((p) => /^[\w-]+$/.test(p) && p !== d.viewer).sort() : [];
+  const act: Act = (type, extra = {}) => action.mutate({ type, ...extra });
   const open = (d?.pull ?? d?.issue)?.state === "OPEN";
   return (
     <div className="space-y-3">
       <Link to="/github" className="text-sm underline">← GitHub</Link>
       <ErrorText error={detail.error ?? action.error} />
+      {dialog}
       {d && <>
-        <Header d={d} />
-        <div className="flex flex-wrap gap-2">
-          {d.pull && <PullActions pull={d.pull} act={act} busy={action.isPending} />}
-          {d.issue && <Button variant={open ? "danger" : "default"} disabled={action.isPending} onClick={() => act(open ? "close_issue" : "reopen_issue")}>{open ? "Cerrar" : "Reabrir"}</Button>}
-          {d.pull && <Button variant="ghost" onClick={() => setShowDiff(!showDiff)}>{showDiff ? "Ocultar diff" : "Ver diff"}</Button>}
-        </div>
+        <Header d={d} act={act} busy={action.isPending} actions={<>
+          {d.pull && <PullActions pull={d.pull} me={d.viewer} act={act} busy={action.isPending} diff={showDiff} toggleDiff={() => setShowDiff(!showDiff)} />}
+          {d.issue && <IconButton icon={open ? icons.x : icons.reopen} tip={open ? "Cerrar issue" : "Reabrir issue"} tone={open ? "red" : "plain"} disabled={action.isPending} onClick={() => confirm(open ? { title: "¿Cerrar la issue?", text: "Podrás reabrirla después.", ok: "Cerrar issue", danger: true, run: () => act("close_issue") } : { title: "¿Reabrir la issue?", text: "Volverá a estar abierta.", ok: "Reabrir", run: () => act("reopen_issue") })} />}
+        </>} />
         {showDiff && <Diff repo={full} pr={n} />}
-        {d.body && <Card><Md>{d.body}</Md></Card>}
-        <Threads threads={d.threads} act={action.mutateAsync} busy={action.isPending} />
+        <Threads threads={d.threads} me={d.viewer} people={people} links={d.links} act={action.mutateAsync} busy={action.isPending} />
         {d.timeline.map((e, i) => (
           <div key={i} className={e.body ? "" : "px-3 text-xs text-slate-500 dark:text-slate-400"}>
             {e.body ? (
               <Card>
-                <div className="mb-1 text-xs text-slate-500 dark:text-slate-400">{e.actor} {reviewStates[e.state] ?? labels[e.type] ?? e.type} · {new Date(e.at).toLocaleString()}</div>
-                <Md>{e.body}</Md>
+                <Message author={e.actor} verb={reviewStates[e.state] ?? labels[e.type] ?? e.type} at={e.at} body={e.body} mine={e.actor === d.viewer} editType={e.type === "PullRequestReview" ? "edit_review" : "edit_comment"} id={e.id} act={action.mutateAsync} busy={action.isPending}
+                  onReply={(q) => { setText(q + text); write(); }} />
               </Card>
             ) : <>{e.actor} {reviewStates[e.state] ?? labels[e.type] ?? e.type} {e.detail} · {new Date(e.at).toLocaleString()}</>}
           </div>
         ))}
-        <textarea aria-label="Mensaje" value={text} onChange={(e) => setText(e.target.value)} rows={4} placeholder="Escribe un mensaje…" className="w-full rounded border border-slate-300 bg-white p-2 text-sm dark:border-slate-700 dark:bg-slate-900" />
-        <div className="flex flex-wrap gap-2">
-          <Button disabled={action.isPending || !text.trim()} onClick={() => action.mutate({ type: "comment", body: text })}>Comentar</Button>
-          {d.pull && open && <Button variant="ghost" disabled={action.isPending || !text.trim()} onClick={() => action.mutate({ type: "request_changes", body: text })}>Pedir cambios</Button>}
-          {d.pull && open && <Button variant="ghost" disabled={action.isPending || !text.trim()} onClick={() => action.mutate({ type: "approve", body: text })}>Aprobar con mensaje</Button>}
+        <div ref={bottom}>
+          <Card className="space-y-2">
+            <MentionArea boxRef={box} people={people} links={d.links} id="composer" aria-label="Mensaje" value={text} onValue={setText} onKeyDown={(e) => e.key === "Escape" && box.current?.blur()} rows={4} placeholder="Escribe un mensaje…" className="w-full rounded-md border border-slate-300 bg-white p-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
+            <div className="flex flex-wrap gap-2">
+              <Button disabled={action.isPending || !text.trim()} onClick={() => action.mutate({ type: "comment", body: text })}>Comentar</Button>
+              {d.pull && open && <Button variant="ghost" disabled={action.isPending || !text.trim()} onClick={() => action.mutate({ type: "request_changes", body: text })}>Pedir cambios</Button>}
+              {d.pull && open && canApprove(d.pull, d.viewer) && <Button variant="ghost" disabled={action.isPending || !text.trim()} onClick={() => action.mutate({ type: "approve", body: text })}>Aprobar con mensaje</Button>}
+              {text && <Button variant="ghost" className="ml-auto" onClick={discard}>Descartar</Button>}
+            </div>
+          </Card>
         </div>
+        {!atBottom && (
+          <span className="fixed bottom-5 right-5 z-40">
+            <Tip text="Escribir un mensaje">
+              <button type="button" aria-label="Escribir un mensaje" onClick={write} className="grid size-12 place-items-center rounded-full bg-blue-600 text-white shadow-lg ring-4 ring-white/60 transition-transform hover:scale-105 hover:bg-blue-700 dark:ring-slate-900/60">
+                <Icon d={icons.comment} className="size-5" />
+              </button>
+            </Tip>
+          </span>
+        )}
       </>}
     </div>
   );
