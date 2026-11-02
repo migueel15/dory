@@ -796,6 +796,8 @@ export interface components {
             fetched_at: string;
         };
         GithubEvent: {
+            /** @description Set on comments and reviews, which can be edited. */
+            id: string;
             type: string;
             actor: string;
             at: string;
@@ -810,8 +812,26 @@ export interface components {
             pull: components["schemas"]["GithubPull"] | null;
             timeline: components["schemas"]["GithubEvent"][];
             threads: components["schemas"]["GithubThread"][];
+            /** @description GitHub login Dory acts as. */
+            viewer: string;
+            assignees: components["schemas"]["GithubUser"][];
+            /** @description Users that can be assigned or asked for a review. */
+            candidates: components["schemas"]["GithubUser"][];
+            /** @description Latest issues and pull requests of the repository, to reference with #. */
+            links: components["schemas"]["GithubLink"][];
+        };
+        GithubLink: {
+            number: number;
+            title: string;
+            state: string;
+            pull: boolean;
+        };
+        GithubUser: {
+            id: string;
+            login: string;
         };
         GithubThreadComment: {
+            id: string;
             author: string;
             at: string;
             body: string;
@@ -828,6 +848,8 @@ export interface components {
         };
         GithubAction: {
             type: string;
+            /** @description New title for edit_pull. */
+            title?: string;
             body?: string;
             method?: string;
             thread_id?: string;
@@ -838,6 +860,10 @@ export interface components {
             start_line?: number;
             /** @enum {string} */
             start_side?: "LEFT" | "RIGHT";
+            /** @description Comment or review edited by edit_comment, edit_review and edit_thread_comment. */
+            comment_id?: string;
+            /** @description User node ids for request_review, assign and unassign. */
+            user_ids?: string[];
         };
         T3Thread: {
             id: string;
