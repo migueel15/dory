@@ -58,6 +58,13 @@ type Action struct {
 	Body     string `json:"body"`
 	Method   string `json:"method"`
 	ThreadID string `json:"thread_id"`
+	// Path, Line and Side (LEFT or RIGHT) place a comment on the diff;
+	// StartLine and StartSide are set for a range of lines.
+	Path      string `json:"path"`
+	Line      int    `json:"line"`
+	Side      string `json:"side"`
+	StartLine int    `json:"start_line"`
+	StartSide string `json:"start_side"`
 }
 
 // Issue timelines reject pull request fragments, so only shared events go here.
@@ -281,6 +288,13 @@ var mutations = map[string]struct {
 	"reply_thread": {"pulls", `mutation($input: AddPullRequestReviewThreadReplyInput!) { addPullRequestReviewThreadReply(input: $input) { clientMutationId } }`, func(a Action, _ string) map[string]any {
 		return map[string]any{"pullRequestReviewThreadId": a.ThreadID, "body": a.Body}
 	}},
+	"comment_lines": {"pulls", `mutation($input: AddPullRequestReviewThreadInput!) { addPullRequestReviewThread(input: $input) { clientMutationId } }`, func(a Action, id string) map[string]any {
+		in := map[string]any{"pullRequestId": id, "body": a.Body, "path": a.Path, "line": a.Line, "side": a.Side, "subjectType": "LINE"}
+		if a.StartLine != 0 && (a.StartLine != a.Line || a.StartSide != a.Side) {
+			in["startLine"], in["startSide"] = a.StartLine, a.StartSide
+		}
+		return in
+	}},
 	"resolve_thread":   {"pulls", `mutation($input: ResolveReviewThreadInput!) { resolveReviewThread(input: $input) { clientMutationId } }`, threadInput},
 	"unresolve_thread": {"pulls", `mutation($input: UnresolveReviewThreadInput!) { unresolveReviewThread(input: $input) { clientMutationId } }`, threadInput},
 	"close_issue":      {"issues", `mutation($input: CloseIssueInput!) { closeIssue(input: $input) { clientMutationId } }`, issueInput},
@@ -306,7 +320,11 @@ func validate(kind string, a Action) error {
 	if strings.HasSuffix(a.Type, "_thread") && a.ThreadID == "" {
 		return fmt.Errorf("%w: thread_id is required", ErrInvalid)
 	}
-	if (a.Type == "comment" || a.Type == "request_changes" || a.Type == "reply_thread") && strings.TrimSpace(a.Body) == "" {
+	sides := []string{"LEFT", "RIGHT"}
+	if a.Type == "comment_lines" && (a.Path == "" || a.Line < 1 || !slices.Contains(sides, a.Side) || (a.StartLine != 0 && !slices.Contains(sides, a.StartSide))) {
+		return fmt.Errorf("%w: path, line and side are required", ErrInvalid)
+	}
+	if (a.Type == "comment" || a.Type == "request_changes" || a.Type == "reply_thread" || a.Type == "comment_lines") && strings.TrimSpace(a.Body) == "" {
 		return fmt.Errorf("%w: text is required", ErrInvalid)
 	}
 	if a.Type == "merge" && !slices.Contains([]string{"MERGE", "SQUASH", "REBASE"}, a.Method) {

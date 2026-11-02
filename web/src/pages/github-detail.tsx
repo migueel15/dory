@@ -4,28 +4,12 @@ import { Link, useParams } from "@tanstack/react-router";
 import { api, type GithubDetail, type GithubPull, type GithubThread } from "../api/client";
 import { Badge, Button, Card, ErrorText, Md } from "../components/ui";
 import { PullStatus } from "./github";
+import { Diff } from "./github-diff";
 
 const labels: Record<string, string> = {
   IssueComment: "comentó", PullRequestReview: "revisó", PullRequestCommit: "hizo un commit", ClosedEvent: "cerró", ReopenedEvent: "reabrió", MergedEvent: "mergeó", LabeledEvent: "añadió la etiqueta", AssignedEvent: "asignó", ReadyForReviewEvent: "marcó como lista", ConvertToDraftEvent: "pasó a draft", ReviewRequestedEvent: "pidió revisión", CrossReferencedEvent: "referenció desde",
 };
 const reviewStates: Record<string, string> = { APPROVED: "aprobó", CHANGES_REQUESTED: "pidió cambios", COMMENTED: "comentó en la revisión", DISMISSED: "revisión descartada" };
-
-function lineColor(l: string) {
-  if (l.startsWith("+") && !l.startsWith("+++")) return "bg-green-100 dark:bg-green-950";
-  if (l.startsWith("-") && !l.startsWith("---")) return "bg-red-100 dark:bg-red-950";
-  if (l.startsWith("@@") || l.startsWith("diff ")) return "text-slate-500 dark:text-slate-400";
-  return "";
-}
-
-function Diff({ repo, number }: { repo: string; number: number }) {
-  const diff = useQuery({ queryKey: ["github-diff", repo, number], queryFn: () => api.githubDiff(repo, number) });
-  return (
-    <Card>
-      <ErrorText error={diff.error} />
-      <pre className="max-h-[70vh] overflow-auto text-xs">{diff.data?.diff.split("\n").map((l, i) => <div key={i} className={lineColor(l)}>{l || " "}</div>)}</pre>
-    </Card>
-  );
-}
 
 function PullActions({ pull, act, busy }: { pull: GithubPull; act: (type: string, extra?: { method?: string }) => void; busy: boolean }) {
   const [method, setMethod] = useState("MERGE");
@@ -140,7 +124,7 @@ export function GithubView() {
           {d.issue && <Button variant={open ? "danger" : "default"} disabled={action.isPending} onClick={() => act(open ? "close_issue" : "reopen_issue")}>{open ? "Cerrar" : "Reabrir"}</Button>}
           {d.pull && <Button variant="ghost" onClick={() => setShowDiff(!showDiff)}>{showDiff ? "Ocultar diff" : "Ver diff"}</Button>}
         </div>
-        {showDiff && <Diff repo={full} number={n} />}
+        {showDiff && <Diff repo={full} pr={n} />}
         {d.body && <Card><Md>{d.body}</Md></Card>}
         <Threads threads={d.threads} act={action.mutateAsync} busy={action.isPending} />
         {d.timeline.map((e, i) => (

@@ -831,6 +831,13 @@ export interface components {
             body?: string;
             method?: string;
             thread_id?: string;
+            path?: string;
+            line?: number;
+            /** @enum {string} */
+            side?: "LEFT" | "RIGHT";
+            start_line?: number;
+            /** @enum {string} */
+            start_side?: "LEFT" | "RIGHT";
         };
         T3Thread: {
             id: string;

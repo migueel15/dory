@@ -2470,6 +2470,18 @@ components:
           type: "string"
         thread_id:
           type: "string"
+        path:
+          type: "string"
+        line:
+          type: "integer"
+        side:
+          type: "string"
+          enum: ["LEFT", "RIGHT"]
+        start_line:
+          type: "integer"
+        start_side:
+          type: "string"
+          enum: ["LEFT", "RIGHT"]
     T3Thread:
       type: "object"
       required: ["id", "project_id", "title", "status", "model", "updated_at", "attention", "url"]
