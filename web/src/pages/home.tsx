@@ -1,15 +1,16 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { api, type GithubPull, type Repository } from "../api/client";
-import { Badge, Card, errMsg, field, Label } from "../components/ui";
+import { Arrow, Badge, Card, errMsg, pill } from "../components/ui";
+import { useProject, useProjectThreads } from "../project";
+import { QuickCapture } from "../components/capture";
 import { useBlocked, useT3 } from "./attention";
 import { PullStatus, useGithubOpen } from "./github";
 
 const LIMIT = 5;
 const muted = "text-sm text-slate-500 dark:text-slate-400";
 
-export const homeSearch = (s: Record<string, unknown>): { project?: string } => (typeof s.project === "string" && s.project ? { project: s.project } : {});
 
 type Source = { name: string; error: unknown };
 type Section = "/attention" | "/github" | "/inbox" | "/environments";
@@ -22,7 +23,7 @@ function Block({ title, to, sources, pending, empty, children }: { title: string
     <Card className="min-w-0 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-semibold">{title}</h2>
-        <Link to={to} className="flex min-h-11 items-center text-xs underline sm:min-h-0">Ver sección</Link>
+        <Link to={to} className={pill}>Ver sección <Arrow /></Link>
       </div>
       {failed.map((s) => <p key={s.name} className="text-sm text-amber-700 dark:text-amber-400 break-words">Sin datos de {s.name}: {errMsg(s.error)}</p>)}
       {pending ? <p className={muted}>Cargando…</p> : empty ? failed.length === 0 && <p className={muted}>Nada que mostrar.</p> : children}
@@ -38,23 +39,17 @@ const belongsTo = (pull: GithubPull, repos: Repository[]) =>
   });
 
 export function Home() {
-  const { project } = useSearch({ from: "/" });
-  const navigate = useNavigate();
+  const project = useProject();
   const t3 = useT3();
   const blocked = useBlocked();
   const github = useGithubOpen();
   const ideas = useQuery({ queryKey: ["items", "inbox"], queryFn: () => api.items.list({ status: "inbox" }) });
-  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
   const repos = useQuery({ queryKey: ["repositories", project], queryFn: () => api.repositories.list({ project_id: project }), enabled: !!project });
-  const links = useQuery({ queryKey: ["item-threads"], queryFn: () => api.itemThreads.list(), enabled: !!project });
-  const projectItems = useQuery({ queryKey: ["items", "project", project], queryFn: () => api.items.list({ project_id: project }), enabled: !!project });
-
-  const itemIds = new Set(projectItems.data?.map((i) => i.id));
-  const threadKeys = new Set(links.data?.filter((l) => itemIds.has(l.item_id)).map((l) => `${l.instance_id}:${l.thread_id}`));
+  const linked = useProjectThreads(project);
   const threads = (t3.data ?? [])
     .flatMap((s) => s.threads.map((t) => ({ ...t, instance_id: s.instance_id, environment_id: s.environment_id })))
-    .filter((t) => !project || threadKeys.has(`${t.instance_id}:${t.id}`));
+    .filter((t) => !linked.keys || linked.keys.has(`${t.instance_id}:${t.id}`));
   const needing = threads.filter((t) => t.attention);
   const stuck = (blocked.data ?? []).filter((i) => !project || i.project_id === project);
   const recent = (ideas.data ?? [])
@@ -62,23 +57,13 @@ export function Home() {
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
   const pulls = (github.data?.pulls ?? []).filter((p) => !project || belongsTo(p, repos.data ?? []));
   const envName = (id: string, fallback = "") => envs.data?.find((e) => e.id === id)?.name ?? fallback;
-  const projectSources: Source[] = project ? [{ name: "los enlaces de agentes", error: links.error ?? projectItems.error }] : [];
-  const projectPending = !!project && (links.isPending || projectItems.isPending);
+  const projectSources: Source[] = project ? [{ name: "los enlaces de agentes", error: linked.error }] : [];
+  const projectPending = linked.pending;
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <h1 className="text-xl font-bold">Inicio</h1>
-        <div className="w-full sm:w-64">
-          <Label text="Proyecto">
-            <select className={field} value={project ?? ""} onChange={(e) => navigate({ to: "/", search: e.target.value ? { project: e.target.value } : {} })}>
-              <option value="">Todos</option>
-              {projects.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </Label>
-          {projects.error ? <p className="text-xs text-amber-700 dark:text-amber-400">Sin datos de proyectos: {errMsg(projects.error)}</p> : null}
-        </div>
-      </div>
+      <h1 className="text-xl font-bold">Inicio</h1>
+      <QuickCapture />
       <div className="grid gap-3 lg:grid-cols-2">
         <Block title={`Atención (${needing.length + stuck.length})`} to="/attention" sources={[{ name: "T3", error: t3.error }, { name: "items bloqueados", error: blocked.error }, ...projectSources]} pending={(t3.isPending && blocked.isPending) || projectPending} empty={needing.length + stuck.length === 0}>
           {needing.slice(0, LIMIT).map((t) => <a key={`${t.instance_id}:${t.id}`} href={t.url} target="_blank" rel="noreferrer" className="block text-sm break-words">{t.title} <Badge>{t.status}</Badge></a>)}

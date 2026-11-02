@@ -55,6 +55,15 @@ func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *
 		}
 		writeJSON(w, http.StatusOK, overview)
 	})
+	mux.HandleFunc("GET /api/github/closed", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		page, err := gh.ClosedPage(r.Context(), q.Get("kind"), q.Get("project"), q.Get("cursor"))
+		if err != nil {
+			writeGithubError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, page)
+	})
 	mux.HandleFunc("GET /api/github/repos/{owner}/{repo}/{kind}/{number}", func(w http.ResponseWriter, r *http.Request) {
 		number, err := strconv.Atoi(r.PathValue("number"))
 		if err != nil {

@@ -1,4 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState, type MutableRefObject, type ReactNode, type Ref, type TextareaHTMLAttributes } from "react";
+import { Link as RouterLink } from "@tanstack/react-router";
+import { createPortal } from "react-dom";
+import { defaultUrlTransform, Md } from "./ui";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject, type ReactNode, type Ref, type TextareaHTMLAttributes } from "react";
 
 // Stroke icons in the same 24px style as the rest of the app.
 export const icons = {
@@ -35,13 +38,34 @@ export function GithubMark({ className = "size-5" }: { className?: string }) {
 }
 
 // Tip shows a styled tooltip above its child on hover or keyboard focus.
+// Tip shows a tooltip over everything else (in a portal), kept inside the
+// viewport: it shifts sideways near the edges and flips below when the top is short.
 export function Tip({ text, children }: { text: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const anchor = useRef<HTMLSpanElement>(null);
+  const tip = useRef<HTMLSpanElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const show = () => { clearTimeout(timer.current); timer.current = setTimeout(() => setOpen(true), 150); };
+  const hide = () => { clearTimeout(timer.current); setOpen(false); setPos(null); };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  useLayoutEffect(() => {
+    if (!open || !anchor.current || !tip.current) return;
+    const a = anchor.current.getBoundingClientRect(), t = tip.current.getBoundingClientRect(), m = 8;
+    const left = Math.min(Math.max(m, a.left + a.width / 2 - t.width / 2), window.innerWidth - t.width - m);
+    const top = a.top - t.height - 6 >= m ? a.top - t.height - 6 : a.bottom + 6;
+    setPos({ left, top });
+  }, [open, text]);
   return (
-    <span className="group/tip relative inline-flex">
+    <span ref={anchor} className="inline-flex" onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}>
       {children}
-      <span role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity delay-150 group-focus-within/tip:opacity-100 group-hover/tip:opacity-100 dark:bg-slate-100 dark:text-slate-900">
-        {text}
-      </span>
+      {open && createPortal(
+        <span ref={tip} role="tooltip" style={pos ?? { left: 0, top: 0, visibility: "hidden" }}
+          className="pointer-events-none fixed z-[60] max-w-xs rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white shadow-lg dark:bg-slate-100 dark:text-slate-900">
+          {text}
+        </span>,
+        document.body,
+      )}
     </span>
   );
 }
@@ -297,5 +321,40 @@ export function MentionArea({ value, onValue, people, links = [], boxRef, onKeyD
         </div>
       )}
     </div>
+  );
+}
+
+// RefContext carries the repository of the view and its known issues and pull
+// requests, so markdown can turn "#52" into a link to it.
+export const RefContext = createContext<{ owner: string; repo: string; links: Link[] } | null>(null);
+
+// refLinks rewrites "#52" outside code into a markdown link with the dory-ref scheme.
+const refLinks = (md: string) =>
+  md.split(/(```[\s\S]*?```|`[^`\n]*`)/).map((part, i) => (i % 2 ? part : part.replace(/(^|[^\w&/#[])#(\d+)\b/g, "$1[#$2](dory-ref:$2)"))).join("");
+
+function RefLink({ number }: { number: number }) {
+  const ctx = useContext(RefContext)!;
+  const l = ctx.links.find((x) => x.number === number);
+  const cls = "inline-flex items-center gap-0.5 rounded px-1 font-medium text-blue-700 no-underline hover:bg-blue-50 hover:underline dark:text-blue-300 dark:hover:bg-blue-950";
+  if (!l) return <Tip text="Abrir en GitHub"><a href={`https://github.com/${ctx.owner}/${ctx.repo}/issues/${number}`} target="_blank" rel="noreferrer" className={cls}>#{number}</a></Tip>;
+  const tip = `${l.pull ? "PR" : "Issue"} #${l.number} · ${l.title} · ${l.state === "OPEN" ? "abierta" : l.state === "MERGED" ? "mergeada" : "cerrada"}`;
+  return (
+    <Tip text={tip}>
+      <RouterLink to="/github/$owner/$repo/$kind/$number" params={{ owner: ctx.owner, repo: ctx.repo, kind: l.pull ? "pulls" : "issues", number: String(number) }} className={cls}>
+        <span className={`size-1.5 rounded-full ${l.state === "OPEN" ? "bg-green-500" : l.state === "MERGED" ? "bg-purple-500" : "bg-red-500"}`} />#{number}
+      </RouterLink>
+    </Tip>
+  );
+}
+
+// RefMd renders markdown where "#52" links to that issue or pull request.
+export function RefMd({ children, onToggle }: { children: string; onToggle?: (line: number) => void }) {
+  const ctx = useContext(RefContext);
+  if (!ctx) return <Md onToggle={onToggle}>{children}</Md>;
+  return (
+    <Md onToggle={onToggle} urlTransform={(url) => (url.startsWith("dory-ref:") ? url : defaultUrlTransform(url))}
+      components={{ a: ({ href, children: text, node: _, ...rest }) => (href?.startsWith("dory-ref:") ? <RefLink number={Number(href.slice(9))} /> : <a href={href} target="_blank" rel="noreferrer" {...rest}>{text}</a>) }}>
+      {refLinks(children)}
+    </Md>
   );
 }
