@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Item } from "../api/client";
-import { Button, ErrorText, Label, Modal, field } from "../components/ui";
+import { Button, ErrorText, Label, Modal, Select } from "../components/ui";
 import { useT3 } from "./attention";
 
 // Starts one thread per item on the chosen instance. Runs on an explicit click only.
@@ -32,23 +32,13 @@ export function LaunchDialog({ items, role, onClose }: { items: Item[]; role: "t
   return (
     <Modal title={role === "triage" ? `Analizar ${items.length} con un agente` : "Enviar a implementar"} onClose={onClose}>
       <Label text="Máquina">
-        <select className={field} value={instanceId} onChange={(e) => { setInstance(e.target.value); setProject(""); setChoice(""); }}>
-          {instances.map((s) => <option key={s.instance_id} value={s.instance_id}>{s.base_url}</option>)}
-        </select>
+        <Select value={instanceId} onChange={(v) => { setInstance(v); setProject(""); setChoice(""); }} options={instances.map((s) => ({ value: s.instance_id, label: s.base_url }))} />
       </Label>
       <Label text="Proyecto de T3">
-        <select className={field} value={projectId} onChange={(e) => setProject(e.target.value)}>
-          {catalog.data?.projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
-        </select>
+        <Select value={projectId} onChange={setProject} options={(catalog.data?.projects ?? []).map((p) => ({ value: p.id, label: p.title }))} />
       </Label>
       <Label text="Modelo">
-        <select className={field} value={selected} onChange={(e) => setChoice(e.target.value)}>
-          {catalog.data?.providers.map((p) => (
-            <optgroup key={p.instance_id} label={p.name}>
-              {p.models.map((m) => <option key={m.slug} value={`${p.instance_id}|${m.slug}`}>{m.name}</option>)}
-            </optgroup>
-          ))}
-        </select>
+        <Select value={selected} onChange={setChoice} options={(catalog.data?.providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `${p.instance_id}|${m.slug}`, label: m.name, group: p.name })))} />
       </Label>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={worktree} onChange={(e) => setWorktree(e.target.checked)} />Crear un worktree nuevo</label>
       <p className="text-xs text-slate-500 dark:text-slate-400">El agente se lanza con acceso completo.</p>

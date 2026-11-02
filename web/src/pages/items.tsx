@@ -3,7 +3,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DndContext, type DragEndEvent, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { api, itemInput, type Item, type ItemStatus } from "../api/client";
-import { Badge, Button, Card, ErrorText, Input, field, Label, Md, Modal, Textarea, csv } from "../components/ui";
+import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, Select, Textarea, csv, opts } from "../components/ui";
+import { useProject } from "../project";
 
 const STATUSES: ItemStatus[] = ["inbox", "triaged", "ready", "in_progress", "validating", "blocked", "done", "cancelled"];
 // Closed columns can grow to hundreds of items: show the most recent ones in pages.
@@ -50,22 +51,14 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
       <Label text="Referencias (coma): PR, issue, rama"><Input value={refs} onChange={(e) => setRefs(e.target.value)} /></Label>
       <div className="grid gap-2 sm:grid-cols-2">
         <Label text="Estado">
-          <select className={field} value={status} onChange={(e) => setStatus(e.target.value as ItemStatus)}>
-            {STATUSES.map((s) => <option key={s}>{s}</option>)}
-          </select>
+          <Select value={status} onChange={(v) => setStatus(v as ItemStatus)} options={opts(STATUSES)} />
         </Label>
         <Label text="Prioridad"><Input type="number" value={priority} onChange={(e) => setPriority(+e.target.value)} /></Label>
         <Label text="Proyecto">
-          <select className={field} value={pid} onChange={(e) => { setPid(e.target.value); setFid(""); }}>
-            <option value="">— ninguno —</option>
-            {projects.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          <Select value={pid} onChange={(v) => { setPid(v); setFid(""); }} options={[{ value: "", label: "— ninguno —" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
         </Label>
         <Label text="Feature">
-          <select className={field} value={fid} onChange={(e) => setFid(e.target.value)} disabled={!pid}>
-            <option value="">— ninguna —</option>
-            {features.data?.map((f) => <option key={f.id} value={f.id}>{f.title}</option>)}
-          </select>
+          <Select value={fid} onChange={setFid} disabled={!pid} options={[{ value: "", label: "— ninguna —" }, ...(features.data ?? []).map((f) => ({ value: f.id, label: f.title }))]} />
         </Label>
         <Label text="Tags (coma)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Label>
       </div>
@@ -90,9 +83,10 @@ export function Inbox() {
   const [quick, setQuick] = useState("");
   const [batch, setBatch] = useState(false);
   const qc = useQueryClient();
-  const items = useQuery({ queryKey: ["items", "inbox"], queryFn: () => api.items.list({ status: "inbox" }) });
+  const project = useProject();
+  const items = useQuery({ queryKey: ["items", "inbox"], queryFn: () => api.items.list({ status: "inbox" }), select: (l) => (project ? l.filter((i) => i.project_id === project) : l) });
   const add = useMutation({
-    mutationFn: (title: string) => api.items.create({ id: crypto.randomUUID(), title, raw_text: title, source: "web" }),
+    mutationFn: (title: string) => api.items.create({ id: crypto.randomUUID(), title, raw_text: title, source: "web", project_id: project || null }),
     onSuccess: () => {
       setQuick("");
       qc.invalidateQueries({ queryKey: ["items"] });
@@ -125,7 +119,7 @@ export function Inbox() {
         ))}
         {items.data?.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">Inbox vacío.</p>}
       </div>
-      {editing && <ItemForm item={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
+      {editing && <ItemForm item={editing === "new" ? undefined : editing} projectId={project || null} onClose={() => setEditing(null)} />}
     </div>
   );
 }

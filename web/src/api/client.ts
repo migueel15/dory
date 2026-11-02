@@ -64,6 +64,8 @@ export type T3LaunchInput = { instance_id: string; project_id: string; provider:
 export const api = {
   itemThreads: resource<S["ItemThread"], S["ItemThreadInput"]>("/item-threads"),
   github: (refresh = false) => req<S["GithubOverview"]>("GET", `/github/open${refresh ? "?refresh=true" : ""}`),
+  githubClosed: (kind: "pulls" | "issues", project: string, cursor: string) =>
+    req<S["GithubClosed"]>("GET", `/github/closed?${new URLSearchParams({ kind, ...(project && { project }), ...(cursor && { cursor }) })}`),
   githubDetail: (repo: string, kind: string, number: number) => req<GithubDetail>("GET", `/github/repos/${repo}/${kind}/${number}`),
   githubAct: (repo: string, kind: string, number: number, action: S["GithubAction"]) => req<void>("POST", `/github/repos/${repo}/${kind}/${number}/actions`, action),
   githubDiff: (repo: string, number: number) => req<{ diff: string }>("GET", `/github/repos/${repo}/pulls/${number}/diff`),

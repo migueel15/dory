@@ -657,6 +657,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GithubOverview"
+  "/github/closed":
+    get:
+      operationId: "getGithubClosed"
+      summary: "One page of closed issues or pull requests, read from GitHub on demand"
+      parameters:
+        - {name: "kind", in: "query", required: true, schema: {type: "string", enum: ["pulls", "issues"]}}
+        - {name: "project", in: "query", schema: {type: "string"}, description: "Only the repositories of this project."}
+        - {name: "cursor", in: "query", schema: {type: "string"}, description: "Cursor of the previous page; omit for the first one."}
+      responses:
+        "200":
+          description: "Newest first within the page"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GithubClosed"
   "/github/repos/{owner}/{repo}/{kind}/{number}":
     get:
       operationId: "getGithubDetail"
@@ -2287,7 +2302,7 @@ components:
           type: "string"
     GithubIssue:
       type: "object"
-      required: ["repo", "project_id", "number", "title", "author", "url", "state", "updated_at", "labels", "pulls"]
+      required: ["repo", "project_id", "number", "title", "author", "url", "state", "updated_at", "labels", "pulls", "milestone", "state_reason", "created_at", "closed_at", "comments", "assignees", "label_colors"]
       properties:
         repo:
           type: "string"
@@ -2313,9 +2328,30 @@ components:
           type: "array"
           items:
             $ref: "#/components/schemas/GithubRef"
+        milestone:
+          type: "string"
+        state_reason:
+          type: "string"
+          description: "COMPLETED, NOT_PLANNED or REOPENED; empty when unknown."
+        created_at:
+          type: "string"
+        closed_at:
+          type: "string"
+          description: "Empty while open."
+        comments:
+          type: "integer"
+        assignees:
+          type: "array"
+          items:
+            type: "string"
+        label_colors:
+          type: "object"
+          description: "Hex color of each label, without #."
+          additionalProperties:
+            type: "string"
     GithubPull:
       type: "object"
-      required: ["repo", "project_id", "number", "title", "author", "url", "state", "updated_at", "labels", "issues", "draft", "head_ref", "base_ref", "review_decision", "approvals", "approved_by", "changes_by", "required_approvals", "review_requests", "ci", "mergeable", "merge_state"]
+      required: ["repo", "project_id", "number", "title", "author", "url", "state", "updated_at", "labels", "issues", "draft", "head_ref", "base_ref", "review_decision", "approvals", "approved_by", "changes_by", "required_approvals", "review_requests", "ci", "mergeable", "merge_state", "additions", "deletions", "changed_files", "created_at", "closed_at", "comments", "assignees", "label_colors"]
       properties:
         repo:
           type: "string"
@@ -2372,9 +2408,31 @@ components:
           type: "string"
         merge_state:
           type: "string"
+        additions:
+          type: "integer"
+        deletions:
+          type: "integer"
+        changed_files:
+          type: "integer"
+        created_at:
+          type: "string"
+        closed_at:
+          type: "string"
+          description: "Empty while open."
+        comments:
+          type: "integer"
+        assignees:
+          type: "array"
+          items:
+            type: "string"
+        label_colors:
+          type: "object"
+          description: "Hex color of each label, without #."
+          additionalProperties:
+            type: "string"
     GithubOverview:
       type: "object"
-      required: ["issues", "pulls", "fetched_at"]
+      required: ["issues", "pulls", "fetched_at", "refreshing", "viewer"]
       properties:
         issues:
           type: "array"
@@ -2386,6 +2444,28 @@ components:
             $ref: "#/components/schemas/GithubPull"
         fetched_at:
           type: "string"
+          description: "Empty until the first refresh finishes."
+        refreshing:
+          type: "boolean"
+          description: "A background refresh is running; poll again to get each repository as it finishes."
+        viewer:
+          type: "string"
+          description: "GitHub login of the token owner; empty until the first repository answers."
+    GithubClosed:
+      type: "object"
+      required: ["issues", "pulls", "cursor"]
+      properties:
+        issues:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/GithubIssue"
+        pulls:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/GithubPull"
+        cursor:
+          type: "string"
+          description: "Pass it back to read the next page; empty when there is nothing more."
     GithubEvent:
       type: "object"
       required: ["id", "type", "actor", "at", "body", "state", "detail"]
@@ -2508,11 +2588,12 @@ components:
           type: "string"
         title:
           type: "string"
-          description: "New title for edit_pull."
+          description: "New title for edit_pull and edit_issue."
         body:
           type: "string"
         method:
           type: "string"
+          description: "Merge method for merge (MERGE, SQUASH, REBASE) or close reason for close_issue (COMPLETED, NOT_PLANNED)."
         thread_id:
           type: "string"
         path:

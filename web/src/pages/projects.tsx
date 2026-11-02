@@ -5,8 +5,16 @@ import { api } from "../api/client";
 import { Badge, Button, Card, ErrorText, Md } from "../components/ui";
 import { Features, ProjectForm } from "./crud";
 import { Board } from "./items";
+import { useProject } from "../project";
 
+// Projects lists every project, or opens the globally selected one directly.
 export function Projects() {
+  const project = useProject();
+  if (project) return <ProjectView id={project} />;
+  return <ProjectList />;
+}
+
+function ProjectList() {
   const [creating, setCreating] = useState(false);
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   return (
@@ -34,6 +42,10 @@ export function Projects() {
 
 export function ProjectDetail() {
   const { id } = useParams({ from: "/projects/$id" });
+  return <ProjectView id={id} />;
+}
+
+function ProjectView({ id }: { id: string }) {
   const [editing, setEditing] = useState(false);
   const project = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list(), select: (l) => l.find((p) => p.id === id) });
   const repos = useQuery({ queryKey: ["repositories", id], queryFn: () => api.repositories.list({ project_id: id }) });

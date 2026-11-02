@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { api, type GithubIssue, type GithubPull } from "../api/client";
-import { Badge, Button, Card, ErrorText } from "../components/ui";
-import { Tip } from "../components/github-ui";
+import { Card, ErrorText, pill } from "../components/ui";
+import { GithubMark, Tip } from "../components/github-ui";
+import { useProject } from "../project";
 
 const ok = "text-green-700 dark:text-green-400";
 const bad = "text-red-600 dark:text-red-400";
@@ -91,56 +92,280 @@ export function PullStatus({ pull }: { pull: GithubPull }) {
   );
 }
 
-function Row({ repo, kind, number, title, url, author, children }: { repo: string; kind: string; number: number; title: string; url: string; author: string; children: React.ReactNode }) {
-  const [owner, name] = repo.split("/");
+// ago formats an ISO date as a short relative time in Spanish.
+export function ago(iso: string) {
+  if (!iso) return "";
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  const [n, u] = s < 3600 ? [Math.floor(s / 60), "min"] : s < 86400 ? [Math.floor(s / 3600), "h"] : s < 2592000 ? [Math.floor(s / 86400), "d"] : s < 31536000 ? [Math.floor(s / 2592000), "mes"] : [Math.floor(s / 31536000), "a"];
+  return n < 1 ? "ahora" : `hace ${n} ${u}`;
+}
+
+const metaIcons = {
+  comment: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
+  clock: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 6v6l4 2",
+  flag: "M4 22V4M4 4h12l-2 4 2 4H4",
+  file: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6",
+  branch: "M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9",
+  issue: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 11v.01",
+  pull: "M18 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 9v12M18 15V8a2 2 0 0 0-2-2h-3",
+};
+
+const Meta = ({ icon, children, title }: { icon: string; children: React.ReactNode; title: string }) => (
+  <Tip text={title}><span className="inline-flex items-center gap-1"><Icon d={icon} className="size-3.5" />{children}</span></Tip>
+);
+
+// Label uses the color GitHub gives it, softened so it reads in both themes.
+function Label({ name, color }: { name: string; color?: string }) {
+  const c = color ? `#${color}` : undefined;
   return (
-    <Card className="hover:bg-slate-50 dark:hover:bg-slate-800">
-      <div className="flex items-start justify-between gap-2">
-        <Link to="/github/$owner/$repo/$kind/$number" params={{ owner, repo: name, kind, number: String(number) }} className="min-w-0 flex-1 space-y-1">
-          <div className="font-medium break-words">{title}</div>
-          <div className="text-xs text-slate-500 dark:text-slate-400">{repo}#{number} · {author}</div>
-          {children}
-        </Link>
-        <a href={url} target="_blank" rel="noreferrer" className="shrink-0 rounded px-2 py-1 text-xs underline">Abrir en GitHub</a>
-      </div>
-    </Card>
+    <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:text-slate-200" style={c ? { borderColor: `${c}88`, backgroundColor: `${c}22` } : undefined}>
+      <span className="size-2 rounded-full" style={{ backgroundColor: c ?? "#94a3b8" }} />{name}
+    </span>
   );
 }
 
-const linked = (prefix: string, refs: { number: number; title: string }[]) => refs.length > 0 && (
-  <div className="flex flex-wrap gap-1">{refs.map((r) => <span key={r.number} title={r.title}><Badge>{prefix} #{r.number}</Badge></span>)}</div>
+type CardItem = { repo: string; number: number; title: string; url: string; author: string; created_at: string; updated_at: string; comments: number; assignees: string[]; labels: string[]; label_colors: Record<string, string> };
+
+// Row is the shared card of issues and pull requests: identity, people, activity and labels.
+function Row({ item, kind, meta, children }: { item: CardItem; kind: "pulls" | "issues"; meta?: React.ReactNode; children?: React.ReactNode }) {
+  const [owner, name] = item.repo.split("/");
+  const pull = kind === "pulls";
+  const navigate = useNavigate();
+  // A click anywhere on the card opens it, except on its own links and buttons.
+  const open = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("a, button") || window.getSelection()?.toString()) return;
+    navigate({ to: "/github/$owner/$repo/$kind/$number", params: { owner, repo: name, kind, number: String(item.number) } });
+  };
+  return (
+    <div onClick={open} className="cursor-pointer">
+    <Card className="group space-y-2 transition-colors hover:border-slate-300 hover:bg-slate-50/60 dark:hover:border-slate-600 dark:hover:bg-slate-800/40">
+      <div className="flex items-start gap-2">
+        <Link to="/github/$owner/$repo/$kind/$number" params={{ owner, repo: name, kind, number: String(item.number) }} className="min-w-0 flex-1">
+          <div className="font-medium break-words group-hover:text-blue-700 dark:group-hover:text-blue-300">{item.title}</div>
+          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <span title={pull ? "Pull request" : "Issue"} className={`grid size-4.5 shrink-0 place-items-center rounded-full ${pull ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" : "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300"}`}>
+              <Icon d={pull ? metaIcons.pull : metaIcons.issue} className="size-3" />
+            </span>
+            <span className="truncate font-mono">{item.repo}</span><span className="font-semibold">#{item.number}</span>
+          </div>
+        </Link>
+        <Tip text="Abrir en GitHub"><a href={item.url} target="_blank" rel="noreferrer" aria-label="Abrir en GitHub" className={pill}><GithubMark className="size-3.5" /></a></Tip>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+        <span className="inline-flex items-center gap-1.5"><Avatar login={item.author} title={`Autor: ${item.author}`} /><span className="font-medium text-slate-700 dark:text-slate-200">{item.author}</span></span>
+        <Meta icon={metaIcons.clock} title={`Creada ${new Date(item.created_at).toLocaleString()} · actualizada ${new Date(item.updated_at).toLocaleString()}`}>{ago(item.updated_at)}</Meta>
+        <Meta icon={metaIcons.comment} title={`${item.comments} comentarios`}>{item.comments}</Meta>
+        {meta}
+        {item.assignees.length > 0 && (
+          <span className="ml-auto flex items-center -space-x-1.5">{item.assignees.map((a) => <Avatar key={a} login={a} title={`Asignada a ${a}`} />)}</span>
+        )}
+      </div>
+      {(children || item.labels.length > 0) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {children}
+          {item.labels.map((l) => <Label key={l} name={l} color={item.label_colors[l]} />)}
+        </div>
+      )}
+    </Card>
+    </div>
+  );
+}
+
+// linked turns the issues or pull requests referenced by a card into links to their own view.
+const linked = (repo: string, prefix: "PR" | "Issue", refs: { number: number; title: string }[]) => {
+  const [owner, name] = repo.split("/");
+  return refs.map((r) => (
+    <Tip key={r.number} text={r.title}>
+      <Link to="/github/$owner/$repo/$kind/$number" params={{ owner, repo: name, kind: prefix === "PR" ? "pulls" : "issues", number: String(r.number) }}
+        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:bg-blue-950 dark:hover:text-blue-300">
+        <Icon d={prefix === "PR" ? metaIcons.pull : metaIcons.issue} className="size-3" />{prefix} #{r.number}
+      </Link>
+    </Tip>
+  ));
+};
+
+// The server answers from its cache and refreshes in the background; while it
+// does, poll every second so each repository shows up as soon as it is ready.
+export const useGithubOpen = () => useQuery({ queryKey: ["github"], queryFn: () => api.github(), refetchInterval: (q) => (q.state.data?.refreshing ? 1_000 : 60_000), retry: false });
+
+type Tab = "pulls" | "issues";
+type State = "open" | "closed" | "all";
+
+// ClosedChip shows how a closed item ended, in place of the live status of open ones.
+function ClosedChip({ item }: { item: GithubPull | GithubIssue }) {
+  const merged = item.state === "MERGED";
+  const planned = "state_reason" in item && item.state_reason === "NOT_PLANNED";
+  const [label, cls] = merged ? ["Mergeada", "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300"]
+    : planned ? ["No planificada", "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"]
+    : "state_reason" in item ? ["Completada", "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300"]
+    : ["Cerrada sin mergear", "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"];
+  return <Tip text={item.closed_at ? `Cerrada ${new Date(item.closed_at).toLocaleString()}` : "Cerrada"}><span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{label}{item.closed_at && ` · ${ago(item.closed_at)}`}</span></Tip>;
+}
+type Quick = { id: string; label: string; me?: true; test: (x: GithubPull & GithubIssue, me: string) => boolean };
+
+// Quick filters per tab; the ones about "me" need the viewer login.
+const quick: Record<Tab, Quick[]> = {
+  pulls: [
+    { id: "mine", label: "Mías", me: true, test: (p, me) => p.author === me },
+    { id: "review", label: "Revisión pedida a mí", me: true, test: (p, me) => p.review_requests.includes(me) },
+    { id: "draft", label: "Drafts", test: (p) => p.draft },
+    { id: "unassigned", label: "Sin asignar", test: (p) => p.assignees.length === 0 },
+  ],
+  issues: [
+    { id: "mine", label: "Mías", me: true, test: (i, me) => i.author === me },
+    { id: "assigned", label: "Asignadas a mí", me: true, test: (i, me) => i.assignees.includes(me) },
+    { id: "unassigned", label: "Sin asignar", test: (i) => i.assignees.length === 0 },
+    { id: "nopr", label: "Sin PR", test: (i) => i.pulls.length === 0 },
+  ],
+};
+
+const savedTab = (): Tab => { try { return localStorage.getItem("github-tab") === "issues" ? "issues" : "pulls"; } catch { return "pulls"; } };
+
+const Skeleton = () => (
+  <Card className="animate-pulse space-y-2.5">
+    <div className="h-4 w-2/3 rounded bg-slate-200 dark:bg-slate-700" />
+    <div className="h-3 w-1/3 rounded bg-slate-100 dark:bg-slate-800" />
+    <div className="flex gap-2"><div className="size-5 rounded-full bg-slate-200 dark:bg-slate-700" /><div className="h-3 w-40 rounded bg-slate-100 dark:bg-slate-800" /></div>
+  </Card>
 );
 
-export const useGithubOpen = () => useQuery({ queryKey: ["github"], queryFn: () => api.github(), refetchInterval: 60_000, retry: false });
+function Empty({ filtered, kind, state }: { filtered: boolean; kind: Tab; state: State }) {
+  return (
+    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center dark:border-slate-700">
+      <span className="grid size-10 place-items-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"><Icon d={kind === "pulls" ? metaIcons.pull : metaIcons.issue} className="size-5" /></span>
+      <p className="font-medium">{filtered ? "Nada coincide con estos filtros" : `No hay ${kind === "pulls" ? "pull requests" : "issues"}${state === "open" ? " abiertas" : state === "closed" ? " cerradas" : ""}`}</p>
+      <p className="text-sm text-slate-500 dark:text-slate-400">{filtered ? "Prueba con otro texto o quita el filtro rápido." : "Cuando haya alguna en los repos del proyecto aparecerá aquí."}</p>
+    </div>
+  );
+}
 
 export function Github() {
   const qc = useQueryClient();
-  const [refreshing, setRefreshing] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [tab, setTabState] = useState<Tab>(savedTab);
+  const [text, setText] = useState("");
+  const [filter, setFilter] = useState("");
+  const [state, setState] = useState<State>("open");
   const data = useGithubOpen();
+  const refreshing = asking || !!data.data?.refreshing;
   const refresh = async () => {
-    setRefreshing(true);
-    try { qc.setQueryData(["github"], await api.github(true)); } finally { setRefreshing(false); }
+    setAsking(true);
+    try { qc.setQueryData(["github"], await api.github(true)); } finally { setAsking(false); }
     qc.invalidateQueries({ queryKey: ["github-detail"] });
   };
-  const pulls: GithubPull[] = data.data?.pulls ?? [];
-  const issues: GithubIssue[] = data.data?.issues ?? [];
+  const setTab = (t: Tab) => { setTabState(t); setFilter(""); try { localStorage.setItem("github-tab", t); } catch { /* storage unavailable */ } };
+  const project = useProject();
+  const me = data.data?.viewer ?? "";
+  // Closed items are read from GitHub only when asked for, one page per repository at a time.
+  const closed = useInfiniteQuery({
+    queryKey: ["github-closed", tab, project],
+    queryFn: ({ pageParam }) => api.githubClosed(tab, project, pageParam),
+    initialPageParam: "",
+    getNextPageParam: (last) => last.cursor || undefined,
+    enabled: state !== "open",
+    staleTime: 60_000,
+  });
+  const closedPulls = tab === "pulls" ? closed.data?.pages.flatMap((p) => p.pulls) ?? [] : [];
+  const closedIssues = tab === "issues" ? closed.data?.pages.flatMap((p) => p.issues) ?? [] : [];
+  const byUpdated = <T extends { updated_at: string }>(l: T[]) => [...l].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  const openPulls: GithubPull[] = (data.data?.pulls ?? []).filter((p) => !project || p.project_id === project);
+  const openIssues: GithubIssue[] = (data.data?.issues ?? []).filter((i) => !project || i.project_id === project);
+  const pulls = state === "open" ? openPulls : state === "closed" ? byUpdated(closedPulls) : byUpdated([...openPulls, ...closedPulls]);
+  const issues = state === "open" ? openIssues : state === "closed" ? byUpdated(closedIssues) : byUpdated([...openIssues, ...closedIssues]);
+  const q = text.trim().toLowerCase();
+  const matches = (x: GithubPull | GithubIssue) => !q || [x.title, x.repo, `#${x.number}`, x.author, ...x.labels].some((v) => v.toLowerCase().includes(q));
+  // Each list only takes the quick filter of its own tab: an issue has no reviewers, a pull request no linked PRs.
+  const keep = (kind: Tab) => {
+    const active = tab === kind ? quick[kind].find((f) => f.id === filter) : undefined;
+    return (x: GithubPull | GithubIssue) => matches(x) && (!active || active.test(x as GithubPull & GithubIssue, me));
+  };
+  const shownPulls = pulls.filter(keep("pulls"));
+  const shownIssues = issues.filter(keep("issues"));
+  const loading = state === "closed" ? closed.isPending : data.isPending || (refreshing && openPulls.length + openIssues.length === 0) || (state === "all" && closed.isPending);
+  // Counters show the open ones: closed totals are unknown until every page is read.
+  const tabs: [Tab, string, number, string][] = [["pulls", "Pull requests", openPulls.length, metaIcons.pull], ["issues", "Issues", openIssues.length, metaIcons.issue]];
+  const states: [State, string][] = [["open", "Abiertas"], ["closed", "Cerradas"], ["all", "Todas"]];
+  const more = state !== "open" && closed.hasNextPage;
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">GitHub</h1>
-        <Button onClick={refresh} disabled={refreshing}>{refreshing ? "Recargando…" : "Recargar"}</Button>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-xl font-bold"><GithubMark className="size-6" /> GitHub</h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {refreshing ? "Actualizando…" : data.data?.fetched_at ? `Actualizado ${ago(data.data.fetched_at)}` : ""}{me && ` · como ${me}`}
+          </p>
+        </div>
+        <Tip text="Recargar desde GitHub">
+          <button type="button" onClick={refresh} disabled={refreshing} aria-label="Recargar" className={pill}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`size-3.5 ${refreshing ? "animate-spin" : ""}`}><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" /></svg>
+            {refreshing ? "Recargando" : "Recargar"}
+          </button>
+        </Tip>
       </div>
-      <ErrorText error={data.error} />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="min-w-0 space-y-2">
-          <h2 className="font-semibold">Pull requests ({pulls.length})</h2>
-          {pulls.map((p) => <Row key={p.url} repo={p.repo} kind="pulls" number={p.number} title={p.title} url={p.url} author={p.author}><PullStatus pull={p} />{linked("Issue", p.issues)}</Row>)}
-        </section>
-        <section className="min-w-0 space-y-2">
-          <h2 className="font-semibold">Issues ({issues.length})</h2>
-          {issues.map((i) => <Row key={i.url} repo={i.repo} kind="issues" number={i.number} title={i.title} url={i.url} author={i.author}>{linked("PR", i.pulls)}<div className="flex flex-wrap gap-1">{i.labels.map((l) => <Badge key={l}>{l}</Badge>)}</div></Row>)}
-        </section>
+      <ErrorText error={data.error ?? (state !== "open" ? closed.error : null)} />
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="tablist" className="flex rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
+            {tabs.map(([id, label, n, icon]) => (
+              <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+                className={`flex min-h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors ${tab === id ? "bg-white text-slate-900 shadow-sm dark:bg-slate-950 dark:text-white" : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"}`}>
+                <Icon d={icon} className="size-3.5" />{label}
+                <span className={`rounded-full px-1.5 text-xs ${tab === id ? "bg-slate-100 dark:bg-slate-800" : "bg-slate-200 dark:bg-slate-700"}`}>{n}</span>
+              </button>
+            ))}
+          </div>
+          <div role="radiogroup" aria-label="Estado" className="flex rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
+            {states.map(([id, label]) => (
+              <button key={id} type="button" role="radio" aria-checked={state === id} onClick={() => setState(id)}
+                className={`min-h-9 rounded-md px-3 text-sm font-medium transition-colors ${state === id ? "bg-white text-slate-900 shadow-sm dark:bg-slate-950 dark:text-white" : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <label className="relative min-w-48 flex-1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+            <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Buscar por título, repo, autor o etiqueta…" aria-label="Buscar"
+              className="min-h-9 w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-900" />
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {quick[tab].map((f) => {
+            const on = filter === f.id;
+            const needsMe = !!f.me && !me;
+            return (
+              <button key={f.id} type="button" disabled={needsMe} onClick={() => setFilter(on ? "" : f.id)}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40 ${on ? "border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-300" : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"}`}>
+                {f.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
+      <section className="space-y-2">
+        {loading ? [0, 1, 2].map((n) => <Skeleton key={n} />)
+          : tab === "pulls" ? (shownPulls.length === 0 ? <Empty kind="pulls" state={state} filtered={pulls.length > 0} /> : shownPulls.map((p) => (
+            <Row key={p.url} item={p} kind="pulls" meta={<>
+              <Meta icon={metaIcons.branch} title={`${p.head_ref} → ${p.base_ref}`}><span className="max-w-40 truncate font-mono">{p.head_ref}</span></Meta>
+              <Meta icon={metaIcons.file} title={`${p.changed_files} ficheros cambiados`}>{p.changed_files}</Meta>
+              <Tip text="Líneas añadidas y borradas"><span className="font-mono"><span className="text-green-700 dark:text-green-400">+{p.additions}</span> <span className="text-red-600 dark:text-red-400">−{p.deletions}</span></span></Tip>
+            </>}>
+              {p.state === "OPEN" ? <PullStatus pull={p} /> : <ClosedChip item={p} />}{linked(p.repo, "Issue", p.issues)}
+            </Row>
+          )))
+          : (shownIssues.length === 0 ? <Empty kind="issues" state={state} filtered={issues.length > 0} /> : shownIssues.map((i) => (
+            <Row key={i.url} item={i} kind="issues" meta={i.milestone && <Meta icon={metaIcons.flag} title="Milestone">{i.milestone}</Meta>}>
+              {i.state !== "OPEN" && <ClosedChip item={i} />}
+              {i.pulls.length > 0 && linked(i.repo, "PR", i.pulls)}
+            </Row>
+          )))}
+        {more && !loading && (
+          <div className="flex justify-center pt-1">
+            <button type="button" className={pill} disabled={closed.isFetchingNextPage} onClick={() => closed.fetchNextPage()}>
+              {closed.isFetchingNextPage ? "Cargando…" : "Cargar más cerradas"}
+            </button>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

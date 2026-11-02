@@ -1,16 +1,17 @@
-import { StrictMode, useState } from "react";
+import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { ApiError, api } from "./api/client";
 import { useLiveUpdates } from "./api/live";
-import { Button, ErrorText, Input, Label } from "./components/ui";
+import { Button, ErrorText, Input, Label, Select } from "./components/ui";
+import { setProject, useProject } from "./project";
 import { Environments, Memories, memorySearch } from "./pages/crud";
-import { QuickCapture } from "./components/capture";
+import { CommandPalette } from "./components/commands";
 import { GithubView } from "./pages/github-detail";
 import { Github } from "./pages/github";
 import { Attention, useAttentionCount } from "./pages/attention";
-import { Home, homeSearch } from "./pages/home";
+import { Home } from "./pages/home";
 import { Usage } from "./pages/usage";
 import { Inbox } from "./pages/items";
 import { ProjectDetail, Projects } from "./pages/projects";
@@ -64,12 +65,24 @@ function ThemeToggle() {
   );
 }
 
+// ProjectPicker sets the global project that every page filters by.
+function ProjectPicker() {
+  const project = useProject();
+  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
+  // Forget a selection that no longer exists (archived or from another database).
+  const gone = !!project && !!projects.data && !projects.data.some((p) => p.id === project);
+  useEffect(() => { if (gone) setProject(""); }, [gone]);
+  return <Select className="w-44 sm:w-52" value={project} onChange={setProject} options={[{ value: "", label: "Todos los proyectos" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />;
+}
+
 function Layout() {
   const qc = useQueryClient();
   const me = useQuery({ queryKey: ["me"], queryFn: api.me, retry: false });
   const logout = useMutation({ mutationFn: api.logout, onSuccess: () => qc.clear() });
   useLiveUpdates(!!me.data);
-  const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") });
+  const project = useProject();
+  // The project board needs the full width: on /projects/$id, or on /projects with a project selected.
+  const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") || (l.pathname === "/projects" && !!project) });
   const attention = useAttentionCount(!!me.data);
   if (me.isPending) return null;
   if (!me.data) return <Login />;
@@ -88,18 +101,19 @@ function Layout() {
           <Link to="/environments" className={link}>Entornos</Link>
           <Link to="/memories" className={link}>Memorias</Link>
         </div>
-        <span className="ml-auto truncate text-sm text-slate-500 dark:text-slate-400">{me.data.username}</span>
+        <div className="ml-auto"><ProjectPicker /></div>
+        <span className="truncate text-sm text-slate-500 dark:text-slate-400">{me.data.username}</span>
         <ThemeToggle />
         <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
       </nav>
-      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><QuickCapture /><Outlet /></main>
+      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /></main><CommandPalette />
     </div>
   );
 }
 
 const root = createRootRoute({ component: Layout });
 const routeTree = root.addChildren([
-  createRoute({ getParentRoute: () => root, path: "/", component: Home, validateSearch: homeSearch }),
+  createRoute({ getParentRoute: () => root, path: "/", component: Home }),
   createRoute({ getParentRoute: () => root, path: "/inbox", component: Inbox }),
   createRoute({ getParentRoute: () => root, path: "/attention", component: Attention }),
   createRoute({ getParentRoute: () => root, path: "/usage", component: Usage }),

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { api, type Environment, type Feature, type Memory, type Project, type T3Status } from "../api/client";
-import { Badge, Button, Card, ErrorText, Input, field, Label, Md, Modal, Textarea, csv } from "../components/ui";
+import { Badge, Button, Card, ErrorText, Arrow, Input, Label, Md, Modal, pill, Select, Textarea, csv, opts } from "../components/ui";
+import { useProject } from "../project";
 
 // Hook compartido: guardar/archivar e invalidar la lista.
 function useSave<T>(key: string, fn: () => Promise<T>, onClose: () => void) {
@@ -103,7 +104,7 @@ function InstanceStatus({ status }: { status?: T3Status }) {
     <div className="space-y-1 text-sm" onClick={(e) => e.stopPropagation()}>
       <div className="flex flex-wrap items-center gap-2">
         <Badge>{stateLabels[status.state]}</Badge>
-        <button className="text-xs underline" onClick={() => openT3(status)}>Abrir T3 Code</button>
+        <button className={pill} onClick={() => openT3(status)}>Abrir T3 Code <Arrow /></button>
         {status.version && <span className="text-xs text-slate-500 dark:text-slate-400">{status.version}</span>}
       </div>
       {status.threads.filter((t) => t.attention || t.status === "running").map((t) => (
@@ -143,9 +144,9 @@ export function Environments() {
 }
 
 /* ---------- Memorias ---------- */
-function MemoryForm({ memory, projects, envs, onClose }: { memory?: Memory; projects: Project[]; envs: Environment[]; onClose: () => void }) {
-  const [scope, setScope] = useState<Memory["scope"]>(memory?.scope ?? "global");
-  const [scopeId, setScopeId] = useState(memory?.scope_id ?? "");
+function MemoryForm({ memory, projects, envs, project, onClose }: { memory?: Memory; projects: Project[]; envs: Environment[]; project: string; onClose: () => void }) {
+  const [scope, setScope] = useState<Memory["scope"]>(memory?.scope ?? (project ? "project" : "global"));
+  const [scopeId, setScopeId] = useState(memory?.scope_id ?? project);
   const [kind, setKind] = useState<Memory["kind"]>(memory?.kind ?? "context");
   const [title, setTitle] = useState(memory?.title ?? "");
   const [content, setContent] = useState(memory?.content ?? "");
@@ -158,24 +159,17 @@ function MemoryForm({ memory, projects, envs, onClose }: { memory?: Memory; proj
     <Modal title={memory ? "Editar memoria" : "Nueva memoria"} onClose={onClose}>
       <div className="grid gap-2 sm:grid-cols-2">
         <Label text="Ámbito">
-          <select className={field} value={scope} onChange={(e) => { setScope(e.target.value as Memory["scope"]); setScopeId(""); }}>
-            <option>global</option><option>project</option><option>environment</option>
-          </select>
+          <Select value={scope} onChange={(v) => { setScope(v as Memory["scope"]); setScopeId(""); }} options={opts(["global", "project", "environment"])} />
         </Label>
         {scope !== "global" && (
           <Label text={scope === "project" ? "Proyecto" : "Entorno"}>
-            <select className={field} value={scopeId} onChange={(e) => setScopeId(e.target.value)}>
-              <option value="">—</option>
-              {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-            </select>
+            <Select value={scopeId} onChange={setScopeId} options={[{ value: "", label: "—" }, ...options.map((o) => ({ value: o.id, label: o.name }))]} />
           </Label>
         )}
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
         <Label text="Tipo">
-          <select className={field} value={kind} onChange={(e) => setKind(e.target.value as Memory["kind"])}>
-            <option>decision</option><option>lesson</option><option>context</option>
-          </select>
+          <Select value={kind} onChange={(v) => setKind(v as Memory["kind"])} options={opts(["decision", "lesson", "context"])} />
         </Label>
         <Label text="Título"><Input value={title} onChange={(e) => setTitle(e.target.value)} /></Label>
       </div>
@@ -186,15 +180,13 @@ function MemoryForm({ memory, projects, envs, onClose }: { memory?: Memory; proj
   );
 }
 
-// Filtros de la página de memorias, reflejados en la URL. scope: "global" o UUID de proyecto/entorno.
-export type MemorySearch = { scope?: string; kind?: Memory["kind"]; q?: string };
+// Filtros de la página de memorias, reflejados en la URL. El proyecto es el global de la app.
+export type MemorySearch = { kind?: Memory["kind"]; q?: string };
 export const memorySearch = (s: Record<string, unknown>): MemorySearch => ({
-  scope: typeof s.scope === "string" && s.scope ? s.scope : undefined,
   kind: ["decision", "lesson", "context"].includes(s.kind as string) ? (s.kind as Memory["kind"]) : undefined,
   q: typeof s.q === "string" && s.q ? s.q : undefined,
 });
 
-const select = "min-h-11 rounded-md sm:min-h-0 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1.5 text-sm";
 
 export function Memories() {
   const [editing, setEditing] = useState<Memory | "new" | null>(null);
@@ -205,9 +197,11 @@ export function Memories() {
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
   const names = new Map([...(projects.data ?? []), ...(envs.data ?? [])].map((o) => [o.id, o.name]));
+  const project = useProject();
   const text = search.q?.toLowerCase() ?? "";
+  // With a project selected, show its memories plus the global ones.
   const shown = mems.data?.filter((m) =>
-    (!search.scope || (search.scope === "global" ? m.scope === "global" : m.scope_id === search.scope)) &&
+    (!project || m.scope === "global" || m.scope_id === project) &&
     (!search.kind || m.kind === search.kind) &&
     (!text || [m.title, m.content, ...m.tags].some((t) => t.toLowerCase().includes(text))),
   );
@@ -215,16 +209,7 @@ export function Memories() {
     <div className="space-y-3">
       <Header title="Memorias" onNew={() => setEditing("new")} />
       <div className="flex flex-wrap gap-2">
-        <select className={select} value={search.scope ?? ""} onChange={(e) => setFilter({ scope: e.target.value })}>
-          <option value="">Todos los ámbitos</option>
-          <option value="global">Global</option>
-          <optgroup label="Proyectos">{projects.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</optgroup>
-          <optgroup label="Entornos">{envs.data?.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</optgroup>
-        </select>
-        <select className={select} value={search.kind ?? ""} onChange={(e) => setFilter({ kind: e.target.value as Memory["kind"] })}>
-          <option value="">Todos los tipos</option>
-          <option>decision</option><option>lesson</option><option>context</option>
-        </select>
+        <Select className="w-full sm:w-44" value={search.kind ?? ""} onChange={(v) => setFilter({ kind: v as Memory["kind"] })} options={[{ value: "", label: "Todos los tipos" }, ...opts(["decision", "lesson", "context"])]} />
         <Input className="min-w-40 flex-1" placeholder="Buscar texto…" value={search.q ?? ""} onChange={(e) => setFilter({ q: e.target.value })} />
       </div>
       <ErrorText error={mems.error} />
@@ -244,7 +229,7 @@ export function Memories() {
         ))}
         {shown?.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">Sin memorias para estos filtros.</p>}
       </div>
-      {editing && <MemoryForm memory={editing === "new" ? undefined : editing} projects={projects.data ?? []} envs={envs.data ?? []} onClose={() => setEditing(null)} />}
+      {editing && <MemoryForm memory={editing === "new" ? undefined : editing} projects={projects.data ?? []} envs={envs.data ?? []} project={project} onClose={() => setEditing(null)} />}
     </div>
   );
 }
@@ -264,9 +249,7 @@ function FeatureForm({ feature, projectId, onClose }: { feature?: Feature; proje
       <Label text="Descripción (markdown)"><Textarea value={body} onChange={(e) => setBody(e.target.value)} /></Label>
       <Label text="Referencias de código (coma)"><Input value={refs} onChange={(e) => setRefs(e.target.value)} /></Label>
       <Label text="Estado">
-        <select className={field} value={status} onChange={(e) => setStatus(e.target.value as Feature["status"])}>
-          <option>planned</option><option>in_progress</option><option>implemented</option><option>deprecated</option>
-        </select>
+        <Select value={status} onChange={(v) => setStatus(v as Feature["status"])} options={opts(["planned", "in_progress", "implemented", "deprecated"])} />
       </Label>
       <Footer onClose={onClose} onSave={() => save.mutate()} onArchive={feature && (() => arch.mutate())} error={save.error ?? arch.error} disabled={!title.trim()} />
     </Modal>

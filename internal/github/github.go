@@ -21,6 +21,9 @@ import (
 const (
 	apiBase  = "https://api.github.com"
 	cacheTTL = time.Minute
+	rulesTTL = 10 * time.Minute
+	// refreshTimeout bounds a background refresh of all repositories.
+	refreshTimeout = 2 * time.Minute
 	// maxDiff keeps huge pull requests from filling the browser.
 	maxDiff = 2 << 20
 )
@@ -40,20 +43,23 @@ func ParseRemote(remote string) (string, bool) {
 	return m[1] + "/" + m[2], true
 }
 
-// Client caches the overview because it costs one query per repository.
+// Client caches the overview per repository because it costs one query each.
 type Client struct {
 	Token string
 	Base  string
 	HTTP  *http.Client
 	svc   service.Service
 
-	mu      sync.Mutex
-	cached  *Overview
-	fetched time.Time
+	mu         sync.Mutex
+	byRepo     map[string]repoData
+	rules      map[string]ruleEntry
+	fetched    time.Time
+	refreshing bool
+	viewer     string
 }
 
 func New(svc service.Service, token string) *Client {
-	return &Client{Token: token, Base: apiBase, HTTP: &http.Client{Timeout: 15 * time.Second}, svc: svc}
+	return &Client{Token: token, Base: apiBase, HTTP: &http.Client{Timeout: 15 * time.Second}, svc: svc, byRepo: map[string]repoData{}, rules: map[string]ruleEntry{}}
 }
 
 func (c *Client) get(ctx context.Context, path, accept string) ([]byte, error) {

@@ -165,6 +165,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/github/closed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One page of closed issues or pull requests, read from GitHub on demand */
+        get: operations["getGithubClosed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/github/repos/{owner}/{repo}/{kind}/{number}": {
         parameters: {
             query?: never;
@@ -765,6 +782,18 @@ export interface components {
             updated_at: string;
             labels: string[];
             pulls: components["schemas"]["GithubRef"][];
+            milestone: string;
+            /** @description COMPLETED, NOT_PLANNED or REOPENED; empty when unknown. */
+            state_reason: string;
+            created_at: string;
+            /** @description Empty while open. */
+            closed_at: string;
+            comments: number;
+            assignees: string[];
+            /** @description Hex color of each label, without #. */
+            label_colors: {
+                [key: string]: string;
+            };
         };
         GithubPull: {
             repo: string;
@@ -789,11 +818,34 @@ export interface components {
             ci: string;
             mergeable: string;
             merge_state: string;
+            additions: number;
+            deletions: number;
+            changed_files: number;
+            created_at: string;
+            /** @description Empty while open. */
+            closed_at: string;
+            comments: number;
+            assignees: string[];
+            /** @description Hex color of each label, without #. */
+            label_colors: {
+                [key: string]: string;
+            };
         };
         GithubOverview: {
             issues: components["schemas"]["GithubIssue"][];
             pulls: components["schemas"]["GithubPull"][];
+            /** @description Empty until the first refresh finishes. */
             fetched_at: string;
+            /** @description A background refresh is running; poll again to get each repository as it finishes. */
+            refreshing: boolean;
+            /** @description GitHub login of the token owner; empty until the first repository answers. */
+            viewer: string;
+        };
+        GithubClosed: {
+            issues: components["schemas"]["GithubIssue"][];
+            pulls: components["schemas"]["GithubPull"][];
+            /** @description Pass it back to read the next page; empty when there is nothing more. */
+            cursor: string;
         };
         GithubEvent: {
             /** @description Set on comments and reviews, which can be edited. */
@@ -848,9 +900,10 @@ export interface components {
         };
         GithubAction: {
             type: string;
-            /** @description New title for edit_pull. */
+            /** @description New title for edit_pull and edit_issue. */
             title?: string;
             body?: string;
+            /** @description Merge method for merge (MERGE, SQUASH, REBASE) or close reason for close_issue (COMPLETED, NOT_PLANNED). */
             method?: string;
             thread_id?: string;
             path?: string;
@@ -1879,6 +1932,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GithubOverview"];
+                };
+            };
+        };
+    };
+    getGithubClosed: {
+        parameters: {
+            query: {
+                kind: "pulls" | "issues";
+                /** @description Only the repositories of this project. */
+                project?: string;
+                /** @description Cursor of the previous page; omit for the first one. */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first within the page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GithubClosed"];
                 };
             };
         };

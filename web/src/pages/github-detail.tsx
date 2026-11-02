@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { api, type GithubDetail, type GithubPull, type GithubThread } from "../api/client";
-import { Badge, Button, Card, ErrorText, Md } from "../components/ui";
+import { Badge, Button, Card, ErrorText, Md, Arrow, pill, toggleTask } from "../components/ui";
 import { Avatar, PullStatus } from "./github";
 import { Diff } from "./github-diff";
-import { GithubMark, Icon, IconButton, Menu, MenuItem, Tip, UserPicker, icons, useConfirm, MentionArea } from "../components/github-ui";
+import { GithubMark, Icon, IconButton, Menu, MenuItem, RefContext, RefMd, Tip, UserPicker, icons, useConfirm, MentionArea } from "../components/github-ui";
 
 const labels: Record<string, string> = {
   IssueComment: "comentó", PullRequestReview: "revisó", PullRequestCommit: "hizo un commit", ClosedEvent: "cerró", ReopenedEvent: "reabrió", MergedEvent: "mergeó", LabeledEvent: "añadió la etiqueta", AssignedEvent: "asignó", ReadyForReviewEvent: "marcó como lista", ConvertToDraftEvent: "pasó a draft", ReviewRequestedEvent: "pidió revisión", CrossReferencedEvent: "referenció desde",
@@ -26,7 +26,7 @@ function ReviewPicker({ d, act, busy }: { d: GithubDetail; act: Act; busy: boole
   return <UserPicker tip="Pedir revisión" title="Pedir revisión a" users={users} disabled={busy} note={(u) => (reviewed.has(u.login) ? "de nuevo" : undefined)} onPick={(u) => act("request_review", { user_ids: [u.id] })} />;
 }
 
-// Assignees shows who owns the pull request and lets Dory's account change it.
+// Assignees shows who owns the issue or pull request and lets Dory's account change it.
 function Assignees({ d, act, busy }: { d: GithubDetail; act: Act; busy: boolean }) {
   const assignable = d.candidates.filter((u) => !d.assignees.some((a) => a.id === u.id));
   const me = assignable.find((u) => u.login === d.viewer);
@@ -104,6 +104,19 @@ function PullActions({ pull, me, act, busy, diff, toggleDiff }: { pull: GithubPu
   );
 }
 
+// IssueActions closes an issue as completed or not planned, or reopens it.
+function IssueActions({ open, act, busy }: { open: boolean; act: Act; busy: boolean }) {
+  const [confirm, dialog] = useConfirm();
+  if (!open) return <>{dialog}<IconButton icon={icons.reopen} tip="Reabrir issue" disabled={busy} onClick={() => confirm({ title: "¿Reabrir la issue?", text: "Volverá a estar abierta.", ok: "Reabrir", run: () => act("reopen_issue") })} /></>;
+  return (
+    <>
+      {dialog}
+      <IconButton icon={icons.ready} tip="Cerrar como completada" tone="green" disabled={busy} onClick={() => confirm({ title: "¿Cerrar como completada?", text: "Se marcará como resuelta. Podrás reabrirla después.", ok: "Cerrar como completada", run: () => act("close_issue", { method: "COMPLETED" }) })} />
+      <IconButton icon={icons.x} tip="Cerrar como no planificada" tone="red" disabled={busy} onClick={() => confirm({ title: "¿Cerrar como no planificada?", text: "Se cerrará sin resolver: no se va a hacer, está duplicada o ya no aplica.", ok: "Cerrar como no planificada", danger: true, run: () => act("close_issue", { method: "NOT_PLANNED" }) })} />
+    </>
+  );
+}
+
 type ThreadAct = (a: { type: string; thread_id?: string; body?: string; comment_id?: string }) => Promise<unknown>;
 
 // quote turns a message into a markdown quote to answer it.
@@ -125,7 +138,7 @@ function Message({ author, verb, at, url, body, mine, editType, id, act, busy, o
           {mine && id && draft === undefined && <Tip text="Editar"><button type="button" aria-label="Editar" onClick={() => setDraft(body)} className={small}><Icon d={icons.edit} /></button></Tip>}
         </span>
       </div>
-      {draft === undefined ? <Md>{body}</Md> : (
+      {draft === undefined ? <RefMd onToggle={mine && id && !busy ? (line) => act({ type: editType, comment_id: id, body: toggleTask(body, line) }) : undefined}>{body}</RefMd> : (
         <div className="space-y-2">
           <textarea aria-label="Editar mensaje" autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setDraft(undefined)} rows={Math.min(14, draft.split("\n").length + 2)} className="w-full rounded-md border border-slate-300 bg-white p-2 font-mono text-sm dark:border-slate-600 dark:bg-slate-900" />
           <div className="flex justify-end gap-2">
@@ -186,13 +199,13 @@ function Threads({ threads, me, people, links, act, busy }: { threads: GithubThr
 
 // Header is the single card of the pull request or issue: what it is on top,
 // its review state and people in the middle, and the actions at the bottom.
-function Header({ d, actions, act, busy }: { d: GithubDetail; actions: React.ReactNode; act: Act; busy: boolean }) {
+function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: React.ReactNode; act: Act; busy: boolean; people: string[] }) {
   const e = d.pull ?? d.issue!;
   const live = d.pull?.state === "OPEN";
   const refs = d.pull?.issues ?? d.issue?.pulls ?? [];
   const [owner, repo] = e.repo.split("/");
   const [draft, setDraft] = useState<{ title: string; body: string }>();
-  const save = () => { if (draft) { act("edit_pull", draft); setDraft(undefined); } };
+  const save = () => { if (draft) { act(d.pull ? "edit_pull" : "edit_issue", draft); setDraft(undefined); } };
   const box = "w-full rounded-md border border-slate-300 bg-white px-2 py-1 dark:border-slate-600 dark:bg-slate-900";
   return (
     <Card className="p-0">
@@ -202,7 +215,7 @@ function Header({ d, actions, act, busy }: { d: GithubDetail; actions: React.Rea
           {draft
             ? <input aria-label="Título" autoFocus value={draft.title} onChange={(ev) => setDraft({ ...draft, title: ev.target.value })} onKeyDown={(ev) => ev.key === "Escape" && setDraft(undefined)} className={`${box} min-w-0 flex-1 text-lg font-bold`} />
             : <h1 className="min-w-0 flex-1 break-words text-lg font-bold leading-snug">{e.title}</h1>}
-          {d.pull && (draft ? (
+          {(draft ? (
             <span className="flex shrink-0 gap-1">
               <Tip text="Guardar"><button type="button" aria-label="Guardar" disabled={busy || !draft.title.trim()} onClick={save} className="grid size-8 place-items-center rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"><Icon d={icons.check} /></button></Tip>
               <Tip text="Cancelar"><button type="button" aria-label="Cancelar" onClick={() => setDraft(undefined)} className="grid size-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><Icon d={icons.x} /></button></Tip>
@@ -226,9 +239,19 @@ function Header({ d, actions, act, busy }: { d: GithubDetail; actions: React.Rea
           {live && <Assignees d={d} act={act} busy={busy} />}
         </div>
       )}
+      {d.issue && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-slate-100 px-4 py-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+          {d.issue.state === "OPEN" ? <Assignees d={d} act={act} busy={busy} /> : d.assignees.length > 0 && (
+            <span className="flex items-center gap-2"><Icon d={icons.user} />{d.assignees.map((a) => <Avatar key={a.id} login={a.login} />)}</span>
+          )}
+          {d.issue.milestone && <span className="inline-flex items-center gap-1.5"><Icon d="M4 22V4M4 4h12l-2 4 2 4H4" />Milestone: <span className="font-medium text-slate-700 dark:text-slate-200">{d.issue.milestone}</span></span>}
+          <span className="inline-flex items-center gap-1.5"><Icon d={icons.comment} />{d.issue.comments} comentarios</span>
+          {d.issue.created_at && <span>Abierta {new Date(d.issue.created_at).toLocaleDateString()}</span>}
+        </div>
+      )}
       {draft
-        ? <div className="border-t border-slate-100 px-4 py-3 dark:border-slate-800"><textarea aria-label="Descripción" value={draft.body} onChange={(ev) => setDraft({ ...draft, body: ev.target.value })} rows={12} className={`${box} font-mono text-sm`} /></div>
-        : d.body && <div className="max-h-[60vh] overflow-auto border-t border-slate-100 px-4 py-3 dark:border-slate-800"><Md>{d.body}</Md></div>}
+        ? <div className="border-t border-slate-100 px-4 py-3 dark:border-slate-800"><MentionArea aria-label="Descripción" value={draft.body} onValue={(body) => setDraft({ ...draft, body })} people={people} links={d.links} rows={12} className={`${box} font-mono text-sm`} /></div>
+        : d.body && <div className="max-h-[60vh] overflow-auto border-t border-slate-100 px-4 py-3 dark:border-slate-800"><RefMd onToggle={busy ? undefined : (line) => act(d.pull ? "edit_pull" : "edit_issue", { title: e.title, body: toggleTask(d.body, line) })}>{d.body}</RefMd></div>}
       <div className="flex flex-wrap items-center gap-2 rounded-b-lg border-t border-slate-100 bg-slate-50 px-4 py-2.5 dark:border-slate-800 dark:bg-slate-950/40">{actions}</div>
     </Card>
   );
@@ -276,13 +299,13 @@ export function GithubView() {
   const open = (d?.pull ?? d?.issue)?.state === "OPEN";
   return (
     <div className="space-y-3">
-      <Link to="/github" className="text-sm underline">← GitHub</Link>
+      <Link to="/github" className={pill}><Arrow back /> GitHub</Link>
       <ErrorText error={detail.error ?? action.error} />
       {dialog}
-      {d && <>
-        <Header d={d} act={act} busy={action.isPending} actions={<>
+      {d && <RefContext.Provider value={{ owner: full.split("/")[0], repo: full.split("/")[1], links: d.links }}>
+        <Header d={d} act={act} busy={action.isPending} people={people} actions={<>
           {d.pull && <PullActions pull={d.pull} me={d.viewer} act={act} busy={action.isPending} diff={showDiff} toggleDiff={() => setShowDiff(!showDiff)} />}
-          {d.issue && <IconButton icon={open ? icons.x : icons.reopen} tip={open ? "Cerrar issue" : "Reabrir issue"} tone={open ? "red" : "plain"} disabled={action.isPending} onClick={() => confirm(open ? { title: "¿Cerrar la issue?", text: "Podrás reabrirla después.", ok: "Cerrar issue", danger: true, run: () => act("close_issue") } : { title: "¿Reabrir la issue?", text: "Volverá a estar abierta.", ok: "Reabrir", run: () => act("reopen_issue") })} />}
+          {d.issue && <IssueActions open={open} act={act} busy={action.isPending} />}
         </>} />
         {showDiff && <Diff repo={full} pr={n} />}
         <Threads threads={d.threads} me={d.viewer} people={people} links={d.links} act={action.mutateAsync} busy={action.isPending} />
@@ -316,7 +339,7 @@ export function GithubView() {
             </Tip>
           </span>
         )}
-      </>}
+      </RefContext.Provider>}
     </div>
   );
 }

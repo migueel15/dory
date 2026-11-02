@@ -186,8 +186,10 @@ func threads(ws []wireThread) []Thread {
 	return out
 }
 
-const issueDetailQuery = `query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { ` + linksFields + ` issue(number: $number) {
-  id number title url state updatedAt body author { login } labels(first: 10) { nodes { name } }
+const issueDetailQuery = `query($owner: String!, $name: String!, $number: Int!) { viewer { login } repository(owner: $owner, name: $name) {
+  assignableUsers(first: 100) { nodes { id login } } ` + linksFields + ` issue(number: $number) {
+  id number title url state stateReason updatedAt body author { login } labels(first: 10) { nodes { name } } milestone { title } ` + metaFields + `
+  assignees(first: 20) { nodes { id login } }
   closedByPullRequestsReferences(first: 10, includeClosedPrs: true) { nodes { number title } }
   timelineItems(last: 100, itemTypes: [ISSUE_COMMENT, CLOSED_EVENT, REOPENED_EVENT, LABELED_EVENT, ASSIGNED_EVENT, CROSS_REFERENCED_EVENT]) { nodes { ` + issueTimelineFields + ` } }
 } } }`
@@ -307,12 +309,15 @@ func (c *Client) Detail(ctx context.Context, repo, kind string, number int) (*De
 			Viewer: data.Viewer.Login, Assignees: nonNil(w.Assignees.Nodes), Candidates: nonNil(data.Repository.Assignable.Nodes), Links: data.Repository.links()}, nil
 	case "issues":
 		var data struct {
+			Viewer     login `json:"viewer"`
 			Repository struct {
 				wireLinks
-				Issue *struct {
+				Assignable struct{ Nodes []User } `json:"assignableUsers"`
+				Issue      *struct {
 					wireIssue
-					Body     string    `json:"body"`
-					Timeline wireNodes `json:"timelineItems"`
+					Assignees struct{ Nodes []User } `json:"assignees"`
+					Body      string                 `json:"body"`
+					Timeline  wireNodes              `json:"timelineItems"`
 				} `json:"issue"`
 			} `json:"repository"`
 		}
@@ -323,8 +328,9 @@ func (c *Client) Detail(ctx context.Context, repo, kind string, number int) (*De
 		if w == nil {
 			return nil, ErrUnknownRepo
 		}
-		i := Issue{Repo: repo, ProjectID: project, Number: w.Number, Title: w.Title, Author: name(w.Author), URL: w.URL, State: w.State, UpdatedAt: w.UpdatedAt, Labels: w.Labels.names(), Pulls: w.Closed.Nodes}
-		return &Detail{Kind: kind, Body: w.Body, Issue: &i, Timeline: timeline(w.Timeline), Threads: []Thread{}, Assignees: []User{}, Candidates: []User{}, Links: data.Repository.links()}, nil
+		i := w.issue(repo, project)
+		return &Detail{Kind: kind, Body: w.Body, Issue: &i, Timeline: timeline(w.Timeline), Threads: []Thread{},
+			Viewer: data.Viewer.Login, Assignees: nonNil(w.Assignees.Nodes), Candidates: nonNil(data.Repository.Assignable.Nodes), Links: data.Repository.links()}, nil
 	}
 	return nil, ErrInvalid
 }
@@ -374,16 +380,26 @@ var mutations = map[string]struct {
 	"request_review": {"pulls", `mutation($input: RequestReviewsInput!) { requestReviews(input: $input) { clientMutationId } }`, func(a Action, id string) map[string]any {
 		return map[string]any{"pullRequestId": id, "userIds": a.UserIDs, "union": true}
 	}},
-	"assign": {"pulls", `mutation($input: AddAssigneesToAssignableInput!) { addAssigneesToAssignable(input: $input) { clientMutationId } }`, func(a Action, id string) map[string]any {
+	"assign": {"issues pulls", `mutation($input: AddAssigneesToAssignableInput!) { addAssigneesToAssignable(input: $input) { clientMutationId } }`, func(a Action, id string) map[string]any {
 		return map[string]any{"assignableId": id, "assigneeIds": a.UserIDs}
 	}},
-	"unassign": {"pulls", `mutation($input: RemoveAssigneesFromAssignableInput!) { removeAssigneesFromAssignable(input: $input) { clientMutationId } }`, func(a Action, id string) map[string]any {
+	"unassign": {"issues pulls", `mutation($input: RemoveAssigneesFromAssignableInput!) { removeAssigneesFromAssignable(input: $input) { clientMutationId } }`, func(a Action, id string) map[string]any {
 		return map[string]any{"assignableId": id, "assigneeIds": a.UserIDs}
 	}},
 	"resolve_thread":   {"pulls", `mutation($input: ResolveReviewThreadInput!) { resolveReviewThread(input: $input) { clientMutationId } }`, threadInput},
 	"unresolve_thread": {"pulls", `mutation($input: UnresolveReviewThreadInput!) { unresolveReviewThread(input: $input) { clientMutationId } }`, threadInput},
-	"close_issue":      {"issues", `mutation($input: CloseIssueInput!) { closeIssue(input: $input) { clientMutationId } }`, issueInput},
-	"reopen_issue":     {"issues", `mutation($input: ReopenIssueInput!) { reopenIssue(input: $input) { clientMutationId } }`, issueInput},
+	// close_issue takes the reason in Method: COMPLETED (default) or NOT_PLANNED.
+	"close_issue": {"issues", `mutation($input: CloseIssueInput!) { closeIssue(input: $input) { clientMutationId } }`, func(a Action, id string) map[string]any {
+		in := map[string]any{"issueId": id}
+		if a.Method != "" {
+			in["stateReason"] = a.Method
+		}
+		return in
+	}},
+	"edit_issue": {"issues", `mutation($input: UpdateIssueInput!) { updateIssue(input: $input) { clientMutationId } }`, func(a Action, id string) map[string]any {
+		return map[string]any{"id": id, "title": a.Title, "body": a.Body}
+	}},
+	"reopen_issue": {"issues", `mutation($input: ReopenIssueInput!) { reopenIssue(input: $input) { clientMutationId } }`, issueInput},
 }
 
 const reviewMutation = `mutation($input: AddPullRequestReviewInput!) { addPullRequestReview(input: $input) { clientMutationId } }`
@@ -412,10 +428,10 @@ func validate(kind string, a Action) error {
 	if (a.Type == "request_review" || a.Type == "assign" || a.Type == "unassign") && len(a.UserIDs) == 0 {
 		return fmt.Errorf("%w: user_ids is required", ErrInvalid)
 	}
-	if strings.HasPrefix(a.Type, "edit_") && a.Type != "edit_pull" && (a.CommentID == "" || strings.TrimSpace(a.Body) == "") {
+	if strings.HasPrefix(a.Type, "edit_") && a.Type != "edit_pull" && a.Type != "edit_issue" && (a.CommentID == "" || strings.TrimSpace(a.Body) == "") {
 		return fmt.Errorf("%w: comment_id and text are required", ErrInvalid)
 	}
-	if a.Type == "edit_pull" && strings.TrimSpace(a.Title) == "" {
+	if (a.Type == "edit_pull" || a.Type == "edit_issue") && strings.TrimSpace(a.Title) == "" {
 		return fmt.Errorf("%w: title is required", ErrInvalid)
 	}
 	if a.Type == "comment_file" && a.Path == "" {
@@ -423,6 +439,9 @@ func validate(kind string, a Action) error {
 	}
 	if (a.Type == "comment" || a.Type == "request_changes" || a.Type == "reply_thread" || a.Type == "comment_lines" || a.Type == "comment_file") && strings.TrimSpace(a.Body) == "" {
 		return fmt.Errorf("%w: text is required", ErrInvalid)
+	}
+	if a.Type == "close_issue" && a.Method != "" && a.Method != "COMPLETED" && a.Method != "NOT_PLANNED" {
+		return fmt.Errorf("%w: unknown close reason", ErrInvalid)
 	}
 	if a.Type == "merge" && !slices.Contains([]string{"MERGE", "SQUASH", "REBASE"}, a.Method) {
 		return fmt.Errorf("%w: unknown merge method", ErrInvalid)
