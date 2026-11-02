@@ -809,11 +809,28 @@ export interface components {
             issue: components["schemas"]["GithubIssue"] | null;
             pull: components["schemas"]["GithubPull"] | null;
             timeline: components["schemas"]["GithubEvent"][];
+            threads: components["schemas"]["GithubThread"][];
+        };
+        GithubThreadComment: {
+            author: string;
+            at: string;
+            body: string;
+            url: string;
+        };
+        GithubThread: {
+            id: string;
+            path: string;
+            line: number;
+            resolved: boolean;
+            outdated: boolean;
+            resolved_by: string;
+            comments: components["schemas"]["GithubThreadComment"][];
         };
         GithubAction: {
             type: string;
             body?: string;
             method?: string;
+            thread_id?: string;
         };
         T3Thread: {
             id: string;

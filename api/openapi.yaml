@@ -2404,7 +2404,7 @@ components:
           type: "string"
     GithubDetail:
       type: "object"
-      required: ["kind", "body", "issue", "pull", "timeline"]
+      required: ["kind", "body", "issue", "pull", "timeline", "threads"]
       properties:
         kind:
           type: "string"
@@ -2422,6 +2422,42 @@ components:
           type: "array"
           items:
             $ref: "#/components/schemas/GithubEvent"
+        threads:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/GithubThread"
+    GithubThreadComment:
+      type: "object"
+      required: ["author", "at", "body", "url"]
+      properties:
+        author:
+          type: "string"
+        at:
+          type: "string"
+        body:
+          type: "string"
+        url:
+          type: "string"
+    GithubThread:
+      type: "object"
+      required: ["id", "path", "line", "resolved", "outdated", "resolved_by", "comments"]
+      properties:
+        id:
+          type: "string"
+        path:
+          type: "string"
+        line:
+          type: "integer"
+        resolved:
+          type: "boolean"
+        outdated:
+          type: "boolean"
+        resolved_by:
+          type: "string"
+        comments:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/GithubThreadComment"
     GithubAction:
       type: "object"
       required: ["type"]
@@ -2431,6 +2467,8 @@ components:
         body:
           type: "string"
         method:
+          type: "string"
+        thread_id:
           type: "string"
     T3Thread:
       type: "object"
