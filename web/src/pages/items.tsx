@@ -238,7 +238,7 @@ function Draggable({ item, onOpen }: { item: Item; onOpen: () => void }) {
   const style = transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined;
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes} className={isDragging ? "relative z-10 opacity-80" : ""}>
-      <Card className="cursor-grab"><div onDoubleClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><span className="font-medium break-words">{item.title}</span><button className="-m-2 size-11 shrink-0 text-slate-500 dark:text-muted sm:hidden" aria-label="Editar" onPointerDown={(e) => e.stopPropagation()} onClick={onOpen}>✎</button></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}<ThreadBadges itemId={item.id} />{item.status === "blocked" && <p className="text-xs text-red-600 dark:text-red-400">{item.blocked_reason}</p>}</div></Card>
+      <Card className="cursor-grab"><div onDoubleClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><span className="font-medium break-words">{item.title}</span><button className="-m-2 size-11 shrink-0 text-slate-500 dark:text-muted sm:hidden" aria-label="Editar" onPointerDown={(e) => e.stopPropagation()} onClick={onOpen}>✎</button></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}<CardLinks item={item} />{item.status === "blocked" && <p className="text-xs text-red-600 dark:text-red-400">{item.blocked_reason}</p>}</div></Card>
     </div>
   );
 }
@@ -298,17 +298,56 @@ export function Board({ projectId }: { projectId: string }) {
 }
 
 // Shows the T3 threads linked to an item; both queries are shared by every card.
-function ThreadBadges({ itemId }: { itemId: string }) {
+function useItemThreads(itemId: string) {
   const links = useQuery({ queryKey: ["item-threads"], queryFn: () => api.itemThreads.list(), refetchInterval: 10_000 });
   const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 10_000 });
-  const threads = links.data?.filter((l) => l.item_id === itemId).flatMap((l) => {
+  return links.data?.filter((l) => l.item_id === itemId).flatMap((l) => {
     const thread = t3.data?.flatMap((s) => s.threads).find((t) => t.id === l.thread_id);
     return thread ? [thread] : [];
   }) ?? [];
-  return threads.map((t) => (
+}
+
+function ThreadBadges({ itemId }: { itemId: string }) {
+  return useItemThreads(itemId).map((t) => (
     <ThreadLink key={t.id} url={t.url} environmentId={t.t3_environment_id} threadId={t.id} title={t.title} onPointerDown={(e) => e.stopPropagation()} className="mr-1 inline-flex items-center gap-1 text-xs text-slate-500 underline dark:text-muted">
       <ThreadStatus status={t.status} attention={t.attention} />
       <span>{t.model}</span>
     </ThreadLink>
   ));
+}
+
+function dotFor(status: string, attention: boolean): { label: string; color: string; pulse: boolean } {
+  const s = status.toLowerCase();
+  if (["failed", "error"].includes(s)) return { label: "Error", color: "bg-red-500", pulse: false };
+  if (attention || s === "attention") return { label: "Te necesita", color: "bg-amber-500", pulse: true };
+  if (["running", "working"].includes(s)) return { label: "Trabajando", color: "bg-blue-500", pulse: true };
+  if (["completed", "complete", "done"].includes(s)) return { label: "Listo", color: "bg-green-500", pulse: false };
+  return { label: status || "Estado desconocido", color: "bg-slate-400", pulse: false };
+}
+
+// Kanban card: only the most recent thread (status dot) and the last PR ref.
+function CardLinks({ item }: { item: Item }) {
+  const threads = useItemThreads(item.id);
+  const t = threads.length ? threads.reduce((a, b) => (b.updated_at >= a.updated_at ? b : a)) : undefined;
+  const pull = [...(item.refs ?? [])].reverse().map((r) => /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)$/.exec(r)).find(Boolean);
+  if (!t && !pull) return null;
+  const dot = t ? dotFor(t.status, t.attention) : undefined;
+  const chip = "inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-200 px-2 py-0.5 text-xs text-slate-600 no-underline hover:bg-slate-100 dark:border-border dark:text-muted dark:hover:bg-white/5";
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1">
+      {t && dot && (
+        <ThreadLink url={t.url} environmentId={t.t3_environment_id} threadId={t.id} title={`${t.title} · ${dot.label}`} aria-label={`${t.title}: ${dot.label}`} onPointerDown={(e) => e.stopPropagation()} className={chip}>
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="size-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /></svg>
+          <span className="max-w-32 truncate">{t.title}</span>
+          <span role="img" title={dot.label} aria-label={dot.label} className={`size-2 shrink-0 rounded-full ${dot.color} ${dot.pulse ? "motion-safe:animate-pulse" : ""}`} />
+        </ThreadLink>
+      )}
+      {pull && (
+        <Link to="/github/$owner/$repo/$kind/$number" params={{ owner: pull[1], repo: pull[2], kind: "pulls", number: pull[3] }} title={`Pull request #${pull[3]}`} aria-label={`Pull request #${pull[3]}`} onPointerDown={(e) => e.stopPropagation()} className={chip}>
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="size-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="6" cy="6" r="2" /><circle cx="6" cy="18" r="2" /><circle cx="18" cy="18" r="2" /><path d="M6 8v8M18 16V9a3 3 0 0 0-3-3h-3m2-2-2 2 2 2" /></svg>
+          <span>#{pull[3]}</span>
+        </Link>
+      )}
+    </div>
+  );
 }
