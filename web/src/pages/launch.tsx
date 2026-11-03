@@ -15,13 +15,14 @@ export function LaunchDialog({ items, role, onClose }: { items: Item[]; role: "t
   const [project, setProject] = useState("");
   const [choice, setChoice] = useState("");
   const [worktree, setWorktree] = useState(role === "implementation");
+  const [base, setBase] = useState("");
   const firstProvider = catalog.data?.providers[0];
   const selected = choice || (firstProvider ? `${firstProvider.instance_id}|${firstProvider.models[0].slug}` : "");
   const projectId = project || catalog.data?.projects[0]?.id || "";
   const launch = useMutation({
     mutationFn: async () => {
       const [provider, model] = selected.split("|");
-      for (const item of items) await api.t3Launch(item.id, { instance_id: instanceId, project_id: projectId, provider, model, role, worktree });
+      for (const item of items) await api.t3Launch(item.id, { instance_id: instanceId, project_id: projectId, provider, model, role, worktree, base_branch: base });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["items"] });
@@ -41,6 +42,11 @@ export function LaunchDialog({ items, role, onClose }: { items: Item[]; role: "t
         <Select value={selected} onChange={setChoice} options={(catalog.data?.providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `${p.instance_id}|${m.slug}`, label: m.name, group: p.name })))} />
       </Label>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={worktree} onChange={(e) => setWorktree(e.target.checked)} />Crear un worktree nuevo</label>
+      {worktree && (
+        <Label text="Rama base">
+          <input value={base} onChange={(e) => setBase(e.target.value)} placeholder="Rama por defecto del repositorio" className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-sm dark:border-slate-700" />
+        </Label>
+      )}
       <p className="text-xs text-slate-500 dark:text-slate-400">El agente se lanza con acceso completo.</p>
       <ErrorText error={catalog.error ?? launch.error} />
       <Button disabled={!selected || !projectId || launch.isPending} onClick={() => launch.mutate()}>Lanzar</Button>
