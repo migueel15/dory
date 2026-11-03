@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { api, type GithubIssue, type GithubPull } from "../api/client";
-import { Card, ErrorText, pill } from "../components/ui";
+import { Card, ErrorText, Select, pill } from "../components/ui";
 import { GithubMark, Tip } from "../components/github-ui";
 import { useProject } from "../project";
 
@@ -239,6 +239,8 @@ function Empty({ filtered, kind, state }: { filtered: boolean; kind: Tab; state:
   );
 }
 
+const NO_MILESTONE = "\u0000none";
+
 export function Github() {
   const qc = useQueryClient();
   const [asking, setAsking] = useState(false);
@@ -246,6 +248,7 @@ export function Github() {
   const [text, setText] = useState("");
   const [filter, setFilter] = useState("");
   const [state, setState] = useState<State>("open");
+  const [milestone, setMilestone] = useState("");
   const data = useGithubOpen();
   const refreshing = asking || !!data.data?.refreshing;
   const refresh = async () => {
@@ -253,7 +256,7 @@ export function Github() {
     try { qc.setQueryData(["github"], await api.github(true)); } finally { setAsking(false); }
     qc.invalidateQueries({ queryKey: ["github-detail"] });
   };
-  const setTab = (t: Tab) => { setTabState(t); setFilter(""); try { localStorage.setItem("github-tab", t); } catch { /* storage unavailable */ } };
+  const setTab = (t: Tab) => { setTabState(t); setFilter(""); setMilestone(""); try { localStorage.setItem("github-tab", t); } catch { /* storage unavailable */ } };
   const project = useProject();
   const me = data.data?.viewer ?? "";
   // Closed items are read from GitHub only when asked for, one page per repository at a time.
@@ -274,10 +277,14 @@ export function Github() {
   const issues = state === "open" ? openIssues : state === "closed" ? byUpdated(closedIssues) : byUpdated([...openIssues, ...closedIssues]);
   const q = text.trim().toLowerCase();
   const matches = (x: GithubPull | GithubIssue) => !q || [x.title, x.repo, `#${x.number}`, x.author, ...x.labels].some((v) => v.toLowerCase().includes(q));
+  // NO_MILESTONE keeps the items without one; "" keeps them all.
+  const inMilestone = (x: GithubPull | GithubIssue) => !milestone || x.milestone === (milestone === NO_MILESTONE ? "" : milestone);
+  const milestones = [...new Set((tab === "pulls" ? pulls : issues).map((x) => x.milestone).filter(Boolean))].sort();
+  const milestoneOptions = [{ value: "", label: "Todos los milestones" }, ...milestones.map((m) => ({ value: m, label: m })), { value: NO_MILESTONE, label: "Sin milestone" }];
   // Each list only takes the quick filter of its own tab: an issue has no reviewers, a pull request no linked PRs.
   const keep = (kind: Tab) => {
     const active = tab === kind ? quick[kind].find((f) => f.id === filter) : undefined;
-    return (x: GithubPull | GithubIssue) => matches(x) && (!active || active.test(x as GithubPull & GithubIssue, me));
+    return (x: GithubPull | GithubIssue) => matches(x) && inMilestone(x) && (!active || active.test(x as GithubPull & GithubIssue, me));
   };
   const shownPulls = pulls.filter(keep("pulls"));
   const shownIssues = issues.filter(keep("issues"));
@@ -327,6 +334,7 @@ export function Github() {
             <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Buscar por título, repo, autor o etiqueta…" aria-label="Buscar"
               className="min-h-9 w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-900" />
           </label>
+          <Select value={milestone} onChange={setMilestone} options={milestoneOptions} className="min-w-44" />
         </div>
         <div className="flex flex-wrap gap-1.5">
           {quick[tab].map((f) => {
@@ -348,6 +356,7 @@ export function Github() {
               <Meta icon={metaIcons.branch} title={`${p.head_ref} → ${p.base_ref}`}><span className="max-w-40 truncate font-mono">{p.head_ref}</span></Meta>
               <Meta icon={metaIcons.file} title={`${p.changed_files} ficheros cambiados`}>{p.changed_files}</Meta>
               <Tip text="Líneas añadidas y borradas"><span className="font-mono"><span className="text-green-700 dark:text-green-400">+{p.additions}</span> <span className="text-red-600 dark:text-red-400">−{p.deletions}</span></span></Tip>
+              {p.milestone && <Meta icon={metaIcons.flag} title="Milestone">{p.milestone}</Meta>}
             </>}>
               {p.state === "OPEN" ? <PullStatus pull={p} /> : <ClosedChip item={p} />}{linked(p.repo, "Issue", p.issues)}
             </Row>

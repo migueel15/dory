@@ -30,7 +30,6 @@ type Issue struct {
 	UpdatedAt string   `json:"updated_at"`
 	Labels    []string `json:"labels"`
 	Pulls     []Ref    `json:"pulls"`
-	Milestone string   `json:"milestone"`
 	// StateReason is COMPLETED, NOT_PLANNED or REOPENED; empty when unknown.
 	StateReason string `json:"state_reason"`
 	Meta
@@ -42,6 +41,7 @@ type Meta struct {
 	ClosedAt  string   `json:"closed_at"`
 	Comments  int      `json:"comments"`
 	Assignees []string `json:"assignees"`
+	Milestone string   `json:"milestone"`
 	// LabelColors maps each label to its hex color, without "#".
 	LabelColors map[string]string `json:"label_colors"`
 }
@@ -97,7 +97,7 @@ type ruleEntry struct {
 }
 
 // metaFields uses aliases so it never clashes with the same fields asked with other arguments.
-const metaFields = `createdAt closedAt comments { totalCount } assigneeList: assignees(first: 10) { nodes { login } } labelList: labels(first: 10) { nodes { name color } }`
+const metaFields = `createdAt closedAt comments { totalCount } assigneeList: assignees(first: 10) { nodes { login } } labelList: labels(first: 10) { nodes { name color } } milestoneInfo: milestone { title }`
 
 const pullFields = `id number title url state isDraft updatedAt headRefName baseRefName reviewDecision mergeable mergeStateStatus additions deletions changedFiles ` + metaFields + `
   author { login } labels(first: 10) { nodes { name } }
@@ -112,7 +112,7 @@ const overviewQuery = `query($owner: String!, $name: String!) { viewer { login }
   issues(states: OPEN, first: 50, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { ` + issueFields + ` } }
 } }`
 
-const issueFields = `number title url state stateReason updatedAt author { login } labels(first: 10) { nodes { name } } milestone { title } ` + metaFields + `
+const issueFields = `number title url state stateReason updatedAt author { login } labels(first: 10) { nodes { name } } ` + metaFields + `
     closedByPullRequestsReferences(first: 10) { nodes { number title } }`
 
 type login struct {
@@ -143,10 +143,16 @@ type wireMeta struct {
 			Color string `json:"color"`
 		} `json:"nodes"`
 	} `json:"labelList"`
+	MilestoneInfo *struct {
+		Title string `json:"title"`
+	} `json:"milestoneInfo"`
 }
 
 func (w wireMeta) meta() Meta {
 	m := Meta{CreatedAt: w.CreatedAt, ClosedAt: w.ClosedAt, Comments: w.Comments.Total, Assignees: []string{}, LabelColors: map[string]string{}}
+	if w.MilestoneInfo != nil {
+		m.Milestone = w.MilestoneInfo.Title
+	}
 	for _, a := range w.AssigneeList.Nodes {
 		m.Assignees = append(m.Assignees, a.Login)
 	}
@@ -225,17 +231,11 @@ type wireIssue struct {
 	Labels      labels `json:"labels"`
 	Closed      refs   `json:"closedByPullRequestsReferences"`
 	StateReason string `json:"stateReason"`
-	Milestone   *struct {
-		Title string `json:"title"`
-	} `json:"milestone"`
 	wireMeta
 }
 
 func (w wireIssue) issue(repo, project string) Issue {
 	i := Issue{Repo: repo, ProjectID: project, Number: w.Number, Title: w.Title, Author: name(w.Author), URL: w.URL, State: w.State, UpdatedAt: w.UpdatedAt, Labels: w.Labels.names(), Pulls: w.Closed.Nodes, StateReason: w.StateReason, Meta: w.meta()}
-	if w.Milestone != nil {
-		i.Milestone = w.Milestone.Title
-	}
 	return i
 }
 

@@ -826,6 +826,7 @@ export interface components {
             closed_at: string;
             comments: number;
             assignees: string[];
+            milestone: string;
             /** @description Hex color of each label, without #. */
             label_colors: {
                 [key: string]: string;
@@ -871,10 +872,16 @@ export interface components {
             candidates: components["schemas"]["GithubUser"][];
             /** @description Latest issues and pull requests of the repository, to reference with #. */
             links: components["schemas"]["GithubLink"][];
+            /** @description Open milestones of the repository; empty for pull requests. */
+            milestones: components["schemas"]["GithubMilestone"][];
             /** @description Parent issue of an issue, if any. */
             parent: components["schemas"]["GithubSubIssue"] | null;
             /** @description Sub-issues of an issue; empty for pull requests. */
             sub_issues: components["schemas"]["GithubSubIssue"][];
+        };
+        GithubMilestone: {
+            id: string;
+            title: string;
         };
         GithubSubIssue: {
             repo: string;
@@ -927,6 +934,8 @@ export interface components {
             comment_id?: string;
             /** @description User node ids for request_review, assign and unassign. */
             user_ids?: string[];
+            /** @description Milestone node id for set_milestone; empty removes the milestone. */
+            milestone_id?: string;
         };
         T3Thread: {
             id: string;

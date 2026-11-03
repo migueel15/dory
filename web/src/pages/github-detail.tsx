@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { api, type GithubDetail, type GithubPull, type GithubThread } from "../api/client";
-import { Badge, Button, Card, ErrorText, Md, Arrow, pill, toggleTask } from "../components/ui";
+import { Badge, Button, Card, Select, ErrorText, Md, Arrow, pill, toggleTask } from "../components/ui";
 import { Avatar, PullStatus } from "./github";
 import { Diff } from "./github-diff";
 import { GithubMark, Icon, IconButton, Menu, MenuItem, RefContext, RefMd, Tip, UserPicker, icons, useConfirm, MentionArea } from "../components/github-ui";
@@ -16,7 +16,7 @@ const reviewStates: Record<string, string> = { APPROVED: "aprobó", CHANGES_REQU
 // already approved; requesting changes again brings the button back.
 const canApprove = (pull: GithubPull, me: string) => pull.author !== me && !pull.approved_by.includes(me);
 
-type Act = (type: string, extra?: { method?: string; user_ids?: string[]; title?: string; body?: string }) => void;
+type Act = (type: string, extra?: { method?: string; user_ids?: string[]; title?: string; body?: string; milestone_id?: string }) => void;
 
 // ReviewPicker asks someone for a review; it sits next to the reviewers' avatars.
 function ReviewPicker({ d, act, busy }: { d: GithubDetail; act: Act; busy: boolean }) {
@@ -51,6 +51,21 @@ function Assignees({ d, act, busy }: { d: GithubDetail; act: Act; busy: boolean 
           </MenuItem>
         ))} />
     </div>
+  );
+}
+
+// MilestonePicker sets or removes the issue's milestone; a closed one stays listed while it is the current one.
+function MilestonePicker({ d, act, busy }: { d: GithubDetail; act: Act; busy: boolean }) {
+  const current = d.issue!.milestone;
+  const known = d.milestones.find((m) => m.title === current);
+  const options = [{ value: "", label: "Sin milestone" }, ...d.milestones.map((m) => ({ value: m.id, label: m.title }))];
+  if (current && !known) options.push({ value: "current", label: current });
+  const value = known?.id ?? (current ? "current" : "");
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Tip text="Milestone"><span className="text-slate-400"><Icon d="M4 22V4M4 4h12l-2 4 2 4H4" /></span></Tip>
+      <Select value={value} disabled={busy} options={options} className="min-w-40" onChange={(v) => v !== value && v !== "current" && act("set_milestone", { milestone_id: v })} />
+    </span>
   );
 }
 
@@ -245,7 +260,7 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
           {d.issue.state === "OPEN" ? <Assignees d={d} act={act} busy={busy} /> : d.assignees.length > 0 && (
             <span className="flex items-center gap-2"><Icon d={icons.user} />{d.assignees.map((a) => <Avatar key={a.id} login={a.login} />)}</span>
           )}
-          {d.issue.milestone && <span className="inline-flex items-center gap-1.5"><Icon d="M4 22V4M4 4h12l-2 4 2 4H4" />Milestone: <span className="font-medium text-slate-700 dark:text-slate-200">{d.issue.milestone}</span></span>}
+          <MilestonePicker d={d} act={act} busy={busy} />
           <span className="inline-flex items-center gap-1.5"><Icon d={icons.comment} />{d.issue.comments} comentarios</span>
           {d.issue.created_at && <span>Abierta {new Date(d.issue.created_at).toLocaleDateString()}</span>}
         </div>

@@ -2351,7 +2351,7 @@ components:
             type: "string"
     GithubPull:
       type: "object"
-      required: ["repo", "project_id", "number", "title", "author", "url", "state", "updated_at", "labels", "issues", "draft", "head_ref", "base_ref", "review_decision", "approvals", "approved_by", "changes_by", "required_approvals", "review_requests", "ci", "mergeable", "merge_state", "additions", "deletions", "changed_files", "created_at", "closed_at", "comments", "assignees", "label_colors"]
+      required: ["repo", "project_id", "number", "title", "author", "url", "state", "updated_at", "labels", "issues", "draft", "head_ref", "base_ref", "review_decision", "approvals", "approved_by", "changes_by", "required_approvals", "review_requests", "ci", "mergeable", "merge_state", "additions", "deletions", "changed_files", "created_at", "closed_at", "comments", "assignees", "milestone", "label_colors"]
       properties:
         repo:
           type: "string"
@@ -2425,6 +2425,8 @@ components:
           type: "array"
           items:
             type: "string"
+        milestone:
+          type: "string"
         label_colors:
           type: "object"
           description: "Hex color of each label, without #."
@@ -2487,7 +2489,7 @@ components:
           type: "string"
     GithubDetail:
       type: "object"
-      required: ["kind", "body", "issue", "pull", "timeline", "threads", "viewer", "assignees", "candidates", "links", "parent", "sub_issues"]
+      required: ["kind", "body", "issue", "pull", "timeline", "threads", "viewer", "assignees", "candidates", "links", "milestones", "parent", "sub_issues"]
       properties:
         kind:
           type: "string"
@@ -2526,6 +2528,11 @@ components:
           description: "Latest issues and pull requests of the repository, to reference with #."
           items:
             $ref: "#/components/schemas/GithubLink"
+        milestones:
+          type: "array"
+          description: "Open milestones of the repository; empty for pull requests."
+          items:
+            $ref: "#/components/schemas/GithubMilestone"
         parent:
           nullable: true
           description: "Parent issue of an issue, if any."
@@ -2536,6 +2543,14 @@ components:
           description: "Sub-issues of an issue; empty for pull requests."
           items:
             $ref: "#/components/schemas/GithubSubIssue"
+    GithubMilestone:
+      type: "object"
+      required: ["id", "title"]
+      properties:
+        id:
+          type: "string"
+        title:
+          type: "string"
     GithubSubIssue:
       type: "object"
       required: ["repo", "number", "title", "state"]
@@ -2638,6 +2653,9 @@ components:
           description: "User node ids for request_review, assign and unassign."
           items:
             type: "string"
+        milestone_id:
+          type: "string"
+          description: "Milestone node id for set_milestone; empty removes the milestone."
     T3Thread:
       type: "object"
       required: ["id", "project_id", "title", "status", "model", "updated_at", "attention", "url"]
