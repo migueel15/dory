@@ -40,11 +40,12 @@ type Status struct {
 
 // Monitor polls every registered instance and keeps the latest status.
 type Monitor struct {
-	svc    service.Service
-	client *http.Client
-	mu     sync.RWMutex
-	byID   map[string]Status
-	usage  map[string]InstanceUsage
+	Observe func(context.Context, string, []Thread) error
+	svc     service.Service
+	client  *http.Client
+	mu      sync.RWMutex
+	byID    map[string]Status
+	usage   map[string]InstanceUsage
 	// polling keeps usage reads in order, so a slow read cannot replace a newer one.
 	polling   sync.Mutex
 	refreshed time.Time
@@ -125,6 +126,18 @@ func (m *Monitor) check(ctx context.Context, in service.T3Instance) Status {
 		for i := range s.Threads {
 			s.Threads[i].EnvironmentID = d.EnvironmentID
 			s.Threads[i].URL = strings.TrimRight(in.BaseUrl, "/") + "/" + d.EnvironmentID + "/" + s.Threads[i].ID
+		}
+		if m.Observe != nil {
+			all, err := c.threads(ctx, true)
+			if err == nil {
+				for i := range all {
+					all[i].URL = strings.TrimRight(in.BaseUrl, "/") + "/" + d.EnvironmentID + "/" + all[i].ID
+				}
+				err = m.Observe(ctx, in.ID, all)
+			}
+			if err != nil {
+				log.Printf("t3: notifications: %v", err)
+			}
 		}
 	case errors.Is(err, errUnauthorized):
 		s.State = StateAuthFailed

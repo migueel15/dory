@@ -12,6 +12,103 @@ security:
   -
     bearerAuth: []
 paths:
+  "/notifications":
+    get:
+      operationId: listNotifications
+      parameters:
+        - name: before
+          in: query
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: Global per-user notification history, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, unread, server_time]
+                properties:
+                  unread: { type: integer }
+                  server_time: { type: string, format: date-time }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, title, url, kinds, bell, toast, read, created_at]
+                      properties:
+                        id: { type: integer, format: int64 }
+                        title: { type: string }
+                        url: { type: string }
+                        kinds: { type: array, items: { type: string } }
+                        bell: { type: boolean }
+                        toast: { type: boolean }
+                        read: { type: boolean }
+                        created_at: { type: string, format: date-time }
+  "/notifications/{id}/read":
+    post:
+      operationId: readNotification
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "204": { description: Notification marked read for the authenticated user }
+  "/notifications/preferences":
+    get:
+      operationId: getNotificationPreferences
+      responses:
+        "200":
+          description: User preferences and VAPID public key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  settings: { $ref: "#/components/schemas/NotificationSettings" }
+                  public_key: { type: string }
+    put:
+      operationId: putNotificationPreferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationSettings" }
+      responses:
+        "204": { description: Preferences replaced; existing notices are preserved }
+  "/notifications/subscription":
+    post:
+      operationId: subscribeNotifications
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint, keys]
+              properties:
+                endpoint: { type: string, format: uri }
+                keys:
+                  type: object
+                  required: [auth, p256dh]
+                  properties:
+                    auth: { type: string }
+                    p256dh: { type: string }
+      responses:
+        "204": { description: Device subscription stored }
+    delete:
+      operationId: unsubscribeNotifications
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint]
+              properties:
+                endpoint: { type: string, format: uri }
+      responses:
+        "204": { description: Device subscription and queued deliveries removed }
   "/projects":
     get:
       operationId: "listProjects"
@@ -2059,6 +2156,22 @@ components:
       type: "http"
       scheme: "bearer"
   schemas:
+    NotificationSettings:
+      type: object
+      additionalProperties: false
+      properties:
+        item_ready: { $ref: "#/components/schemas/NotificationChannels" }
+        item_blocked: { $ref: "#/components/schemas/NotificationChannels" }
+        thread_finished: { $ref: "#/components/schemas/NotificationChannels" }
+        thread_attention: { $ref: "#/components/schemas/NotificationChannels" }
+    NotificationChannels:
+      type: object
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean, default: true }
+        bell: { type: boolean, default: true }
+        toast: { type: boolean, default: true }
+        push: { type: boolean, default: true }
     IssueThread:
       type: object
       required: [id, kind, repo, number, issue_url, title, instance_id, thread_id, model, effort, created_at]

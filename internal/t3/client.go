@@ -35,28 +35,34 @@ type Discovery struct {
 
 // Thread keeps only the fields of a T3 thread that Dory shows.
 type Thread struct {
-	ID        string `json:"id"`
-	ProjectID string `json:"project_id"`
-	Title     string `json:"title"`
-	Status    string `json:"status"`
-	Model     string `json:"model"`
-	UpdatedAt string `json:"updated_at"`
-	Attention bool   `json:"attention"`
-	URL       string `json:"url"`
+	ID          string `json:"id"`
+	ProjectID   string `json:"project_id"`
+	Title       string `json:"title"`
+	Status      string `json:"status"`
+	Model       string `json:"model"`
+	UpdatedAt   string `json:"updated_at"`
+	Attention   bool   `json:"attention"`
+	SettledAt   string `json:"-"`
+	RunID       string `json:"-"`
+	CompletedAt string `json:"-"`
+	RequestID   string `json:"-"`
+	URL         string `json:"url"`
 	// EnvironmentID is the T3 environment, used for app deep links.
 	EnvironmentID string `json:"t3_environment_id"`
 }
 
 type wireThread struct {
-	ID             string          `json:"id"`
-	ProjectID      string          `json:"projectId"`
-	Title          string          `json:"title"`
-	Status         string          `json:"status"`
-	UpdatedAt      string          `json:"updatedAt"`
-	SettledAt      *string         `json:"settledAt"`
-	SnoozedUntil   *string         `json:"snoozedUntil"`
-	PendingRequest json.RawMessage `json:"pendingRuntimeRequest"`
-	ModelSelection struct {
+	LatestRunID          string          `json:"latestRunId"`
+	LatestRunCompletedAt string          `json:"latestRunCompletedAt"`
+	ID                   string          `json:"id"`
+	ProjectID            string          `json:"projectId"`
+	Title                string          `json:"title"`
+	Status               string          `json:"status"`
+	UpdatedAt            string          `json:"updatedAt"`
+	SettledAt            *string         `json:"settledAt"`
+	SnoozedUntil         *string         `json:"snoozedUntil"`
+	PendingRequest       json.RawMessage `json:"pendingRuntimeRequest"`
+	ModelSelection       struct {
 		Model string `json:"model"`
 	} `json:"modelSelection"`
 }
@@ -113,19 +119,33 @@ func (c Client) Discover(ctx context.Context) (Discovery, error) {
 }
 
 // Threads returns the threads that are not settled or need attention.
-func (c Client) Threads(ctx context.Context) ([]Thread, error) {
+func (c Client) Threads(ctx context.Context) ([]Thread, error) { return c.threads(ctx, false) }
+
+func (c Client) threads(ctx context.Context, all bool) ([]Thread, error) {
 	var snap struct {
 		Threads []wireThread `json:"threads"`
 	}
-	if err := c.get(ctx, "/api/orchestration/shell?omitIdleSubagents=true&omitOlderSettled=true", true, &snap); err != nil {
+	path := "/api/orchestration/shell?omitIdleSubagents=true&omitOlderSettled=true"
+	if all {
+		path = "/api/orchestration/shell?omitIdleSubagents=false&omitOlderSettled=false"
+	}
+	if err := c.get(ctx, path, true, &snap); err != nil {
 		return nil, err
 	}
 	out := make([]Thread, 0, len(snap.Threads))
 	for _, w := range snap.Threads {
-		if w.SettledAt != nil {
+		if w.SettledAt != nil && !all {
 			continue
 		}
-		out = append(out, Thread{ID: w.ID, ProjectID: w.ProjectID, Title: w.Title, Status: w.Status, Model: w.ModelSelection.Model, UpdatedAt: w.UpdatedAt, Attention: w.attention()})
+		settled := ""
+		if w.SettledAt != nil {
+			settled = *w.SettledAt
+		}
+		var pending struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(w.PendingRequest, &pending)
+		out = append(out, Thread{RunID: w.LatestRunID, CompletedAt: w.LatestRunCompletedAt, RequestID: pending.ID, SettledAt: settled, ID: w.ID, ProjectID: w.ProjectID, Title: w.Title, Status: w.Status, Model: w.ModelSelection.Model, UpdatedAt: w.UpdatedAt, Attention: w.attention()})
 	}
 	return out, nil
 }
