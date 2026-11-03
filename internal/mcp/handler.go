@@ -605,14 +605,6 @@ type projectUpsert struct {
 	Status      *string   `json:"status,omitempty" jsonschema:"Project status, e.g. active"`
 	Stack       *[]string `json:"stack,omitempty"`
 }
-type environmentUpsert struct {
-	ID              string    `json:"id,omitempty" jsonschema:"Existing environment UUID to update; omit to create"`
-	Name            *string   `json:"name,omitempty"`
-	Os              *string   `json:"os,omitempty"`
-	Access          *string   `json:"access,omitempty"`
-	AgentsAvailable *[]string `json:"agents_available,omitempty"`
-	Notes           *string   `json:"notes,omitempty"`
-}
 type memoryUpdate struct {
 	ID      string    `json:"id" jsonschema:"Memory UUID"`
 	Kind    *string   `json:"kind,omitempty" jsonschema:"decision, lesson or context"`
@@ -835,20 +827,6 @@ func Handler(svc service.Service, locate ThreadLocator) http.Handler {
 		return svc.Projects().Put(ctx, auth.Actor(ctx), p)
 	})
 	archiveTool(s, "archive_project", "Soft archive a project by UUID.", svc.Projects())
-	add(s, "upsert_environment", "Create an environment (machine), or update one by id changing only the fields sent. Fields: name, os, access, agents_available, notes.", func(ctx context.Context, in environmentUpsert) (any, error) {
-		e, err := loadOrNew(ctx, svc.Environments(), in.ID)
-		if err != nil {
-			return nil, err
-		}
-		e.ID = in.ID
-		set(&e.Name, in.Name)
-		set(&e.Os, in.Os)
-		set(&e.Access, in.Access)
-		set(&e.AgentsAvailable, in.AgentsAvailable)
-		set(&e.Notes, in.Notes)
-		return svc.Environments().Put(ctx, auth.Actor(ctx), e)
-	})
-	archiveTool(s, "archive_environment", "Soft archive an environment by UUID.", svc.Environments())
 	add(s, "update_memory", "Edit an existing memory by UUID, changing only the fields sent (kind, title, content, tags, scope, scope_id).", func(ctx context.Context, in memoryUpdate) (any, error) {
 		m, err := svc.Memories().Get(ctx, in.ID)
 		if err != nil {

@@ -20,7 +20,7 @@ func actor(r *http.Request) string { return auth.Actor(r.Context()) }
 func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *github.Client) {
 	mountResource(mux, "projects", svc.Projects(), func(v *service.Project) *service.Record { return &v.Record })
 	mountResource(mux, "repositories", svc.Repositories(), func(v *service.Repository) *service.Record { return &v.Record })
-	mountResource(mux, "environments", svc.Environments(), func(v *service.Environment) *service.Record { return &v.Record })
+	mountReadOnly(mux, "environments", svc.Environments(), func(v *service.Environment) *service.Record { return &v.Record })
 	mountResource(mux, "repository-locations", svc.RepositoryLocations(), func(v *service.RepositoryLocation) *service.Record { return &v.Record })
 	mountResource(mux, "t3-instances", svc.T3Instances(), func(v *service.T3Instance) *service.Record { return &v.Record })
 	mountResource(mux, "item-threads", svc.ItemThreads(), func(v *service.ItemThread) *service.Record { return &v.Record })

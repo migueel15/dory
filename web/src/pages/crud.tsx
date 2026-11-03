@@ -2,7 +2,8 @@ import { ThreadLink } from "../components/thread-link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { api, type Environment, type Feature, type Memory, type Project, type T3Status } from "../api/client";
+import { api, type Environment, type Feature, type Memory, type Project, type T3InstanceUsage, type T3Status } from "../api/client";
+import { Limit, Models } from "./usage";
 import { Badge, Button, Card, ErrorText, Arrow, Input, Label, Md, Modal, pill, Select, Textarea, csv, opts } from "../components/ui";
 import { useProject } from "../project";
 
@@ -64,28 +65,7 @@ export function ProjectForm({ project, onClose }: { project?: Project; onClose: 
   );
 }
 
-/* ---------- Entornos ---------- */
-function EnvironmentForm({ env, onClose }: { env?: Environment; onClose: () => void }) {
-  const [name, setName] = useState(env?.name ?? "");
-  const [os, setOs] = useState(env?.os ?? "");
-  const [access, setAccess] = useState(env?.access ?? "");
-  const [agents, setAgents] = useState(env?.agents_available.join(", ") ?? "");
-  const [notes, setNotes] = useState(env?.notes ?? "");
-  const data = { name, os, access, agents_available: csv(agents), notes };
-  const save = useSave("environments", () => (env ? api.environments.update(env.id, { id: env.id, ...data }) : api.environments.create(data)), onClose);
-  const arch = useSave("environments", () => api.environments.archive(env!.id), onClose);
-  return (
-    <Modal title={env ? "Editar entorno" : "Nuevo entorno"} onClose={onClose}>
-      <Label text="Nombre"><Input value={name} onChange={(e) => setName(e.target.value)} /></Label>
-      <Label text="SO"><Input value={os} onChange={(e) => setOs(e.target.value)} /></Label>
-      <Label text="Acceso (alias SSH, Tailscale…)"><Textarea value={access} onChange={(e) => setAccess(e.target.value)} /></Label>
-      <Label text="Agentes disponibles (coma)"><Input value={agents} onChange={(e) => setAgents(e.target.value)} /></Label>
-      <Label text="Notas"><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /></Label>
-      <Footer onClose={onClose} onSave={() => save.mutate()} onArchive={env && (() => arch.mutate())} error={save.error ?? arch.error} disabled={!name.trim()} />
-    </Modal>
-  );
-}
-
+/* ---------- Entornos (solo lectura, descubiertos por T3 Code) ---------- */
 const stateLabels: Record<T3Status["state"], string> = { available: "Disponible", disconnected: "Desconectada", auth_failed: "Token rechazado", incompatible: "Versión incompatible" };
 
 // The tab opens before the request so browsers do not block it as a popup.
@@ -118,28 +98,64 @@ function InstanceStatus({ status }: { status?: T3Status }) {
   );
 }
 
+function Machine({ env, status, usage }: { env: Environment; status: T3Status; usage?: T3InstanceUsage }) {
+  const catalog = useQuery({ queryKey: ["t3-catalog", status.instance_id], queryFn: () => api.t3Catalog(status.instance_id), enabled: status.state === "available", staleTime: 60_000 });
+  const muted = "text-sm text-slate-500 dark:text-slate-400";
+  return (
+    <Card className="space-y-3">
+      <div className="font-medium">{env.name} <span className="text-xs text-slate-500 dark:text-slate-400">{env.os}</span></div>
+      <InstanceStatus status={status} />
+      <section className="space-y-2">
+        <h3 className="text-sm font-medium">Uso</h3>
+        {!usage || usage.limits_error ? <p className={muted}>Sin datos de uso.</p> : (
+          <div className="space-y-3">{usage.providers.map((p) => (
+            <div key={p.provider} className="space-y-2">
+              <div className="text-sm">{p.name}</div>
+              {p.windows.length > 0 ? p.windows.map((w) => <Limit key={w.label} w={w} />) : <p className={muted}>Sin datos de plan.</p>}
+            </div>
+          ))}</div>
+        )}
+        {usage && !usage.limits_error && <Models usage={usage} />}
+      </section>
+      <section className="space-y-1">
+        <h3 className="text-sm font-medium">Modelos</h3>
+        <ErrorText error={catalog.error} />
+        {catalog.data?.providers.map((p) => (
+          <div key={p.instance_id} className="text-sm">
+            <span className="font-medium">{p.name}</span>
+            <div className="mt-1 flex flex-wrap gap-1">{p.models.map((m) => <Badge key={m.slug}>{m.name || m.slug}</Badge>)}</div>
+          </div>
+        ))}
+        {status.state !== "available" && <p className={muted}>La máquina no responde.</p>}
+      </section>
+      <section className="space-y-1">
+        <h3 className="text-sm font-medium">Proyectos</h3>
+        {catalog.data?.projects.length === 0 && <p className={muted}>Sin proyectos.</p>}
+        <ul className="space-y-1 text-sm">{catalog.data?.projects.map((p) => (
+          <li key={p.id}>{p.title} <span className="break-all text-xs text-slate-500 dark:text-slate-400">{p.root}</span></li>
+        ))}</ul>
+      </section>
+    </Card>
+  );
+}
+
+// Las máquinas las descubre T3 Code; aquí solo se muestran las que tienen instancia.
 export function Environments() {
-  const [editing, setEditing] = useState<Environment | "new" | null>(null);
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
   const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 10_000 });
+  const usage = useQuery({ queryKey: ["t3-usage"], queryFn: api.t3Usage, refetchInterval: 30_000 });
+  const machines = (envs.data ?? []).flatMap((env) => {
+    const status = t3.data?.find((s) => s.environment_id === env.id);
+    return status ? [{ env, status }] : [];
+  });
   return (
     <div className="space-y-3">
-      <Header title="Entornos" onNew={() => setEditing("new")} />
-      <ErrorText error={envs.error} />
+      <h1 className="text-xl font-bold">Entornos</h1>
+      <ErrorText error={envs.error ?? t3.error} />
+      {envs.data && t3.data && machines.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">T3 Code no ha detectado ninguna máquina.</p>}
       <div className="grid gap-3 md:grid-cols-2">
-        {envs.data?.map((e) => (
-          <Card key={e.id} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
-            <div onClick={() => setEditing(e)} className="space-y-1">
-              <div className="font-medium">{e.name} <span className="text-xs text-slate-500 dark:text-slate-400">{e.os}</span></div>
-              <div className="flex flex-wrap gap-1">{e.agents_available.map((a) => <Badge key={a}>{a}</Badge>)}</div>
-              <InstanceStatus status={t3.data?.find((s) => s.environment_id === e.id)} />
-              {e.access && <Md>{e.access}</Md>}
-              {e.notes && <Md>{e.notes}</Md>}
-            </div>
-          </Card>
-        ))}
+        {machines.map(({ env, status }) => <Machine key={env.id} env={env} status={status} usage={usage.data?.find((u) => u.instance_id === status.instance_id)} />)}
       </div>
-      {editing && <EnvironmentForm env={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} />}
     </div>
   );
 }
