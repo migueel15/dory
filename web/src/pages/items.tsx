@@ -2,6 +2,7 @@ import { ThreadStatus } from "../components/thread-status";
 import { ThreadLink } from "../components/thread-link";
 import { LaunchDialog } from "./launch";
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DndContext, type DragEndEvent, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { api, itemInput, type Item, type ItemStatus } from "../api/client";
@@ -160,7 +161,12 @@ function ItemView({ item, project, feature }: { item: Item; project?: string; fe
       <Section title="Referencias" hint="Enlaces estables: pull requests, issues y ramas.">
         {item.refs.length ? (
           <ul className="space-y-1 text-sm">
-            {item.refs.map((r) => <li key={r}>{/^https?:\/\//.test(r) ? <a className="break-all underline" href={r} target="_blank" rel="noreferrer">{refLabel(r)}</a> : <code className="break-all rounded bg-slate-100 px-1 dark:bg-raised">{r}</code>}</li>)}
+            {item.refs.map((r) => {
+              const pull = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)$/.exec(r);
+              return <li key={r}>{pull ? (
+                <Link className="break-all underline" to="/github/$owner/$repo/$kind/$number" params={{ owner: pull[1], repo: pull[2], kind: "pulls", number: pull[3] }}>{refLabel(r)}</Link>
+              ) : /^https?:\/\//.test(r) ? <a className="break-all underline" href={r} target="_blank" rel="noreferrer">{refLabel(r)}</a> : <code className="break-all rounded bg-slate-100 px-1 dark:bg-raised">{r}</code>}</li>;
+            })}
           </ul>
         ) : <p className={muted}>Sin referencias.</p>}
       </Section>
