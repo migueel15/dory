@@ -1975,6 +1975,43 @@ paths:
           $ref: "#/components/responses/Error409"
         "500":
           $ref: "#/components/responses/Error500"
+  "/github/repos/{owner}/{repo}/pulls/{number}/resolve-conflicts":
+    post:
+      operationId: resolveConflicts
+      parameters:
+        - {name: owner, in: path, required: true, schema: {type: string}}
+        - {name: repo, in: path, required: true, schema: {type: string}}
+        - {name: number, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [instance_id, project_id, provider, model]
+              properties:
+                instance_id: {type: string}
+                project_id: {type: string}
+                provider: {type: string}
+                model: {type: string}
+                effort_option: {type: string}
+                effort: {type: string}
+      responses:
+        "201":
+          description: Thread launched
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [thread_id]
+                properties:
+                  thread_id: {type: string}
+        "409":
+          $ref: "#/components/responses/Error409"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "502":
+          description: GitHub or T3 unavailable
 components:
   responses:
     Error400:
@@ -2022,6 +2059,22 @@ components:
       type: "http"
       scheme: "bearer"
   schemas:
+    IssueThread:
+      type: object
+      required: [id, kind, repo, number, issue_url, title, instance_id, thread_id, model, effort, created_at]
+      properties:
+        id: {type: string}
+        kind: {type: string, enum: [define_issue, resolve_conflicts], default: define_issue}
+        project_id: {type: string, nullable: true}
+        repo: {type: string}
+        number: {type: integer}
+        issue_url: {type: string}
+        title: {type: string}
+        instance_id: {type: string}
+        thread_id: {type: string}
+        model: {type: string}
+        effort: {type: string}
+        created_at: {type: string}
     EntityType:
       type: "string"
       enum:
