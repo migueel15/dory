@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type T3CatalogModel } from "../api/client";
 import { Button, ErrorText, Label, Modal, Select } from "../components/ui";
+import { saveEffort, savedEffort } from "../effort";
 import { useT3 } from "./attention";
 
 // ProviderIcon marks the company behind a model with its initial and colour.
@@ -36,13 +37,14 @@ export function DefineIssueDialog({ repo, number, onClose }: { repo: string; num
     return (catalog.data?.providers ?? []).flatMap((p) => p.models.map((m) => ({ provider: p, model: m })))
       .filter(({ provider, model }) => !f || `${provider.name} ${model.name} ${model.slug}`.toLowerCase().includes(f));
   }, [catalog.data, filter]);
-  const effortValue = effort || choice?.model.effort?.default || "";
+  const effortValue = effort || (choice?.model.effort ? savedEffort(choice.model.slug, choice.model.effort.values) || choice.model.effort.default : "");
   const launch = useMutation({
     mutationFn: () => api.issueDefine(repo, number, {
       instance_id: instanceId, project_id: projectId, provider: choice!.provider, model: choice!.model.slug,
       effort_option: choice!.model.effort?.id, effort: choice!.model.effort ? effortValue : undefined,
     }),
     onSuccess: () => {
+      if (choice?.model.effort) saveEffort(choice.model.slug, effortValue);
       qc.invalidateQueries({ queryKey: ["issue-threads"] });
       onClose();
     },

@@ -69,6 +69,9 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 			Role       string `json:"role"`
 			Worktree   bool   `json:"worktree"`
 			BaseBranch string `json:"base_branch"`
+			// EffortOption and Effort set the reasoning effort; empty keeps the default.
+			EffortOption string `json:"effort_option"`
+			Effort       string `json:"effort"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.InstanceID == "" || body.ProjectID == "" || body.Provider == "" || body.Model == "" {
 			writeError(w, http.StatusBadRequest, "invalid_argument", "instance_id, project_id, provider and model are required")
@@ -91,7 +94,7 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 			return
 		}
 		threadID, err := c.Launch(r.Context(), t3.LaunchInput{
-			ProjectID: body.ProjectID, Title: item.Title, Provider: body.Provider, Model: body.Model,
+			ProjectID: body.ProjectID, Title: item.Title, Provider: body.Provider, Model: body.Model, EffortOption: body.EffortOption, Effort: body.Effort,
 			Prompt: launchPrompt(item, body.Role, body.Worktree, strings.TrimSpace(body.BaseBranch)),
 		})
 		if threadID == "" {
@@ -113,7 +116,7 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 				logError(err)
 			}
 		}
-		audit(r, svc, threadID, map[string]any{"operation": "t3.launch", "item_id": item.ID, "role": body.Role, "model": body.Model})
+		audit(r, svc, threadID, map[string]any{"operation": "t3.launch", "item_id": item.ID, "role": body.Role, "model": body.Model, "effort": body.Effort})
 		writeJSON(w, http.StatusCreated, map[string]string{"thread_id": threadID})
 	})
 }

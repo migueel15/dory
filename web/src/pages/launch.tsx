@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Item } from "../api/client";
 import { Button, ErrorText, Label, Modal, Select } from "../components/ui";
+import { saveEffort, savedEffort } from "../effort";
 import { useT3 } from "./attention";
 
 // Starts one thread per item on the chosen instance. Runs on an explicit click only.
@@ -18,13 +19,18 @@ export function LaunchDialog({ items, role, onClose }: { items: Item[]; role: "t
   const [base, setBase] = useState("");
   const firstProvider = catalog.data?.providers[0];
   const selected = choice || (firstProvider ? `${firstProvider.instance_id}|${firstProvider.models[0].slug}` : "");
+  const [provider0, model0] = selected.split("|");
+  const model = catalog.data?.providers.find((p) => p.instance_id === provider0)?.models.find((m) => m.slug === model0);
+  const [effort, setEffort] = useState("");
+  const effortValue = effort || (model?.effort ? savedEffort(model.slug, model.effort.values) || model.effort.default : "");
   const projectId = project || catalog.data?.projects[0]?.id || "";
   const launch = useMutation({
     mutationFn: async () => {
-      const [provider, model] = selected.split("|");
-      for (const item of items) await api.t3Launch(item.id, { instance_id: instanceId, project_id: projectId, provider, model, role, worktree, base_branch: base });
+      const [provider, slug] = selected.split("|");
+      for (const item of items) await api.t3Launch(item.id, { instance_id: instanceId, project_id: projectId, provider, model: slug, role, worktree, base_branch: base, effort_option: model?.effort?.id, effort: model?.effort ? effortValue : undefined });
     },
     onSuccess: () => {
+      if (model?.effort) saveEffort(model.slug, effortValue);
       qc.invalidateQueries({ queryKey: ["items"] });
       qc.invalidateQueries({ queryKey: ["item-threads"] });
       onClose();
@@ -39,8 +45,13 @@ export function LaunchDialog({ items, role, onClose }: { items: Item[]; role: "t
         <Select value={projectId} onChange={setProject} options={(catalog.data?.projects ?? []).map((p) => ({ value: p.id, label: p.title }))} />
       </Label>
       <Label text="Modelo">
-        <Select value={selected} onChange={setChoice} options={(catalog.data?.providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `${p.instance_id}|${m.slug}`, label: m.name, group: p.name })))} />
+        <Select value={selected} onChange={(v) => { setChoice(v); setEffort(""); }} options={(catalog.data?.providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `${p.instance_id}|${m.slug}`, label: m.name, group: p.name })))} />
       </Label>
+      {model?.effort && (
+        <Label text="Razonamiento">
+          <Select value={effortValue} onChange={setEffort} options={model.effort.values.map((v) => ({ value: v, label: v }))} />
+        </Label>
+      )}
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={worktree} onChange={(e) => setWorktree(e.target.checked)} />Crear un worktree nuevo</label>
       {worktree && (
         <Label text="Rama base">
