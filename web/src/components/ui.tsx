@@ -26,7 +26,7 @@ export const field = "min-h-11 sm:min-h-0 w-full rounded-md border border-slate-
 export const Input = (p: InputHTMLAttributes<HTMLInputElement>) => <input {...p} className={cx(field, p.className)} />;
 export const Textarea = (p: TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...p} className={cx(field, "min-h-24", p.className)} />;
 
-export type Option = { value: string; label: string; group?: string };
+export type Option = { value: string; label: string; group?: string; icon?: ReactNode; disabled?: boolean };
 
 // Select replaces the native <select>: a button that opens a floating, keyboard-navigable list.
 export function Select({ value, onChange, options, disabled, className, placeholder = "—" }: { value: string; onChange: (v: string) => void; options: Option[]; disabled?: boolean; className?: string; placeholder?: string }) {
@@ -66,13 +66,13 @@ export function Select({ value, onChange, options, disabled, className, placehol
     if (e.key === "Escape" || e.key === "Tab") { if (e.key === "Escape") e.preventDefault(); setOpen(false); }
     else if (e.key === "ArrowDown") { e.preventDefault(); setHi((i) => Math.min(options.length - 1, i + 1)); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setHi((i) => Math.max(0, i - 1)); }
-    else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (options[hi]) pick(options[hi]); }
+    else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (options[hi] && !options[hi].disabled) pick(options[hi]); }
   };
   return (
     <div ref={box} className={cx("relative", className ?? "w-full")}>
       <button type="button" disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? setOpen(false) : show())} onKeyDown={key}
         className={cx(field, "flex items-center justify-between gap-2 text-left transition-colors hover:border-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:opacity-50 dark:hover:border-slate-500", open && "border-blue-500 dark:border-blue-400")}>
-        <span className={cx("truncate", !current && "text-slate-400")}>{current?.label ?? placeholder}</span>
+        <span className={cx("flex min-w-0 items-center gap-2 truncate", !current && "text-slate-400")}>{current?.icon}{current?.label ?? placeholder}</span>
         <svg viewBox="0 0 20 20" fill="currentColor" className={cx("size-4 shrink-0 text-slate-400 transition-transform", open && "rotate-180")}><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clipRule="evenodd" /></svg>
       </button>
       {open && createPortal(
@@ -81,9 +81,9 @@ export function Select({ value, onChange, options, disabled, className, placehol
           {options.map((o, i) => (
             <div key={o.value}>
               {o.group && o.group !== options[i - 1]?.group && <p className="px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{o.group}</p>}
-              <button type="button" role="option" aria-selected={i === hi} onMouseEnter={() => setHi(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(o)}
-                className={cx("flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm", i === hi ? "bg-slate-100 dark:bg-slate-800" : "", o.value === value ? "font-medium text-blue-700 dark:text-blue-300" : "text-slate-700 dark:text-slate-200")}>
-                <span className="truncate">{o.label}</span>
+              <button type="button" role="option" aria-selected={i === hi} aria-disabled={o.disabled} disabled={o.disabled} onMouseEnter={() => setHi(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(o)}
+                className={cx("flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm", i === hi ? "bg-slate-100 dark:bg-slate-800" : "", o.value === value ? "font-medium text-blue-700 dark:text-blue-300" : "text-slate-700 dark:text-slate-200", o.disabled && "cursor-not-allowed opacity-50")}>
+                <span className="flex min-w-0 items-center gap-2 truncate">{o.icon}{o.label}</span>
                 {o.value === value && <svg viewBox="0 0 20 20" fill="currentColor" className="size-4 shrink-0"><path fillRule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.58l7.3-7.3a1 1 0 0 1 1.4 0Z" clipRule="evenodd" /></svg>}
               </button>
             </div>
