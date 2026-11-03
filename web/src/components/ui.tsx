@@ -152,10 +152,10 @@ export function Md({ children, components, urlTransform, onToggle }: { children:
   );
 }
 
-export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Modal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-2 sm:p-4" onClick={onClose}>
-      <div className="max-h-full w-full max-w-lg space-y-3 overflow-auto rounded-lg bg-white dark:bg-slate-900 p-3 sm:p-4" onClick={(e) => e.stopPropagation()}>
+      <div className={`max-h-full w-full max-w-lg space-y-3 overflow-auto rounded-lg bg-white dark:bg-slate-900 p-3 sm:p-4${wide ? " lg:max-w-3xl" : ""}`} onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold">{title}</h2>
         {children}
       </div>

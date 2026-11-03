@@ -49,7 +49,7 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
     const project = projects.data?.find((p) => p.id === item.project_id);
     const feature = features.data?.find((f) => f.id === item.feature_id);
     return (
-      <Modal title="Item" onClose={onClose}>
+      <Modal title="Item" onClose={onClose} wide>
         <ItemView item={item} project={project?.name} feature={feature?.title} />
         {(item.status === "inbox" || item.status === "triaged") && <Button type="button" variant="ghost" onClick={() => setLaunch("triage")}>Analizar con un agente</Button>}
         {item.status === "ready" && <Button type="button" variant="ghost" onClick={() => setLaunch("implementation")}>Enviar a implementar</Button>}
@@ -62,7 +62,7 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
     );
   }
   return (
-    <Modal title={item ? "Editar item" : "Nuevo item"} onClose={onClose}>
+    <Modal title={item ? "Editar item" : "Nuevo item"} onClose={onClose} wide={!!item}>
       <Label text="Título"><Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus /></Label>
       <Label text="Descripción (markdown)"><Textarea value={body} onChange={(e) => setBody(e.target.value)} /></Label>
       <Label text="Progreso (estado actual)"><Input value={progress} onChange={(e) => setProgress(e.target.value)} placeholder="Rama · último commit · qué falta" /></Label>
