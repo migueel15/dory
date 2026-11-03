@@ -35,7 +35,7 @@ function Login() {
   });
   return (
     <form
-      className="mx-auto mt-24 w-72 space-y-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-sm"
+      className="mx-auto mt-24 w-72 space-y-3 rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-surface p-5 shadow-sm"
       onSubmit={(e) => { e.preventDefault(); login.mutate(); }}
     >
       <h1 className="text-xl font-bold">Dory</h1>
@@ -90,7 +90,7 @@ function Layout() {
   useEffect(() => setMenu(false), [path]);
   if (me.isPending) return null;
   if (!me.data) return <Login />;
-  const link = "flex min-h-11 shrink-0 items-center rounded px-3 text-sm sm:min-h-0 sm:px-2 sm:py-1 hover:bg-slate-200 dark:hover:bg-slate-800 [&.active]:bg-slate-900 dark:[&.active]:bg-slate-100 [&.active]:text-white dark:[&.active]:text-slate-900";
+  const link = "flex min-h-11 shrink-0 items-center rounded px-3 text-sm sm:min-h-0 sm:px-2 sm:py-1 hover:bg-slate-200 dark:hover:bg-raised [&.active]:bg-slate-900 dark:[&.active]:bg-accent [&.active]:text-white dark:[&.active]:text-white";
   const links = (
     <>
       <Link to="/" activeOptions={{ exact: true }} className={link}>Inicio</Link>
@@ -105,18 +105,18 @@ function Layout() {
     </>
   );
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
-      <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 sm:static sm:px-4">
+    <div className="min-h-screen bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text">
+      <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2 sm:static sm:px-4">
         <div className="flex h-12 items-center gap-1 sm:h-auto sm:py-2">
           <span className="mr-3 font-bold">Dory</span>
           <div className="hidden gap-1 sm:flex">{links}</div>
           <div className="ml-auto hidden items-center gap-1 sm:flex">
             <ProjectPicker />
-            <span className="truncate text-sm text-slate-500 dark:text-slate-400">{me.data.username}</span>
+            <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
             <ThemeToggle />
             <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
           </div>
-          <button type="button" aria-label="Menú" aria-expanded={menu} onClick={() => setMenu(!menu)} className="ml-auto grid size-11 place-items-center rounded hover:bg-slate-200 dark:hover:bg-slate-800 sm:hidden">
+          <button type="button" aria-label="Menú" aria-expanded={menu} onClick={() => setMenu(!menu)} className="ml-auto grid size-11 place-items-center rounded hover:bg-slate-200 dark:hover:bg-raised sm:hidden">
             <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d={menu ? "M6 6l12 12M18 6L6 18" : "M4 7h16M4 12h16M4 17h16"} /></svg>
           </button>
         </div>
@@ -125,7 +125,7 @@ function Layout() {
             <div className="grid grid-cols-2 gap-1">{links}</div>
             <ProjectPicker />
             <div className="flex items-center gap-1">
-              <span className="truncate text-sm text-slate-500 dark:text-slate-400">{me.data.username}</span>
+              <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
               <span className="ml-auto"><ThemeToggle /></span>
               <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
             </div>

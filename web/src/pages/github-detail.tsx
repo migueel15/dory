@@ -38,7 +38,7 @@ function Assignees({ d, act, busy }: { d: GithubDetail; act: Act; busy: boolean 
         {d.assignees.map((a) => (
           <Tip key={a.id} text={`${a.login} · clic para quitar`}>
             <button type="button" aria-label={`Quitar a ${a.login}`} disabled={busy} onClick={() => act("unassign", { user_ids: [a.id] })} className="group relative rounded-full">
-              <img src={`https://github.com/${a.login}.png?size=48`} alt={a.login} className="size-6 rounded-full bg-slate-200 ring-2 ring-white dark:bg-slate-700 dark:ring-slate-900" />
+              <img src={`https://github.com/${a.login}.png?size=48`} alt={a.login} className="size-6 rounded-full bg-slate-200 ring-2 ring-white dark:bg-hover dark:ring-surface" />
               <span className="absolute inset-0 grid place-items-center rounded-full bg-red-600/80 text-white opacity-0 transition-opacity group-hover:opacity-100"><Icon d={icons.x} className="size-3" /></span>
             </button>
           </Tip>
@@ -47,7 +47,7 @@ function Assignees({ d, act, busy }: { d: GithubDetail; act: Act; busy: boolean 
       <UserPicker tip="Asignar" title="Asignar a" users={assignable.filter((u) => u.id !== me?.id)} disabled={busy} onPick={(u) => act("assign", { user_ids: [u.id] })}
         extra={me && ((close) => (
           <MenuItem onClick={() => { close(); act("assign", { user_ids: [me.id] }); }}>
-            <span className="grid size-6 place-items-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"><Icon d={icons.user} className="size-3.5" /></span>
+            <span className="grid size-6 place-items-center rounded-full bg-blue-100 text-blue-700 dark:bg-accent-subtle dark:text-accent-text"><Icon d={icons.user} className="size-3.5" /></span>
             <span className="flex-1 font-medium">Asignármela</span>
           </MenuItem>
         ))} />
@@ -143,12 +143,12 @@ const quote = (who: string, body: string) => `> **@${who}**\n${body.trim().split
 function Message({ author, verb, at, url, body, mine, editType, id, act, busy, onReply }: { author: string; verb?: string; at: string; url?: string; body: string; mine: boolean; editType: string; id: string; act: ThreadAct; busy: boolean; onReply: (q: string) => void }) {
   const [draft, setDraft] = useState<string>();
   const when = new Date(at).toLocaleString();
-  const small = "grid size-7 place-items-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200";
+  const small = "grid size-7 place-items-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-raised dark:hover:text-text";
   return (
     <div className="group/msg">
-      <div className="mb-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+      <div className="mb-1 flex items-center gap-2 text-xs text-slate-500 dark:text-muted">
         <Avatar login={author} />
-        <span><span className="font-medium text-slate-700 dark:text-slate-200">{author}</span>{verb && ` ${verb}`} · {url ? <a href={url} target="_blank" rel="noreferrer" className="hover:underline">{when}</a> : when}</span>
+        <span><span className="font-medium text-slate-700 dark:text-text">{author}</span>{verb && ` ${verb}`} · {url ? <a href={url} target="_blank" rel="noreferrer" className="hover:underline">{when}</a> : when}</span>
         <span className="ml-auto flex gap-0.5 opacity-60 transition-opacity group-hover/msg:opacity-100">
           {body && <Tip text="Responder citando"><button type="button" aria-label="Responder citando" onClick={() => onReply(quote(author, body))} className={small}><Icon d={icons.reply} /></button></Tip>}
           {mine && id && draft === undefined && <Tip text="Editar"><button type="button" aria-label="Editar" onClick={() => setDraft(body)} className={small}><Icon d={icons.edit} /></button></Tip>}
@@ -156,7 +156,7 @@ function Message({ author, verb, at, url, body, mine, editType, id, act, busy, o
       </div>
       {draft === undefined ? <RefMd onToggle={mine && id && !busy ? (line) => act({ type: editType, comment_id: id, body: toggleTask(body, line) }) : undefined}>{body}</RefMd> : (
         <div className="space-y-2">
-          <textarea aria-label="Editar mensaje" autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setDraft(undefined)} rows={Math.min(14, draft.split("\n").length + 2)} className="w-full rounded-md border border-slate-300 bg-white p-2 font-mono text-sm dark:border-slate-600 dark:bg-slate-900" />
+          <textarea aria-label="Editar mensaje" autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setDraft(undefined)} rows={Math.min(14, draft.split("\n").length + 2)} className="w-full rounded-md border border-slate-300 bg-white p-2 font-mono text-sm dark:border-border-strong dark:bg-surface" />
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setDraft(undefined)}>Cancelar</Button>
             <Button disabled={busy || !draft.trim()} onClick={() => act({ type: editType, comment_id: id, body: draft }).then(() => setDraft(undefined))}>Guardar</Button>
@@ -185,14 +185,14 @@ function ThreadCard({ t, me, people, links, act, busy }: { t: GithubThread; me: 
           </Button>
         </div>
       </div>
-      {!open && t.comments[0] && <div className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{t.comments[0].author}: {t.comments[0].body}</div>}
+      {!open && t.comments[0] && <div className="mt-1 truncate text-xs text-slate-500 dark:text-muted">{t.comments[0].author}: {t.comments[0].body}</div>}
       {open && <>
         {t.comments.map((c, i) => (
-          <div key={i} className="mt-2 border-l-2 border-slate-200 pl-2 dark:border-slate-700">
+          <div key={i} className="mt-2 border-l-2 border-slate-200 pl-2 dark:border-border">
             <Message author={c.author} at={c.at} url={c.url} body={c.body} mine={c.author === me} editType="edit_thread_comment" id={c.id} act={act} busy={busy} onReply={(q) => setReply(q + reply)} />
           </div>
         ))}
-        <MentionArea people={people} links={links} aria-label="Responder en el hilo" value={reply} onValue={setReply} rows={2} placeholder="Responder…" className="mt-2 w-full rounded border border-slate-300 bg-white p-2 text-sm dark:border-slate-700 dark:bg-slate-900" />
+        <MentionArea people={people} links={links} aria-label="Responder en el hilo" value={reply} onValue={setReply} rows={2} placeholder="Responder…" className="mt-2 w-full rounded border border-slate-300 bg-white p-2 text-sm dark:border-border dark:bg-surface" />
         <div className="flex gap-2">
           <Button disabled={busy || !reply.trim()} onClick={send}>Responder</Button>
           {reply && <Button variant="ghost" onClick={() => setReply("")}>Descartar</Button>}
@@ -222,7 +222,7 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
   const [owner, repo] = e.repo.split("/");
   const [draft, setDraft] = useState<{ title: string; body: string }>();
   const save = () => { if (draft) { act(d.pull ? "edit_pull" : "edit_issue", draft); setDraft(undefined); } };
-  const box = "w-full rounded-md border border-slate-300 bg-white px-2 py-1 dark:border-slate-600 dark:bg-slate-900";
+  const box = "w-full rounded-md border border-slate-300 bg-white px-2 py-1 dark:border-border-strong dark:bg-surface";
   return (
     <Card className="p-0">
       <div className="space-y-2 p-4">
@@ -234,30 +234,30 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
           {(draft ? (
             <span className="flex shrink-0 gap-1">
               <Tip text="Guardar"><button type="button" aria-label="Guardar" disabled={busy || !draft.title.trim()} onClick={save} className="grid size-8 place-items-center rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"><Icon d={icons.check} /></button></Tip>
-              <Tip text="Cancelar"><button type="button" aria-label="Cancelar" onClick={() => setDraft(undefined)} className="grid size-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><Icon d={icons.x} /></button></Tip>
+              <Tip text="Cancelar"><button type="button" aria-label="Cancelar" onClick={() => setDraft(undefined)} className="grid size-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-raised"><Icon d={icons.x} /></button></Tip>
             </span>
           ) : (
-            <Tip text="Editar título y descripción"><button type="button" aria-label="Editar título y descripción" onClick={() => setDraft({ title: e.title, body: d.body })} className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"><Icon d={icons.edit} /></button></Tip>
+            <Tip text="Editar título y descripción"><button type="button" aria-label="Editar título y descripción" onClick={() => setDraft({ title: e.title, body: d.body })} className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white"><Icon d={icons.edit} /></button></Tip>
           ))}
-          <Tip text="Abrir en GitHub"><a href={e.url} target="_blank" rel="noreferrer" aria-label="Abrir en GitHub" className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"><GithubMark /></a></Tip>
+          <Tip text="Abrir en GitHub"><a href={e.url} target="_blank" rel="noreferrer" aria-label="Abrir en GitHub" className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white"><GithubMark /></a></Tip>
         </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-muted">
           <Avatar login={e.author} title={`Autor: ${e.author}`} />
           <span>{e.repo}#{e.number}</span>
-          {d.pull && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono dark:bg-slate-800">{d.pull.head_ref} → {d.pull.base_ref}</span>}
+          {d.pull && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono dark:bg-raised">{d.pull.head_ref} → {d.pull.base_ref}</span>}
           {e.labels.map((l) => <Badge key={l}>{l}</Badge>)}
           {d.parent && <span className="inline-flex items-center gap-1">Padre: <SubLink s={d.parent} here={e.repo} /></span>}
           {refs.map((r) => <Link key={r.number} className="underline" to="/github/$owner/$repo/$kind/$number" params={{ owner, repo, kind: d.pull ? "issues" : "pulls", number: String(r.number) }}>#{r.number} {r.title}</Link>)}
         </div>
       </div>
       {d.pull && (
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-slate-100 px-4 py-3 dark:border-slate-800">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-slate-100 px-4 py-3 dark:border-border">
           <div className="flex items-center gap-2"><PullStatus pull={d.pull} />{live && <ReviewPicker d={d} act={act} busy={busy} />}</div>
           {live && <Assignees d={d} act={act} busy={busy} />}
         </div>
       )}
       {d.issue && (
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-slate-100 px-4 py-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-slate-100 px-4 py-3 text-xs text-slate-500 dark:border-border dark:text-muted">
           {d.issue.state === "OPEN" ? <Assignees d={d} act={act} busy={busy} /> : d.assignees.length > 0 && (
             <span className="flex items-center gap-2"><Icon d={icons.user} />{d.assignees.map((a) => <Avatar key={a.id} login={a.login} />)}</span>
           )}
@@ -267,15 +267,15 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
         </div>
       )}
       {d.sub_issues.length > 0 && (
-        <div className="border-t border-slate-100 px-4 py-3 text-sm dark:border-slate-800">
-          <div className="mb-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">Sub-issues · {d.sub_issues.filter((s) => s.state !== "OPEN").length}/{d.sub_issues.length} cerradas</div>
+        <div className="border-t border-slate-100 px-4 py-3 text-sm dark:border-border">
+          <div className="mb-1.5 text-xs font-semibold text-slate-500 dark:text-muted">Sub-issues · {d.sub_issues.filter((s) => s.state !== "OPEN").length}/{d.sub_issues.length} cerradas</div>
           <ul className="space-y-1">{d.sub_issues.map((s) => <li key={`${s.repo}#${s.number}`}><SubLink s={s} here={e.repo} dot /></li>)}</ul>
         </div>
       )}
       {draft
-        ? <div className="border-t border-slate-100 px-4 py-3 dark:border-slate-800"><MentionArea aria-label="Descripción" value={draft.body} onValue={(body) => setDraft({ ...draft, body })} people={people} links={d.links} rows={12} className={`${box} font-mono text-sm`} /></div>
-        : d.body && <div className="max-h-[60vh] overflow-auto border-t border-slate-100 px-4 py-3 dark:border-slate-800"><RefMd onToggle={busy ? undefined : (line) => act(d.pull ? "edit_pull" : "edit_issue", { title: e.title, body: toggleTask(d.body, line) })}>{d.body}</RefMd></div>}
-      <div className="flex flex-wrap items-center gap-2 rounded-b-lg border-t border-slate-100 bg-slate-50 px-4 py-2.5 dark:border-slate-800 dark:bg-slate-950/40">{actions}</div>
+        ? <div className="border-t border-slate-100 px-4 py-3 dark:border-border"><MentionArea aria-label="Descripción" value={draft.body} onValue={(body) => setDraft({ ...draft, body })} people={people} links={d.links} rows={12} className={`${box} font-mono text-sm`} /></div>
+        : d.body && <div className="max-h-[60vh] overflow-auto border-t border-slate-100 px-4 py-3 dark:border-border"><RefMd onToggle={busy ? undefined : (line) => act(d.pull ? "edit_pull" : "edit_issue", { title: e.title, body: toggleTask(d.body, line) })}>{d.body}</RefMd></div>}
+      <div className="flex flex-wrap items-center gap-2 rounded-b-lg border-t border-slate-100 bg-slate-50 px-4 py-2.5 dark:border-border dark:bg-canvas/40">{actions}</div>
     </Card>
   );
 }
@@ -347,14 +347,15 @@ export function GithubView() {
       {d && <RefContext.Provider value={{ owner: full.split("/")[0], repo: full.split("/")[1], links: d.links }}>
         <Header d={d} act={act} busy={action.isPending} people={people} actions={<>
           {d.pull && <PullActions pull={d.pull} me={d.viewer} act={act} busy={action.isPending} diff={showDiff} toggleDiff={() => setShowDiff(!showDiff)} />}
+          {d.pull?.mergeable === "CONFLICTING" && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Resolver conflictos</Button>}
           {d.issue && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Definir tareas</Button>}
           {d.issue && <IssueActions open={open} act={act} busy={action.isPending} />}
         </>} />
-        {defining && <DefineIssueDialog repo={full} number={n} onClose={() => setDefining(false)} />}
+        {defining && <DefineIssueDialog resolve={!!d.pull} repo={full} number={n} onClose={() => setDefining(false)} />}
         {showDiff && <Diff repo={full} pr={n} />}
         <Threads threads={d.threads} me={d.viewer} people={people} links={d.links} act={action.mutateAsync} busy={action.isPending} />
         {d.timeline.map((e, i) => (
-          <div key={i} className={e.body ? "" : "px-3 text-xs text-slate-500 dark:text-slate-400"}>
+          <div key={i} className={e.body ? "" : "px-3 text-xs text-slate-500 dark:text-muted"}>
             {e.body ? (
               <Card>
                 <Message author={e.actor} verb={reviewStates[e.state] ?? labels[e.type] ?? e.type} at={e.at} body={e.body} mine={e.actor === d.viewer} editType={e.type === "PullRequestReview" ? "edit_review" : "edit_comment"} id={e.id} act={action.mutateAsync} busy={action.isPending}
@@ -365,7 +366,7 @@ export function GithubView() {
         ))}
         <div ref={bottom}>
           <Card className="space-y-2">
-            <MentionArea boxRef={box} people={people} links={d.links} id="composer" aria-label="Mensaje" value={text} onValue={setText} onKeyDown={(e) => e.key === "Escape" && box.current?.blur()} rows={4} placeholder="Escribe un mensaje…" className="w-full rounded-md border border-slate-300 bg-white p-2 text-sm dark:border-slate-600 dark:bg-slate-900" />
+            <MentionArea boxRef={box} people={people} links={d.links} id="composer" aria-label="Mensaje" value={text} onValue={setText} onKeyDown={(e) => e.key === "Escape" && box.current?.blur()} rows={4} placeholder="Escribe un mensaje…" className="w-full rounded-md border border-slate-300 bg-white p-2 text-sm dark:border-border-strong dark:bg-surface" />
             <div className="flex flex-wrap gap-2">
               <Button disabled={action.isPending || !text.trim()} onClick={() => action.mutate({ type: "comment", body: text })}>Comentar</Button>
               {d.pull && open && <Button variant="ghost" disabled={action.isPending || !text.trim()} onClick={() => action.mutate({ type: "request_changes", body: text })}>Pedir cambios</Button>}
@@ -377,7 +378,7 @@ export function GithubView() {
         {!atBottom && (
           <span className="fixed bottom-5 right-5 z-40">
             <Tip text="Escribir un mensaje">
-              <button type="button" aria-label="Escribir un mensaje" onClick={write} className="grid size-12 place-items-center rounded-full bg-blue-600 text-white shadow-lg ring-4 ring-white/60 transition-transform hover:scale-105 hover:bg-blue-700 dark:ring-slate-900/60">
+              <button type="button" aria-label="Escribir un mensaje" onClick={write} className="grid size-12 place-items-center rounded-full bg-blue-600 dark:bg-accent text-white shadow-lg ring-4 ring-white/60 transition-transform hover:scale-105 hover:bg-blue-700 dark:hover:bg-accent dark:ring-surface/60">
                 <Icon d={icons.comment} className="size-5" />
               </button>
             </Tip>

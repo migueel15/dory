@@ -55,7 +55,7 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
         {(item.status === "inbox" || item.status === "triaged") && <Button type="button" variant="ghost" onClick={() => setLaunch("triage")}>Analizar con un agente</Button>}
         {item.status === "ready" && <Button type="button" variant="ghost" onClick={() => setLaunch("implementation")}>Enviar a implementar</Button>}
         {launch && <LaunchDialog items={[item]} role={launch} onClose={() => setLaunch(null)} />}
-        <div className="flex justify-end gap-2 border-t border-slate-200 pt-3 dark:border-slate-700">
+        <div className="flex justify-end gap-2 border-t border-slate-200 pt-3 dark:border-border">
           <Button variant="ghost" onClick={onClose}>Cerrar</Button>
           <Button onClick={() => setEditMode(true)}>Editar</Button>
         </div>
@@ -95,17 +95,17 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
 }
 
 const STATUS_INFO: Record<ItemStatus, { label: string; tone: string; hint: string }> = {
-  inbox: { label: "Inbox", tone: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300", hint: "Idea capturada, sin revisar." },
+  inbox: { label: "Inbox", tone: "bg-slate-100 text-slate-700 dark:bg-raised dark:text-text-secondary", hint: "Idea capturada, sin revisar." },
   triaged: { label: "Revisado", tone: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300", hint: "Revisado, falta definir el trabajo." },
   ready: { label: "Listo", tone: "bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300", hint: "Definido: un agente puede implementarlo." },
   in_progress: { label: "En curso", tone: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300", hint: "Alguien trabaja en él ahora." },
   validating: { label: "Validando", tone: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300", hint: "Terminado, espera tu prueba." },
   blocked: { label: "Bloqueado", tone: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300", hint: "No puede avanzar hasta resolver el motivo." },
   done: { label: "Hecho", tone: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300", hint: "Confirmado y cerrado." },
-  cancelled: { label: "Cancelado", tone: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400", hint: "Descartado." },
+  cancelled: { label: "Cancelado", tone: "bg-slate-100 text-slate-500 dark:bg-raised dark:text-muted", hint: "Descartado." },
 };
 
-const muted = "text-xs text-slate-500 dark:text-slate-400";
+const muted = "text-xs text-slate-500 dark:text-muted";
 const date = (iso: string) => new Date(iso).toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" });
 
 // GitHub links read better as "PR #40" or "issue #12".
@@ -145,7 +145,7 @@ function ItemView({ item, project, feature }: { item: Item; project?: string; fe
           <p className="text-red-700 dark:text-red-300">{item.blocked_reason || "Sin motivo indicado."}</p>
         </div>
       )}
-      <dl className="grid grid-cols-2 gap-3 rounded-md bg-slate-50 p-3 text-sm dark:bg-slate-800/60">
+      <dl className="grid grid-cols-2 gap-3 rounded-md bg-slate-50 p-3 text-sm dark:bg-raised/60">
         <div><dt className={muted}>Proyecto</dt><dd>{project ?? "—"}</dd></div>
         <div><dt className={muted}>Feature</dt><dd className="break-words">{feature ?? "—"}</dd></div>
         <div><dt className={muted}>Creado</dt><dd>{date(item.created_at)}</dd></div>
@@ -155,12 +155,12 @@ function ItemView({ item, project, feature }: { item: Item; project?: string; fe
         {item.progress ? <p className="rounded-md border-l-4 border-amber-400 bg-amber-50 px-3 py-2 text-sm dark:bg-amber-950/30">{item.progress}</p> : <p className={muted}>Sin progreso registrado.</p>}
       </Section>
       <Section title="Descripción" hint="Objetivo, alcance y cómo probarlo. Es lo que lee el agente para trabajar.">
-        {item.body_md ? <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700"><Md>{item.body_md}</Md></div> : <p className={muted}>Sin descripción.</p>}
+        {item.body_md ? <div className="rounded-md border border-slate-200 p-3 dark:border-border"><Md>{item.body_md}</Md></div> : <p className={muted}>Sin descripción.</p>}
       </Section>
       <Section title="Referencias" hint="Enlaces estables: pull requests, issues y ramas.">
         {item.refs.length ? (
           <ul className="space-y-1 text-sm">
-            {item.refs.map((r) => <li key={r}>{/^https?:\/\//.test(r) ? <a className="break-all underline" href={r} target="_blank" rel="noreferrer">{refLabel(r)}</a> : <code className="break-all rounded bg-slate-100 px-1 dark:bg-slate-800">{r}</code>}</li>)}
+            {item.refs.map((r) => <li key={r}>{/^https?:\/\//.test(r) ? <a className="break-all underline" href={r} target="_blank" rel="noreferrer">{refLabel(r)}</a> : <code className="break-all rounded bg-slate-100 px-1 dark:bg-raised">{r}</code>}</li>)}
           </ul>
         ) : <p className={muted}>Sin referencias.</p>}
       </Section>
@@ -202,15 +202,15 @@ export function Inbox() {
       <ErrorText error={add.error ?? items.error} />
       <div className="space-y-2">
         {items.data?.map((i) => (
-          <Card key={i.id} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
+          <Card key={i.id} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-raised">
             <div onClick={() => setEditing(i)}>
               <div className="flex flex-wrap items-center gap-2"><span className="font-medium break-words">{i.title}</span>{i.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div>
-              {i.progress && <p className="text-xs text-slate-500 dark:text-slate-400">{i.progress}</p>}
+              {i.progress && <p className="text-xs text-slate-500 dark:text-muted">{i.progress}</p>}
               {i.body_md && <Md>{i.body_md}</Md>}
             </div>
           </Card>
         ))}
-        {items.data?.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">Inbox vacío.</p>}
+        {items.data?.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">Inbox vacío.</p>}
       </div>
       {editing && <ItemForm item={editing === "new" ? undefined : editing} projectId={project || null} onClose={() => setEditing(null)} />}
     </div>
@@ -220,8 +220,8 @@ export function Inbox() {
 function Column({ status, children }: { status: ItemStatus; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   return (
-    <div ref={setNodeRef} className={`min-h-24 w-full space-y-2 sm:min-h-48 sm:w-64 sm:shrink-0 xl:w-auto xl:min-w-0 xl:flex-1 rounded-lg p-2 ${isOver ? "bg-blue-100 dark:bg-blue-950" : "bg-slate-100 dark:bg-slate-800"}`}>
-      <h3 className="text-sm font-semibold uppercase text-slate-600 dark:text-slate-300">{status.replace("_", " ")}</h3>
+    <div ref={setNodeRef} className={`min-h-24 w-full space-y-2 sm:min-h-48 sm:w-64 sm:shrink-0 xl:w-auto xl:min-w-0 xl:flex-1 rounded-lg p-2 ${isOver ? "bg-blue-100 dark:bg-accent-subtle" : "bg-slate-100 dark:bg-raised"}`}>
+      <h3 className="text-sm font-semibold uppercase text-slate-600 dark:text-text-secondary">{status.replace("_", " ")}</h3>
       {children}
     </div>
   );
@@ -232,7 +232,7 @@ function Draggable({ item, onOpen }: { item: Item; onOpen: () => void }) {
   const style = transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined;
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes} className={isDragging ? "relative z-10 opacity-80" : ""}>
-      <Card className="cursor-grab"><div onDoubleClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><span className="font-medium break-words">{item.title}</span><button className="-m-2 size-11 shrink-0 text-slate-500 dark:text-slate-400 sm:hidden" aria-label="Editar" onPointerDown={(e) => e.stopPropagation()} onClick={onOpen}>✎</button></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}<ThreadBadges itemId={item.id} />{item.status === "blocked" && <p className="text-xs text-red-600 dark:text-red-400">{item.blocked_reason}</p>}</div></Card>
+      <Card className="cursor-grab"><div onDoubleClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><span className="font-medium break-words">{item.title}</span><button className="-m-2 size-11 shrink-0 text-slate-500 dark:text-muted sm:hidden" aria-label="Editar" onPointerDown={(e) => e.stopPropagation()} onClick={onOpen}>✎</button></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}<ThreadBadges itemId={item.id} />{item.status === "blocked" && <p className="text-xs text-red-600 dark:text-red-400">{item.blocked_reason}</p>}</div></Card>
     </div>
   );
 }
@@ -264,7 +264,7 @@ export function Board({ projectId }: { projectId: string }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold">Kanban <span className="hidden text-xs font-normal text-slate-500 dark:text-slate-400 sm:inline">(doble clic para editar)</span></h2>
+        <h2 className="font-semibold">Kanban <span className="hidden text-xs font-normal text-slate-500 dark:text-muted sm:inline">(doble clic para editar)</span></h2>
         <Button onClick={() => setEditing("new")}>Nuevo item</Button>
       </div>
       <ErrorText error={move.error ?? items.error} />
@@ -300,7 +300,7 @@ function ThreadBadges({ itemId }: { itemId: string }) {
     return thread ? [thread] : [];
   }) ?? [];
   return threads.map((t) => (
-    <ThreadLink key={t.id} url={t.url} environmentId={t.t3_environment_id} threadId={t.id} title={t.title} onPointerDown={(e) => e.stopPropagation()} className="mr-1 inline-flex items-center gap-1 text-xs text-slate-500 underline dark:text-slate-400">
+    <ThreadLink key={t.id} url={t.url} environmentId={t.t3_environment_id} threadId={t.id} title={t.title} onPointerDown={(e) => e.stopPropagation()} className="mr-1 inline-flex items-center gap-1 text-xs text-slate-500 underline dark:text-muted">
       <ThreadStatus status={t.status} attention={t.attention} />
       <span>{t.model}</span>
     </ThreadLink>

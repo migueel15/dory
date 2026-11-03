@@ -50,6 +50,7 @@ type ItemThread struct {
 	Role       string `json:"role"`
 }
 type IssueThread struct {
+	Kind string `json:"kind"`
 	Record
 	ProjectID  string `json:"project_id"`
 	Repo       string `json:"repo"`

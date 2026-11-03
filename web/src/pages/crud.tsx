@@ -80,18 +80,18 @@ async function openT3(status: T3Status) {
 }
 
 function InstanceStatus({ status }: { status?: T3Status }) {
-  if (!status) return <div className="text-xs text-slate-500 dark:text-slate-400">T3 Code sin configurar</div>;
+  if (!status) return <div className="text-xs text-slate-500 dark:text-muted">T3 Code sin configurar</div>;
   return (
     <div className="space-y-1 text-sm" onClick={(e) => e.stopPropagation()}>
       <div className="flex flex-wrap items-center gap-2">
         <Badge>{stateLabels[status.state]}</Badge>
         <button className={pill} onClick={() => openT3(status)}>Abrir T3 Code <Arrow /></button>
-        {status.version && <span className="text-xs text-slate-500 dark:text-slate-400">{status.version}</span>}
+        {status.version && <span className="text-xs text-slate-500 dark:text-muted">{status.version}</span>}
       </div>
       {status.threads.filter((t) => t.attention || t.status === "running").map((t) => (
         <div key={t.id} className="flex items-start justify-between gap-2">
           <ThreadLink className="min-w-0 break-words underline" url={t.url} environmentId={t.t3_environment_id} threadId={t.id}>{t.title}</ThreadLink>
-          <span className={`shrink-0 text-xs ${t.attention ? "text-red-600 dark:text-red-400" : "text-slate-500 dark:text-slate-400"}`}>{t.attention ? "Te necesita" : t.model}</span>
+          <span className={`shrink-0 text-xs ${t.attention ? "text-red-600 dark:text-red-400" : "text-slate-500 dark:text-muted"}`}>{t.attention ? "Te necesita" : t.model}</span>
         </div>
       ))}
     </div>
@@ -100,10 +100,10 @@ function InstanceStatus({ status }: { status?: T3Status }) {
 
 function Machine({ env, status, usage }: { env: Environment; status: T3Status; usage?: T3InstanceUsage }) {
   const catalog = useQuery({ queryKey: ["t3-catalog", status.instance_id], queryFn: () => api.t3Catalog(status.instance_id), enabled: status.state === "available", staleTime: 60_000 });
-  const muted = "text-sm text-slate-500 dark:text-slate-400";
+  const muted = "text-sm text-slate-500 dark:text-muted";
   return (
     <Card className="space-y-3">
-      <div className="font-medium">{env.name} <span className="text-xs text-slate-500 dark:text-slate-400">{env.os}</span></div>
+      <div className="font-medium">{env.name} <span className="text-xs text-slate-500 dark:text-muted">{env.os}</span></div>
       <InstanceStatus status={status} />
       <section className="space-y-2">
         <h3 className="text-sm font-medium">Uso</h3>
@@ -132,7 +132,7 @@ function Machine({ env, status, usage }: { env: Environment; status: T3Status; u
         <h3 className="text-sm font-medium">Proyectos</h3>
         {catalog.data?.projects.length === 0 && <p className={muted}>Sin proyectos.</p>}
         <ul className="space-y-1 text-sm">{catalog.data?.projects.map((p) => (
-          <li key={p.id}>{p.title} <span className="break-all text-xs text-slate-500 dark:text-slate-400">{p.root}</span></li>
+          <li key={p.id}>{p.title} <span className="break-all text-xs text-slate-500 dark:text-muted">{p.root}</span></li>
         ))}</ul>
       </section>
     </Card>
@@ -152,7 +152,7 @@ export function Environments() {
     <div className="space-y-3">
       <h1 className="text-xl font-bold">Entornos</h1>
       <ErrorText error={envs.error ?? t3.error} />
-      {envs.data && t3.data && machines.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">T3 Code no ha detectado ninguna máquina.</p>}
+      {envs.data && t3.data && machines.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">T3 Code no ha detectado ninguna máquina.</p>}
       <div className="grid gap-3 md:grid-cols-2">
         {machines.map(({ env, status }) => <Machine key={env.id} env={env} status={status} usage={usage.data?.find((u) => u.instance_id === status.instance_id)} />)}
       </div>
@@ -232,7 +232,7 @@ export function Memories() {
       <ErrorText error={mems.error} />
       <div className="space-y-2">
         {shown?.map((m) => (
-          <Card key={m.id} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
+          <Card key={m.id} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-raised">
             <div onClick={() => setEditing(m)}>
               {m.title && <div className="font-medium">{m.title}</div>}
               <div className="mb-1 flex flex-wrap gap-1">
@@ -244,7 +244,7 @@ export function Memories() {
             </div>
           </Card>
         ))}
-        {shown?.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">Sin memorias para estos filtros.</p>}
+        {shown?.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">Sin memorias para estos filtros.</p>}
       </div>
       {editing && <MemoryForm memory={editing === "new" ? undefined : editing} projects={projects.data ?? []} envs={envs.data ?? []} project={project} onClose={() => setEditing(null)} />}
     </div>
@@ -284,9 +284,9 @@ export function Features({ projectId }: { projectId: string }) {
       </div>
       <ErrorText error={feats.error} />
       {feats.data?.map((f) => (
-        <Card key={f.id} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
+        <Card key={f.id} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-raised">
           <div onClick={() => setEditing(f)}>
-            <div className="flex flex-wrap items-center gap-2"><span className="font-medium">{f.title}</span><Badge>{f.status}</Badge>{f.code_refs.map((r) => <code key={r} className="break-all text-xs text-slate-500 dark:text-slate-400">{r}</code>)}</div>
+            <div className="flex flex-wrap items-center gap-2"><span className="font-medium">{f.title}</span><Badge>{f.status}</Badge>{f.code_refs.map((r) => <code key={r} className="break-all text-xs text-slate-500 dark:text-muted">{r}</code>)}</div>
             {f.body_md && <Md>{f.body_md}</Md>}
           </div>
         </Card>

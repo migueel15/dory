@@ -61,7 +61,7 @@ export type T3Catalog = {
 };
 export type T3CatalogModel = { slug: string; name: string; effort?: { id: string; values: string[]; default: string } };
 export type IssueDefineInput = { instance_id: string; project_id: string; provider: string; model: string; effort_option?: string; effort?: string };
-export type IssueThread = { id: string; created_at: string; project_id: string | null; repo: string; number: number; issue_url: string; title: string; instance_id: string; thread_id: string; model: string; effort: string };
+export type IssueThread = S["IssueThread"];
 export type T3LaunchInput = { instance_id: string; project_id: string; provider: string; model: string; role: "triage" | "implementation"; worktree: boolean; base_branch?: string; effort_option?: string; effort?: string };
 
 export const api = {
@@ -79,6 +79,7 @@ export const api = {
     req<void>("POST", `/t3/threads/${id}/requests/${encodeURIComponent(requestId)}`, body),
   t3Catalog: (id: string) => req<T3Catalog>("GET", `/t3/instances/${id}/catalog`),
   t3Launch: (itemId: string, body: T3LaunchInput) => req<{ thread_id: string }>("POST", `/items/${itemId}/launch`, body),
+  resolveConflicts: (repo: string, number: number, body: IssueDefineInput) => req<{ thread_id: string }>("POST", `/github/repos/${repo}/pulls/${number}/resolve-conflicts`, body),
   issueDefine: (repo: string, number: number, body: IssueDefineInput) => req<{ thread_id: string }>("POST", `/github/repos/${repo}/issues/${number}/define`, body),
   branches: (repo: string) => req<string[]>("GET", `/github/repos/${repo}/branches`),
   issueThreads: () => req<IssueThread[]>("GET", "/issue-threads?limit=200"),

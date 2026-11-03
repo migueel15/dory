@@ -8,7 +8,7 @@ import { useT3 } from "./attention";
 // ProviderIcon marks the company behind a model with its initial and colour.
 export function ProviderIcon({ driver }: { driver: string }) {
   const d = driver.toLowerCase();
-  const [text, color] = d.includes("claude") ? ["A", "bg-orange-600"] : d.includes("codex") || d.includes("openai") ? ["O", "bg-emerald-700"] : d.includes("gemini") ? ["G", "bg-blue-600"] : [driver.slice(0, 1).toUpperCase() || "?", "bg-slate-500"];
+  const [text, color] = d.includes("claude") ? ["A", "bg-orange-600"] : d.includes("codex") || d.includes("openai") ? ["O", "bg-emerald-700"] : d.includes("gemini") ? ["G", "bg-blue-600 dark:bg-accent"] : [driver.slice(0, 1).toUpperCase() || "?", "bg-slate-500"];
   return <span className={`grid size-5 shrink-0 place-items-center rounded text-[10px] font-bold text-white ${color}`}>{text}</span>;
 }
 
@@ -87,7 +87,7 @@ export function useLaunchForm({ doryProject, repo: repoPathIn, worktree: worktre
       {canWorktree && worktree && (
         <Label text="Rama base">
           {branchOptions.length ? <Select value={baseValue} onChange={setBase} options={branchOptions.map((b) => ({ value: b, label: b === repo?.default_branch ? `${b} (por defecto)` : b }))} />
-            : <input value={base} onChange={(e) => setBase(e.target.value)} placeholder="Rama por defecto del repositorio" className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-sm dark:border-slate-700" />}
+            : <input value={base} onChange={(e) => setBase(e.target.value)} placeholder="Rama por defecto del repositorio" className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-sm dark:border-border" />}
         </Label>
       )}
     </>
