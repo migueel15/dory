@@ -268,7 +268,14 @@ export function GithubView() {
   const [text, setText] = useState("");
   const box = useRef<HTMLTextAreaElement>(null);
   const discard = () => { setText(""); box.current?.blur(); };
-  const focusBox = () => requestAnimationFrame(() => box.current?.focus({ preventScroll: true }));
+  // On phones the keyboard shrinks the visual viewport after focus; keep the box above it.
+  const focusBox = () => requestAnimationFrame(() => {
+    const el = box.current; if (!el) return;
+    el.focus({ preventScroll: true });
+    const vv = window.visualViewport;
+    const show = () => el.scrollIntoView({ block: "center" });
+    if (vv) { vv.addEventListener("resize", show, { once: true }); setTimeout(() => vv.removeEventListener("resize", show), 1000); }
+  });
   const write = () => { bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }); focusBox(); };
   const [showDiff, setShowDiff] = useState(false);
   const [confirm, dialog] = useConfirm();

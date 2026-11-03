@@ -72,7 +72,7 @@ function ProjectPicker() {
   // Forget a selection that no longer exists (archived or from another database).
   const gone = !!project && !!projects.data && !projects.data.some((p) => p.id === project);
   useEffect(() => { if (gone) setProject(""); }, [gone]);
-  return <Select className="w-44 sm:w-52" value={project} onChange={setProject} options={[{ value: "", label: "Todos los proyectos" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />;
+  return <Select className="w-full sm:w-52" value={project} onChange={setProject} options={[{ value: "", label: "Todos los proyectos" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />;
 }
 
 function Layout() {
@@ -84,27 +84,51 @@ function Layout() {
   // The project board needs the full width: on /projects/$id, or on /projects with a project selected.
   const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") || (l.pathname === "/projects" && !!project) });
   const attention = useAttentionCount(!!me.data);
+  const path = useLocation({ select: (l) => l.pathname });
+  const [menu, setMenu] = useState(false);
+  useEffect(() => setMenu(false), [path]);
   if (me.isPending) return null;
   if (!me.data) return <Login />;
   const link = "flex min-h-11 shrink-0 items-center rounded px-3 text-sm sm:min-h-0 sm:px-2 sm:py-1 hover:bg-slate-200 dark:hover:bg-slate-800 [&.active]:bg-slate-900 dark:[&.active]:bg-slate-100 [&.active]:text-white dark:[&.active]:text-slate-900";
+  const links = (
+    <>
+      <Link to="/" activeOptions={{ exact: true }} className={link}>Inicio</Link>
+      <Link to="/inbox" className={link}>Inbox</Link>
+      <Link to="/attention" className={link}>Atención{attention > 0 ? ` (${attention})` : ""}</Link>
+      <Link to="/usage" className={link}>Uso</Link>
+      <Link to="/github" className={link}>GitHub</Link>
+      <Link to="/projects" className={link}>Proyectos</Link>
+      <Link to="/environments" className={link}>Entornos</Link>
+      <Link to="/memories" className={link}>Memorias</Link>
+    </>
+  );
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
-      <nav className="flex flex-wrap items-center gap-1 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-2 sm:px-4">
-        <span className="mr-3 font-bold">Dory</span>
-        <div className="order-last -mx-2 flex w-full gap-1 overflow-x-auto px-2 sm:order-none sm:mx-0 sm:w-auto sm:px-0">
-          <Link to="/" activeOptions={{ exact: true }} className={link}>Inicio</Link>
-          <Link to="/inbox" className={link}>Inbox</Link>
-          <Link to="/attention" className={link}>Atención{attention > 0 ? ` (${attention})` : ""}</Link>
-          <Link to="/usage" className={link}>Uso</Link>
-          <Link to="/github" className={link}>GitHub</Link>
-          <Link to="/projects" className={link}>Proyectos</Link>
-          <Link to="/environments" className={link}>Entornos</Link>
-          <Link to="/memories" className={link}>Memorias</Link>
+      <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 sm:static sm:px-4">
+        <div className="flex h-12 items-center gap-1 sm:h-auto sm:py-2">
+          <span className="mr-3 font-bold">Dory</span>
+          <div className="hidden gap-1 sm:flex">{links}</div>
+          <div className="ml-auto hidden items-center gap-1 sm:flex">
+            <ProjectPicker />
+            <span className="truncate text-sm text-slate-500 dark:text-slate-400">{me.data.username}</span>
+            <ThemeToggle />
+            <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
+          </div>
+          <button type="button" aria-label="Menú" aria-expanded={menu} onClick={() => setMenu(!menu)} className="ml-auto grid size-11 place-items-center rounded hover:bg-slate-200 dark:hover:bg-slate-800 sm:hidden">
+            <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d={menu ? "M6 6l12 12M18 6L6 18" : "M4 7h16M4 12h16M4 17h16"} /></svg>
+          </button>
         </div>
-        <div className="ml-auto"><ProjectPicker /></div>
-        <span className="truncate text-sm text-slate-500 dark:text-slate-400">{me.data.username}</span>
-        <ThemeToggle />
-        <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
+        {menu && (
+          <div className="grid gap-2 pb-3 sm:hidden">
+            <div className="grid grid-cols-2 gap-1">{links}</div>
+            <ProjectPicker />
+            <div className="flex items-center gap-1">
+              <span className="truncate text-sm text-slate-500 dark:text-slate-400">{me.data.username}</span>
+              <span className="ml-auto"><ThemeToggle /></span>
+              <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
+            </div>
+          </div>
+        )}
       </nav>
       <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /></main><CommandPalette />
     </div>
@@ -136,3 +160,5 @@ createRoot(document.getElementById("root")!).render(
     </QueryClientProvider>
   </StrictMode>,
 );
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
