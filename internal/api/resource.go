@@ -13,6 +13,15 @@ const maxBody = 1 << 20
 // mountResource registers list/create/get/put/archive routes for one resource.
 // rec exposes the embedded Record so ids can be checked and timestamps ignored.
 func mountResource[T any](mux *http.ServeMux, path string, res service.Resource[T], rec func(*T) *service.Record) {
+	mountResourceWith(mux, path, res, rec, true)
+}
+
+// mountReadOnly exposes only the GET routes of a resource.
+func mountReadOnly[T any](mux *http.ServeMux, path string, res service.Resource[T], rec func(*T) *service.Record) {
+	mountResourceWith(mux, path, res, rec, false)
+}
+
+func mountResourceWith[T any](mux *http.ServeMux, path string, res service.Resource[T], rec func(*T) *service.Record, writable bool) {
 	base := "/api/" + path
 
 	mux.HandleFunc("GET "+base, func(w http.ResponseWriter, r *http.Request) {
@@ -29,10 +38,6 @@ func mountResource[T any](mux *http.ServeMux, path string, res service.Resource[
 		writeJSON(w, http.StatusOK, items)
 	})
 
-	mux.HandleFunc("POST "+base, func(w http.ResponseWriter, r *http.Request) {
-		put(w, r, res, rec, "")
-	})
-
 	mux.HandleFunc("GET "+base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
 		v, err := res.Get(r.Context(), r.PathValue("id"))
 		if err != nil {
@@ -40,6 +45,14 @@ func mountResource[T any](mux *http.ServeMux, path string, res service.Resource[
 			return
 		}
 		writeJSON(w, http.StatusOK, v)
+	})
+
+	if !writable {
+		return
+	}
+
+	mux.HandleFunc("POST "+base, func(w http.ResponseWriter, r *http.Request) {
+		put(w, r, res, rec, "")
 	})
 
 	mux.HandleFunc("PUT "+base+"/{id}", func(w http.ResponseWriter, r *http.Request) {

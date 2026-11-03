@@ -23,7 +23,7 @@ function cost(usd: number, source: string) {
   return "Sin coste";
 }
 
-function Limit({ w }: { w: T3InstanceUsage["providers"][number]["windows"][number] }) {
+export function Limit({ w }: { w: T3InstanceUsage["providers"][number]["windows"][number] }) {
   const tone = w.used_percent >= alertAt ? "bg-red-600" : w.used_percent >= warnAt ? "bg-amber-500" : "bg-emerald-600";
   return (
     <div className="space-y-1 text-sm">
@@ -40,7 +40,7 @@ function Limit({ w }: { w: T3InstanceUsage["providers"][number]["windows"][numbe
   );
 }
 
-function Models({ usage }: { usage: T3InstanceUsage }) {
+export function Models({ usage }: { usage: T3InstanceUsage }) {
   if (usage.models_error === "missing_scope") return <p className="text-sm text-slate-500 dark:text-slate-400">Consumo por modelo sin datos: el token de esta instancia no tiene el permiso diagnostics:read.</p>;
   if (usage.models_error) return <p className="text-sm text-slate-500 dark:text-slate-400">Consumo por modelo sin datos: la instancia no responde.</p>;
   if (usage.models.length === 0) return <p className="text-sm text-slate-500 dark:text-slate-400">Sin consumo en los últimos 7 días.</p>;

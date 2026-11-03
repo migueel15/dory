@@ -52,7 +52,9 @@ T3 Code y los agentes deben ejecutarse en una máquina con acceso a la URL de do
 
 ## Herramientas disponibles
 
-`session_start`, `list_projects`, `get_project`, `list_items`, `get_item`, `create_item`, `update_item`, `update_items`, `move_item`, `archive_item`, `list_features`, `upsert_feature`, `list_environments`, `get_environment`, `list_repositories`, `remember`, `update_memory`, `archive_memory`, `recall`, `link`, `upsert_project`, `archive_project`, `upsert_environment`, `archive_environment`, `upsert_repository`, `set_repository_location`, `link_thread`.
+`session_start`, `list_projects`, `get_project`, `list_items`, `get_item`, `create_item`, `update_item`, `update_items`, `move_item`, `archive_item`, `list_features`, `upsert_feature`, `list_environments`, `get_environment`, `list_repositories`, `remember`, `update_memory`, `archive_memory`, `recall`, `link`, `upsert_project`, `archive_project`, `upsert_repository`, `set_repository_location`, `link_thread`.
+
+Los environments son de solo lectura: los crea el descubrimiento de T3 Code (`DORY_T3_DISCOVERY_CIDR`). La API REST solo expone `GET /api/environments`.
 
 Se recomienda que el agente llame a `session_start` al empezar cada sesión.
 
