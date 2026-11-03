@@ -110,15 +110,17 @@ function Layout() {
       <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2 sm:static sm:px-4">
         <div className="flex h-12 items-center gap-1 sm:h-auto sm:py-2">
           <span className="mr-3 font-bold">Dory</span>
-<Notifications />
           <div className="hidden gap-1 sm:flex">{links}</div>
-          <div className="ml-auto hidden items-center gap-1 sm:flex">
-            <ProjectPicker />
-            <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
+          <div className="ml-auto flex items-center gap-1">
+            <div className="hidden items-center gap-1 sm:flex">
+              <ProjectPicker />
+              <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
+            </div>
+            <Notifications />
             <ThemeToggle />
-            <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
+            <Button variant="ghost" className="hidden sm:inline-flex" onClick={() => logout.mutate()}>Salir</Button>
           </div>
-          <button type="button" aria-label="Menú" aria-expanded={menu} onClick={() => setMenu(!menu)} className="ml-auto grid size-11 place-items-center rounded hover:bg-slate-200 dark:hover:bg-raised sm:hidden">
+          <button type="button" aria-label="Menú" aria-expanded={menu} onClick={() => setMenu(!menu)} className="grid size-11 place-items-center rounded hover:bg-slate-200 dark:hover:bg-raised sm:hidden">
             <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d={menu ? "M6 6l12 12M18 6L6 18" : "M4 7h16M4 12h16M4 17h16"} /></svg>
           </button>
         </div>
@@ -128,7 +130,7 @@ function Layout() {
             <ProjectPicker />
             <div className="flex items-center gap-1">
               <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
-              <span className="ml-auto"><ThemeToggle /></span>
+              <span className="ml-auto" />
               <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
             </div>
           </div>

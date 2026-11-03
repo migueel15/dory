@@ -89,14 +89,19 @@ func (m *Manager) Observe(ctx context.Context, instance string, threads []t3.Thr
 				kinds = append(kinds, "thread_attention")
 			}
 			if len(kinds) > 0 {
-				title := t.Title
-				if finished {
-					title += " — finalizado"
-				}
+				heading := "Hilo terminado"
 				if len(kinds) > 1 || attention {
-					title += " — requiere atención"
+					heading = "Requiere atención"
 				}
-				if _, err = tx.Exec(ctx, "SELECT emit_notification($1,$2,$3)", title, t.URL, kinds); err != nil {
+				var project string
+				err = tx.QueryRow(ctx, "SELECT p.name FROM item_threads it JOIN items i ON i.id=it.item_id JOIN projects p ON p.id=i.project_id WHERE it.instance_id=$1 AND it.thread_id=$2 AND it.archived_at IS NULL ORDER BY it.created_at DESC LIMIT 1", instance, t.ID).Scan(&project)
+				if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+					return err
+				}
+				if project != "" {
+					heading += " · " + project
+				}
+				if _, err = tx.Exec(ctx, "SELECT emit_notification($1,$2,$3,$4)", heading, t.Title, t.URL, kinds); err != nil {
 					return err
 				}
 			}
@@ -125,7 +130,7 @@ func reply(w http.ResponseWriter, v any) {
 func (m *Manager) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/notifications", func(w http.ResponseWriter, r *http.Request) {
 		before, _ := strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)
-		rows, err := m.Pool.Query(r.Context(), "SELECT id,title,url,kinds,bell,toast,read_at IS NOT NULL,created_at FROM notifications WHERE user_id=$1 AND ($2::bigint=0 OR id<$2) ORDER BY id DESC LIMIT 100", auth.Actor(r.Context()), before)
+		rows, err := m.Pool.Query(r.Context(), "SELECT id,title,body,url,kinds,bell,toast,read_at IS NOT NULL,created_at FROM notifications WHERE user_id=$1 AND ($2::bigint=0 OR id<$2) ORDER BY id DESC LIMIT 100", auth.Actor(r.Context()), before)
 		if err != nil {
 			http.Error(w, "notifications unavailable", 500)
 			return
@@ -134,6 +139,7 @@ func (m *Manager) Mount(mux *http.ServeMux) {
 		type notice struct {
 			ID      int64     `json:"id"`
 			Title   string    `json:"title"`
+			Body    string    `json:"body"`
 			URL     string    `json:"url"`
 			Kinds   []string  `json:"kinds"`
 			Bell    bool      `json:"bell"`
@@ -144,7 +150,7 @@ func (m *Manager) Mount(mux *http.ServeMux) {
 		out := []notice{}
 		for rows.Next() {
 			var n notice
-			if err = rows.Scan(&n.ID, &n.Title, &n.URL, &n.Kinds, &n.Bell, &n.Toast, &n.Read, &n.Created); err != nil {
+			if err = rows.Scan(&n.ID, &n.Title, &n.Body, &n.URL, &n.Kinds, &n.Bell, &n.Toast, &n.Read, &n.Created); err != nil {
 				http.Error(w, "read failed", 500)
 				return
 			}
@@ -160,6 +166,13 @@ func (m *Manager) Mount(mux *http.ServeMux) {
 			return
 		}
 		reply(w, map[string]any{"items": out, "unread": unread, "server_time": time.Now()})
+	})
+	mux.HandleFunc("DELETE /api/notifications", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := m.Pool.Exec(r.Context(), "DELETE FROM notifications WHERE user_id=$1", auth.Actor(r.Context())); err != nil {
+			http.Error(w, "write failed", 500)
+			return
+		}
+		w.WriteHeader(204)
 	})
 	mux.HandleFunc("POST /api/notifications/{id}/read", func(w http.ResponseWriter, r *http.Request) {
 		_, err := m.Pool.Exec(r.Context(), "UPDATE notifications SET read_at=now() WHERE user_id=$1 AND id::text=$2", auth.Actor(r.Context()), r.PathValue("id"))
@@ -255,7 +268,7 @@ func (m *Manager) Run(ctx context.Context) {
 	}
 }
 func (m *Manager) deliver(ctx context.Context) error {
-	rows, err := m.Pool.Query(ctx, "SELECT p.notification_id,p.endpoint,s.subscription,n.title,n.url FROM notification_push p JOIN notifications n ON n.id=p.notification_id JOIN notification_subscriptions s ON s.endpoint=p.endpoint WHERE p.next_at<=now() ORDER BY p.notification_id LIMIT 50")
+	rows, err := m.Pool.Query(ctx, "SELECT p.notification_id,p.endpoint,s.subscription,n.title,n.body,n.url FROM notification_push p JOIN notifications n ON n.id=p.notification_id JOIN notification_subscriptions s ON s.endpoint=p.endpoint WHERE p.next_at<=now() ORDER BY p.notification_id LIMIT 50")
 	if err != nil {
 		return err
 	}
@@ -263,12 +276,12 @@ func (m *Manager) deliver(ctx context.Context) error {
 		id         int64
 		endpoint   string
 		raw        []byte
-		title, url string
+		title, body, url string
 	}
 	jobs := []job{}
 	for rows.Next() {
 		var j job
-		if err = rows.Scan(&j.id, &j.endpoint, &j.raw, &j.title, &j.url); err != nil {
+		if err = rows.Scan(&j.id, &j.endpoint, &j.raw, &j.title, &j.body, &j.url); err != nil {
 			rows.Close()
 			return err
 		}
@@ -284,7 +297,7 @@ func (m *Manager) deliver(ctx context.Context) error {
 		if err = json.Unmarshal(j.raw, &sub); err != nil {
 			return err
 		}
-		payload, _ := json.Marshal(map[string]any{"title": j.title, "url": j.url, "tag": fmt.Sprint(j.id)})
+		payload, _ := json.Marshal(map[string]any{"title": j.title, "body": j.body, "url": j.url, "tag": fmt.Sprint(j.id)})
 		resp, sendErr := webpush.SendNotificationWithContext(ctx, payload, &sub, &webpush.Options{Subscriber: "https://dorlab.net", VAPIDPrivateKey: m.private, VAPIDPublicKey: m.public, TTL: 86400, HTTPClient: &http.Client{Timeout: 10 * time.Second}})
 		status := 0
 		detail := ""
