@@ -20,3 +20,9 @@ Los secretos van en `~/.config/dory/dory.env`, con permisos 600. Lo leen la unid
 - `DORY_DATABASE_URL`: debe usar la misma contraseña.
 
 No guardes la contraseña en `config.toml`, que es legible por otros usuarios.
+
+## Resolver conflictos desde GitHub
+
+En una PR abierta con conflictos, «Resolver conflictos» abre el formulario compartido de máquina, proyecto T3, modelo y razonamiento. La máquina predeterminada es la instancia disponible de infra. El proyecto T3 debe corresponder al repositorio (por nombre o directorio raíz).
+
+El hilo recibe instrucciones para trabajar en un worktree temporal, incorporar la base mediante merge, validar y empujar la rama sin force-push. Si hay dudas o fallan las comprobaciones, debe detener el push y explicarlo en el hilo. El lanzamiento se sigue desde Trabajos como «Resolver conflictos» y queda auditado como `t3.resolve_conflicts`. El endpoint devuelve 409 cuando la PR ya no tiene conflictos.

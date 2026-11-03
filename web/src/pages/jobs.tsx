@@ -17,7 +17,7 @@ function state(t: Thread | undefined): { label: string; tone: string } {
   return { label: "Terminado", tone: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300" };
 }
 
-type Job = { key: string; kind: string; title: string; to?: { owner: string; repo: string; number: number }; model: string; effort: string; created: string; thread?: Thread; host: string };
+type Job = { key: string; kind: string; title: string; to?: { owner: string; repo: string; number: number; kind: string }; model: string; effort: string; created: string; thread?: Thread; host: string };
 
 // Jobs lists the threads Dory launched in the background with their live state.
 export function Jobs() {
@@ -31,7 +31,7 @@ export function Jobs() {
     ...(issues.data ?? []).map((j) => {
       const l = live.get(`${j.instance_id}:${j.thread_id}`);
       const [owner, repo] = j.repo.split("/");
-      return { key: j.id, kind: "Definir tareas", title: `${j.repo}#${j.number} ${j.title}`, to: { owner, repo, number: j.number }, model: j.model, effort: j.effort, created: j.created_at, thread: l?.thread, host: l?.host ?? host(j.instance_id) };
+      return { key: j.id, kind: j.kind === "resolve_conflicts" ? "Resolver conflictos" : "Definir tareas", title: `${j.repo}#${j.number} ${j.title}`, to: { owner, repo, number: j.number, kind: j.kind === "resolve_conflicts" ? "pulls" : "issues" }, model: j.model, effort: j.effort, created: j.created_at, thread: l?.thread, host: l?.host ?? host(j.instance_id) };
     }),
     ...(items.data ?? []).map((j) => {
       const l = live.get(`${j.instance_id}:${j.thread_id}`);
@@ -49,7 +49,7 @@ export function Jobs() {
           <Card key={j.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3 text-sm">
             <span className={`rounded px-2 py-0.5 text-xs font-medium ${s.tone}`}>{s.label}</span>
             <Badge>{j.kind}</Badge>
-            {j.to ? <Link to="/github/$owner/$repo/$kind/$number" params={{ owner: j.to.owner, repo: j.to.repo, kind: "issues", number: String(j.to.number) }} className="min-w-0 flex-1 truncate font-medium hover:underline">{j.title}</Link>
+            {j.to ? <Link to="/github/$owner/$repo/$kind/$number" params={{ owner: j.to.owner, repo: j.to.repo, kind: j.to.kind, number: String(j.to.number) }} className="min-w-0 flex-1 truncate font-medium hover:underline">{j.title}</Link>
               : <span className="min-w-0 flex-1 truncate font-medium">{j.title}</span>}
             <span className="text-xs text-slate-500 dark:text-muted">{[j.model, j.effort].filter(Boolean).join(" · ")}</span>
             <span className="text-xs text-slate-400">{new Date(j.created).toLocaleString()}</span>

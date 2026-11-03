@@ -347,10 +347,11 @@ export function GithubView() {
       {d && <RefContext.Provider value={{ owner: full.split("/")[0], repo: full.split("/")[1], links: d.links }}>
         <Header d={d} act={act} busy={action.isPending} people={people} actions={<>
           {d.pull && <PullActions pull={d.pull} me={d.viewer} act={act} busy={action.isPending} diff={showDiff} toggleDiff={() => setShowDiff(!showDiff)} />}
+          {d.pull?.mergeable === "CONFLICTING" && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Resolver conflictos</Button>}
           {d.issue && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Definir tareas</Button>}
           {d.issue && <IssueActions open={open} act={act} busy={action.isPending} />}
         </>} />
-        {defining && <DefineIssueDialog repo={full} number={n} onClose={() => setDefining(false)} />}
+        {defining && <DefineIssueDialog resolve={!!d.pull} repo={full} number={n} onClose={() => setDefining(false)} />}
         {showDiff && <Diff repo={full} pr={n} />}
         <Threads threads={d.threads} me={d.viewer} people={people} links={d.links} act={action.mutateAsync} busy={action.isPending} />
         {d.timeline.map((e, i) => (

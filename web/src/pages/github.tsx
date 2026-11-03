@@ -1,3 +1,4 @@
+import { DefineIssueDialog } from "./define-issue";
 import { useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -243,6 +244,7 @@ const NO_MILESTONE = "\u0000none";
 
 export function Github() {
   const qc = useQueryClient();
+  const [resolving, setResolving] = useState<GithubPull | null>(null);
   const [asking, setAsking] = useState(false);
   const [tab, setTabState] = useState<Tab>(savedTab);
   const [text, setText] = useState("");
@@ -295,6 +297,7 @@ export function Github() {
   const more = state !== "open" && closed.hasNextPage;
   return (
     <div className="space-y-4">
+      {resolving && <DefineIssueDialog resolve repo={resolving.repo} number={resolving.number} onClose={() => setResolving(null)} />}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold"><GithubMark className="size-6" /> GitHub</h1>
@@ -359,6 +362,7 @@ export function Github() {
               {p.milestone && <Meta icon={metaIcons.flag} title="Milestone">{p.milestone}</Meta>}
             </>}>
               {p.state === "OPEN" ? <PullStatus pull={p} /> : <ClosedChip item={p} />}{linked(p.repo, "Issue", p.issues)}
+              {p.state === "OPEN" && p.mergeable === "CONFLICTING" && <button type="button" className={pill} onClick={(e) => { e.stopPropagation(); setResolving(p); }}>Resolver conflictos</button>}
             </Row>
           )))
           : (shownIssues.length === 0 ? <Empty kind="issues" state={state} filtered={issues.length > 0} /> : shownIssues.map((i) => (
