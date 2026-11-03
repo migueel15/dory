@@ -11,6 +11,7 @@ import { CommandPalette } from "./components/commands";
 import { GithubView } from "./pages/github-detail";
 import { Github } from "./pages/github";
 import { Attention, useAttentionCount } from "./pages/attention";
+import { Jobs } from "./pages/jobs";
 import { Home } from "./pages/home";
 import { Usage } from "./pages/usage";
 import { Inbox } from "./pages/items";
@@ -95,6 +96,7 @@ function Layout() {
       <Link to="/" activeOptions={{ exact: true }} className={link}>Inicio</Link>
       <Link to="/inbox" className={link}>Inbox</Link>
       <Link to="/attention" className={link}>Atención{attention > 0 ? ` (${attention})` : ""}</Link>
+      <Link to="/jobs" className={link}>Trabajos</Link>
       <Link to="/usage" className={link}>Uso</Link>
       <Link to="/github" className={link}>GitHub</Link>
       <Link to="/projects" className={link}>Proyectos</Link>
@@ -140,6 +142,7 @@ const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/", component: Home }),
   createRoute({ getParentRoute: () => root, path: "/inbox", component: Inbox }),
   createRoute({ getParentRoute: () => root, path: "/attention", component: Attention }),
+  createRoute({ getParentRoute: () => root, path: "/jobs", component: Jobs }),
   createRoute({ getParentRoute: () => root, path: "/usage", component: Usage }),
   createRoute({ getParentRoute: () => root, path: "/github", component: Github }),
   createRoute({ getParentRoute: () => root, path: "/github/$owner/$repo/$kind/$number", component: GithubView }),

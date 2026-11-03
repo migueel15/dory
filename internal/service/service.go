@@ -72,6 +72,7 @@ type RepositoryLocations interface {
 }
 type T3Instances interface{ T3Instances() Resource[T3Instance] }
 type ItemThreads interface{ ItemThreads() Resource[ItemThread] }
+type IssueThreads interface{ IssueThreads() Resource[IssueThread] }
 type Features interface{ Features() Resource[Feature] }
 type Items interface{ Items() Resource[Item] }
 type Memories interface{ Memories() Resource[Memory] }
@@ -86,6 +87,7 @@ type Service interface {
 	RepositoryLocations
 	T3Instances
 	ItemThreads
+	IssueThreads
 	Features
 	Items
 	Memories
@@ -402,6 +404,22 @@ func (b *backend) ItemThreads() Resource[ItemThread] {
 		},
 		archive: func(ctx context.Context, q *store.Queries, id string) ([]byte, error) {
 			return q.ArchiveItemThread(ctx, id)
+		},
+	}
+}
+func (b *backend) IssueThreads() Resource[IssueThread] {
+	return resource[IssueThread]{b: b, kind: "issuethread",
+		get: func(ctx context.Context, q *store.Queries, id string) ([]byte, error) {
+			return q.GetIssueThread(ctx, id)
+		},
+		list: func(ctx context.Context, q *store.Queries, f Filter, raw []byte) ([][]byte, error) {
+			return q.ListIssueThread(ctx, store.ListIssueThreadParams{Filter: raw, IncludeArchived: f.IncludeArchived, PageLimit: f.Limit, PageOffset: f.Offset})
+		},
+		put: func(ctx context.Context, q *store.Queries, raw []byte) ([]byte, error) {
+			return q.PutIssueThread(ctx, raw)
+		},
+		archive: func(ctx context.Context, q *store.Queries, id string) ([]byte, error) {
+			return q.ArchiveIssueThread(ctx, id)
 		},
 	}
 }

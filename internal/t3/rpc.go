@@ -180,6 +180,10 @@ type CreateThreadInput struct {
 	InstanceID  string
 	Model       string
 	RuntimeMode string
+	// Effort is the reasoning effort; EffortOption names the model's option
+	// that holds it (reasoningEffort, effort, ...). Both empty keeps the default.
+	EffortOption string
+	Effort       string
 }
 
 // CreateThread creates an empty thread and returns its id.
@@ -188,9 +192,13 @@ func (c Client) CreateThread(ctx context.Context, in CreateThreadInput) (string,
 	if mode == "" {
 		mode = "full-access"
 	}
+	selection := map[string]any{"instanceId": in.InstanceID, "model": in.Model}
+	if in.EffortOption != "" && in.Effort != "" {
+		selection["options"] = []map[string]any{{"id": in.EffortOption, "value": in.Effort}}
+	}
 	err := c.Dispatch(ctx, map[string]any{
 		"type": "thread.create", "threadId": id, "projectId": in.ProjectID, "title": in.Title,
-		"modelSelection": map[string]any{"instanceId": in.InstanceID, "model": in.Model},
+		"modelSelection": selection,
 		"runtimeMode":    mode, "interactionMode": "default", "branch": nil, "worktreePath": nil,
 		"createdBy": "user", "creationSource": "web",
 	})

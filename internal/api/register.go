@@ -24,6 +24,7 @@ func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *
 	mountResource(mux, "repository-locations", svc.RepositoryLocations(), func(v *service.RepositoryLocation) *service.Record { return &v.Record })
 	mountResource(mux, "t3-instances", svc.T3Instances(), func(v *service.T3Instance) *service.Record { return &v.Record })
 	mountResource(mux, "item-threads", svc.ItemThreads(), func(v *service.ItemThread) *service.Record { return &v.Record })
+	mountResource(mux, "issue-threads", svc.IssueThreads(), func(v *service.IssueThread) *service.Record { return &v.Record })
 	mountResource(mux, "features", svc.Features(), func(v *service.Feature) *service.Record { return &v.Record })
 	mountResource(mux, "items", svc.Items(), func(v *service.Item) *service.Record { return &v.Record })
 	mountResource(mux, "memories", svc.Memories(), func(v *service.Memory) *service.Record { return &v.Record })
@@ -47,6 +48,7 @@ func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *
 	})
 	mountThreads(mux, svc, monitor)
 	mountLaunch(mux, svc, monitor)
+	mountDefine(mux, svc, monitor, gh)
 	mux.HandleFunc("GET /api/github/open", func(w http.ResponseWriter, r *http.Request) {
 		overview, err := gh.Open(r.Context(), r.URL.Query().Get("refresh") == "true")
 		if err != nil {
