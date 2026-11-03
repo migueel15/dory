@@ -56,3 +56,34 @@ func TestUnique(t *testing.T) {
 		}
 	}
 }
+
+func TestMergedBy(t *testing.T) {
+	const a, b = "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2"
+	for name, c := range map[string]struct {
+		in   []prState
+		want string
+	}{
+		"none":         {nil, ""},
+		"open":         {[]prState{{a, "OPEN"}}, ""},
+		"merged":       {[]prState{{a, "MERGED"}}, a},
+		"closed":       {[]prState{{a, "CLOSED"}}, ""},
+		"merged+open":  {[]prState{{a, "MERGED"}, {b, "OPEN"}}, ""},
+		"closed+merge": {[]prState{{a, "CLOSED"}, {b, "MERGED"}}, b},
+	} {
+		if got, ok := mergedBy(c.in); got != c.want || ok != (c.want != "") {
+			t.Errorf("%s: got %q %v", name, got, ok)
+		}
+	}
+}
+
+func TestParseRef(t *testing.T) {
+	if r, ok := parseRef("https://github.com/o/r/pull/7"); !ok || !r.pull || r.number != 7 || r.repo != "o/r" {
+		t.Errorf("pull: %+v %v", r, ok)
+	}
+	if r, ok := parseRef("https://github.com/o/r/issues/3"); !ok || r.pull {
+		t.Errorf("issue: %+v %v", r, ok)
+	}
+	if _, ok := parseRef("https://github.com/o/r/tree/main"); ok {
+		t.Error("branch accepted")
+	}
+}

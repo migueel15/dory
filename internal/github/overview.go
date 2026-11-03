@@ -383,6 +383,7 @@ func (c *Client) refresh(repos map[string]string) {
 		}()
 	}
 	wg.Wait()
+	c.closeMerged(ctx)
 	c.mu.Lock()
 	c.refreshing, c.fetched = false, time.Now()
 	c.mu.Unlock()
