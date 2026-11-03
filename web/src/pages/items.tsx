@@ -25,6 +25,7 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
   const [pid, setPid] = useState(item?.project_id ?? projectId ?? "");
   const [fid, setFid] = useState(item?.feature_id ?? "");
   const [reason, setReason] = useState(item?.blocked_reason ?? "");
+  const [editMode, setEditMode] = useState(!item);
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const features = useQuery({ queryKey: ["features", pid], queryFn: () => api.features.list({ project_id: pid }), enabled: !!pid });
   const save = useMutation({
@@ -44,6 +45,22 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
       onClose();
     },
   });
+  if (item && !editMode) {
+    const project = projects.data?.find((p) => p.id === item.project_id);
+    const feature = features.data?.find((f) => f.id === item.feature_id);
+    return (
+      <Modal title="Item" onClose={onClose}>
+        <ItemView item={item} project={project?.name} feature={feature?.title} />
+        {(item.status === "inbox" || item.status === "triaged") && <Button type="button" variant="ghost" onClick={() => setLaunch("triage")}>Analizar con un agente</Button>}
+        {item.status === "ready" && <Button type="button" variant="ghost" onClick={() => setLaunch("implementation")}>Enviar a implementar</Button>}
+        {launch && <LaunchDialog items={[item]} role={launch} onClose={() => setLaunch(null)} />}
+        <div className="flex justify-end gap-2 border-t border-slate-200 pt-3 dark:border-slate-700">
+          <Button variant="ghost" onClick={onClose}>Cerrar</Button>
+          <Button onClick={() => setEditMode(true)}>Editar</Button>
+        </div>
+      </Modal>
+    );
+  }
   return (
     <Modal title={item ? "Editar item" : "Nuevo item"} onClose={onClose}>
       <Label text="Título"><Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus /></Label>
@@ -64,18 +81,92 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
         <Label text="Tags (coma)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Label>
       </div>
       {status === "blocked" && <Label text="Motivo del bloqueo"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Qué lo bloquea y qué lo desbloquea" /></Label>}
-      {item && (item.status === "inbox" || item.status === "triaged") && <Button type="button" variant="ghost" onClick={() => setLaunch("triage")}>Analizar con un agente</Button>}
-      {item?.status === "ready" && <Button type="button" variant="ghost" onClick={() => setLaunch("implementation")}>Enviar a implementar</Button>}
-      {item && launch && <LaunchDialog items={[item]} role={launch} onClose={() => setLaunch(null)} />}
       <ErrorText error={save.error ?? archive.error} />
       <div className="flex justify-between">
         {item ? <Button variant="danger" onClick={() => archive.mutate()}>Archivar</Button> : <span />}
         <div className="flex gap-2">
-          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button variant="ghost" onClick={item ? () => setEditMode(false) : onClose}>Cancelar</Button>
           <Button disabled={!title.trim() || (status === "blocked" && !reason.trim()) || save.isPending} onClick={() => save.mutate()}>Guardar</Button>
         </div>
       </div>
     </Modal>
+  );
+}
+
+const STATUS_INFO: Record<ItemStatus, { label: string; tone: string; hint: string }> = {
+  inbox: { label: "Inbox", tone: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300", hint: "Idea capturada, sin revisar." },
+  triaged: { label: "Revisado", tone: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300", hint: "Revisado, falta definir el trabajo." },
+  ready: { label: "Listo", tone: "bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300", hint: "Definido: un agente puede implementarlo." },
+  in_progress: { label: "En curso", tone: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300", hint: "Alguien trabaja en él ahora." },
+  validating: { label: "Validando", tone: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300", hint: "Terminado, espera tu prueba." },
+  blocked: { label: "Bloqueado", tone: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300", hint: "No puede avanzar hasta resolver el motivo." },
+  done: { label: "Hecho", tone: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300", hint: "Confirmado y cerrado." },
+  cancelled: { label: "Cancelado", tone: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400", hint: "Descartado." },
+};
+
+const muted = "text-xs text-slate-500 dark:text-slate-400";
+const date = (iso: string) => new Date(iso).toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" });
+
+// GitHub links read better as "PR #40" or "issue #12".
+function refLabel(ref: string) {
+  const m = ref.match(/github\.com\/([^/]+\/[^/]+)\/(pull|issues)\/(\d+)/);
+  return m ? `${m[2] === "pull" ? "PR" : "Issue"} #${m[3]} · ${m[1]}` : ref;
+}
+
+function Section({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-1.5">
+      <div>
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <p className={muted}>{hint}</p>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function ItemView({ item, project, feature }: { item: Item; project?: string; feature?: string }) {
+  const info = STATUS_INFO[item.status];
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold break-words">{item.title}</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${info.tone}`}>{info.label}</span>
+          {item.priority > 0 && <Badge>Prioridad {item.priority}</Badge>}
+          {item.tags.map((t) => <Badge key={t}>#{t}</Badge>)}
+        </div>
+        <p className={muted}>{info.hint}</p>
+      </div>
+      {item.status === "blocked" && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/40">
+          <div className="font-medium text-red-800 dark:text-red-300">Motivo del bloqueo</div>
+          <p className="text-red-700 dark:text-red-300">{item.blocked_reason || "Sin motivo indicado."}</p>
+        </div>
+      )}
+      <dl className="grid grid-cols-2 gap-3 rounded-md bg-slate-50 p-3 text-sm dark:bg-slate-800/60">
+        <div><dt className={muted}>Proyecto</dt><dd>{project ?? "—"}</dd></div>
+        <div><dt className={muted}>Feature</dt><dd className="break-words">{feature ?? "—"}</dd></div>
+        <div><dt className={muted}>Creado</dt><dd>{date(item.created_at)}</dd></div>
+        <div><dt className={muted}>Actualizado</dt><dd>{date(item.updated_at)}</dd></div>
+      </dl>
+      <Section title="Progreso" hint="Estado actual en una línea. El agente lo reemplaza al avanzar para que otro pueda retomar.">
+        {item.progress ? <p className="rounded-md border-l-4 border-amber-400 bg-amber-50 px-3 py-2 text-sm dark:bg-amber-950/30">{item.progress}</p> : <p className={muted}>Sin progreso registrado.</p>}
+      </Section>
+      <Section title="Descripción" hint="Objetivo, alcance y cómo probarlo. Es lo que lee el agente para trabajar.">
+        {item.body_md ? <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700"><Md>{item.body_md}</Md></div> : <p className={muted}>Sin descripción.</p>}
+      </Section>
+      <Section title="Referencias" hint="Enlaces estables: pull requests, issues y ramas.">
+        {item.refs.length ? (
+          <ul className="space-y-1 text-sm">
+            {item.refs.map((r) => <li key={r}>{/^https?:\/\//.test(r) ? <a className="break-all underline" href={r} target="_blank" rel="noreferrer">{refLabel(r)}</a> : <code className="break-all rounded bg-slate-100 px-1 dark:bg-slate-800">{r}</code>}</li>)}
+          </ul>
+        ) : <p className={muted}>Sin referencias.</p>}
+      </Section>
+      <Section title="Agentes" hint="Hilos de T3 Code enlazados a este item.">
+        <div><ThreadBadges itemId={item.id} /></div>
+      </Section>
+    </div>
   );
 }
 
