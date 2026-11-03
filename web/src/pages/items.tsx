@@ -338,7 +338,8 @@ function CardLinks({ item }: { item: Item }) {
       {t && dot && (
         <ThreadLink url={t.url} environmentId={t.t3_environment_id} threadId={t.id} title={`${t.title} · ${dot.label}`} aria-label={`${t.title}: ${dot.label}`} onPointerDown={(e) => e.stopPropagation()} className={chip}>
           <svg aria-hidden="true" viewBox="0 0 24 24" className="size-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /></svg>
-          <span className="max-w-32 truncate">{t.title}</span>
+          <span className="min-w-0 truncate">{t.model}</span>
+          {t.effort && <span className="shrink-0 opacity-60">· {t.effort}</span>}
           <span role="img" title={dot.label} aria-label={dot.label} className={`size-2 shrink-0 rounded-full ${dot.color} ${dot.pulse ? "motion-safe:animate-pulse" : ""}`} />
         </ThreadLink>
       )}

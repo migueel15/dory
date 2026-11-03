@@ -40,6 +40,7 @@ type Thread struct {
 	Title       string `json:"title"`
 	Status      string `json:"status"`
 	Model       string `json:"model"`
+	Effort      string `json:"effort"`
 	UpdatedAt   string `json:"updated_at"`
 	Attention   bool   `json:"attention"`
 	SettledAt   string `json:"-"`
@@ -63,8 +64,23 @@ type wireThread struct {
 	SnoozedUntil         *string         `json:"snoozedUntil"`
 	PendingRequest       json.RawMessage `json:"pendingRuntimeRequest"`
 	ModelSelection       struct {
-		Model string `json:"model"`
+		Model   string `json:"model"`
+		Options []struct {
+			ID    string `json:"id"`
+			Value string `json:"value"`
+		} `json:"options"`
 	} `json:"modelSelection"`
+}
+
+func (w wireThread) effort() string {
+	for _, id := range effortOptionIDs {
+		for _, option := range w.ModelSelection.Options {
+			if option.ID == id && option.Value != "" {
+				return option.Value
+			}
+		}
+	}
+	return ""
 }
 
 func (w wireThread) attention() bool {
@@ -145,7 +161,7 @@ func (c Client) threads(ctx context.Context, all bool) ([]Thread, error) {
 			ID string `json:"id"`
 		}
 		_ = json.Unmarshal(w.PendingRequest, &pending)
-		out = append(out, Thread{RunID: w.LatestRunID, CompletedAt: w.LatestRunCompletedAt, RequestID: pending.ID, SettledAt: settled, ID: w.ID, ProjectID: w.ProjectID, Title: w.Title, Status: w.Status, Model: w.ModelSelection.Model, UpdatedAt: w.UpdatedAt, Attention: w.attention()})
+		out = append(out, Thread{RunID: w.LatestRunID, CompletedAt: w.LatestRunCompletedAt, RequestID: pending.ID, SettledAt: settled, ID: w.ID, ProjectID: w.ProjectID, Title: w.Title, Status: w.Status, Model: w.ModelSelection.Model, Effort: w.effort(), UpdatedAt: w.UpdatedAt, Attention: w.attention()})
 	}
 	return out, nil
 }

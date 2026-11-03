@@ -1058,6 +1058,7 @@ export interface components {
             title: string;
             status: string;
             model: string;
+            effort: string;
             updated_at: string;
             attention: boolean;
             url: string;
