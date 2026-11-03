@@ -5,6 +5,7 @@ import { api, type GithubDetail, type GithubPull, type GithubThread } from "../a
 import { Badge, Button, Card, Select, ErrorText, Md, Arrow, pill, toggleTask } from "../components/ui";
 import { Avatar, PullStatus } from "./github";
 import { Diff } from "./github-diff";
+import { DefineIssueDialog } from "./define-issue";
 import { GithubMark, Icon, IconButton, Menu, MenuItem, RefContext, RefMd, Tip, UserPicker, icons, useConfirm, MentionArea } from "../components/github-ui";
 
 const labels: Record<string, string> = {
@@ -311,6 +312,7 @@ export function GithubView() {
   });
   const write = () => { bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }); focusBox(); };
   const [showDiff, setShowDiff] = useState(false);
+  const [defining, setDefining] = useState(false);
   const [confirm, dialog] = useConfirm();
   const key = ["github-detail", full, kind, n];
   const detail = useQuery({ queryKey: key, queryFn: () => api.githubDetail(full, kind, n), refetchInterval: 60_000 });
@@ -345,8 +347,10 @@ export function GithubView() {
       {d && <RefContext.Provider value={{ owner: full.split("/")[0], repo: full.split("/")[1], links: d.links }}>
         <Header d={d} act={act} busy={action.isPending} people={people} actions={<>
           {d.pull && <PullActions pull={d.pull} me={d.viewer} act={act} busy={action.isPending} diff={showDiff} toggleDiff={() => setShowDiff(!showDiff)} />}
+          {d.issue && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Definir tareas</Button>}
           {d.issue && <IssueActions open={open} act={act} busy={action.isPending} />}
         </>} />
+        {defining && <DefineIssueDialog repo={full} number={n} onClose={() => setDefining(false)} />}
         {showDiff && <Diff repo={full} pr={n} />}
         <Threads threads={d.threads} me={d.viewer} people={people} links={d.links} act={action.mutateAsync} busy={action.isPending} />
         {d.timeline.map((e, i) => (

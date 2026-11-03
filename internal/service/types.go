@@ -49,6 +49,18 @@ type ItemThread struct {
 	ThreadID   string `json:"thread_id"`
 	Role       string `json:"role"`
 }
+type IssueThread struct {
+	Record
+	ProjectID  string `json:"project_id"`
+	Repo       string `json:"repo"`
+	Number     int    `json:"number"`
+	IssueURL   string `json:"issue_url"`
+	Title      string `json:"title"`
+	InstanceID string `json:"instance_id"`
+	ThreadID   string `json:"thread_id"`
+	Model      string `json:"model"`
+	Effort     string `json:"effort"`
+}
 type Feature struct {
 	Record
 	ProjectID string   `json:"project_id"`

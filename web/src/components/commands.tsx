@@ -25,6 +25,7 @@ export function CommandPalette() {
     { id: "home", label: "Ir a Inicio", run: go("/") },
     { id: "inbox", label: "Ir a Inbox", run: go("/inbox") },
     { id: "attention", label: "Ir a Atención", run: go("/attention") },
+    { id: "jobs", label: "Ir a Trabajos", run: go("/jobs") },
     { id: "github", label: "Ir a GitHub", run: go("/github") },
     { id: "projects", label: "Ir a Proyectos", run: go("/projects") },
     { id: "memories", label: "Ir a Memorias", run: go("/memories") },

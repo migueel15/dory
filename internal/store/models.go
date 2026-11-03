@@ -54,6 +54,22 @@ type Feature struct {
 	SearchVector interface{}
 }
 
+type IssueThread struct {
+	ID         pgtype.UUID
+	ProjectID  pgtype.UUID
+	Repo       string
+	Number     int32
+	IssueUrl   string
+	Title      string
+	InstanceID pgtype.UUID
+	ThreadID   string
+	Model      string
+	Effort     string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	ArchivedAt pgtype.Timestamptz
+}
+
 type Item struct {
 	ID            pgtype.UUID
 	ProjectID     pgtype.UUID

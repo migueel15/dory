@@ -10,14 +10,66 @@ var ErrInstanceUnavailable = errors.New("t3: instance is not available")
 
 // CatalogProvider is an enabled provider and its current models.
 type CatalogProvider struct {
-	InstanceID string         `json:"instance_id"`
-	Name       string         `json:"name"`
-	Models     []CatalogModel `json:"models"`
+	InstanceID string `json:"instance_id"`
+	Name       string `json:"name"`
+	// Driver is the provider kind (codex, claudeAgent, ...), used for its icon.
+	Driver string         `json:"driver"`
+	Models []CatalogModel `json:"models"`
 }
 
 type CatalogModel struct {
-	Slug string `json:"slug"`
-	Name string `json:"name"`
+	Slug   string        `json:"slug"`
+	Name   string        `json:"name"`
+	Effort *EffortOption `json:"effort,omitempty"`
+}
+
+// EffortOption is the model option that sets its reasoning effort.
+type EffortOption struct {
+	ID      string   `json:"id"`
+	Values  []string `json:"values"`
+	Default string   `json:"default"`
+}
+
+// effortOptionIDs are the option ids T3 treats as reasoning effort, in order.
+var effortOptionIDs = []string{"reasoningEffort", "effort", "reasoning", "reasoning_effort", "thinking_level", "thinking"}
+
+type wireChoice struct {
+	ID        string `json:"id"`
+	IsDefault bool   `json:"isDefault"`
+}
+
+type wireOptionDescriptor struct {
+	ID      string       `json:"id"`
+	Type    string       `json:"type"`
+	Choices []wireChoice `json:"choices"`
+	Options []wireChoice `json:"options"`
+	Default any          `json:"default"`
+}
+
+func effortOf(descriptors []wireOptionDescriptor) *EffortOption {
+	for _, id := range effortOptionIDs {
+		for _, d := range descriptors {
+			choices := d.Choices
+			if len(choices) == 0 {
+				choices = d.Options
+			}
+			if d.ID != id || d.Type != "select" || len(choices) == 0 {
+				continue
+			}
+			out := &EffortOption{ID: id, Values: []string{}}
+			for _, o := range choices {
+				out.Values = append(out.Values, o.ID)
+				if o.IsDefault {
+					out.Default = o.ID
+				}
+			}
+			if v, ok := d.Default.(string); ok && out.Default == "" {
+				out.Default = v
+			}
+			return out
+		}
+	}
+	return nil
 }
 
 type CatalogProject struct {
@@ -51,12 +103,16 @@ func (c Client) Catalog(ctx context.Context) (Catalog, error) {
 	var cfg struct {
 		Providers []struct {
 			InstanceID  string `json:"instanceId"`
+			Driver      string `json:"driver"`
 			DisplayName string `json:"displayName"`
 			Enabled     bool   `json:"enabled"`
 			Models      []struct {
-				Slug     string `json:"slug"`
-				Name     string `json:"name"`
-				IsLegacy bool   `json:"isLegacy"`
+				Slug         string `json:"slug"`
+				Name         string `json:"name"`
+				IsLegacy     bool   `json:"isLegacy"`
+				Capabilities struct {
+					OptionDescriptors []wireOptionDescriptor `json:"optionDescriptors"`
+				} `json:"capabilities"`
 			} `json:"models"`
 		} `json:"providers"`
 	}
@@ -72,10 +128,10 @@ func (c Client) Catalog(ctx context.Context) (Catalog, error) {
 		return out, err
 	}
 	for _, p := range cfg.Providers {
-		provider := CatalogProvider{InstanceID: p.InstanceID, Name: p.DisplayName, Models: []CatalogModel{}}
+		provider := CatalogProvider{InstanceID: p.InstanceID, Name: p.DisplayName, Driver: p.Driver, Models: []CatalogModel{}}
 		for _, m := range p.Models {
 			if !m.IsLegacy {
-				provider.Models = append(provider.Models, CatalogModel{Slug: m.Slug, Name: m.Name})
+				provider.Models = append(provider.Models, CatalogModel{Slug: m.Slug, Name: m.Name, Effort: effortOf(m.Capabilities.OptionDescriptors)})
 			}
 		}
 		if p.Enabled && len(provider.Models) > 0 {
@@ -92,12 +148,15 @@ type LaunchInput struct {
 	Provider  string
 	Model     string
 	Prompt    string
+	// EffortOption and Effort set the reasoning effort; empty keeps the default.
+	EffortOption string
+	Effort       string
 }
 
 // Launch creates the thread and starts its turn. The returned id is set when
 // the thread exists, even if the turn could not start.
 func (c Client) Launch(ctx context.Context, in LaunchInput) (string, error) {
-	id, err := c.CreateThread(ctx, CreateThreadInput{ProjectID: in.ProjectID, Title: in.Title, InstanceID: in.Provider, Model: in.Model})
+	id, err := c.CreateThread(ctx, CreateThreadInput{ProjectID: in.ProjectID, Title: in.Title, InstanceID: in.Provider, Model: in.Model, EffortOption: in.EffortOption, Effort: in.Effort})
 	if err != nil {
 		return "", err
 	}
