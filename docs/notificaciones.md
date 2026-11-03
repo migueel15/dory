@@ -19,7 +19,7 @@ y del navegador. Sin soporte o permiso siguen disponibles los canales dentro de
 Dory. Las claves VAPID se crean al primer arranque y no necesitan configuración
 manual. El servidor necesita salida HTTPS hacia el servicio push del navegador.
 
-El historial se genera en el servidor. Aplicar la migración 00009 con
+El historial se genera en el servidor. Aplicar la migración 00010 (además de la 00009) con
 `dory migrate up` antes de iniciar el nuevo binario. Los avisos de items se crean
 en la transacción de su cambio. Los hilos T3 se observan cada diez segundos:
 el primer snapshot establece una referencia sin importar avisos antiguos.
@@ -31,7 +31,8 @@ Todas las rutas requieren autenticación. Las escrituras requieren permiso write
 
 - `GET /api/notifications?before=<id>`: hasta 100 avisos anteriores al cursor
   (sin cursor, los últimos), contador global `unread` y `server_time`.
-  Cada aviso incluye id, title, url, kinds, bell, toast, read y created_at.
+  Cada aviso incluye id, title (encabezado con estado y proyecto), body (primera línea del título, máx. 80 caracteres), url, kinds, bell, toast, read y created_at.
+- `DELETE /api/notifications`: borra todo el historial del usuario («Limpiar todo»).
 - `POST /api/notifications/{id}/read`: marcar leído un aviso propio.
 - `GET /api/notifications/preferences`: settings y public_key VAPID.
 - `PUT /api/notifications/preferences`: reemplazar settings, un objeto cuyas

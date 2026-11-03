@@ -34,16 +34,21 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [id, title, url, kinds, bell, toast, read, created_at]
+                      required: [id, title, body, url, kinds, bell, toast, read, created_at]
                       properties:
                         id: { type: integer, format: int64 }
-                        title: { type: string }
+                        title: { type: string, description: "Short heading: state and project" }
+                        body: { type: string, description: "First line of the item or thread title, up to 80 characters" }
                         url: { type: string }
                         kinds: { type: array, items: { type: string } }
                         bell: { type: boolean }
                         toast: { type: boolean }
                         read: { type: boolean }
                         created_at: { type: string, format: date-time }
+    delete:
+      operationId: clearNotifications
+      responses:
+        "204": { description: Whole notification history of the authenticated user deleted }
   "/notifications/{id}/read":
     post:
       operationId: readNotification

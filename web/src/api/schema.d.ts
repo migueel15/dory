@@ -14,7 +14,7 @@ export interface paths {
         get: operations["listNotifications"];
         put?: never;
         post?: never;
-        delete?: never;
+        delete: operations["clearNotifications"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1481,7 +1481,10 @@ export interface operations {
                         items: {
                             /** Format: int64 */
                             id: number;
+                            /** @description Short heading: state and project */
                             title: string;
+                            /** @description First line of the item or thread title, up to 80 characters */
+                            body: string;
                             url: string;
                             kinds: string[];
                             bell: boolean;
@@ -1492,6 +1495,24 @@ export interface operations {
                         }[];
                     };
                 };
+            };
+        };
+    };
+    clearNotifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Whole notification history of the authenticated user deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
