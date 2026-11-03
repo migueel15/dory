@@ -1,3 +1,4 @@
+import { ThreadLink } from "../components/thread-link";
 import { LaunchDialog } from "./launch";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -207,8 +208,8 @@ function ThreadBadges({ itemId }: { itemId: string }) {
     return thread ? [thread] : [];
   }) ?? [];
   return threads.map((t) => (
-    <a key={t.id} href={t.url} target="_blank" rel="noreferrer" title={t.title} onPointerDown={(e) => e.stopPropagation()} className={`mr-1 inline-block text-xs underline ${t.attention ? "text-red-600 dark:text-red-400" : "text-slate-500 dark:text-slate-400"}`}>
+    <ThreadLink key={t.id} url={t.url} environmentId={t.t3_environment_id} threadId={t.id} title={t.title} onPointerDown={(e) => e.stopPropagation()} className={`mr-1 inline-block text-xs underline ${t.attention ? "text-red-600 dark:text-red-400" : "text-slate-500 dark:text-slate-400"}`}>
       {t.attention ? "Te necesita" : `${t.model} · ${t.status}`}
-    </a>
+    </ThreadLink>
   ));
 }

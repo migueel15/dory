@@ -123,6 +123,7 @@ func (m *Monitor) check(ctx context.Context, in service.T3Instance) Status {
 	case err == nil:
 		s.State, s.Threads = StateAvailable, threads
 		for i := range s.Threads {
+			s.Threads[i].EnvironmentID = d.EnvironmentID
 			s.Threads[i].URL = strings.TrimRight(in.BaseUrl, "/") + "/" + d.EnvironmentID + "/" + s.Threads[i].ID
 		}
 	case errors.Is(err, errUnauthorized):

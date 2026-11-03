@@ -1,3 +1,4 @@
+import { ThreadLink } from "../components/thread-link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -96,10 +97,10 @@ export function Attention() {
       {down.map((s) => <p key={s.instance_id} className="text-sm text-slate-500 dark:text-slate-400">Sin datos de {envName(s.environment_id)}: instancia no disponible.</p>)}
       {threads.map((t) => (
         <Card key={t.id} className="space-y-2">
-          <a href={t.url} target="_blank" rel="noreferrer" className="block space-y-1">
+          <ThreadLink url={t.url} environmentId={t.t3_environment_id} threadId={t.id} className="block space-y-1">
             <div className="font-medium break-words">{t.title}</div>
             <div className="flex flex-wrap gap-1"><Badge>{envName(t.status_.environment_id)}</Badge><Badge>{t.status}</Badge><Badge>{t.model}</Badge></div>
-          </a>
+          </ThreadLink>
           <ThreadReply id={t.id} />
         </Card>
       ))}

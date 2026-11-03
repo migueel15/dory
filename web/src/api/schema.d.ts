@@ -939,6 +939,7 @@ export interface components {
         };
         T3Thread: {
             id: string;
+            t3_environment_id: string;
             project_id: string;
             title: string;
             status: string;
