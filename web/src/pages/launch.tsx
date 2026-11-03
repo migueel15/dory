@@ -9,7 +9,15 @@ import { useT3 } from "./attention";
 export function LaunchDialog({ items, role, onClose }: { items: Item[]; role: "triage" | "implementation"; onClose: () => void }) {
   const qc = useQueryClient();
   const t3 = useT3();
+  const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
   const instances = t3.data?.filter((s) => s.state === "available") ?? [];
+  const stateLabel: Record<string, string> = { available: "disponible", disconnected: "desconectado", auth_failed: "sin acceso", incompatible: "incompatible" };
+  const machines = (t3.data ?? []).map((s) => ({
+    value: s.instance_id,
+    label: `${envs.data?.find((e) => e.id === s.environment_id)?.name ?? s.base_url}${s.state === "available" ? "" : ` (${stateLabel[s.state] ?? s.state})`}`,
+    disabled: s.state !== "available",
+    icon: <span title={stateLabel[s.state] ?? s.state} className={`size-2 shrink-0 rounded-full ${s.state === "available" ? "bg-green-500" : s.state === "disconnected" ? "bg-slate-400" : "bg-red-500"}`} />,
+  }));
   const [instance, setInstance] = useState("");
   const instanceId = instance || instances[0]?.instance_id || "";
   const catalog = useQuery({ queryKey: ["t3-catalog", instanceId], queryFn: () => api.t3Catalog(instanceId), enabled: !!instanceId });
@@ -48,7 +56,7 @@ export function LaunchDialog({ items, role, onClose }: { items: Item[]; role: "t
   return (
     <Modal title={role === "triage" ? `Analizar ${items.length} con un agente` : "Enviar a implementar"} onClose={onClose}>
       <Label text="Máquina">
-        <Select value={instanceId} onChange={(v) => { setInstance(v); setProject(""); setChoice(""); }} options={instances.map((s) => ({ value: s.instance_id, label: s.base_url }))} />
+        <Select value={instanceId} onChange={(v) => { setInstance(v); setProject(""); setChoice(""); }} options={machines} />
       </Label>
       <Label text="Proyecto de T3">
         <Select value={projectId} onChange={setProject} options={(catalog.data?.projects ?? []).map((p) => ({ value: p.id, label: p.title }))} />
