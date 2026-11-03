@@ -7,7 +7,7 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DndContext, type DragEndEvent, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { api, itemInput, type Item, type ItemStatus } from "../api/client";
-import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, Select, Textarea, csv, opts } from "../components/ui";
+import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, Notice, PageHeader, Select, Textarea, csv, opts, uuid } from "../components/ui";
 import { useProject } from "../project";
 
 const STATUSES: ItemStatus[] = ["inbox", "triaged", "ready", "in_progress", "validating", "blocked", "done", "cancelled"];
@@ -34,7 +34,7 @@ export function ItemForm({ item, projectId, onClose, initialEdit = false }: { in
   const save = useMutation({
     mutationFn: () => {
       const data = { title, body_md: body, progress, refs: csv(refs), tags: csv(tags), status, blocked_reason: status === "blocked" ? reason : "", priority, project_id: pid || null, feature_id: (pid && fid) || null };
-      return item ? api.items.update(item.id, itemInput(item, data)) : api.items.create({ id: crypto.randomUUID(), ...data });
+      return item ? api.items.update(item.id, itemInput(item, data)) : api.items.create({ id: uuid(), ...data });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["items"] });
@@ -54,13 +54,12 @@ export function ItemForm({ item, projectId, onClose, initialEdit = false }: { in
     return (
       <Modal title="Item" onClose={onClose} wide>
         <ItemView item={item} project={project?.name} feature={feature?.title} />
-        {(item.status === "inbox" || item.status === "triaged") && <Button type="button" variant="ghost" onClick={() => setLaunch("triage")}>Analizar con un agente</Button>}
-        {item.status === "ready" && <Button type="button" variant="ghost" onClick={() => setLaunch("replan")}>Solicitar cambios</Button>}
-        {item.status === "ready" && <Button type="button" variant="ghost" onClick={() => setLaunch("implementation")}>Enviar a implementar</Button>}
         {launch && <LaunchDialog items={[item]} role={launch} onClose={() => setLaunch(null)} />}
-        <div className="flex justify-end gap-2 border-t border-slate-200 pt-3 dark:border-border">
-          <Button variant="ghost" onClick={onClose}>Cerrar</Button>
-          <Button onClick={() => setEditMode(true)}>Editar</Button>
+        <div className="sticky -bottom-3 -mx-3 flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white px-3 pt-3 dark:border-border dark:bg-surface sm:-bottom-4 sm:-mx-4 sm:px-4">
+          <Button variant="ghost" onClick={() => setEditMode(true)}>Editar</Button>
+          {(item.status === "inbox" || item.status === "triaged") && <Button type="button" onClick={() => setLaunch("triage")}>Analizar con un agente</Button>}
+          {item.status === "ready" && <Button type="button" variant="ghost" onClick={() => setLaunch("replan")}>Solicitar cambios</Button>}
+          {item.status === "ready" && <Button type="button" onClick={() => setLaunch("implementation")}>Enviar a implementar</Button>}
         </div>
       </Modal>
     );
@@ -75,7 +74,7 @@ export function ItemForm({ item, projectId, onClose, initialEdit = false }: { in
         <Label text="Estado">
           <Select value={status} onChange={(v) => setStatus(v as ItemStatus)} options={opts(STATUSES)} />
         </Label>
-        <Label text="Prioridad"><Input type="number" value={priority} onChange={(e) => setPriority(+e.target.value)} /></Label>
+        <Label text="Prioridad"><Select value={String(priority)} onChange={(v) => setPriority(+v)} options={[{ value: "0", label: "Normal" }, { value: "1", label: "P1 · Alta" }, { value: "2", label: "P2 · Muy alta" }, { value: "3", label: "P3 · Urgente" }]} /></Label>
         <Label text="Proyecto">
           <Select value={pid} onChange={(v) => { setPid(v); setFid(""); }} options={[{ value: "", label: "— ninguno —" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
         </Label>
@@ -87,12 +86,29 @@ export function ItemForm({ item, projectId, onClose, initialEdit = false }: { in
       {status === "blocked" && <Label text="Motivo del bloqueo"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Qué lo bloquea y qué lo desbloquea" /></Label>}
       <ErrorText error={save.error ?? archive.error} />
       <div className="flex justify-between">
-        {item ? <Button variant="danger" onClick={() => archive.mutate()}>Archivar</Button> : <span />}
+        {item ? <Button variant="danger" onClick={() => { if (window.confirm(`¿Archivar «${item.title}»?`)) archive.mutate(); }}>Archivar</Button> : <span />}
         <div className="flex gap-2">
           <Button variant="ghost" onClick={item ? () => setEditMode(false) : onClose}>Cancelar</Button>
           <Button disabled={!title.trim() || (status === "blocked" && !reason.trim()) || save.isPending} onClick={() => save.mutate()}>Guardar</Button>
         </div>
       </div>
+    </Modal>
+  );
+}
+
+// BlockDialog asks why an item is blocked; it replaces the native prompt.
+function BlockDialog({ item, onConfirm, onClose }: { item: Item; onConfirm: (reason: string) => void; onClose: () => void }) {
+  const [reason, setReason] = useState("");
+  return (
+    <Modal title="Bloquear item" onClose={onClose}>
+      <p className="text-sm break-words text-slate-600 dark:text-text-secondary">{item.title}</p>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (reason.trim()) onConfirm(reason.trim()); }}>
+        <Label text="Motivo del bloqueo"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Qué lo bloquea y qué lo desbloquea" autoFocus /></Label>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button disabled={!reason.trim()}>Bloquear</Button>
+        </div>
+      </form>
     </Modal>
   );
 }
@@ -187,7 +203,7 @@ export function Inbox() {
   const project = useProject();
   const items = useQuery({ queryKey: ["items", "inbox"], queryFn: () => api.items.list({ status: "inbox" }), select: (l) => (project ? l.filter((i) => i.project_id === project) : l) });
   const add = useMutation({
-    mutationFn: (title: string) => api.items.create({ id: crypto.randomUUID(), title, raw_text: title, source: "web", project_id: project || null }),
+    mutationFn: (title: string) => api.items.create({ id: uuid(), title, raw_text: title, source: "web", project_id: project || null }),
     onSuccess: () => {
       setQuick("");
       qc.invalidateQueries({ queryKey: ["items"] });
@@ -195,13 +211,10 @@ export function Inbox() {
   });
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">Inbox</h1>
-        <div className="flex gap-2">
-          {!!items.data?.length && <Button variant="ghost" onClick={() => setBatch(true)}>Analizar todo</Button>}
-          <Button onClick={() => setEditing("new")}>Nuevo item</Button>
-        </div>
-      </div>
+      <PageHeader title="Inbox" subtitle="Ideas capturadas pendientes de revisar">
+        {!!items.data?.length && <Button variant="ghost" onClick={() => setBatch(true)}>Analizar todo</Button>}
+        <Button onClick={() => setEditing("new")}>Nuevo item</Button>
+      </PageHeader>
       {batch && items.data && <LaunchDialog items={items.data} role="triage" onClose={() => setBatch(false)} />}
       <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (quick.trim()) add.mutate(quick.trim()); }}>
         <Input placeholder="Captura rápida…" value={quick} onChange={(e) => setQuick(e.target.value)} />
@@ -214,23 +227,31 @@ export function Inbox() {
             <div onClick={() => setEditing(i)}>
               <div className="flex flex-wrap items-center gap-2"><span className="font-medium break-words">{i.title}</span>{i.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div>
               {i.progress && <p className="text-xs text-slate-500 dark:text-muted">{i.progress}</p>}
-              {i.body_md && <Md>{i.body_md}</Md>}
+              {i.body_md && <p className="line-clamp-2 text-sm text-slate-600 dark:text-text-secondary">{i.body_md.replace(/[#*`>\[\]]/g, "")}</p>}
             </div>
           </Card></ItemActions>
         ))}
-        {items.data?.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">Inbox vacío.</p>}
+        {items.isPending && <Notice loading />}
+        {items.data?.length === 0 && <Notice>Inbox vacío. Captura una idea arriba.</Notice>}
       </div>
       {editing && <ItemForm item={editing === "new" ? undefined : editing} projectId={project || null} onClose={() => setEditing(null)} />}
     </div>
   );
 }
 
-function Column({ status, children }: { status: ItemStatus; children: React.ReactNode }) {
+function Column({ status, count, collapsed, onToggle, children }: { status: ItemStatus; count: number; collapsed?: boolean; onToggle?: () => void; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
+  const info = STATUS_INFO[status];
   return (
-    <div ref={setNodeRef} className={`min-h-24 w-full space-y-2 sm:min-h-48 sm:w-64 sm:shrink-0 xl:w-auto xl:min-w-0 xl:flex-1 rounded-lg p-2 ${isOver ? "bg-blue-100 dark:bg-accent-subtle" : "bg-slate-100 dark:bg-raised"}`}>
-      <h3 className="text-sm font-semibold uppercase text-slate-600 dark:text-text-secondary">{status.replace("_", " ")}</h3>
-      {children}
+    <div ref={setNodeRef} className={`w-full space-y-2 rounded-lg p-2 ${collapsed ? "sm:w-40" : "min-h-24 sm:min-h-48 sm:w-64 xl:w-auto xl:min-w-0 xl:flex-1"} sm:shrink-0 ${collapsed ? "xl:flex-none" : ""} ${isOver ? "bg-blue-100 dark:bg-accent-subtle" : "bg-slate-100 dark:bg-raised"}`}>
+      <div className="flex items-center justify-between gap-2" title={info.hint}>
+        <h3 className="text-sm font-semibold text-slate-700 dark:text-text-secondary">{info.label}</h3>
+        <div className="flex items-center gap-1">
+          <span className={`rounded-full px-2 text-xs font-medium ${info.tone}`}>{count}</span>
+          {onToggle && <button type="button" aria-expanded={!collapsed} aria-label={collapsed ? `Mostrar ${info.label}` : `Ocultar ${info.label}`} onClick={onToggle} className="rounded px-1 text-xs text-slate-500 hover:bg-slate-200 dark:text-muted dark:hover:bg-hover">{collapsed ? "▸" : "▾"}</button>}
+        </div>
+      </div>
+      {!collapsed && children}
     </div>
   );
 }
@@ -240,17 +261,20 @@ function Draggable({ item, onOpen }: { item: Item; onOpen: () => void }) {
   const style = transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined;
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes} className={isDragging ? "relative z-10 opacity-80" : ""}>
-      <ItemActions item={item}><Card className="cursor-grab"><div onClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><span className="font-medium break-words">{item.title}</span></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}<CardLinks item={item} />{item.status === "blocked" && <p className="text-xs text-red-600 dark:text-red-400">{item.blocked_reason}</p>}</div></Card></ItemActions>
+      <ItemActions item={item}><Card className={`cursor-grab ${item.status === "blocked" ? "border-l-4 border-l-red-500 dark:border-l-red-500" : ""}`}><div onClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><span className="font-medium break-words">{item.title}</span></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}<CardLinks item={item} />{item.status === "blocked" && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{item.blocked_reason}</p>}</div></Card></ItemActions>
     </div>
   );
 }
 
+// Board shows the kanban of one project, or of every project when projectId is empty.
 export function Board({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Item | "new" | null>(null);
+  const [blocking, setBlocking] = useState<Item | null>(null);
+  const [folded, setFolded] = useState<Set<ItemStatus>>(new Set(PAGED));
   const [limits, setLimits] = useState<Partial<Record<ItemStatus, number>>>({});
   const key = ["items", "board", projectId];
-  const items = useQuery({ queryKey: key, queryFn: () => api.items.list({ project_id: projectId }) });
+  const items = useQuery({ queryKey: key, queryFn: () => api.items.list(projectId ? { project_id: projectId } : {}) });
   const move = useMutation({
     mutationFn: ({ item, status, reason }: { item: Item; status: ItemStatus; reason: string }) => api.items.update(item.id, itemInput(item, { status, blocked_reason: reason })),
     onMutate: ({ item, status }) => {
@@ -265,16 +289,16 @@ export function Board({ projectId }: { projectId: string }) {
     const status = e.over?.id as ItemStatus | undefined;
     if (!item || !status || status === item.status) return;
     // Blocking needs a reason; leaving blocked clears it.
-    const reason = status === "blocked" ? window.prompt("Motivo del bloqueo")?.trim() ?? "" : "";
-    if (status === "blocked" && !reason) return;
-    move.mutate({ item, status, reason });
+    if (status === "blocked") { setBlocking(item); return; }
+    move.mutate({ item, status, reason: "" });
   };
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold">Kanban <span className="hidden text-xs font-normal text-slate-500 dark:text-muted sm:inline">(doble clic para editar)</span></h2>
+        <h2 className="font-semibold">Kanban <span className="hidden text-xs font-normal text-slate-500 dark:text-muted sm:inline">(clic para abrir · arrastra para cambiar de estado)</span></h2>
         <Button onClick={() => setEditing("new")}>Nuevo item</Button>
       </div>
+      {blocking && <BlockDialog item={blocking} onClose={() => setBlocking(null)} onConfirm={(reason) => { move.mutate({ item: blocking, status: "blocked", reason }); setBlocking(null); }} />}
       <ErrorText error={move.error ?? items.error} />
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
         <div className="flex flex-col gap-3 pb-2 sm:flex-row sm:overflow-x-auto">
@@ -284,7 +308,7 @@ export function Board({ projectId }: { projectId: string }) {
             const limit = limits[s] ?? PAGE;
             const shown = paged ? col.sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, limit) : col.sort((a, b) => b.priority - a.priority);
             return (
-              <Column key={s} status={s}>
+              <Column key={s} status={s} count={col.length} collapsed={paged && folded.has(s)} onToggle={paged ? () => setFolded((f) => { const n = new Set(f); if (n.has(s)) n.delete(s); else n.add(s); return n; }) : undefined}>
                 {shown.map((i) => <Draggable key={i.id} item={i} onOpen={() => setEditing(i)} />)}
                 {paged && col.length > limit && (
                   <Button variant="ghost" className="w-full" onClick={() => setLimits((l) => ({ ...l, [s]: limit + PAGE }))}>Cargar más ({col.length - limit})</Button>
@@ -294,7 +318,7 @@ export function Board({ projectId }: { projectId: string }) {
           })}
         </div>
       </DndContext>
-      {editing && <ItemForm item={editing === "new" ? undefined : editing} projectId={projectId} onClose={() => setEditing(null)} />}
+      {editing && <ItemForm item={editing === "new" ? undefined : editing} projectId={projectId || null} onClose={() => setEditing(null)} />}
     </div>
   );
 }
@@ -361,15 +385,14 @@ function ItemActions({ item, children }: { item: Item; children: React.ReactNode
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const [detail, setDetail] = useState<"view" | "edit" | null>(null);
   const [launch, setLaunch] = useState<"triage" | "implementation" | "replan" | null>(null);
+  const [blocking, setBlocking] = useState(false);
   const close = useCallback(() => setPosition(null), []);
   const threads = useItemThreads(item.id);
   const thread = threads.reduce<(typeof threads)[number] | undefined>((a, b) => !a || b.updated_at >= a.updated_at ? b : a, undefined);
   const pull = [...item.refs].reverse().map((r) => /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)$/.exec(r)).find(Boolean);
   const change = useMutation({
-    mutationFn: async (status: ItemStatus) => {
-      const reason = status === "blocked" ? window.prompt("Motivo del bloqueo")?.trim() : "";
-      if (status === "blocked" && !reason) return;
-      await api.items.update(item.id, itemInput(item, { status, blocked_reason: reason ?? "" }));
+    mutationFn: async ({ status, reason = "" }: { status: ItemStatus; reason?: string }) => {
+      await api.items.update(item.id, itemInput(item, { status, blocked_reason: reason }));
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ["items"] }),
   });
@@ -381,7 +404,7 @@ function ItemActions({ item, children }: { item: Item; children: React.ReactNode
     ...(["inbox", "triaged"].includes(item.status) ? [{ label: "Analizar con un agente", run: () => setLaunch("triage") }] : []),
     ...(item.status === "ready" ? [{ label: "Solicitar cambios", run: () => setLaunch("replan") }] : []),
     ...(item.status === "ready" ? [{ label: "Enviar a implementar", run: () => setLaunch("implementation") }] : []),
-    { label: "Mover a estado…", children: STATUSES.filter((s) => s !== item.status).map((s) => ({ label: STATUS_INFO[s].label, run: () => change.mutate(s) })) },
+    { label: "Mover a estado…", children: STATUSES.filter((s) => s !== item.status).map((s) => ({ label: STATUS_INFO[s].label, run: () => (s === "blocked" ? setBlocking(true) : change.mutate({ status: s })) })) },
     ...(thread ? [{ label: "Abrir último hilo", content: <ThreadLink role="menuitem" className={linkClass} url={thread.url} environmentId={thread.t3_environment_id} threadId={thread.id}>Abrir último hilo</ThreadLink> }] : []),
     ...(pull ? [{ label: "Abrir última PR", content: <Link role="menuitem" className={linkClass} to="/github/$owner/$repo/$kind/$number" params={{ owner: pull[1], repo: pull[2], kind: "pulls", number: pull[3] }}>Abrir última PR</Link> }] : []),
     { label: "Archivar", run: () => { if (window.confirm(`¿Archivar «${item.title}»?`)) archive.mutate(); } },
@@ -392,5 +415,6 @@ function ItemActions({ item, children }: { item: Item; children: React.ReactNode
     {position && <ContextMenu {...position} actions={actions} onClose={close} />}
     {detail && <ItemForm item={item} initialEdit={detail === "edit"} onClose={() => setDetail(null)} />}
     {launch && <LaunchDialog items={[item]} role={launch} onClose={() => setLaunch(null)} />}
+    {blocking && <BlockDialog item={item} onClose={() => setBlocking(false)} onConfirm={(reason) => { change.mutate({ status: "blocked", reason }); setBlocking(false); }} />}
   </div>;
 }

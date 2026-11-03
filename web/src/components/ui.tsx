@@ -7,10 +7,11 @@ export { defaultUrlTransform };
 
 const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(" ");
 
-export function Button({ variant = "default", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "default" | "ghost" | "danger" }) {
+export function Button({ variant = "default", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "default" | "ghost" | "bare" | "danger" }) {
   const v = {
     default: "bg-slate-900 dark:bg-accent text-white dark:text-white hover:bg-slate-700 dark:hover:bg-accent-hover",
     ghost: "border border-slate-300 dark:border-border-strong hover:bg-slate-100 dark:hover:bg-raised",
+    bare: "hover:bg-slate-200 dark:hover:bg-raised",
     danger: "border border-red-300 dark:border-red-800 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950",
   }[variant];
   return <button {...p} className={cx("min-h-11 sm:min-h-0 rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-50", v, className)} />;
@@ -29,7 +30,7 @@ export const Textarea = (p: TextareaHTMLAttributes<HTMLTextAreaElement>) => <tex
 export type Option = { value: string; label: string; group?: string; icon?: ReactNode; disabled?: boolean };
 
 // Select replaces the native <select>: a button that opens a floating, keyboard-navigable list.
-export function Select({ value, onChange, options, disabled, className, placeholder = "—" }: { value: string; onChange: (v: string) => void; options: Option[]; disabled?: boolean; className?: string; placeholder?: string }) {
+export function Select({ value, onChange, options, disabled, className, placeholder = "—", plain }: { value: string; onChange: (v: string) => void; options: Option[]; disabled?: boolean; className?: string; placeholder?: string; plain?: boolean }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<CSSProperties>({});
   const [hi, setHi] = useState(0);
@@ -71,7 +72,7 @@ export function Select({ value, onChange, options, disabled, className, placehol
   return (
     <div ref={box} className={cx("relative", className ?? "w-full")}>
       <button type="button" disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? setOpen(false) : show())} onKeyDown={key}
-        className={cx(field, "flex items-center justify-between gap-2 text-left transition-colors hover:border-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:focus-visible:ring-accent/40 disabled:opacity-50 dark:hover:border-muted", open && "border-blue-500 dark:border-accent")}>
+        className={cx(plain ? "flex min-h-11 items-center gap-1 rounded px-2 py-1 text-left text-sm hover:bg-slate-200 dark:hover:bg-raised sm:min-h-0" : field, !plain && "flex items-center justify-between gap-2 text-left transition-colors hover:border-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:focus-visible:ring-accent/40 disabled:opacity-50 dark:hover:border-muted", !plain && open && "border-blue-500 dark:border-accent")}>
         <span className={cx("flex min-w-0 items-center gap-2 truncate", !current && "text-slate-400")}>{current?.icon}{current?.label ?? placeholder}</span>
         <svg viewBox="0 0 20 20" fill="currentColor" className={cx("size-4 shrink-0 text-slate-400 transition-transform", open && "rotate-180")}><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clipRule="evenodd" /></svg>
       </button>
@@ -153,15 +154,63 @@ export function Md({ children, components, urlTransform, onToggle }: { children:
 }
 
 export function Modal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
-    <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-2 sm:p-4" onClick={onClose}>
-      <div className={`max-h-full w-full max-w-lg space-y-3 overflow-auto rounded-lg bg-white dark:bg-surface p-3 sm:p-4${wide ? " lg:max-w-3xl" : ""}`} onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold">{title}</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 sm:p-4" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label={title} className={`max-h-full w-full max-w-lg space-y-3 overflow-auto rounded-lg bg-white dark:bg-surface p-3 sm:p-4${wide ? " lg:max-w-3xl" : ""}`} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-2">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <button type="button" aria-label="Cerrar" onClick={onClose} className="-mr-1 grid size-8 shrink-0 place-items-center rounded text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">
+            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </div>
         {children}
       </div>
     </div>
   );
 }
+
+// PageHeader gives every page the same title scale, optional subtitle and actions.
+export const PageHeader = ({ title, subtitle, children }: { title: string; subtitle?: string; children?: ReactNode }) => (
+  <div className="flex flex-wrap items-center justify-between gap-2">
+    <div>
+      <h1 className="text-xl font-bold">{title}</h1>
+      {subtitle && <p className="text-sm text-slate-500 dark:text-muted">{subtitle}</p>}
+    </div>
+    {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
+  </div>
+);
+
+// Notice covers the loading and empty states of lists so every page words them the same way.
+export const Notice = ({ loading, children }: { loading?: boolean; children?: ReactNode }) => (
+  <p className="rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-sm text-slate-500 dark:border-border-strong dark:text-muted">{loading ? "Cargando…" : children}</p>
+);
+
+// Tones shared by every status pill (items, jobs, threads, project status).
+export const TONES = {
+  slate: "bg-slate-100 text-slate-700 dark:bg-raised dark:text-text-secondary",
+  sky: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
+  indigo: "bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300",
+  amber: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+  violet: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300",
+  red: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
+  green: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+  blue: "bg-blue-100 text-blue-800 dark:bg-accent-subtle dark:text-accent-text",
+} as const;
+export type Tone = keyof typeof TONES;
+export const StatusPill = ({ tone = "slate", children }: { tone?: keyof typeof TONES; children: ReactNode }) => (
+  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${TONES[tone]}`}>{children}</span>
+);
+
+// uuid falls back to getRandomValues: crypto.randomUUID needs HTTPS or localhost.
+export const uuid = () =>
+  typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (+c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (+c / 4)))).toString(16));
 
 export const csv = (s: string) => s.split(",").map((t) => t.trim()).filter(Boolean);
 export const errMsg = (e: unknown) => (e instanceof Error ? e.message : "");

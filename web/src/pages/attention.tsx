@@ -3,7 +3,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { api } from "../api/client";
-import { Badge, Button, Card, ErrorText, Textarea } from "../components/ui";
+import { ThreadStatus } from "../components/thread-status";
+import { Badge, Button, Card, ErrorText, Notice, PageHeader, StatusPill, Textarea } from "../components/ui";
 import { useProject, useProjectThreads } from "../project";
 
 export const useT3 = (enabled = true) => useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 10_000, enabled });
@@ -11,19 +12,23 @@ export const useBlocked = (enabled = true) => useQuery({ queryKey: ["items", "bl
 
 // useAttention lists the threads waiting for the user and the blocked items,
 // limited to the selected project (threads count when linked to its items).
+export const useValidating = (enabled = true) => useQuery({ queryKey: ["items", "validating"], queryFn: () => api.items.list({ status: "validating" }), enabled });
+
 function useAttention(enabled = true) {
   const project = useProject();
   const t3 = useT3(enabled);
   const blocked = useBlocked(enabled);
+  const validating = useValidating(enabled);
   const linked = useProjectThreads(enabled ? project : "");
   const threads = t3.data?.flatMap((s) => s.threads.filter((t) => t.attention && (!linked.keys || linked.keys.has(`${s.instance_id}:${t.id}`))).map((t) => ({ ...t, status_: s }))) ?? [];
   const stuck = blocked.data?.filter((i) => !project || i.project_id === project) ?? [];
-  return { t3, blocked, threads, stuck, error: t3.error ?? blocked.error ?? linked.error };
+  const toValidate = validating.data?.filter((i) => !project || i.project_id === project) ?? [];
+  return { t3, blocked, validating, threads, stuck, toValidate, error: t3.error ?? blocked.error ?? validating.error ?? linked.error };
 }
 
 export function useAttentionCount(enabled: boolean) {
-  const { threads, stuck } = useAttention(enabled);
-  return threads.length + stuck.length;
+  const { threads, stuck, toValidate } = useAttention(enabled);
+  return threads.length + stuck.length + toValidate.length;
 }
 
 function ThreadReply({ id }: { id: string }) {
@@ -86,31 +91,39 @@ function ThreadReply({ id }: { id: string }) {
 }
 
 export function Attention() {
-  const { t3, blocked, threads, stuck, error } = useAttention();
+  const { t3, blocked, validating, threads, stuck, toValidate, error } = useAttention();
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
   const down = t3.data?.filter((s) => s.state !== "available") ?? [];
   const envName = (id: string) => envs.data?.find((e) => e.id === id)?.name ?? "";
   return (
     <div className="space-y-3">
-      <h1 className="text-xl font-bold">Atención</h1>
+      <PageHeader title="Atención" subtitle="Lo que espera una decisión tuya" />
+      {(t3.isPending || blocked.isPending) && <Notice loading />}
       <ErrorText error={error} />
       {down.map((s) => <p key={s.instance_id} className="text-sm text-slate-500 dark:text-muted">Sin datos de {envName(s.environment_id)}: instancia no disponible.</p>)}
       {threads.map((t) => (
         <Card key={t.id} className="space-y-2">
           <ThreadLink url={t.url} environmentId={t.t3_environment_id} threadId={t.id} className="block space-y-1">
             <div className="font-medium break-words">{t.title}</div>
-            <div className="flex flex-wrap gap-1"><Badge>{envName(t.status_.environment_id)}</Badge><Badge>{t.status}</Badge><Badge>{t.model}</Badge></div>
+            <div className="flex flex-wrap gap-1"><Badge>{envName(t.status_.environment_id)}</Badge><ThreadStatus status={t.status} attention={t.attention} /><Badge>{t.model}</Badge></div>
           </ThreadLink>
           <ThreadReply id={t.id} />
         </Card>
       ))}
+      {toValidate.map((i) => (
+        <Card key={i.id} className="flex flex-wrap items-center gap-2">
+          <StatusPill tone="violet">Validando</StatusPill>
+          {i.project_id ? <Link to="/projects/$id" params={{ id: i.project_id }} className="min-w-0 flex-1 font-medium break-words">{i.title}</Link> : <span className="min-w-0 flex-1 font-medium break-words">{i.title}</span>}
+          {i.progress && <p className="w-full text-xs text-slate-500 dark:text-muted">{i.progress}</p>}
+        </Card>
+      ))}
       {stuck.map((i) => (
-        <Card key={i.id}>
+        <Card key={i.id} className="border-l-4 border-l-red-500 dark:border-l-red-500">
           {i.project_id ? <Link to="/projects/$id" params={{ id: i.project_id }} className="font-medium break-words">{i.title}</Link> : <span className="font-medium break-words">{i.title}</span>}
           <p className="text-xs text-red-600 dark:text-red-400">{i.blocked_reason}</p>
         </Card>
       ))}
-      {t3.isSuccess && blocked.isSuccess && threads.length + stuck.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">Nada pendiente.</p>}
+      {t3.isSuccess && blocked.isSuccess && validating.isSuccess && threads.length + stuck.length + toValidate.length === 0 && <Notice>Nada pendiente. Todo en orden.</Notice>}
     </div>
   );
 }

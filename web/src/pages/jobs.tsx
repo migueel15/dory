@@ -2,19 +2,19 @@ import { ThreadLink } from "../components/thread-link";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { api, type T3Status } from "../api/client";
-import { Badge, Card, ErrorText } from "../components/ui";
+import { Badge, Card, ErrorText, Notice, PageHeader, StatusPill, type Tone } from "../components/ui";
 import { useT3 } from "./attention";
 
 type Thread = T3Status["threads"][number];
 
 // state turns a live thread into what the user cares about. A thread missing
 // from the snapshot is an older settled one, so it counts as finished.
-function state(t: Thread | undefined): { label: string; tone: string } {
-  if (!t) return { label: "Terminado", tone: "bg-slate-100 text-slate-600 dark:bg-raised dark:text-text-secondary" };
-  if (t.attention) return { label: "Requiere input", tone: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" };
-  if (["running", "pending", "starting", "working"].includes(t.status)) return { label: "Trabajando", tone: "bg-blue-100 text-blue-800 dark:bg-accent-subtle dark:text-accent-text" };
-  if (["failed", "error", "interrupted"].includes(t.status)) return { label: "Error", tone: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300" };
-  return { label: "Terminado", tone: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300" };
+function state(t: Thread | undefined): { label: string; tone: Tone } {
+  if (!t) return { label: "Terminado", tone: "slate" };
+  if (t.attention) return { label: "Requiere input", tone: "amber" };
+  if (["running", "pending", "starting", "working"].includes(t.status)) return { label: "Trabajando", tone: "blue" };
+  if (["failed", "error", "interrupted"].includes(t.status)) return { label: "Error", tone: "red" };
+  return { label: "Terminado", tone: "green" };
 }
 
 type Job = { key: string; kind: string; title: string; to?: { owner: string; repo: string; number: number; kind: string }; model: string; effort: string; created: string; thread?: Thread; host: string };
@@ -40,19 +40,20 @@ export function Jobs() {
   ].sort((a, b) => b.created.localeCompare(a.created));
   return (
     <div className="space-y-3">
-      <h1 className="text-lg font-semibold">Trabajos</h1>
+      <PageHeader title="Trabajos" subtitle="Hilos lanzados desde Dory y su estado" />
       <ErrorText error={t3.error ?? issues.error ?? items.error} />
-      {jobs.length === 0 && issues.isSuccess && <p className="text-sm text-slate-500">Aún no se ha lanzado ningún hilo desde Dory.</p>}
+      {(t3.isPending || issues.isPending) && <Notice loading />}
+      {jobs.length === 0 && issues.isSuccess && <Notice>Aún no se ha lanzado ningún hilo desde Dory.</Notice>}
       {jobs.map((j) => {
         const s = state(j.thread);
         return (
           <Card key={j.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3 text-sm">
-            <span className={`rounded px-2 py-0.5 text-xs font-medium ${s.tone}`}>{s.label}</span>
+            <StatusPill tone={s.tone}>{s.label}</StatusPill>
             <Badge>{j.kind}</Badge>
             {j.to ? <Link to="/github/$owner/$repo/$kind/$number" params={{ owner: j.to.owner, repo: j.to.repo, kind: j.to.kind, number: String(j.to.number) }} className="min-w-0 flex-1 truncate font-medium hover:underline">{j.title}</Link>
               : <span className="min-w-0 flex-1 truncate font-medium">{j.title}</span>}
             <span className="text-xs text-slate-500 dark:text-muted">{[j.model, j.effort].filter(Boolean).join(" · ")}</span>
-            <span className="text-xs text-slate-400">{new Date(j.created).toLocaleString()}</span>
+            <span className="text-xs text-slate-500 dark:text-muted">{new Date(j.created).toLocaleString()}</span>
             {j.thread?.url && <ThreadLink url={j.thread.url} environmentId={j.thread.t3_environment_id} threadId={j.thread.id} className="text-xs text-blue-600 hover:underline dark:text-accent-text">Abrir en T3</ThreadLink>}
           </Card>
         );
