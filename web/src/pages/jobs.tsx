@@ -35,7 +35,7 @@ export function Jobs() {
     }),
     ...(items.data ?? []).map((j) => {
       const l = live.get(`${j.instance_id}:${j.thread_id}`);
-      return { key: j.id, kind: j.role === "triage" ? "Analizar item" : j.role === "review" ? "Revisión" : "Implementar item", title: l?.thread.title ?? j.thread_id, model: l?.thread.model ?? "", effort: "", created: j.created_at, thread: l?.thread, host: l?.host ?? host(j.instance_id) };
+      return { key: j.id, kind: j.role === "triage" ? "Analizar item" : j.role === "review" ? "Revisión" : j.role === "replan" ? "Revisar plan" : "Implementar item", title: l?.thread.title ?? j.thread_id, model: l?.thread.model ?? "", effort: "", created: j.created_at, thread: l?.thread, host: l?.host ?? host(j.instance_id) };
     }),
   ].sort((a, b) => b.created.localeCompare(a.created));
   return (

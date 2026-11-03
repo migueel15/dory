@@ -3098,6 +3098,7 @@ components:
           enum:
             - "triage"
             - "implementation"
+            - "replan"
             - "review"
     ItemThreadInput:
       type: "object"
@@ -3123,6 +3124,7 @@ components:
           enum:
             - "triage"
             - "implementation"
+            - "replan"
             - "review"
     Feature:
       type: "object"

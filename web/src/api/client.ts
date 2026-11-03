@@ -62,7 +62,7 @@ export type T3Catalog = {
 export type T3CatalogModel = { slug: string; name: string; effort?: { id: string; values: string[]; default: string } };
 export type IssueDefineInput = { instance_id: string; project_id: string; provider: string; model: string; effort_option?: string; effort?: string };
 export type IssueThread = S["IssueThread"];
-export type T3LaunchInput = { instance_id: string; project_id: string; provider: string; model: string; role: "triage" | "implementation"; worktree: boolean; base_branch?: string; effort_option?: string; effort?: string };
+export type T3LaunchInput = { instance_id: string; project_id: string; provider: string; model: string; role: "triage" | "implementation" | "replan"; feedback?: string; worktree: boolean; base_branch?: string; effort_option?: string; effort?: string };
 
 export const api = {
   itemThreads: resource<S["ItemThread"], S["ItemThreadInput"]>("/item-threads"),
