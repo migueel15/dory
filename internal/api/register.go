@@ -66,6 +66,14 @@ func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *
 		}
 		writeJSON(w, http.StatusOK, page)
 	})
+	mux.HandleFunc("GET /api/github/repos/{owner}/{repo}/branches", func(w http.ResponseWriter, r *http.Request) {
+		out, err := gh.Branches(r.Context(), r.PathValue("owner")+"/"+r.PathValue("repo"))
+		if err != nil {
+			writeGithubError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	mux.HandleFunc("GET /api/github/repos/{owner}/{repo}/{kind}/{number}", func(w http.ResponseWriter, r *http.Request) {
 		number, err := strconv.Atoi(r.PathValue("number"))
 		if err != nil {

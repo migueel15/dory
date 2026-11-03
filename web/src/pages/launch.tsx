@@ -23,11 +23,20 @@ export function LaunchDialog({ items, role, onClose }: { items: Item[]; role: "t
   const model = catalog.data?.providers.find((p) => p.instance_id === provider0)?.models.find((m) => m.slug === model0);
   const [effort, setEffort] = useState("");
   const effortValue = effort || (model?.effort ? savedEffort(model.slug, model.effort.values) || model.effort.default : "");
-  const projectId = project || catalog.data?.projects[0]?.id || "";
+  // The item's Dory project gives the repository, which picks the T3 project and the branches.
+  const repos = useQuery({ queryKey: ["repositories", items[0]?.project_id], queryFn: () => api.repositories.list({ project_id: items[0]?.project_id }), enabled: !!items[0]?.project_id });
+  const repo = repos.data?.[0];
+  const repoPath = repo?.remote_url.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/)?.[1] ?? "";
+  const repoName = repoPath.split("/")[1]?.toLowerCase() ?? "";
+  const matched = repoName ? catalog.data?.projects.find((p) => p.root.toLowerCase().replace(/\/+$/, "").split("/").pop() === repoName || p.title.toLowerCase() === repoName) : undefined;
+  const projectId = project || matched?.id || catalog.data?.projects[0]?.id || "";
+  const branches = useQuery({ queryKey: ["branches", repoPath], queryFn: () => api.branches(repoPath), enabled: worktree && !!repoPath });
+  const baseValue = base || repo?.default_branch || "";
+  const branchOptions = [...new Set([repo?.default_branch, ...(branches.data ?? [])].filter((b): b is string => !!b))];
   const launch = useMutation({
     mutationFn: async () => {
       const [provider, slug] = selected.split("|");
-      for (const item of items) await api.t3Launch(item.id, { instance_id: instanceId, project_id: projectId, provider, model: slug, role, worktree, base_branch: base, effort_option: model?.effort?.id, effort: model?.effort ? effortValue : undefined });
+      for (const item of items) await api.t3Launch(item.id, { instance_id: instanceId, project_id: projectId, provider, model: slug, role, worktree, base_branch: baseValue, effort_option: model?.effort?.id, effort: model?.effort ? effortValue : undefined });
     },
     onSuccess: () => {
       if (model?.effort) saveEffort(model.slug, effortValue);
@@ -55,7 +64,8 @@ export function LaunchDialog({ items, role, onClose }: { items: Item[]; role: "t
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={worktree} onChange={(e) => setWorktree(e.target.checked)} />Crear un worktree nuevo</label>
       {worktree && (
         <Label text="Rama base">
-          <input value={base} onChange={(e) => setBase(e.target.value)} placeholder="Rama por defecto del repositorio" className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-sm dark:border-slate-700" />
+          {branchOptions.length ? <Select value={baseValue} onChange={setBase} options={branchOptions.map((b) => ({ value: b, label: b === repo?.default_branch ? `${b} (por defecto)` : b }))} />
+            : <input value={base} onChange={(e) => setBase(e.target.value)} placeholder="Rama por defecto del repositorio" className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-sm dark:border-slate-700" />}
         </Label>
       )}
       <p className="text-xs text-slate-500 dark:text-slate-400">El agente se lanza con acceso completo.</p>
