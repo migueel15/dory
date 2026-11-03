@@ -43,6 +43,8 @@ type Thread struct {
 	UpdatedAt string `json:"updated_at"`
 	Attention bool   `json:"attention"`
 	URL       string `json:"url"`
+	// EnvironmentID is the T3 environment, used for app deep links.
+	EnvironmentID string `json:"t3_environment_id"`
 }
 
 type wireThread struct {

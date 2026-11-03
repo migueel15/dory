@@ -2658,9 +2658,11 @@ components:
           description: "Milestone node id for set_milestone; empty removes the milestone."
     T3Thread:
       type: "object"
-      required: ["id", "project_id", "title", "status", "model", "updated_at", "attention", "url"]
+      required: ["id", "project_id", "title", "status", "model", "updated_at", "attention", "url", "t3_environment_id"]
       properties:
         id:
+          type: "string"
+        t3_environment_id:
           type: "string"
         project_id:
           type: "string"

@@ -1,3 +1,4 @@
+import { ThreadLink } from "../components/thread-link";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -66,7 +67,7 @@ export function Home() {
       <QuickCapture />
       <div className="grid gap-3 lg:grid-cols-2">
         <Block title={`Atención (${needing.length + stuck.length})`} to="/attention" sources={[{ name: "T3", error: t3.error }, { name: "items bloqueados", error: blocked.error }, ...projectSources]} pending={(t3.isPending && blocked.isPending) || projectPending} empty={needing.length + stuck.length === 0}>
-          {needing.slice(0, LIMIT).map((t) => <a key={`${t.instance_id}:${t.id}`} href={t.url} target="_blank" rel="noreferrer" className="block text-sm break-words">{t.title} <Badge>{t.status}</Badge></a>)}
+          {needing.slice(0, LIMIT).map((t) => <ThreadLink key={`${t.instance_id}:${t.id}`} url={t.url} environmentId={t.t3_environment_id} threadId={t.id} className="block text-sm break-words">{t.title} <Badge>{t.status}</Badge></ThreadLink>)}
           {stuck.slice(0, LIMIT).map((i) => (
             <div key={i.id} className="text-sm break-words">
               {i.title}
@@ -76,10 +77,10 @@ export function Home() {
         </Block>
         <Block title={`Agentes activos (${threads.length})`} to="/attention" sources={[{ name: "T3", error: t3.error }, ...projectSources]} pending={t3.isPending || projectPending} empty={threads.length === 0}>
           {threads.slice(0, LIMIT).map((t) => (
-            <a key={`${t.instance_id}:${t.id}`} href={t.url} target="_blank" rel="noreferrer" className="block space-y-1 text-sm">
+            <ThreadLink key={`${t.instance_id}:${t.id}`} url={t.url} environmentId={t.t3_environment_id} threadId={t.id} className="block space-y-1 text-sm">
               <div className="break-words">{t.title}</div>
               <div className="flex flex-wrap gap-1"><Badge>{envName(t.environment_id, "Entorno")}</Badge><Badge>{t.status}</Badge><Badge>{t.model}</Badge></div>
-            </a>
+            </ThreadLink>
           ))}
         </Block>
         <Block title="Máquinas" to="/environments" sources={[{ name: "T3", error: t3.error }, { name: "entornos", error: envs.error }]} pending={t3.isPending} empty={(t3.data ?? []).length === 0}>

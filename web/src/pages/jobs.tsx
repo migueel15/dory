@@ -1,3 +1,4 @@
+import { ThreadLink } from "../components/thread-link";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { api, type T3Status } from "../api/client";
@@ -52,7 +53,7 @@ export function Jobs() {
               : <span className="min-w-0 flex-1 truncate font-medium">{j.title}</span>}
             <span className="text-xs text-slate-500 dark:text-slate-400">{[j.model, j.effort].filter(Boolean).join(" · ")}</span>
             <span className="text-xs text-slate-400">{new Date(j.created).toLocaleString()}</span>
-            {j.thread?.url && <a href={j.thread.url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline dark:text-blue-400">Abrir en T3</a>}
+            {j.thread?.url && <ThreadLink url={j.thread.url} environmentId={j.thread.t3_environment_id} threadId={j.thread.id} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Abrir en T3</ThreadLink>}
           </Card>
         );
       })}

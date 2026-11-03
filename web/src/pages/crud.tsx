@@ -1,3 +1,4 @@
+import { ThreadLink } from "../components/thread-link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -109,7 +110,7 @@ function InstanceStatus({ status }: { status?: T3Status }) {
       </div>
       {status.threads.filter((t) => t.attention || t.status === "running").map((t) => (
         <div key={t.id} className="flex items-start justify-between gap-2">
-          <a className="min-w-0 break-words underline" href={t.url} target="_blank" rel="noreferrer">{t.title}</a>
+          <ThreadLink className="min-w-0 break-words underline" url={t.url} environmentId={t.t3_environment_id} threadId={t.id}>{t.title}</ThreadLink>
           <span className={`shrink-0 text-xs ${t.attention ? "text-red-600 dark:text-red-400" : "text-slate-500 dark:text-slate-400"}`}>{t.attention ? "Te necesita" : t.model}</span>
         </div>
       ))}
