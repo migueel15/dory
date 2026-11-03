@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/migueel15/dory/internal/service"
 	"github.com/migueel15/dory/internal/t3"
@@ -28,7 +29,7 @@ Si tienes dudas que cambien el resultado, guarda solo lo que esté claro, pásal
 Termina con un resumen breve de lo que has dejado en Dory.`
 
 // launchPrompt gives the agent the item and what it may do with it.
-func launchPrompt(item service.Item, role string, worktree bool) string {
+func launchPrompt(item service.Item, role string, worktree bool, base string) string {
 	task := fmt.Sprintf("Item de Dory %s\nTítulo: %s\nTexto original: %s\nDescripción:\n%s\n\n", item.ID, item.Title, item.RawText, item.BodyMd)
 	if role == roleTriage {
 		return task + triagePrompt
@@ -36,7 +37,11 @@ func launchPrompt(item service.Item, role string, worktree bool) string {
 	task += "Implementa este item siguiendo $dory-workflow; ya está en in_progress y vinculado a este hilo."
 	if worktree {
 		// Dory's token cannot create worktrees (no source-control:write), so the agent does.
-		task += fmt.Sprintf(" Antes de tocar código crea con git un worktree nuevo desde main, en la rama dory/%s, y trabaja solo allí.", item.ID[:8])
+		from := "la rama por defecto del repositorio (origin/HEAD)"
+		if base != "" {
+			from = "la rama " + base
+		}
+		task += fmt.Sprintf(" Antes de tocar código actualiza el remoto y crea con git un worktree nuevo desde %s, en la rama dory/%s, y trabaja solo allí.", from, item.ID[:8])
 	}
 	return task
 }
@@ -63,6 +68,10 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 			Model      string `json:"model"`
 			Role       string `json:"role"`
 			Worktree   bool   `json:"worktree"`
+			BaseBranch string `json:"base_branch"`
+			// EffortOption and Effort set the reasoning effort; empty keeps the default.
+			EffortOption string `json:"effort_option"`
+			Effort       string `json:"effort"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.InstanceID == "" || body.ProjectID == "" || body.Provider == "" || body.Model == "" {
 			writeError(w, http.StatusBadRequest, "invalid_argument", "instance_id, project_id, provider and model are required")
@@ -85,8 +94,8 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 			return
 		}
 		threadID, err := c.Launch(r.Context(), t3.LaunchInput{
-			ProjectID: body.ProjectID, Title: item.Title, Provider: body.Provider, Model: body.Model,
-			Prompt: launchPrompt(item, body.Role, body.Worktree),
+			ProjectID: body.ProjectID, Title: item.Title, Provider: body.Provider, Model: body.Model, EffortOption: body.EffortOption, Effort: body.Effort,
+			Prompt: launchPrompt(item, body.Role, body.Worktree, strings.TrimSpace(body.BaseBranch)),
 		})
 		if threadID == "" {
 			writeT3Error(w, err)
@@ -107,7 +116,7 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 				logError(err)
 			}
 		}
-		audit(r, svc, threadID, map[string]any{"operation": "t3.launch", "item_id": item.ID, "role": body.Role, "model": body.Model})
+		audit(r, svc, threadID, map[string]any{"operation": "t3.launch", "item_id": item.ID, "role": body.Role, "model": body.Model, "effort": body.Effort})
 		writeJSON(w, http.StatusCreated, map[string]string{"thread_id": threadID})
 	})
 }
