@@ -1,3 +1,4 @@
+import { ThreadStatus } from "../components/thread-status";
 import { ThreadLink } from "../components/thread-link";
 import { LaunchDialog } from "./launch";
 import { useState } from "react";
@@ -299,8 +300,9 @@ function ThreadBadges({ itemId }: { itemId: string }) {
     return thread ? [thread] : [];
   }) ?? [];
   return threads.map((t) => (
-    <ThreadLink key={t.id} url={t.url} environmentId={t.t3_environment_id} threadId={t.id} title={t.title} onPointerDown={(e) => e.stopPropagation()} className={`mr-1 inline-block text-xs underline ${t.attention ? "text-red-600 dark:text-red-400" : "text-slate-500 dark:text-muted"}`}>
-      {t.attention ? "Te necesita" : `${t.model} · ${t.status}`}
+    <ThreadLink key={t.id} url={t.url} environmentId={t.t3_environment_id} threadId={t.id} title={t.title} onPointerDown={(e) => e.stopPropagation()} className="mr-1 inline-flex items-center gap-1 text-xs text-slate-500 underline dark:text-muted">
+      <ThreadStatus status={t.status} attention={t.attention} />
+      <span>{t.model}</span>
     </ThreadLink>
   ));
 }
