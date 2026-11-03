@@ -66,8 +66,8 @@ type wireThread struct {
 	ModelSelection       struct {
 		Model   string `json:"model"`
 		Options []struct {
-			ID    string `json:"id"`
-			Value string `json:"value"`
+			ID    string          `json:"id"`
+			Value json.RawMessage `json:"value"`
 		} `json:"options"`
 	} `json:"modelSelection"`
 }
@@ -75,8 +75,9 @@ type wireThread struct {
 func (w wireThread) effort() string {
 	for _, id := range effortOptionIDs {
 		for _, option := range w.ModelSelection.Options {
-			if option.ID == id && option.Value != "" {
-				return option.Value
+			var value string
+			if option.ID == id && json.Unmarshal(option.Value, &value) == nil && value != "" {
+				return value
 			}
 		}
 	}

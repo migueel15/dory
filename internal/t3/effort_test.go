@@ -19,3 +19,14 @@ func TestEffortOf(t *testing.T) {
 		t.Fatal("expected no effort without descriptors")
 	}
 }
+
+func TestThreadEffortIgnoresBoolOptions(t *testing.T) {
+	var w wireThread
+	raw := `{"modelSelection":{"model":"m","options":[{"id":"fastMode","value":true},{"id":"effort","value":"high"}]}}`
+	if err := json.Unmarshal([]byte(raw), &w); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.effort(); got != "high" {
+		t.Fatalf("effort = %q", got)
+	}
+}
