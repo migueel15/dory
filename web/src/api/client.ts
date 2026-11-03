@@ -80,6 +80,7 @@ export const api = {
   t3Catalog: (id: string) => req<T3Catalog>("GET", `/t3/instances/${id}/catalog`),
   t3Launch: (itemId: string, body: T3LaunchInput) => req<{ thread_id: string }>("POST", `/items/${itemId}/launch`, body),
   issueDefine: (repo: string, number: number, body: IssueDefineInput) => req<{ thread_id: string }>("POST", `/github/repos/${repo}/issues/${number}/define`, body),
+  branches: (repo: string) => req<string[]>("GET", `/github/repos/${repo}/branches`),
   issueThreads: () => req<IssueThread[]>("GET", "/issue-threads?limit=200"),
   t3Status: () => req<T3Status[]>("GET", "/t3/status"),
   t3Usage: () => req<T3InstanceUsage[]>("GET", "/t3/usage"),
