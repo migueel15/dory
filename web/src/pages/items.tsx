@@ -1,7 +1,8 @@
 import { ThreadStatus } from "../components/thread-status";
 import { ThreadLink } from "../components/thread-link";
 import { LaunchDialog } from "./launch";
-import { useState } from "react";
+import { ContextMenu, type ContextAction } from "../components/context-menu";
+import { useCallback, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DndContext, type DragEndEvent, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
@@ -14,7 +15,7 @@ const STATUSES: ItemStatus[] = ["inbox", "triaged", "ready", "in_progress", "val
 const PAGED: ItemStatus[] = ["done", "cancelled"];
 const PAGE = 10;
 
-export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?: string | null; onClose: () => void }) {
+export function ItemForm({ item, projectId, onClose, initialEdit = false }: { initialEdit?: boolean; item?: Item; projectId?: string | null; onClose: () => void }) {
   const qc = useQueryClient();
   const [launch, setLaunch] = useState<"triage" | "implementation" | null>(null);
   const [title, setTitle] = useState(item?.title ?? "");
@@ -27,7 +28,7 @@ export function ItemForm({ item, projectId, onClose }: { item?: Item; projectId?
   const [pid, setPid] = useState(item?.project_id ?? projectId ?? "");
   const [fid, setFid] = useState(item?.feature_id ?? "");
   const [reason, setReason] = useState(item?.blocked_reason ?? "");
-  const [editMode, setEditMode] = useState(!item);
+  const [editMode, setEditMode] = useState(!item || initialEdit);
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const features = useQuery({ queryKey: ["features", pid], queryFn: () => api.features.list({ project_id: pid }), enabled: !!pid });
   const save = useMutation({
@@ -208,13 +209,13 @@ export function Inbox() {
       <ErrorText error={add.error ?? items.error} />
       <div className="space-y-2">
         {items.data?.map((i) => (
-          <Card key={i.id} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-raised">
+          <ItemActions key={i.id} item={i}><Card className="cursor-pointer hover:bg-slate-50 dark:hover:bg-raised">
             <div onClick={() => setEditing(i)}>
               <div className="flex flex-wrap items-center gap-2"><span className="font-medium break-words">{i.title}</span>{i.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div>
               {i.progress && <p className="text-xs text-slate-500 dark:text-muted">{i.progress}</p>}
               {i.body_md && <Md>{i.body_md}</Md>}
             </div>
-          </Card>
+          </Card></ItemActions>
         ))}
         {items.data?.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">Inbox vacío.</p>}
       </div>
@@ -238,7 +239,7 @@ function Draggable({ item, onOpen }: { item: Item; onOpen: () => void }) {
   const style = transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined;
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes} className={isDragging ? "relative z-10 opacity-80" : ""}>
-      <Card className="cursor-grab"><div onDoubleClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><span className="font-medium break-words">{item.title}</span><button className="-m-2 size-11 shrink-0 text-slate-500 dark:text-muted sm:hidden" aria-label="Editar" onPointerDown={(e) => e.stopPropagation()} onClick={onOpen}>✎</button></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}<CardLinks item={item} />{item.status === "blocked" && <p className="text-xs text-red-600 dark:text-red-400">{item.blocked_reason}</p>}</div></Card>
+      <ItemActions item={item}><Card className="cursor-grab"><div onDoubleClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><span className="font-medium break-words">{item.title}</span><button className="-m-2 size-11 shrink-0 text-slate-500 dark:text-muted sm:hidden" aria-label="Editar" onPointerDown={(e) => e.stopPropagation()} onClick={onOpen}>✎</button></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}<CardLinks item={item} />{item.status === "blocked" && <p className="text-xs text-red-600 dark:text-red-400">{item.blocked_reason}</p>}</div></Card></ItemActions>
     </div>
   );
 }
@@ -351,4 +352,43 @@ function CardLinks({ item }: { item: Item }) {
       )}
     </div>
   );
+}
+
+// Shared by kanban cards and inbox list rows; only these surfaces suppress the native menu.
+function ItemActions({ item, children }: { item: Item; children: React.ReactNode }) {
+  const qc = useQueryClient();
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const [detail, setDetail] = useState<"view" | "edit" | null>(null);
+  const [launch, setLaunch] = useState<"triage" | "implementation" | null>(null);
+  const close = useCallback(() => setPosition(null), []);
+  const threads = useItemThreads(item.id);
+  const thread = threads.reduce<(typeof threads)[number] | undefined>((a, b) => !a || b.updated_at >= a.updated_at ? b : a, undefined);
+  const pull = [...item.refs].reverse().map((r) => /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)$/.exec(r)).find(Boolean);
+  const change = useMutation({
+    mutationFn: async (status: ItemStatus) => {
+      const reason = status === "blocked" ? window.prompt("Motivo del bloqueo")?.trim() : "";
+      if (status === "blocked" && !reason) return;
+      await api.items.update(item.id, itemInput(item, { status, blocked_reason: reason ?? "" }));
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["items"] }),
+  });
+  const archive = useMutation({ mutationFn: () => api.items.archive(item.id), onSuccess: () => qc.invalidateQueries({ queryKey: ["items"] }) });
+  const linkClass = "block rounded px-3 py-2 hover:bg-slate-100 focus:bg-slate-100 dark:hover:bg-raised dark:focus:bg-raised";
+  const actions: ContextAction[] = [
+    { label: "Abrir detalle", run: () => setDetail("view") },
+    { label: "Editar", run: () => setDetail("edit") },
+    ...(["inbox", "triaged"].includes(item.status) ? [{ label: "Analizar con un agente", run: () => setLaunch("triage") }] : []),
+    ...(item.status === "ready" ? [{ label: "Enviar a implementar", run: () => setLaunch("implementation") }] : []),
+    { label: "Mover a estado…", children: STATUSES.filter((s) => s !== item.status).map((s) => ({ label: STATUS_INFO[s].label, run: () => change.mutate(s) })) },
+    ...(thread ? [{ label: "Abrir último hilo", content: <ThreadLink role="menuitem" className={linkClass} url={thread.url} environmentId={thread.t3_environment_id} threadId={thread.id}>Abrir último hilo</ThreadLink> }] : []),
+    ...(pull ? [{ label: "Abrir última PR", content: <Link role="menuitem" className={linkClass} to="/github/$owner/$repo/$kind/$number" params={{ owner: pull[1], repo: pull[2], kind: "pulls", number: pull[3] }}>Abrir última PR</Link> }] : []),
+    { label: "Archivar", run: () => { if (window.confirm(`¿Archivar «${item.title}»?`)) archive.mutate(); } },
+  ];
+  return <div onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setPosition({ x: e.clientX, y: e.clientY }); }}>
+    {children}
+    <ErrorText error={change.error ?? archive.error} />
+    {position && <ContextMenu {...position} actions={actions} onClose={close} />}
+    {detail && <ItemForm item={item} initialEdit={detail === "edit"} onClose={() => setDetail(null)} />}
+    {launch && <LaunchDialog items={[item]} role={launch} onClose={() => setLaunch(null)} />}
+  </div>;
 }
