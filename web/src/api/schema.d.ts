@@ -871,6 +871,16 @@ export interface components {
             candidates: components["schemas"]["GithubUser"][];
             /** @description Latest issues and pull requests of the repository, to reference with #. */
             links: components["schemas"]["GithubLink"][];
+            /** @description Parent issue of an issue, if any. */
+            parent: components["schemas"]["GithubSubIssue"] | null;
+            /** @description Sub-issues of an issue; empty for pull requests. */
+            sub_issues: components["schemas"]["GithubSubIssue"][];
+        };
+        GithubSubIssue: {
+            repo: string;
+            number: number;
+            title: string;
+            state: string;
         };
         GithubLink: {
             number: number;

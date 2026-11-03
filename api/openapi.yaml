@@ -2487,7 +2487,7 @@ components:
           type: "string"
     GithubDetail:
       type: "object"
-      required: ["kind", "body", "issue", "pull", "timeline", "threads", "viewer", "assignees", "candidates", "links"]
+      required: ["kind", "body", "issue", "pull", "timeline", "threads", "viewer", "assignees", "candidates", "links", "parent", "sub_issues"]
       properties:
         kind:
           type: "string"
@@ -2526,6 +2526,28 @@ components:
           description: "Latest issues and pull requests of the repository, to reference with #."
           items:
             $ref: "#/components/schemas/GithubLink"
+        parent:
+          nullable: true
+          description: "Parent issue of an issue, if any."
+          allOf:
+            - $ref: "#/components/schemas/GithubSubIssue"
+        sub_issues:
+          type: "array"
+          description: "Sub-issues of an issue; empty for pull requests."
+          items:
+            $ref: "#/components/schemas/GithubSubIssue"
+    GithubSubIssue:
+      type: "object"
+      required: ["repo", "number", "title", "state"]
+      properties:
+        repo:
+          type: "string"
+        number:
+          type: "integer"
+        title:
+          type: "string"
+        state:
+          type: "string"
     GithubLink:
       type: "object"
       required: ["number", "title", "state", "pull"]

@@ -41,6 +41,32 @@ type Detail struct {
 	// Links are the repository's latest issues and pull requests, to
 	// reference them with "#" while writing.
 	Links []Link `json:"links"`
+	// Parent and SubIssues relate an issue to its parent and child issues.
+	Parent    *SubIssue  `json:"parent"`
+	SubIssues []SubIssue `json:"sub_issues"`
+}
+
+// SubIssue is an issue linked as parent or child, possibly in another repository.
+type SubIssue struct {
+	Repo   string `json:"repo"`
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	State  string `json:"state"`
+}
+
+const subIssueFields = `number title state repository { nameWithOwner }`
+
+type wireSubIssue struct {
+	Number     int    `json:"number"`
+	Title      string `json:"title"`
+	State      string `json:"state"`
+	Repository struct {
+		Name string `json:"nameWithOwner"`
+	} `json:"repository"`
+}
+
+func (w wireSubIssue) sub() SubIssue {
+	return SubIssue{Repo: w.Repository.Name, Number: w.Number, Title: w.Title, State: w.State}
 }
 
 // Link is an issue or pull request that a message can reference.
@@ -190,6 +216,7 @@ const issueDetailQuery = `query($owner: String!, $name: String!, $number: Int!) 
   assignableUsers(first: 100) { nodes { id login } } ` + linksFields + ` issue(number: $number) {
   id number title url state stateReason updatedAt body author { login } labels(first: 10) { nodes { name } } milestone { title } ` + metaFields + `
   assignees(first: 20) { nodes { id login } }
+  parent { ` + subIssueFields + ` } subIssues(first: 50) { nodes { ` + subIssueFields + ` } }
   closedByPullRequestsReferences(first: 10, includeClosedPrs: true) { nodes { number title } }
   timelineItems(last: 100, itemTypes: [ISSUE_COMMENT, CLOSED_EVENT, REOPENED_EVENT, LABELED_EVENT, ASSIGNED_EVENT, CROSS_REFERENCED_EVENT]) { nodes { ` + issueTimelineFields + ` } }
 } } }`
@@ -306,7 +333,7 @@ func (c *Client) Detail(ctx context.Context, repo, kind string, number int) (*De
 		p := w.pull(repo, project)
 		c.fillRequired(ctx, &p)
 		return &Detail{Kind: kind, Body: w.Body, Pull: &p, Timeline: timeline(w.Timeline), Threads: threads(w.Threads.Nodes),
-			Viewer: data.Viewer.Login, Assignees: nonNil(w.Assignees.Nodes), Candidates: nonNil(data.Repository.Assignable.Nodes), Links: data.Repository.links()}, nil
+			Viewer: data.Viewer.Login, Assignees: nonNil(w.Assignees.Nodes), Candidates: nonNil(data.Repository.Assignable.Nodes), Links: data.Repository.links(), SubIssues: []SubIssue{}}, nil
 	case "issues":
 		var data struct {
 			Viewer     login `json:"viewer"`
@@ -318,6 +345,10 @@ func (c *Client) Detail(ctx context.Context, repo, kind string, number int) (*De
 					Assignees struct{ Nodes []User } `json:"assignees"`
 					Body      string                 `json:"body"`
 					Timeline  wireNodes              `json:"timelineItems"`
+					Parent    *wireSubIssue          `json:"parent"`
+					SubIssues struct {
+						Nodes []wireSubIssue `json:"nodes"`
+					} `json:"subIssues"`
 				} `json:"issue"`
 			} `json:"repository"`
 		}
@@ -329,8 +360,17 @@ func (c *Client) Detail(ctx context.Context, repo, kind string, number int) (*De
 			return nil, ErrUnknownRepo
 		}
 		i := w.issue(repo, project)
-		return &Detail{Kind: kind, Body: w.Body, Issue: &i, Timeline: timeline(w.Timeline), Threads: []Thread{},
-			Viewer: data.Viewer.Login, Assignees: nonNil(w.Assignees.Nodes), Candidates: nonNil(data.Repository.Assignable.Nodes), Links: data.Repository.links()}, nil
+		d := &Detail{Kind: kind, Body: w.Body, Issue: &i, Timeline: timeline(w.Timeline), Threads: []Thread{},
+			Viewer: data.Viewer.Login, Assignees: nonNil(w.Assignees.Nodes), Candidates: nonNil(data.Repository.Assignable.Nodes), Links: data.Repository.links(),
+			SubIssues: make([]SubIssue, 0, len(w.SubIssues.Nodes))}
+		if w.Parent != nil {
+			p := w.Parent.sub()
+			d.Parent = &p
+		}
+		for _, n := range w.SubIssues.Nodes {
+			d.SubIssues = append(d.SubIssues, n.sub())
+		}
+		return d, nil
 	}
 	return nil, ErrInvalid
 }

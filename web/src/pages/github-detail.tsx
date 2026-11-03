@@ -230,6 +230,7 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
           <span>{e.repo}#{e.number}</span>
           {d.pull && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono dark:bg-slate-800">{d.pull.head_ref} → {d.pull.base_ref}</span>}
           {e.labels.map((l) => <Badge key={l}>{l}</Badge>)}
+          {d.parent && <span className="inline-flex items-center gap-1">Padre: <SubLink s={d.parent} here={e.repo} /></span>}
           {refs.map((r) => <Link key={r.number} className="underline" to="/github/$owner/$repo/$kind/$number" params={{ owner, repo, kind: d.pull ? "issues" : "pulls", number: String(r.number) }}>#{r.number} {r.title}</Link>)}
         </div>
       </div>
@@ -249,11 +250,28 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
           {d.issue.created_at && <span>Abierta {new Date(d.issue.created_at).toLocaleDateString()}</span>}
         </div>
       )}
+      {d.sub_issues.length > 0 && (
+        <div className="border-t border-slate-100 px-4 py-3 text-sm dark:border-slate-800">
+          <div className="mb-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">Sub-issues · {d.sub_issues.filter((s) => s.state !== "OPEN").length}/{d.sub_issues.length} cerradas</div>
+          <ul className="space-y-1">{d.sub_issues.map((s) => <li key={`${s.repo}#${s.number}`}><SubLink s={s} here={e.repo} dot /></li>)}</ul>
+        </div>
+      )}
       {draft
         ? <div className="border-t border-slate-100 px-4 py-3 dark:border-slate-800"><MentionArea aria-label="Descripción" value={draft.body} onValue={(body) => setDraft({ ...draft, body })} people={people} links={d.links} rows={12} className={`${box} font-mono text-sm`} /></div>
         : d.body && <div className="max-h-[60vh] overflow-auto border-t border-slate-100 px-4 py-3 dark:border-slate-800"><RefMd onToggle={busy ? undefined : (line) => act(d.pull ? "edit_pull" : "edit_issue", { title: e.title, body: toggleTask(d.body, line) })}>{d.body}</RefMd></div>}
       <div className="flex flex-wrap items-center gap-2 rounded-b-lg border-t border-slate-100 bg-slate-50 px-4 py-2.5 dark:border-slate-800 dark:bg-slate-950/40">{actions}</div>
     </Card>
+  );
+}
+
+// SubLink opens a parent or sub-issue inside Dory, even in another repository.
+function SubLink({ s, here, dot }: { s: GithubDetail["sub_issues"][number]; here: string; dot?: boolean }) {
+  const [owner, repo] = s.repo.split("/");
+  return (
+    <Link className="inline-flex items-center gap-1.5 underline" to="/github/$owner/$repo/$kind/$number" params={{ owner, repo, kind: "issues", number: String(s.number) }}>
+      {dot && <span className={`size-2 shrink-0 rounded-full ${stateColor[s.state] ?? "bg-slate-500"}`} />}
+      {s.repo === here ? "" : s.repo}#{s.number} {s.title}
+    </Link>
   );
 }
 
