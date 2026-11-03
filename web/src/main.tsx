@@ -10,7 +10,8 @@ import { Environments, Memories, memorySearch } from "./pages/crud";
 import { CommandPalette } from "./components/commands";
 import { GithubView } from "./pages/github-detail";
 import { Github } from "./pages/github";
-import { Attention, useAttentionCount } from "./pages/attention";
+import { Notifications, NotificationItem } from "./components/notifications";
+import { Attention } from "./pages/attention";
 import { Jobs } from "./pages/jobs";
 import { Home } from "./pages/home";
 import { Usage } from "./pages/usage";
@@ -84,7 +85,7 @@ function Layout() {
   const project = useProject();
   // The project board needs the full width: on /projects/$id, or on /projects with a project selected.
   const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") || (l.pathname === "/projects" && !!project) });
-  const attention = useAttentionCount(!!me.data);
+
   const path = useLocation({ select: (l) => l.pathname });
   const [menu, setMenu] = useState(false);
   useEffect(() => setMenu(false), [path]);
@@ -95,7 +96,7 @@ function Layout() {
     <>
       <Link to="/" activeOptions={{ exact: true }} className={link}>Inicio</Link>
       <Link to="/inbox" className={link}>Inbox</Link>
-      <Link to="/attention" className={link}>Atención{attention > 0 ? ` (${attention})` : ""}</Link>
+      <Link to="/attention" className={link}>Atención</Link>
       <Link to="/jobs" className={link}>Trabajos</Link>
       <Link to="/usage" className={link}>Uso</Link>
       <Link to="/github" className={link}>GitHub</Link>
@@ -109,6 +110,7 @@ function Layout() {
       <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2 sm:static sm:px-4">
         <div className="flex h-12 items-center gap-1 sm:h-auto sm:py-2">
           <span className="mr-3 font-bold">Dory</span>
+<Notifications />
           <div className="hidden gap-1 sm:flex">{links}</div>
           <div className="ml-auto hidden items-center gap-1 sm:flex">
             <ProjectPicker />
@@ -132,7 +134,7 @@ function Layout() {
           </div>
         )}
       </nav>
-      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /></main><CommandPalette />
+      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main><CommandPalette />
     </div>
   );
 }
