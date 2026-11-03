@@ -240,7 +240,7 @@ function Draggable({ item, onOpen }: { item: Item; onOpen: () => void }) {
   const style = transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined;
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes} className={isDragging ? "relative z-10 opacity-80" : ""}>
-      <ItemActions item={item}><Card className="cursor-grab"><div onDoubleClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><span className="font-medium break-words">{item.title}</span><button className="-m-2 size-11 shrink-0 text-slate-500 dark:text-muted sm:hidden" aria-label="Editar" onPointerDown={(e) => e.stopPropagation()} onClick={onOpen}>✎</button></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}<CardLinks item={item} />{item.status === "blocked" && <p className="text-xs text-red-600 dark:text-red-400">{item.blocked_reason}</p>}</div></Card></ItemActions>
+      <ItemActions item={item}><Card className="cursor-grab"><div onClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><span className="font-medium break-words">{item.title}</span></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}<CardLinks item={item} />{item.status === "blocked" && <p className="text-xs text-red-600 dark:text-red-400">{item.blocked_reason}</p>}</div></Card></ItemActions>
     </div>
   );
 }
@@ -258,7 +258,7 @@ export function Board({ projectId }: { projectId: string }) {
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ["items"] }),
   });
-  // Touch: hold to drag so the page can still scroll; the ✎ button opens the editor.
+  // Touch: hold to drag so the page can still scroll; a tap opens the card.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }));
   const onDragEnd = (e: DragEndEvent) => {
     const item = items.data?.find((i) => i.id === e.active.id);
@@ -336,7 +336,7 @@ function CardLinks({ item }: { item: Item }) {
   const dot = t ? dotFor(t.status, t.attention) : undefined;
   const chip = "inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-200 px-2 py-0.5 text-xs text-slate-600 no-underline hover:bg-slate-100 dark:border-border dark:text-muted dark:hover:bg-white/5";
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-1">
+    <div className="mt-1 flex flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
       {t && dot && (
         <ThreadLink url={t.url} environmentId={t.t3_environment_id} threadId={t.id} title={`${t.title} · ${dot.label}`} aria-label={`${t.title}: ${dot.label}`} onPointerDown={(e) => e.stopPropagation()} className={chip}>
           <svg aria-hidden="true" viewBox="0 0 24 24" className="size-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /></svg>
@@ -360,7 +360,7 @@ function ItemActions({ item, children }: { item: Item; children: React.ReactNode
   const qc = useQueryClient();
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const [detail, setDetail] = useState<"view" | "edit" | null>(null);
-  const [launch, setLaunch] = useState<"triage" | "implementation" | null>(null);
+  const [launch, setLaunch] = useState<"triage" | "implementation" | "replan" | null>(null);
   const close = useCallback(() => setPosition(null), []);
   const threads = useItemThreads(item.id);
   const thread = threads.reduce<(typeof threads)[number] | undefined>((a, b) => !a || b.updated_at >= a.updated_at ? b : a, undefined);
@@ -379,6 +379,7 @@ function ItemActions({ item, children }: { item: Item; children: React.ReactNode
     { label: "Abrir detalle", run: () => setDetail("view") },
     { label: "Editar", run: () => setDetail("edit") },
     ...(["inbox", "triaged"].includes(item.status) ? [{ label: "Analizar con un agente", run: () => setLaunch("triage") }] : []),
+    ...(item.status === "ready" ? [{ label: "Solicitar cambios", run: () => setLaunch("replan") }] : []),
     ...(item.status === "ready" ? [{ label: "Enviar a implementar", run: () => setLaunch("implementation") }] : []),
     { label: "Mover a estado…", children: STATUSES.filter((s) => s !== item.status).map((s) => ({ label: STATUS_INFO[s].label, run: () => change.mutate(s) })) },
     ...(thread ? [{ label: "Abrir último hilo", content: <ThreadLink role="menuitem" className={linkClass} url={thread.url} environmentId={thread.t3_environment_id} threadId={thread.id}>Abrir último hilo</ThreadLink> }] : []),
