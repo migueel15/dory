@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"github.com/jackc/pgx/v5"
 	"log"
 	"net/http"
@@ -286,15 +287,22 @@ func (m *Manager) deliver(ctx context.Context) error {
 		payload, _ := json.Marshal(map[string]any{"title": j.title, "url": j.url, "tag": fmt.Sprint(j.id)})
 		resp, sendErr := webpush.SendNotificationWithContext(ctx, payload, &sub, &webpush.Options{Subscriber: "https://dorlab.net", VAPIDPrivateKey: m.private, VAPIDPublicKey: m.public, TTL: 86400, HTTPClient: &http.Client{Timeout: 10 * time.Second}})
 		status := 0
+		detail := ""
 		if resp != nil {
 			status = resp.StatusCode
+			if status < 200 || status >= 300 {
+				body, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+				detail = strings.TrimSpace(string(body))
+			}
 			resp.Body.Close()
 		}
 		if status == 404 || status == 410 {
+			log.Printf("notifications: push rechazado con %d, suscripción eliminada endpoint=%s", status, shortEndpoint(j.endpoint))
 			_, err = m.Pool.Exec(ctx, "DELETE FROM notification_subscriptions WHERE endpoint=$1", j.endpoint)
 		} else if sendErr == nil && status >= 200 && status < 300 {
 			_, err = m.Pool.Exec(ctx, "DELETE FROM notification_push WHERE notification_id=$1 AND endpoint=$2", j.id, j.endpoint)
 		} else {
+			log.Printf("notifications: fallo al enviar push notification=%d endpoint=%s status=%d err=%v body=%q", j.id, shortEndpoint(j.endpoint), status, sendErr, detail)
 			_, err = m.Pool.Exec(ctx, "UPDATE notification_push SET attempts=attempts+1,next_at=now()+ interval '5 minutes' WHERE notification_id=$1 AND endpoint=$2", j.id, j.endpoint)
 		}
 		if err != nil {
@@ -302,4 +310,11 @@ func (m *Manager) deliver(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func shortEndpoint(e string) string {
+	if len(e) > 60 {
+		return e[:60] + "…"
+	}
+	return e
 }
