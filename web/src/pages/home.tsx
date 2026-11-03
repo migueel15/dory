@@ -3,10 +3,11 @@ import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { api, type GithubPull, type Repository } from "../api/client";
-import { Arrow, Badge, Card, errMsg, pill } from "../components/ui";
+import { Arrow, Badge, Card, PageHeader, errMsg, pill } from "../components/ui";
 import { useProject, useProjectThreads } from "../project";
 import { QuickCapture } from "../components/capture";
-import { useBlocked, useT3 } from "./attention";
+import { ThreadStatus } from "../components/thread-status";
+import { useBlocked, useT3, useValidating } from "./attention";
 import { PullStatus, useGithubOpen } from "./github";
 
 const LIMIT = 5;
@@ -43,6 +44,7 @@ export function Home() {
   const project = useProject();
   const t3 = useT3();
   const blocked = useBlocked();
+  const validating = useValidating();
   const github = useGithubOpen();
   const ideas = useQuery({ queryKey: ["items", "inbox"], queryFn: () => api.items.list({ status: "inbox" }) });
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
@@ -56,6 +58,7 @@ export function Home() {
   const recent = (ideas.data ?? [])
     .filter((i) => !project || i.project_id === project)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const toValidate = (validating.data ?? []).filter((i) => !project || i.project_id === project);
   const pulls = (github.data?.pulls ?? []).filter((p) => !project || belongsTo(p, repos.data ?? []));
   const envName = (id: string, fallback = "") => envs.data?.find((e) => e.id === id)?.name ?? fallback;
   const projectSources: Source[] = project ? [{ name: "los enlaces de agentes", error: linked.error }] : [];
@@ -63,11 +66,24 @@ export function Home() {
 
   return (
     <div className="space-y-3">
-      <h1 className="text-xl font-bold">Inicio</h1>
+      <PageHeader title="Inicio" subtitle="Qué necesita tu atención ahora" />
       <QuickCapture />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          { to: "/attention", n: needing.length, label: "Agentes te necesitan", warn: needing.length > 0 },
+          { to: "/attention", n: stuck.length, label: "Items bloqueados", warn: stuck.length > 0 },
+          { to: "/attention", n: toValidate.length, label: "Esperan tu validación", warn: false },
+          { to: "/github", n: pulls.length, label: "Pull requests abiertas", warn: false },
+        ].map((k) => (
+          <Link key={k.label} to={k.to as Section} className={`rounded-lg border bg-white p-3 shadow-sm hover:bg-slate-50 dark:bg-surface dark:hover:bg-raised ${k.warn ? "border-amber-400 dark:border-amber-700" : "border-slate-200 dark:border-border"}`}>
+            <div className={`text-2xl font-bold ${k.warn ? "text-amber-600 dark:text-amber-400" : ""}`}>{k.n}</div>
+            <div className={muted}>{k.label}</div>
+          </Link>
+        ))}
+      </div>
       <div className="grid gap-3 lg:grid-cols-2">
         <Block title={`Atención (${needing.length + stuck.length})`} to="/attention" sources={[{ name: "T3", error: t3.error }, { name: "items bloqueados", error: blocked.error }, ...projectSources]} pending={(t3.isPending && blocked.isPending) || projectPending} empty={needing.length + stuck.length === 0}>
-          {needing.slice(0, LIMIT).map((t) => <ThreadLink key={`${t.instance_id}:${t.id}`} url={t.url} environmentId={t.t3_environment_id} threadId={t.id} className="block text-sm break-words">{t.title} <Badge>{t.status}</Badge></ThreadLink>)}
+          {needing.slice(0, LIMIT).map((t) => <ThreadLink key={`${t.instance_id}:${t.id}`} url={t.url} environmentId={t.t3_environment_id} threadId={t.id} className="block text-sm break-words">{t.title} <ThreadStatus status={t.status} attention={t.attention} /></ThreadLink>)}
           {stuck.slice(0, LIMIT).map((i) => (
             <div key={i.id} className="text-sm break-words">
               {i.title}
@@ -79,7 +95,7 @@ export function Home() {
           {threads.slice(0, LIMIT).map((t) => (
             <ThreadLink key={`${t.instance_id}:${t.id}`} url={t.url} environmentId={t.t3_environment_id} threadId={t.id} className="block space-y-1 text-sm">
               <div className="break-words">{t.title}</div>
-              <div className="flex flex-wrap gap-1"><Badge>{envName(t.environment_id, "Entorno")}</Badge><Badge>{t.status}</Badge><Badge>{t.model}</Badge></div>
+              <div className="flex flex-wrap gap-1"><ThreadStatus status={t.status} attention={t.attention} /><Badge>{envName(t.environment_id, "Entorno")}</Badge><Badge>{t.model}</Badge></div>
             </ThreadLink>
           ))}
         </Block>

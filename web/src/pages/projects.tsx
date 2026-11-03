@@ -2,35 +2,35 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { api } from "../api/client";
-import { Badge, Button, Card, ErrorText, Md } from "../components/ui";
+import { Badge, Button, Card, ErrorText, Md, PageHeader, Notice } from "../components/ui";
 import { Features, ProjectForm } from "./crud";
 import { Board } from "./items";
 import { useProject } from "../project";
 
-// Projects lists every project, or opens the globally selected one directly.
+// Projects always lists every project; the selected one is marked as the active filter.
 export function Projects() {
-  const project = useProject();
-  if (project) return <ProjectView id={project} />;
   return <ProjectList />;
 }
 
 function ProjectList() {
   const [creating, setCreating] = useState(false);
+  const active = useProject();
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">Proyectos</h1>
+      <PageHeader title="Proyectos" subtitle="Elige uno para ver su tablero. El filtro global se cambia arriba.">
         <Button onClick={() => setCreating(true)}>Nuevo</Button>
-      </div>
+      </PageHeader>
       <ErrorText error={projects.error} />
+      {projects.isPending && <Notice loading />}
+      {projects.data?.length === 0 && <Notice>Aún no hay proyectos. Crea el primero con «Nuevo».</Notice>}
       <div className="grid gap-3 md:grid-cols-2">
         {projects.data?.map((p) => (
           <Link key={p.id} to="/projects/$id" params={{ id: p.id }}>
             <Card className="hover:bg-slate-50 dark:hover:bg-raised">
               <div className="font-medium">{p.name} <span className="text-xs text-slate-500 dark:text-muted">{p.slug}</span></div>
               <p className="text-sm text-slate-600 dark:text-text-secondary">{p.description}</p>
-              <div className="mt-1 flex flex-wrap gap-1"><Badge>{p.status}</Badge>{p.stack.map((s) => <Badge key={s}>{s}</Badge>)}</div>
+              <div className="mt-1 flex flex-wrap gap-1"><Badge>{p.status}</Badge>{p.id === active && <Badge>Filtro activo</Badge>}{p.stack.map((s) => <Badge key={s}>{s}</Badge>)}</div>
             </Card>
           </Link>
         ))}
@@ -54,6 +54,7 @@ function ProjectView({ id }: { id: string }) {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
+        <Link to="/projects" className="text-sm text-slate-500 hover:underline dark:text-muted">← Proyectos</Link>
         <div className="flex items-start justify-between gap-2">
           <h1 className="text-xl font-bold break-words">{p.name} <span className="text-sm font-normal text-slate-500 dark:text-muted">{p.slug}</span></h1>
           <Button variant="ghost" onClick={() => setEditing(true)}>Editar</Button>
@@ -65,6 +66,19 @@ function ProjectView({ id }: { id: string }) {
       <Board projectId={id} />
       <Features projectId={id} />
       {editing && <ProjectForm project={p} onClose={() => setEditing(false)} />}
+    </div>
+  );
+}
+
+// Tasks shows the kanban and features of the selected project, or every task when none is selected.
+export function Tasks() {
+  const project = useProject();
+  const name = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list(), select: (l) => l.find((p) => p.id === project)?.name });
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Tareas" subtitle={project ? `Proyecto: ${name.data ?? "…"}` : "Todos los proyectos. Elige uno arriba para filtrar."} />
+      <Board projectId={project} />
+      {project && <Features projectId={project} />}
     </div>
   );
 }
