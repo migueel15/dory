@@ -31,8 +31,8 @@ export function Limit({ w }: { w: T3InstanceUsage["providers"][number]["windows"
         <span>{w.label}</span>
         <span>Queda {Math.round(100 - w.used_percent)} %</span>
       </div>
-      <div className="h-2 overflow-hidden rounded bg-slate-200 dark:bg-slate-700"><div className={`h-full ${tone}`} style={{ width: `${Math.min(100, w.used_percent)}%` }} /></div>
-      <p className="text-xs text-slate-500 dark:text-slate-400">
+      <div className="h-2 overflow-hidden rounded bg-slate-200 dark:bg-hover"><div className={`h-full ${tone}`} style={{ width: `${Math.min(100, w.used_percent)}%` }} /></div>
+      <p className="text-xs text-slate-500 dark:text-muted">
         {w.resets_at ? `Se reinicia el ${date(w.resets_at)}` : "Sin fecha de reinicio"}
         {w.used_percent >= alertAt ? " · Límite casi agotado" : w.used_percent >= warnAt ? " · Uso alto" : ""}
       </p>
@@ -41,13 +41,13 @@ export function Limit({ w }: { w: T3InstanceUsage["providers"][number]["windows"
 }
 
 export function Models({ usage }: { usage: T3InstanceUsage }) {
-  if (usage.models_error === "missing_scope") return <p className="text-sm text-slate-500 dark:text-slate-400">Consumo por modelo sin datos: el token de esta instancia no tiene el permiso diagnostics:read.</p>;
-  if (usage.models_error) return <p className="text-sm text-slate-500 dark:text-slate-400">Consumo por modelo sin datos: la instancia no responde.</p>;
-  if (usage.models.length === 0) return <p className="text-sm text-slate-500 dark:text-slate-400">Sin consumo en los últimos 7 días.</p>;
+  if (usage.models_error === "missing_scope") return <p className="text-sm text-slate-500 dark:text-muted">Consumo por modelo sin datos: el token de esta instancia no tiene el permiso diagnostics:read.</p>;
+  if (usage.models_error) return <p className="text-sm text-slate-500 dark:text-muted">Consumo por modelo sin datos: la instancia no responde.</p>;
+  if (usage.models.length === 0) return <p className="text-sm text-slate-500 dark:text-muted">Sin consumo en los últimos 7 días.</p>;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="text-xs text-slate-500 dark:text-slate-400"><tr><th className="pr-3">Proveedor</th><th className="pr-3">Modelo</th><th className="pr-3">Entrada</th><th className="pr-3">Caché</th><th className="pr-3">Salida</th><th>Coste</th></tr></thead>
+        <thead className="text-xs text-slate-500 dark:text-muted"><tr><th className="pr-3">Proveedor</th><th className="pr-3">Modelo</th><th className="pr-3">Entrada</th><th className="pr-3">Caché</th><th className="pr-3">Salida</th><th>Coste</th></tr></thead>
         <tbody>
           {usage.models.map((m) => (
             <tr key={`${m.provider}/${m.model}/${m.cost_source}`}>
@@ -75,19 +75,19 @@ export function Usage() {
         <Button variant="ghost" disabled={refresh.isPending} onClick={() => mutate()}>{refresh.isPending ? "Actualizando…" : "Actualizar"}</Button>
       </div>
       <ErrorText error={usage.error ?? envs.error ?? refresh.error} />
-      {usage.data?.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">Todavía no hay lecturas de uso.</p>}
+      {usage.data?.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">Todavía no hay lecturas de uso.</p>}
       {usage.data?.map((u) => (
         <section key={u.instance_id} className="space-y-2">
           <div className="flex flex-wrap items-baseline gap-2">
             <h2 className="font-semibold">{envName(u.environment_id)}</h2>
-            <span className="text-xs text-slate-500 dark:text-slate-400">Leído {age(u.fetched_at)}</span>
+            <span className="text-xs text-slate-500 dark:text-muted">Leído {age(u.fetched_at)}</span>
           </div>
-          {u.limits_error && <p className="text-sm text-slate-500 dark:text-slate-400">Sin datos: la instancia no responde.</p>}
+          {u.limits_error && <p className="text-sm text-slate-500 dark:text-muted">Sin datos: la instancia no responde.</p>}
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {u.providers.map((p) => (
               <Card key={p.provider}>
                 <div className="mb-2 flex flex-wrap items-center gap-2"><span className="font-medium">{p.name}</span>{p.windows.length > 0 && <Badge>{age(p.checked_at)}</Badge>}</div>
-                {p.windows.length > 0 ? <div className="space-y-3">{p.windows.map((w) => <Limit key={w.label} w={w} />)}</div> : <p className="text-sm text-slate-500 dark:text-slate-400">Sin datos de plan.</p>}
+                {p.windows.length > 0 ? <div className="space-y-3">{p.windows.map((w) => <Limit key={w.label} w={w} />)}</div> : <p className="text-sm text-slate-500 dark:text-muted">Sin datos de plan.</p>}
               </Card>
             ))}
           </div>

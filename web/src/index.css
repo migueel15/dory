@@ -3,6 +3,30 @@
 /* Dark theme follows the `dark` class on <html>, set by src/theme.ts. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Dark-only utilities: light theme keeps the existing Tailwind palette. */
+@theme {
+  --color-canvas: #0f0f11;
+  --color-surface: #17171a;
+  --color-raised: #1d1d21;
+  --color-hover: #26262b;
+  --color-border: #2a2a2f;
+  --color-border-strong: #414149;
+  --color-text: #e6e6e8;
+  --color-text-secondary: #b4b4bd;
+  --color-muted: #9898a2;
+  --color-accent: #5e6ad2;
+  --color-accent-hover: #525fc4;
+  --color-accent-text: #a5acf5;
+  --color-accent-subtle: #24243d;
+  --color-accent-border: #474d83;
+}
+
+.dark :where(button, a, input, textarea, select):focus-visible {
+  outline: 2px solid var(--color-accent-text);
+  outline-offset: 2px;
+}
+.dark :where(input, textarea)::placeholder { color: var(--color-muted); }
+
 html { color-scheme: light; }
 html.dark { color-scheme: dark; }
-body { @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100; }
+body { @apply bg-slate-50 text-slate-900 dark:bg-canvas dark:text-text; }

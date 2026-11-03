@@ -19,7 +19,7 @@ export function DefineIssueDialog({ repo, number, onClose }: { repo: string; num
   return (
     <Modal title={`Definir tareas de #${number}`} onClose={onClose}>
       {form.fields}
-      <p className="text-xs text-slate-500 dark:text-slate-400">El agente analiza la issue y el repositorio y crea los items en Dory; no implementa nada.</p>
+      <p className="text-xs text-slate-500 dark:text-muted">El agente analiza la issue y el repositorio y crea los items en Dory; no implementa nada.</p>
       <ErrorText error={form.error ?? launch.error} />
       <Button disabled={!form.ready || launch.isPending} onClick={() => launch.mutate()}>Lanzar</Button>
     </Modal>

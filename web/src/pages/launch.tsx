@@ -22,7 +22,7 @@ export function LaunchDialog({ items, role, onClose }: { items: Item[]; role: "t
   return (
     <Modal title={role === "triage" ? `Analizar ${items.length} con un agente` : "Enviar a implementar"} onClose={onClose}>
       {form.fields}
-      <p className="text-xs text-slate-500 dark:text-slate-400">El agente se lanza con acceso completo.</p>
+      <p className="text-xs text-slate-500 dark:text-muted">El agente se lanza con acceso completo.</p>
       <ErrorText error={form.error ?? launch.error} />
       <Button disabled={!form.ready || launch.isPending} onClick={() => launch.mutate()}>Lanzar</Button>
     </Modal>

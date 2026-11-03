@@ -10,7 +10,7 @@ import { useBlocked, useT3 } from "./attention";
 import { PullStatus, useGithubOpen } from "./github";
 
 const LIMIT = 5;
-const muted = "text-sm text-slate-500 dark:text-slate-400";
+const muted = "text-sm text-slate-500 dark:text-muted";
 
 
 type Source = { name: string; error: unknown };
@@ -100,7 +100,7 @@ export function Home() {
             return (
               <Link key={p.url} to="/github/$owner/$repo/$kind/$number" params={{ owner, repo, kind: "pulls", number: String(p.number) }} className="block space-y-1 text-sm">
                 <div className="break-words">{p.title}</div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">{p.repo}#{p.number}</div>
+                <div className="text-xs text-slate-500 dark:text-muted">{p.repo}#{p.number}</div>
                 <PullStatus pull={p} />
               </Link>
             );

@@ -9,20 +9,20 @@ const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(" ")
 
 export function Button({ variant = "default", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "default" | "ghost" | "danger" }) {
   const v = {
-    default: "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-slate-300",
-    ghost: "border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800",
+    default: "bg-slate-900 dark:bg-accent text-white dark:text-white hover:bg-slate-700 dark:hover:bg-accent-hover",
+    ghost: "border border-slate-300 dark:border-border-strong hover:bg-slate-100 dark:hover:bg-raised",
     danger: "border border-red-300 dark:border-red-800 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950",
   }[variant];
   return <button {...p} className={cx("min-h-11 sm:min-h-0 rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-50", v, className)} />;
 }
 
 // pill styles links that act as secondary buttons (navigation, external links).
-export const pill = "inline-flex min-h-11 sm:min-h-0 shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-white";
+export const pill = "inline-flex min-h-11 sm:min-h-0 shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 dark:border-border dark:bg-surface dark:text-text-secondary dark:hover:border-border-strong dark:hover:bg-raised dark:hover:text-white";
 export const Arrow = ({ back }: { back?: boolean }) => (
   <svg viewBox="0 0 20 20" fill="currentColor" className={cx("size-3.5", back && "rotate-180")}><path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.64l-4.22-4.22a.75.75 0 1 1 1.06-1.06l5.5 5.5a.75.75 0 0 1 0 1.06l-5.5 5.5a.75.75 0 1 1-1.06-1.06l4.22-4.22H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" /></svg>
 );
 
-export const field = "min-h-11 sm:min-h-0 w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1.5 text-sm";
+export const field = "min-h-11 sm:min-h-0 w-full rounded-md border border-slate-300 dark:border-border-strong bg-white dark:bg-surface px-2 py-1.5 text-sm";
 export const Input = (p: InputHTMLAttributes<HTMLInputElement>) => <input {...p} className={cx(field, p.className)} />;
 export const Textarea = (p: TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...p} className={cx(field, "min-h-24", p.className)} />;
 
@@ -71,18 +71,18 @@ export function Select({ value, onChange, options, disabled, className, placehol
   return (
     <div ref={box} className={cx("relative", className ?? "w-full")}>
       <button type="button" disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? setOpen(false) : show())} onKeyDown={key}
-        className={cx(field, "flex items-center justify-between gap-2 text-left transition-colors hover:border-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:opacity-50 dark:hover:border-slate-500", open && "border-blue-500 dark:border-blue-400")}>
+        className={cx(field, "flex items-center justify-between gap-2 text-left transition-colors hover:border-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:focus-visible:ring-accent/40 disabled:opacity-50 dark:hover:border-muted", open && "border-blue-500 dark:border-accent")}>
         <span className={cx("flex min-w-0 items-center gap-2 truncate", !current && "text-slate-400")}>{current?.icon}{current?.label ?? placeholder}</span>
         <svg viewBox="0 0 20 20" fill="currentColor" className={cx("size-4 shrink-0 text-slate-400 transition-transform", open && "rotate-180")}><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clipRule="evenodd" /></svg>
       </button>
       {open && createPortal(
-        <div ref={list} role="listbox" style={pos} className="fixed z-50 max-h-72 min-w-48 overflow-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+        <div ref={list} role="listbox" style={pos} className="fixed z-50 max-h-72 min-w-48 overflow-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-border dark:bg-surface">
           {options.length === 0 && <p className="px-2.5 py-2 text-sm text-slate-400">Sin opciones</p>}
           {options.map((o, i) => (
             <div key={o.value}>
               {o.group && o.group !== options[i - 1]?.group && <p className="px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{o.group}</p>}
               <button type="button" role="option" aria-selected={i === hi} aria-disabled={o.disabled} disabled={o.disabled} onMouseEnter={() => setHi(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(o)}
-                className={cx("flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm", i === hi ? "bg-slate-100 dark:bg-slate-800" : "", o.value === value ? "font-medium text-blue-700 dark:text-blue-300" : "text-slate-700 dark:text-slate-200", o.disabled && "cursor-not-allowed opacity-50")}>
+                className={cx("flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm", i === hi ? "bg-slate-100 dark:bg-raised" : "", o.value === value ? "font-medium text-blue-700 dark:text-accent-text" : "text-slate-700 dark:text-text", o.disabled && "cursor-not-allowed opacity-50")}>
                 <span className="flex min-w-0 items-center gap-2 truncate">{o.icon}{o.label}</span>
                 {o.value === value && <svg viewBox="0 0 20 20" fill="currentColor" className="size-4 shrink-0"><path fillRule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.58l7.3-7.3a1 1 0 0 1 1.4 0Z" clipRule="evenodd" /></svg>}
               </button>
@@ -98,18 +98,18 @@ export function Select({ value, onChange, options, disabled, className, placehol
 export const opts = (vs: readonly string[]): Option[] => vs.map((v) => ({ value: v, label: v }));
 
 export const Card = ({ children, className }: { children: ReactNode; className?: string }) => (
-  <div className={cx("rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-sm", className)}>{children}</div>
+  <div className={cx("rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-surface p-3 shadow-sm", className)}>{children}</div>
 );
 
 export const Label = ({ text, children }: { text: string; children: ReactNode }) => (
   <label className="block space-y-1 text-sm">
-    <span className="text-slate-600 dark:text-slate-300">{text}</span>
+    <span className="text-slate-600 dark:text-text-secondary">{text}</span>
     {children}
   </label>
 );
 
 export const Badge = ({ children }: { children: ReactNode }) => (
-  <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-xs text-slate-700 dark:text-slate-200">{children}</span>
+  <span className="rounded bg-slate-100 dark:bg-raised px-1.5 py-0.5 text-xs text-slate-700 dark:text-text">{children}</span>
 );
 
 // toggleTask flips the checkbox of a markdown task item on the given 1-based line.
@@ -120,19 +120,19 @@ export function toggleTask(md: string, line: number) {
 }
 
 const prose = [
-  "space-y-3 break-words text-sm leading-relaxed text-slate-700 dark:text-slate-200",
-  "[&_h1]:border-b [&_h1]:border-slate-200 [&_h1]:pb-1 [&_h1]:text-xl [&_h1]:font-bold dark:[&_h1]:border-slate-700",
-  "[&_h2]:border-b [&_h2]:border-slate-200 [&_h2]:pb-1 [&_h2]:text-lg [&_h2]:font-semibold dark:[&_h2]:border-slate-700",
+  "space-y-3 break-words text-sm leading-relaxed text-slate-700 dark:text-text",
+  "[&_h1]:border-b [&_h1]:border-slate-200 [&_h1]:pb-1 [&_h1]:text-xl [&_h1]:font-bold dark:[&_h1]:border-border",
+  "[&_h2]:border-b [&_h2]:border-slate-200 [&_h2]:pb-1 [&_h2]:text-lg [&_h2]:font-semibold dark:[&_h2]:border-border",
   "[&_h3]:text-base [&_h3]:font-semibold [&_h4]:font-semibold [&_h1,&_h2,&_h3,&_h4]:mt-4 [&_h1,&_h2,&_h3,&_h4]:text-slate-900 dark:[&_h1,&_h2,&_h3,&_h4]:text-white",
-  "[&_a]:text-blue-600 [&_a]:underline-offset-2 hover:[&_a]:underline dark:[&_a]:text-blue-400",
+  "[&_a]:text-blue-600 [&_a]:underline-offset-2 hover:[&_a]:underline dark:[&_a]:text-accent-text",
   "[&_ul]:ml-5 [&_ul]:list-disc [&_ol]:ml-5 [&_ol]:list-decimal [&_li]:my-0.5 [&_li>ul]:mt-1 [&_li>ol]:mt-1",
   "[&_ul.contains-task-list]:ml-0 [&_ul.contains-task-list]:list-none [&_li.task-list-item]:flex [&_li.task-list-item]:flex-wrap [&_li.task-list-item]:items-baseline [&_li.task-list-item]:gap-2 [&_li.task-list-item>ul]:basis-full [&_li.task-list-item>ul]:ml-6",
   "[&_input[type=checkbox]]:size-4 [&_input[type=checkbox]]:translate-y-0.5 [&_input[type=checkbox]]:accent-green-600",
-  "[&_:not(pre)>code]:rounded [&_:not(pre)>code]:bg-slate-100 [&_:not(pre)>code]:px-1.5 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:font-mono [&_:not(pre)>code]:text-[0.85em] dark:[&_:not(pre)>code]:bg-slate-800",
-  "[&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-slate-200 [&_pre]:bg-slate-50 [&_pre]:p-3 [&_pre]:font-mono [&_pre]:text-xs dark:[&_pre]:border-slate-700 dark:[&_pre]:bg-slate-950",
-  "[&_blockquote]:rounded-r [&_blockquote]:border-l-4 [&_blockquote]:border-slate-300 [&_blockquote]:bg-slate-50 [&_blockquote]:px-3 [&_blockquote]:py-1 [&_blockquote]:text-slate-600 dark:[&_blockquote]:border-slate-600 dark:[&_blockquote]:bg-slate-800/50 dark:[&_blockquote]:text-slate-300",
-  "[&_table]:block [&_table]:max-w-full [&_table]:overflow-auto [&_table]:border-collapse [&_th]:border [&_th]:border-slate-200 [&_th]:bg-slate-50 [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_td]:border [&_td]:border-slate-200 [&_td]:px-3 [&_td]:py-1.5 dark:[&_th]:border-slate-700 dark:[&_th]:bg-slate-800 dark:[&_td]:border-slate-700 [&_tr:nth-child(even)_td]:bg-slate-50/60 dark:[&_tr:nth-child(even)_td]:bg-slate-800/30",
-  "[&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-700 [&_img]:max-w-full [&_img]:rounded-md [&_del]:text-slate-400",
+  "[&_:not(pre)>code]:rounded [&_:not(pre)>code]:bg-slate-100 [&_:not(pre)>code]:px-1.5 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:font-mono [&_:not(pre)>code]:text-[0.85em] dark:[&_:not(pre)>code]:bg-raised",
+  "[&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-slate-200 [&_pre]:bg-slate-50 [&_pre]:p-3 [&_pre]:font-mono [&_pre]:text-xs dark:[&_pre]:border-border dark:[&_pre]:bg-canvas",
+  "[&_blockquote]:rounded-r [&_blockquote]:border-l-4 [&_blockquote]:border-slate-300 [&_blockquote]:bg-slate-50 [&_blockquote]:px-3 [&_blockquote]:py-1 [&_blockquote]:text-slate-600 dark:[&_blockquote]:border-border-strong dark:[&_blockquote]:bg-raised/50 dark:[&_blockquote]:text-text-secondary",
+  "[&_table]:block [&_table]:max-w-full [&_table]:overflow-auto [&_table]:border-collapse [&_th]:border [&_th]:border-slate-200 [&_th]:bg-slate-50 [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_td]:border [&_td]:border-slate-200 [&_td]:px-3 [&_td]:py-1.5 dark:[&_th]:border-border dark:[&_th]:bg-raised dark:[&_td]:border-border [&_tr:nth-child(even)_td]:bg-slate-50/60 dark:[&_tr:nth-child(even)_td]:bg-raised/30",
+  "[&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-border [&_img]:max-w-full [&_img]:rounded-md [&_del]:text-slate-400",
 ].join(" ");
 
 // Md renders GitHub-flavored markdown. With onToggle, task checkboxes can be
@@ -155,7 +155,7 @@ export function Md({ children, components, urlTransform, onToggle }: { children:
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-2 sm:p-4" onClick={onClose}>
-      <div className="max-h-full w-full max-w-lg space-y-3 overflow-auto rounded-lg bg-white dark:bg-slate-900 p-3 sm:p-4" onClick={(e) => e.stopPropagation()}>
+      <div className="max-h-full w-full max-w-lg space-y-3 overflow-auto rounded-lg bg-white dark:bg-surface p-3 sm:p-4" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold">{title}</h2>
         {children}
       </div>
