@@ -649,10 +649,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/github/repos/{owner}/{repo}/pulls/{number}/resolve-conflicts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["resolveConflicts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        IssueThread: {
+            id: string;
+            /**
+             * @default define_issue
+             * @enum {string}
+             */
+            kind: "define_issue" | "resolve_conflicts";
+            project_id?: string | null;
+            repo: string;
+            number: number;
+            issue_url: string;
+            title: string;
+            instance_id: string;
+            thread_id: string;
+            model: string;
+            effort: string;
+            created_at: string;
+        };
         /** @enum {string} */
         EntityType: "project" | "repository" | "environment" | "feature" | "item" | "memory";
         Error: {
@@ -3273,6 +3307,52 @@ export interface operations {
             404: components["responses"]["Error404"];
             409: components["responses"]["Error409"];
             500: components["responses"]["Error500"];
+        };
+    };
+    resolveConflicts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                owner: string;
+                repo: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    instance_id: string;
+                    project_id: string;
+                    provider: string;
+                    model: string;
+                    effort_option?: string;
+                    effort?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Thread launched */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        thread_id: string;
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            409: components["responses"]["Error409"];
+            /** @description GitHub or T3 unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
 }

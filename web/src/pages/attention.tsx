@@ -49,7 +49,7 @@ function ThreadReply({ id }: { id: string }) {
       <ErrorText error={ctx.error ?? send.error ?? respond.error} />
       <div className="space-y-1 text-sm">
         {ctx.data?.messages.map((m, i) => (
-          <p key={i} className="break-words whitespace-pre-wrap"><span className="text-slate-500 dark:text-slate-400">{m.role}: </span>{m.text}</p>
+          <p key={i} className="break-words whitespace-pre-wrap"><span className="text-slate-500 dark:text-muted">{m.role}: </span>{m.text}</p>
         ))}
       </div>
       {pending && pending.kind === "user_input" && (
@@ -71,8 +71,8 @@ function ThreadReply({ id }: { id: string }) {
         <div className="space-y-2">
           <p className="text-sm font-medium">Permiso solicitado: {pending.kind}</p>
           {pending.detail
-            ? <pre className="overflow-x-auto rounded bg-slate-100 dark:bg-slate-800 p-2 text-xs">{pending.detail}</pre>
-            : <p className="text-sm text-slate-500 dark:text-slate-400">T3 no expone la acción exacta: revísala en T3.</p>}
+            ? <pre className="overflow-x-auto rounded bg-slate-100 dark:bg-raised p-2 text-xs">{pending.detail}</pre>
+            : <p className="text-sm text-slate-500 dark:text-muted">T3 no expone la acción exacta: revísala en T3.</p>}
           <div className="flex gap-2">
             <Button disabled={respond.isPending || !pending.detail} onClick={() => respond.mutate({ decision: "accept" })}>Aprobar</Button>
             <Button variant="danger" disabled={respond.isPending} onClick={() => respond.mutate({ decision: "decline" })}>Rechazar</Button>
@@ -94,7 +94,7 @@ export function Attention() {
     <div className="space-y-3">
       <h1 className="text-xl font-bold">Atención</h1>
       <ErrorText error={error} />
-      {down.map((s) => <p key={s.instance_id} className="text-sm text-slate-500 dark:text-slate-400">Sin datos de {envName(s.environment_id)}: instancia no disponible.</p>)}
+      {down.map((s) => <p key={s.instance_id} className="text-sm text-slate-500 dark:text-muted">Sin datos de {envName(s.environment_id)}: instancia no disponible.</p>)}
       {threads.map((t) => (
         <Card key={t.id} className="space-y-2">
           <ThreadLink url={t.url} environmentId={t.t3_environment_id} threadId={t.id} className="block space-y-1">
@@ -110,7 +110,7 @@ export function Attention() {
           <p className="text-xs text-red-600 dark:text-red-400">{i.blocked_reason}</p>
         </Card>
       ))}
-      {t3.isSuccess && blocked.isSuccess && threads.length + stuck.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">Nada pendiente.</p>}
+      {t3.isSuccess && blocked.isSuccess && threads.length + stuck.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">Nada pendiente.</p>}
     </div>
   );
 }

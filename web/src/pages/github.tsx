@@ -1,3 +1,4 @@
+import { DefineIssueDialog } from "./define-issue";
 import { useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -9,7 +10,7 @@ import { useProject } from "../project";
 const ok = "text-green-700 dark:text-green-400";
 const bad = "text-red-600 dark:text-red-400";
 const wait = "text-amber-700 dark:text-amber-400";
-const ciText: Record<string, [string, string]> = { SUCCESS: ["CI correcta", ok], FAILURE: ["CI fallida", bad], ERROR: ["CI con error", bad], PENDING: ["CI en curso", wait], EXPECTED: ["CI pendiente", wait], "": ["Sin CI", "text-slate-500 dark:text-slate-400"] };
+const ciText: Record<string, [string, string]> = { SUCCESS: ["CI correcta", ok], FAILURE: ["CI fallida", bad], ERROR: ["CI con error", bad], PENDING: ["CI en curso", wait], EXPECTED: ["CI pendiente", wait], "": ["Sin CI", "text-slate-500 dark:text-muted"] };
 
 // Text and color of the merge status; "BLOCKED" is what branch protection reports.
 function mergeStatus(p: GithubPull): [string, string] {
@@ -25,7 +26,7 @@ export function approvalsText(p: GithubPull) {
   return p.required_approvals ? `${p.approvals}/${p.required_approvals} aprobaciones` : `${p.approvals} aprobaciones`;
 }
 
-const tone = { ok: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300", bad: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300", wait: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300", none: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300" };
+const tone = { ok: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300", bad: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300", wait: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300", none: "bg-slate-100 text-slate-600 dark:bg-raised dark:text-text-secondary" };
 const toneOf = (color: string) => (color === ok ? tone.ok : color === bad ? tone.bad : color === wait ? tone.wait : tone.none);
 const icons = {
   merge: "M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9",
@@ -55,8 +56,8 @@ function Chip({ icon, label, color, title }: { icon: string; label: string; colo
 export function Avatar({ login, mark, ring, title }: { login: string; mark?: string; ring?: string; title?: string }) {
   return (
     <Tip text={title ?? login}><span className="relative inline-block">
-      <img src={`https://github.com/${login}.png?size=48`} alt={login} loading="lazy" className={`size-6 rounded-full bg-slate-200 ring-2 dark:bg-slate-700 ${ring ?? "ring-white dark:ring-slate-900"}`} />
-      {mark && <span className={`absolute -bottom-1 -right-1 rounded-full p-px ring-2 ring-white dark:ring-slate-900 ${mark}`}><Icon d={mark.includes("green") ? icons.check : mark.includes("red") ? icons.x : icons.eye} className="size-2.5 text-white" /></span>}
+      <img src={`https://github.com/${login}.png?size=48`} alt={login} loading="lazy" className={`size-6 rounded-full bg-slate-200 ring-2 dark:bg-hover ${ring ?? "ring-white dark:ring-surface"}`} />
+      {mark && <span className={`absolute -bottom-1 -right-1 rounded-full p-px ring-2 ring-white dark:ring-surface ${mark}`}><Icon d={mark.includes("green") ? icons.check : mark.includes("red") ? icons.x : icons.eye} className="size-2.5 text-white" /></span>}
     </span></Tip>
   );
 }
@@ -118,7 +119,7 @@ const Meta = ({ icon, children, title }: { icon: string; children: React.ReactNo
 function Label({ name, color }: { name: string; color?: string }) {
   const c = color ? `#${color}` : undefined;
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:text-slate-200" style={c ? { borderColor: `${c}88`, backgroundColor: `${c}22` } : undefined}>
+    <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:text-text" style={c ? { borderColor: `${c}88`, backgroundColor: `${c}22` } : undefined}>
       <span className="size-2 rounded-full" style={{ backgroundColor: c ?? "#94a3b8" }} />{name}
     </span>
   );
@@ -138,11 +139,11 @@ function Row({ item, kind, meta, children }: { item: CardItem; kind: "pulls" | "
   };
   return (
     <div onClick={open} className="cursor-pointer">
-    <Card className="group space-y-2 transition-colors hover:border-slate-300 hover:bg-slate-50/60 dark:hover:border-slate-600 dark:hover:bg-slate-800/40">
+    <Card className="group space-y-2 transition-colors hover:border-slate-300 hover:bg-slate-50/60 dark:hover:border-border-strong dark:hover:bg-raised/40">
       <div className="flex items-start gap-2">
         <Link to="/github/$owner/$repo/$kind/$number" params={{ owner, repo: name, kind, number: String(item.number) }} className="min-w-0 flex-1">
-          <div className="font-medium break-words group-hover:text-blue-700 dark:group-hover:text-blue-300">{item.title}</div>
-          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+          <div className="font-medium break-words group-hover:text-blue-700 dark:group-hover:text-accent-text">{item.title}</div>
+          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500 dark:text-muted">
             <span title={pull ? "Pull request" : "Issue"} className={`grid size-4.5 shrink-0 place-items-center rounded-full ${pull ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" : "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300"}`}>
               <Icon d={pull ? metaIcons.pull : metaIcons.issue} className="size-3" />
             </span>
@@ -151,8 +152,8 @@ function Row({ item, kind, meta, children }: { item: CardItem; kind: "pulls" | "
         </Link>
         <Tip text="Abrir en GitHub"><a href={item.url} target="_blank" rel="noreferrer" aria-label="Abrir en GitHub" className={pill}><GithubMark className="size-3.5" /></a></Tip>
       </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-        <span className="inline-flex items-center gap-1.5"><Avatar login={item.author} title={`Autor: ${item.author}`} /><span className="font-medium text-slate-700 dark:text-slate-200">{item.author}</span></span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-muted">
+        <span className="inline-flex items-center gap-1.5"><Avatar login={item.author} title={`Autor: ${item.author}`} /><span className="font-medium text-slate-700 dark:text-text">{item.author}</span></span>
         <Meta icon={metaIcons.clock} title={`Creada ${new Date(item.created_at).toLocaleString()} · actualizada ${new Date(item.updated_at).toLocaleString()}`}>{ago(item.updated_at)}</Meta>
         <Meta icon={metaIcons.comment} title={`${item.comments} comentarios`}>{item.comments}</Meta>
         {meta}
@@ -177,7 +178,7 @@ const linked = (repo: string, prefix: "PR" | "Issue", refs: { number: number; ti
   return refs.map((r) => (
     <Tip key={r.number} text={r.title}>
       <Link to="/github/$owner/$repo/$kind/$number" params={{ owner, repo: name, kind: prefix === "PR" ? "pulls" : "issues", number: String(r.number) }}
-        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:bg-blue-950 dark:hover:text-blue-300">
+        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 dark:border-border dark:bg-surface dark:text-text dark:hover:border-accent dark:hover:bg-accent-subtle dark:hover:text-accent-text">
         <Icon d={prefix === "PR" ? metaIcons.pull : metaIcons.issue} className="size-3" />{prefix} #{r.number}
       </Link>
     </Tip>
@@ -196,7 +197,7 @@ function ClosedChip({ item }: { item: GithubPull | GithubIssue }) {
   const merged = item.state === "MERGED";
   const planned = "state_reason" in item && item.state_reason === "NOT_PLANNED";
   const [label, cls] = merged ? ["Mergeada", "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300"]
-    : planned ? ["No planificada", "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"]
+    : planned ? ["No planificada", "bg-slate-200 text-slate-700 dark:bg-raised dark:text-text-secondary"]
     : "state_reason" in item ? ["Completada", "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300"]
     : ["Cerrada sin mergear", "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"];
   return <Tip text={item.closed_at ? `Cerrada ${new Date(item.closed_at).toLocaleString()}` : "Cerrada"}><span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{label}{item.closed_at && ` · ${ago(item.closed_at)}`}</span></Tip>;
@@ -223,18 +224,18 @@ const savedTab = (): Tab => { try { return localStorage.getItem("github-tab") ==
 
 const Skeleton = () => (
   <Card className="animate-pulse space-y-2.5">
-    <div className="h-4 w-2/3 rounded bg-slate-200 dark:bg-slate-700" />
-    <div className="h-3 w-1/3 rounded bg-slate-100 dark:bg-slate-800" />
-    <div className="flex gap-2"><div className="size-5 rounded-full bg-slate-200 dark:bg-slate-700" /><div className="h-3 w-40 rounded bg-slate-100 dark:bg-slate-800" /></div>
+    <div className="h-4 w-2/3 rounded bg-slate-200 dark:bg-hover" />
+    <div className="h-3 w-1/3 rounded bg-slate-100 dark:bg-raised" />
+    <div className="flex gap-2"><div className="size-5 rounded-full bg-slate-200 dark:bg-hover" /><div className="h-3 w-40 rounded bg-slate-100 dark:bg-raised" /></div>
   </Card>
 );
 
 function Empty({ filtered, kind, state }: { filtered: boolean; kind: Tab; state: State }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center dark:border-slate-700">
-      <span className="grid size-10 place-items-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"><Icon d={kind === "pulls" ? metaIcons.pull : metaIcons.issue} className="size-5" /></span>
+    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center dark:border-border">
+      <span className="grid size-10 place-items-center rounded-full bg-slate-100 text-slate-500 dark:bg-raised dark:text-muted"><Icon d={kind === "pulls" ? metaIcons.pull : metaIcons.issue} className="size-5" /></span>
       <p className="font-medium">{filtered ? "Nada coincide con estos filtros" : `No hay ${kind === "pulls" ? "pull requests" : "issues"}${state === "open" ? " abiertas" : state === "closed" ? " cerradas" : ""}`}</p>
-      <p className="text-sm text-slate-500 dark:text-slate-400">{filtered ? "Prueba con otro texto o quita el filtro rápido." : "Cuando haya alguna en los repos del proyecto aparecerá aquí."}</p>
+      <p className="text-sm text-slate-500 dark:text-muted">{filtered ? "Prueba con otro texto o quita el filtro rápido." : "Cuando haya alguna en los repos del proyecto aparecerá aquí."}</p>
     </div>
   );
 }
@@ -243,6 +244,7 @@ const NO_MILESTONE = "\u0000none";
 
 export function Github() {
   const qc = useQueryClient();
+  const [resolving, setResolving] = useState<GithubPull | null>(null);
   const [asking, setAsking] = useState(false);
   const [tab, setTabState] = useState<Tab>(savedTab);
   const [text, setText] = useState("");
@@ -295,10 +297,11 @@ export function Github() {
   const more = state !== "open" && closed.hasNextPage;
   return (
     <div className="space-y-4">
+      {resolving && <DefineIssueDialog resolve repo={resolving.repo} number={resolving.number} onClose={() => setResolving(null)} />}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold"><GithubMark className="size-6" /> GitHub</h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-slate-500 dark:text-muted">
             {refreshing ? "Actualizando…" : data.data?.fetched_at ? `Actualizado ${ago(data.data.fetched_at)}` : ""}{me && ` · como ${me}`}
           </p>
         </div>
@@ -310,21 +313,21 @@ export function Github() {
         </Tip>
       </div>
       <ErrorText error={data.error ?? (state !== "open" ? closed.error : null)} />
-      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-2 shadow-sm dark:border-border dark:bg-surface">
         <div className="flex flex-wrap items-center gap-2">
-          <div role="tablist" className="flex rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
+          <div role="tablist" className="flex rounded-lg bg-slate-100 p-1 dark:bg-raised">
             {tabs.map(([id, label, n, icon]) => (
               <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-                className={`flex min-h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors ${tab === id ? "bg-white text-slate-900 shadow-sm dark:bg-slate-950 dark:text-white" : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"}`}>
+                className={`flex min-h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors ${tab === id ? "bg-white text-slate-900 shadow-sm dark:bg-canvas dark:text-white" : "text-slate-500 hover:text-slate-800 dark:text-muted dark:hover:text-text"}`}>
                 <Icon d={icon} className="size-3.5" />{label}
-                <span className={`rounded-full px-1.5 text-xs ${tab === id ? "bg-slate-100 dark:bg-slate-800" : "bg-slate-200 dark:bg-slate-700"}`}>{n}</span>
+                <span className={`rounded-full px-1.5 text-xs ${tab === id ? "bg-slate-100 dark:bg-raised" : "bg-slate-200 dark:bg-hover"}`}>{n}</span>
               </button>
             ))}
           </div>
-          <div role="radiogroup" aria-label="Estado" className="flex rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
+          <div role="radiogroup" aria-label="Estado" className="flex rounded-lg bg-slate-100 p-1 dark:bg-raised">
             {states.map(([id, label]) => (
               <button key={id} type="button" role="radio" aria-checked={state === id} onClick={() => setState(id)}
-                className={`min-h-9 rounded-md px-3 text-sm font-medium transition-colors ${state === id ? "bg-white text-slate-900 shadow-sm dark:bg-slate-950 dark:text-white" : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"}`}>
+                className={`min-h-9 rounded-md px-3 text-sm font-medium transition-colors ${state === id ? "bg-white text-slate-900 shadow-sm dark:bg-canvas dark:text-white" : "text-slate-500 hover:text-slate-800 dark:text-muted dark:hover:text-text"}`}>
                 {label}
               </button>
             ))}
@@ -332,7 +335,7 @@ export function Github() {
           <label className="relative min-w-48 flex-1">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
             <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Buscar por título, repo, autor o etiqueta…" aria-label="Buscar"
-              className="min-h-9 w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-900" />
+              className="min-h-9 w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-sm outline-none focus:border-blue-500 dark:focus:border-accent focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-accent/20 dark:border-border dark:bg-surface" />
           </label>
           <Select value={milestone} onChange={setMilestone} options={milestoneOptions} className="min-w-44" />
         </div>
@@ -342,7 +345,7 @@ export function Github() {
             const needsMe = !!f.me && !me;
             return (
               <button key={f.id} type="button" disabled={needsMe} onClick={() => setFilter(on ? "" : f.id)}
-                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40 ${on ? "border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-300" : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"}`}>
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40 ${on ? "border-blue-500 bg-blue-50 text-blue-700 dark:border-accent dark:bg-accent-subtle dark:text-accent-text" : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-border dark:text-text-secondary dark:hover:bg-raised"}`}>
                 {f.label}
               </button>
             );
@@ -359,6 +362,7 @@ export function Github() {
               {p.milestone && <Meta icon={metaIcons.flag} title="Milestone">{p.milestone}</Meta>}
             </>}>
               {p.state === "OPEN" ? <PullStatus pull={p} /> : <ClosedChip item={p} />}{linked(p.repo, "Issue", p.issues)}
+              {p.state === "OPEN" && p.mergeable === "CONFLICTING" && <button type="button" className={pill} onClick={(e) => { e.stopPropagation(); setResolving(p); }}>Resolver conflictos</button>}
             </Row>
           )))
           : (shownIssues.length === 0 ? <Empty kind="issues" state={state} filtered={issues.length > 0} /> : shownIssues.map((i) => (
