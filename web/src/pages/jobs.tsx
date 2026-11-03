@@ -10,9 +10,9 @@ type Thread = T3Status["threads"][number];
 // state turns a live thread into what the user cares about. A thread missing
 // from the snapshot is an older settled one, so it counts as finished.
 function state(t: Thread | undefined): { label: string; tone: string } {
-  if (!t) return { label: "Terminado", tone: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300" };
+  if (!t) return { label: "Terminado", tone: "bg-slate-100 text-slate-600 dark:bg-raised dark:text-text-secondary" };
   if (t.attention) return { label: "Requiere input", tone: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" };
-  if (["running", "pending", "starting", "working"].includes(t.status)) return { label: "Trabajando", tone: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300" };
+  if (["running", "pending", "starting", "working"].includes(t.status)) return { label: "Trabajando", tone: "bg-blue-100 text-blue-800 dark:bg-accent-subtle dark:text-accent-text" };
   if (["failed", "error", "interrupted"].includes(t.status)) return { label: "Error", tone: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300" };
   return { label: "Terminado", tone: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300" };
 }
@@ -51,9 +51,9 @@ export function Jobs() {
             <Badge>{j.kind}</Badge>
             {j.to ? <Link to="/github/$owner/$repo/$kind/$number" params={{ owner: j.to.owner, repo: j.to.repo, kind: "issues", number: String(j.to.number) }} className="min-w-0 flex-1 truncate font-medium hover:underline">{j.title}</Link>
               : <span className="min-w-0 flex-1 truncate font-medium">{j.title}</span>}
-            <span className="text-xs text-slate-500 dark:text-slate-400">{[j.model, j.effort].filter(Boolean).join(" · ")}</span>
+            <span className="text-xs text-slate-500 dark:text-muted">{[j.model, j.effort].filter(Boolean).join(" · ")}</span>
             <span className="text-xs text-slate-400">{new Date(j.created).toLocaleString()}</span>
-            {j.thread?.url && <ThreadLink url={j.thread.url} environmentId={j.thread.t3_environment_id} threadId={j.thread.id} className="text-xs text-blue-600 hover:underline dark:text-blue-400">Abrir en T3</ThreadLink>}
+            {j.thread?.url && <ThreadLink url={j.thread.url} environmentId={j.thread.t3_environment_id} threadId={j.thread.id} className="text-xs text-blue-600 hover:underline dark:text-accent-text">Abrir en T3</ThreadLink>}
           </Card>
         );
       })}

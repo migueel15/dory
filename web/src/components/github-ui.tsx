@@ -61,7 +61,7 @@ export function Tip({ text, children }: { text: string; children: ReactNode }) {
       {children}
       {open && createPortal(
         <span ref={tip} role="tooltip" style={pos ?? { left: 0, top: 0, visibility: "hidden" }}
-          className="pointer-events-none fixed z-[60] max-w-xs rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white shadow-lg dark:bg-slate-100 dark:text-slate-900">
+          className="pointer-events-none fixed z-[60] max-w-xs rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white shadow-lg dark:bg-text dark:text-canvas">
           {text}
         </span>,
         document.body,
@@ -71,10 +71,10 @@ export function Tip({ text, children }: { text: string; children: ReactNode }) {
 }
 
 const tones = {
-  plain: "border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white",
-  active: "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300",
+  plain: "border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:border-border dark:bg-surface dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white",
+  active: "border-blue-300 bg-blue-50 text-blue-700 dark:border-accent-border dark:bg-accent-subtle dark:text-accent-text",
   green: "border-green-300 bg-green-50 text-green-700 hover:bg-green-100 dark:border-green-800 dark:bg-green-950 dark:text-green-300 dark:hover:bg-green-900",
-  red: "border-slate-200 bg-white text-slate-500 hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-red-800 dark:hover:bg-red-950 dark:hover:text-red-400",
+  red: "border-slate-200 bg-white text-slate-500 hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:border-border dark:bg-surface dark:hover:border-red-800 dark:hover:bg-red-950 dark:hover:text-red-400",
 };
 
 // IconButton is a square button whose meaning lives in its icon and tooltip.
@@ -112,7 +112,7 @@ export function Menu({ trigger, children, align = "left" }: { trigger: (open: bo
     <div ref={box} className="relative inline-flex">
       {trigger(open, () => setOpen(!open))}
       {open && (
-        <div ref={panel} className={`absolute z-20 ${up ? "bottom-full mb-1.5" : "top-full mt-1.5"} min-w-56 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-slate-700 dark:bg-slate-900 ${align === "right" ? "right-0" : "left-0"}`}>
+        <div ref={panel} className={`absolute z-20 ${up ? "bottom-full mb-1.5" : "top-full mt-1.5"} min-w-56 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-border dark:bg-surface ${align === "right" ? "right-0" : "left-0"}`}>
           {children(() => setOpen(false))}
         </div>
       )}
@@ -122,7 +122,7 @@ export function Menu({ trigger, children, align = "left" }: { trigger: (open: bo
 
 export function MenuItem({ onClick, children }: { onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" onClick={onClick} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">
+    <button type="button" onClick={onClick} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-text dark:hover:bg-raised">
       {children}
     </button>
   );
@@ -138,7 +138,7 @@ export function UserPicker({ tip, title, users, note, onPick, disabled, extra }:
     <Menu
       trigger={(open, toggle) => (
         <Tip text={tip}>
-          <button type="button" aria-label={tip} disabled={disabled} onClick={toggle} className={`grid size-6 place-items-center rounded-full border border-dashed transition-colors disabled:opacity-40 ${open ? "border-blue-500 text-blue-600" : "border-slate-400 text-slate-500 hover:border-blue-500 hover:text-blue-600"}`}>
+          <button type="button" aria-label={tip} disabled={disabled} onClick={toggle} className={`grid size-6 place-items-center rounded-full border border-dashed transition-colors disabled:opacity-40 ${open ? "border-blue-500 dark:border-accent text-blue-600 dark:text-accent-text" : "border-slate-400 text-slate-500 hover:border-blue-500 dark:hover:border-accent hover:text-blue-600 dark:hover:text-accent-text"}`}>
             <Icon d={icons.plus} className="size-3.5" />
           </button>
         </Tip>
@@ -150,7 +150,7 @@ export function UserPicker({ tip, title, users, note, onPick, disabled, extra }:
           {extra?.(close)}
           {users.map((u) => (
             <MenuItem key={u.id} onClick={() => { close(); onPick(u); }}>
-              <img src={avatarUrl(u.login)} alt="" className="size-6 rounded-full bg-slate-200 dark:bg-slate-700" />
+              <img src={avatarUrl(u.login)} alt="" className="size-6 rounded-full bg-slate-200 dark:bg-hover" />
               <span className="flex-1">{u.login}</span>
               {note?.(u) && <span className="text-xs text-slate-400">{note(u)}</span>}
             </MenuItem>
@@ -176,12 +176,12 @@ export function useConfirm(): [(a: Ask) => void, ReactNode] {
   }, [ask]);
   const dialog = ask && (
     <div role="dialog" aria-modal="true" aria-label={ask.title} onMouseDown={(e) => e.target === e.currentTarget && setAsk(undefined)} className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+      <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-border dark:bg-surface">
         <h2 className="text-base font-semibold">{ask.title}</h2>
-        <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-300">{ask.text}</p>
+        <p className="mt-1.5 text-sm text-slate-600 dark:text-text-secondary">{ask.text}</p>
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={() => setAsk(undefined)} className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Cancelar</button>
-          <button type="button" autoFocus onClick={() => { ask.run(); setAsk(undefined); }} className={`rounded-lg px-3 py-1.5 text-sm font-medium text-white shadow-sm ${ask.danger ? "bg-red-600 hover:bg-red-700" : "bg-slate-900 hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-300"}`}>{ask.ok}</button>
+          <button type="button" onClick={() => setAsk(undefined)} className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised">Cancelar</button>
+          <button type="button" autoFocus onClick={() => { ask.run(); setAsk(undefined); }} className={`rounded-lg px-3 py-1.5 text-sm font-medium text-white shadow-sm ${ask.danger ? "bg-red-600 hover:bg-red-700" : "bg-slate-900 hover:bg-slate-700 dark:bg-accent dark:text-white dark:hover:bg-accent-hover"}`}>{ask.ok}</button>
         </div>
       </div>
     </div>
@@ -239,7 +239,7 @@ function options(mark: string, query: string, people: string[], links: Link[]): 
   const q = query.toLowerCase();
   if (mark === "@") return people.filter((p) => p.toLowerCase().startsWith(q)).slice(0, 6).map((p) => ({
     key: p, insert: `@${p}`,
-    node: <><img src={avatarUrl(p)} alt="" className="size-5 rounded-full bg-slate-200 dark:bg-slate-700" />{p}</>,
+    node: <><img src={avatarUrl(p)} alt="" className="size-5 rounded-full bg-slate-200 dark:bg-hover" />{p}</>,
   }));
   return rank(query, links).slice(0, 8).map((l) => ({
     key: String(l.number), insert: `#${l.number}`,
@@ -312,9 +312,9 @@ export function MentionArea({ value, onValue, people, links = [], boxRef, onKeyD
         }}
       />
       {m && found.length > 0 && (
-        <div ref={list} role="listbox" style={{ left: Math.max(0, Math.min(m.x, (own.current?.clientWidth ?? 400) - (m.mark === "#" ? 352 : 224))), ...(up ? { top: m.top - 4, transform: "translateY(-100%)" } : { top: m.y + 4 }) }} className={`absolute z-30 ${m.mark === "#" ? "w-88" : "w-56"} overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-slate-700 dark:bg-slate-900`}>
+        <div ref={list} role="listbox" style={{ left: Math.max(0, Math.min(m.x, (own.current?.clientWidth ?? 400) - (m.mark === "#" ? 352 : 224))), ...(up ? { top: m.top - 4, transform: "translateY(-100%)" } : { top: m.y + 4 }) }} className={`absolute z-30 ${m.mark === "#" ? "w-88" : "w-56"} overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-border dark:bg-surface`}>
           {found.map((p, i) => (
-            <button key={p.key} type="button" role="option" aria-selected={i === sel} onMouseDown={(e) => { e.preventDefault(); pick(p); }} onMouseEnter={() => setSel(i)} className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm ${i === sel ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300" : "text-slate-700 dark:text-slate-200"}`}>
+            <button key={p.key} type="button" role="option" aria-selected={i === sel} onMouseDown={(e) => { e.preventDefault(); pick(p); }} onMouseEnter={() => setSel(i)} className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm ${i === sel ? "bg-blue-50 text-blue-700 dark:bg-accent-subtle dark:text-accent-text" : "text-slate-700 dark:text-text"}`}>
               {p.node}
             </button>
           ))}
@@ -335,7 +335,7 @@ const refLinks = (md: string) =>
 function RefLink({ number }: { number: number }) {
   const ctx = useContext(RefContext)!;
   const l = ctx.links.find((x) => x.number === number);
-  const cls = "inline-flex items-center gap-0.5 rounded px-1 font-medium text-blue-700 no-underline hover:bg-blue-50 hover:underline dark:text-blue-300 dark:hover:bg-blue-950";
+  const cls = "inline-flex items-center gap-0.5 rounded px-1 font-medium text-blue-700 no-underline hover:bg-blue-50 hover:underline dark:text-accent-text dark:hover:bg-accent-subtle";
   if (!l) return <Tip text="Abrir en GitHub"><a href={`https://github.com/${ctx.owner}/${ctx.repo}/issues/${number}`} target="_blank" rel="noreferrer" className={cls}>#{number}</a></Tip>;
   const tip = `${l.pull ? "PR" : "Issue"} #${l.number} · ${l.title} · ${l.state === "OPEN" ? "abierta" : l.state === "MERGED" ? "mergeada" : "cerrada"}`;
   return (

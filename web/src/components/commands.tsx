@@ -57,20 +57,20 @@ function Palette({ commands, onClose }: { commands: Command[]; onClose: () => vo
   };
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 p-2 pt-[15vh] sm:p-4 sm:pt-[15vh]" onClick={onClose}>
-      <div className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-border dark:bg-surface" onClick={(e) => e.stopPropagation()}>
         <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={key} placeholder="Escribe un comando…" aria-label="Buscar comando"
-          className="w-full border-b border-slate-200 bg-transparent px-4 py-3 text-sm outline-none dark:border-slate-700" />
+          className="w-full border-b border-slate-200 bg-transparent px-4 py-3 text-sm outline-none dark:border-border" />
         <div ref={list} role="listbox" className="max-h-80 overflow-auto p-1">
           {shown.length === 0 && <p className="px-3 py-2 text-sm text-slate-400">Sin comandos.</p>}
           {shown.map((c, i) => (
             <button key={c.id} type="button" role="option" aria-selected={i === hi} onMouseEnter={() => setHi(i)} onClick={() => run(c)}
-              className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm ${i === hi ? "bg-slate-100 dark:bg-slate-800" : ""}`}>
+              className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm ${i === hi ? "bg-slate-100 dark:bg-raised" : ""}`}>
               <span>{c.label}</span>
               {c.hint && <span className="text-xs text-slate-400">{c.hint}</span>}
             </button>
           ))}
         </div>
-        <div className="flex gap-3 border-t border-slate-200 px-3 py-1.5 text-[11px] text-slate-400 dark:border-slate-700">
+        <div className="flex gap-3 border-t border-slate-200 px-3 py-1.5 text-[11px] text-slate-400 dark:border-border">
           <span>↑↓ moverse</span><span>Enter ejecutar</span><span>Esc cerrar</span>
         </div>
       </div>

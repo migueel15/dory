@@ -27,9 +27,9 @@ function ProjectList() {
       <div className="grid gap-3 md:grid-cols-2">
         {projects.data?.map((p) => (
           <Link key={p.id} to="/projects/$id" params={{ id: p.id }}>
-            <Card className="hover:bg-slate-50 dark:hover:bg-slate-800">
-              <div className="font-medium">{p.name} <span className="text-xs text-slate-500 dark:text-slate-400">{p.slug}</span></div>
-              <p className="text-sm text-slate-600 dark:text-slate-300">{p.description}</p>
+            <Card className="hover:bg-slate-50 dark:hover:bg-raised">
+              <div className="font-medium">{p.name} <span className="text-xs text-slate-500 dark:text-muted">{p.slug}</span></div>
+              <p className="text-sm text-slate-600 dark:text-text-secondary">{p.description}</p>
               <div className="mt-1 flex flex-wrap gap-1"><Badge>{p.status}</Badge>{p.stack.map((s) => <Badge key={s}>{s}</Badge>)}</div>
             </Card>
           </Link>
@@ -55,12 +55,12 @@ function ProjectView({ id }: { id: string }) {
     <div className="space-y-6">
       <div className="space-y-1">
         <div className="flex items-start justify-between gap-2">
-          <h1 className="text-xl font-bold break-words">{p.name} <span className="text-sm font-normal text-slate-500 dark:text-slate-400">{p.slug}</span></h1>
+          <h1 className="text-xl font-bold break-words">{p.name} <span className="text-sm font-normal text-slate-500 dark:text-muted">{p.slug}</span></h1>
           <Button variant="ghost" onClick={() => setEditing(true)}>Editar</Button>
         </div>
         {p.description && <Md>{p.description}</Md>}
         <div className="flex flex-wrap gap-1"><Badge>{p.status}</Badge>{p.stack.map((s) => <Badge key={s}>{s}</Badge>)}</div>
-        {repos.data?.map((r) => <div key={r.id} className="break-all text-sm text-slate-600 dark:text-slate-300">⎇ {r.remote_url} <span className="text-xs">({r.default_branch})</span></div>)}
+        {repos.data?.map((r) => <div key={r.id} className="break-all text-sm text-slate-600 dark:text-text-secondary">⎇ {r.remote_url} <span className="text-xs">({r.default_branch})</span></div>)}
       </div>
       <Board projectId={id} />
       <Features projectId={id} />

@@ -24,7 +24,7 @@ export function QuickCapture() {
   }, []);
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) save.mutate(text.trim()); }}>
-      <input ref={input} value={text} onChange={(e) => setText(e.target.value)} disabled={save.isPending} aria-label="Nueva idea" placeholder="Nueva idea… (/ · Ctrl+K para comandos)" className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" />
+      <input ref={input} value={text} onChange={(e) => setText(e.target.value)} disabled={save.isPending} aria-label="Nueva idea" placeholder="Nueva idea… (/ · Ctrl+K para comandos)" className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm dark:border-border dark:bg-surface" />
       <ErrorText error={save.error} />
     </form>
   );
