@@ -17,7 +17,7 @@ const PAGE = 10;
 
 export function ItemForm({ item, projectId, onClose, initialEdit = false }: { initialEdit?: boolean; item?: Item; projectId?: string | null; onClose: () => void }) {
   const qc = useQueryClient();
-  const [launch, setLaunch] = useState<"triage" | "implementation" | null>(null);
+  const [launch, setLaunch] = useState<"triage" | "implementation" | "replan" | null>(null);
   const [title, setTitle] = useState(item?.title ?? "");
   const [body, setBody] = useState(item?.body_md ?? "");
   const [progress, setProgress] = useState(item?.progress ?? "");
@@ -55,6 +55,7 @@ export function ItemForm({ item, projectId, onClose, initialEdit = false }: { in
       <Modal title="Item" onClose={onClose} wide>
         <ItemView item={item} project={project?.name} feature={feature?.title} />
         {(item.status === "inbox" || item.status === "triaged") && <Button type="button" variant="ghost" onClick={() => setLaunch("triage")}>Analizar con un agente</Button>}
+        {item.status === "ready" && <Button type="button" variant="ghost" onClick={() => setLaunch("replan")}>Solicitar cambios</Button>}
         {item.status === "ready" && <Button type="button" variant="ghost" onClick={() => setLaunch("implementation")}>Enviar a implementar</Button>}
         {launch && <LaunchDialog items={[item]} role={launch} onClose={() => setLaunch(null)} />}
         <div className="flex justify-end gap-2 border-t border-slate-200 pt-3 dark:border-border">

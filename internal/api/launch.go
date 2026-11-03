@@ -13,6 +13,7 @@ import (
 const (
 	roleTriage         = "triage"
 	roleImplementation = "implementation"
+	roleReplan         = "replan"
 )
 
 // triagePrompt lets the agent define the item in Dory, but stops at ready:
@@ -28,11 +29,24 @@ Si tienes dudas que cambien el resultado, guarda solo lo que esté claro, pásal
 
 Termina con un resumen breve de lo que has dejado en Dory.`
 
+// replanPrompt asks the agent to rewrite a ready plan; it never touches code
+// and the user keeps the decision of when to implement.
+const replanPrompt = `Revisa el plan de este item según los cambios pedidos. Consulta el código y las herramientas MCP de Dory (session_start, get_project) si lo necesitas. No cambies el código ni implementes nada.
+
+Si los cambios quedan claros y sin dudas que cambien el resultado, reescribe el plan con update_item (título, body_md con objetivo, alcance y cómo probar, tags y, si cambia, feature_id) y déjalo en ready. No lo lleves más allá: el usuario decide cuándo implementarlo.
+
+Si los cambios generan dudas que cambien el resultado, guarda solo lo que esté claro, pásalo a triaged con move_item y plantea las dudas en este hilo.
+
+Termina con un resumen breve de lo que has cambiado en el plan.`
+
 // launchPrompt gives the agent the item and what it may do with it.
-func launchPrompt(item service.Item, role string, worktree bool, base string) string {
+func launchPrompt(item service.Item, role string, worktree bool, base, feedback string) string {
 	task := fmt.Sprintf("Item de Dory %s\nTítulo: %s\nTexto original: %s\nDescripción:\n%s\n\n", item.ID, item.Title, item.RawText, item.BodyMd)
 	if role == roleTriage {
 		return task + triagePrompt
+	}
+	if role == roleReplan {
+		return task + "Cambios pedidos al plan:\n" + feedback + "\n\n" + replanPrompt
 	}
 	task += "Implementa este item siguiendo $dory-workflow; ya está en in_progress y vinculado a este hilo."
 	if worktree {
@@ -67,6 +81,8 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 			Provider   string `json:"provider"`
 			Model      string `json:"model"`
 			Role       string `json:"role"`
+			// Feedback holds the changes asked of the plan; required for the replan role.
+			Feedback   string `json:"feedback"`
 			Worktree   bool   `json:"worktree"`
 			BaseBranch string `json:"base_branch"`
 			// EffortOption and Effort set the reasoning effort; empty keeps the default.
@@ -83,9 +99,14 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 			return
 		}
 		// Only a ready item can be implemented: the jump is always deliberate.
-		valid := body.Role == roleTriage && (item.Status == "inbox" || item.Status == "triaged") || body.Role == roleImplementation && item.Status == "ready"
+		valid := body.Role == roleTriage && (item.Status == "inbox" || item.Status == "triaged") || (body.Role == roleImplementation || body.Role == roleReplan) && item.Status == "ready"
 		if !valid {
 			writeError(w, http.StatusConflict, "conflict", "this item cannot be launched with that role in its current status")
+			return
+		}
+		body.Feedback = strings.TrimSpace(body.Feedback)
+		if body.Role == roleReplan && body.Feedback == "" {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "feedback is required for the replan role")
 			return
 		}
 		c, err := monitor.InstanceClient(r.Context(), body.InstanceID)
@@ -95,7 +116,7 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 		}
 		threadID, err := c.Launch(r.Context(), t3.LaunchInput{
 			ProjectID: body.ProjectID, Title: item.Title, Provider: body.Provider, Model: body.Model, EffortOption: body.EffortOption, Effort: body.Effort,
-			Prompt: launchPrompt(item, body.Role, body.Worktree, strings.TrimSpace(body.BaseBranch)),
+			Prompt: launchPrompt(item, body.Role, body.Worktree, strings.TrimSpace(body.BaseBranch), body.Feedback),
 		})
 		if threadID == "" {
 			writeT3Error(w, err)
