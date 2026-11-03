@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { api, type GithubDetail, type GithubPull, type GithubThread } from "../api/client";
-import { Badge, Button, Card, ErrorText, Md, Arrow, pill, toggleTask } from "../components/ui";
+import { Badge, Button, Card, Select, ErrorText, Md, Arrow, pill, toggleTask } from "../components/ui";
 import { Avatar, PullStatus } from "./github";
 import { Diff } from "./github-diff";
 import { GithubMark, Icon, IconButton, Menu, MenuItem, RefContext, RefMd, Tip, UserPicker, icons, useConfirm, MentionArea } from "../components/github-ui";
@@ -16,7 +16,7 @@ const reviewStates: Record<string, string> = { APPROVED: "aprobó", CHANGES_REQU
 // already approved; requesting changes again brings the button back.
 const canApprove = (pull: GithubPull, me: string) => pull.author !== me && !pull.approved_by.includes(me);
 
-type Act = (type: string, extra?: { method?: string; user_ids?: string[]; title?: string; body?: string }) => void;
+type Act = (type: string, extra?: { method?: string; user_ids?: string[]; title?: string; body?: string; milestone_id?: string }) => void;
 
 // ReviewPicker asks someone for a review; it sits next to the reviewers' avatars.
 function ReviewPicker({ d, act, busy }: { d: GithubDetail; act: Act; busy: boolean }) {
@@ -51,6 +51,21 @@ function Assignees({ d, act, busy }: { d: GithubDetail; act: Act; busy: boolean 
           </MenuItem>
         ))} />
     </div>
+  );
+}
+
+// MilestonePicker sets or removes the issue's milestone; a closed one stays listed while it is the current one.
+function MilestonePicker({ d, act, busy }: { d: GithubDetail; act: Act; busy: boolean }) {
+  const current = d.issue!.milestone;
+  const known = d.milestones.find((m) => m.title === current);
+  const options = [{ value: "", label: "Sin milestone" }, ...d.milestones.map((m) => ({ value: m.id, label: m.title }))];
+  if (current && !known) options.push({ value: "current", label: current });
+  const value = known?.id ?? (current ? "current" : "");
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Tip text="Milestone"><span className="text-slate-400"><Icon d="M4 22V4M4 4h12l-2 4 2 4H4" /></span></Tip>
+      <Select value={value} disabled={busy} options={options} className="min-w-40" onChange={(v) => v !== value && v !== "current" && act("set_milestone", { milestone_id: v })} />
+    </span>
   );
 }
 
@@ -230,6 +245,7 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
           <span>{e.repo}#{e.number}</span>
           {d.pull && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono dark:bg-slate-800">{d.pull.head_ref} → {d.pull.base_ref}</span>}
           {e.labels.map((l) => <Badge key={l}>{l}</Badge>)}
+          {d.parent && <span className="inline-flex items-center gap-1">Padre: <SubLink s={d.parent} here={e.repo} /></span>}
           {refs.map((r) => <Link key={r.number} className="underline" to="/github/$owner/$repo/$kind/$number" params={{ owner, repo, kind: d.pull ? "issues" : "pulls", number: String(r.number) }}>#{r.number} {r.title}</Link>)}
         </div>
       </div>
@@ -244,9 +260,15 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
           {d.issue.state === "OPEN" ? <Assignees d={d} act={act} busy={busy} /> : d.assignees.length > 0 && (
             <span className="flex items-center gap-2"><Icon d={icons.user} />{d.assignees.map((a) => <Avatar key={a.id} login={a.login} />)}</span>
           )}
-          {d.issue.milestone && <span className="inline-flex items-center gap-1.5"><Icon d="M4 22V4M4 4h12l-2 4 2 4H4" />Milestone: <span className="font-medium text-slate-700 dark:text-slate-200">{d.issue.milestone}</span></span>}
+          <MilestonePicker d={d} act={act} busy={busy} />
           <span className="inline-flex items-center gap-1.5"><Icon d={icons.comment} />{d.issue.comments} comentarios</span>
           {d.issue.created_at && <span>Abierta {new Date(d.issue.created_at).toLocaleDateString()}</span>}
+        </div>
+      )}
+      {d.sub_issues.length > 0 && (
+        <div className="border-t border-slate-100 px-4 py-3 text-sm dark:border-slate-800">
+          <div className="mb-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">Sub-issues · {d.sub_issues.filter((s) => s.state !== "OPEN").length}/{d.sub_issues.length} cerradas</div>
+          <ul className="space-y-1">{d.sub_issues.map((s) => <li key={`${s.repo}#${s.number}`}><SubLink s={s} here={e.repo} dot /></li>)}</ul>
         </div>
       )}
       {draft
@@ -254,6 +276,17 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
         : d.body && <div className="max-h-[60vh] overflow-auto border-t border-slate-100 px-4 py-3 dark:border-slate-800"><RefMd onToggle={busy ? undefined : (line) => act(d.pull ? "edit_pull" : "edit_issue", { title: e.title, body: toggleTask(d.body, line) })}>{d.body}</RefMd></div>}
       <div className="flex flex-wrap items-center gap-2 rounded-b-lg border-t border-slate-100 bg-slate-50 px-4 py-2.5 dark:border-slate-800 dark:bg-slate-950/40">{actions}</div>
     </Card>
+  );
+}
+
+// SubLink opens a parent or sub-issue inside Dory, even in another repository.
+function SubLink({ s, here, dot }: { s: GithubDetail["sub_issues"][number]; here: string; dot?: boolean }) {
+  const [owner, repo] = s.repo.split("/");
+  return (
+    <Link className="inline-flex items-center gap-1.5 underline" to="/github/$owner/$repo/$kind/$number" params={{ owner, repo, kind: "issues", number: String(s.number) }}>
+      {dot && <span className={`size-2 shrink-0 rounded-full ${stateColor[s.state] ?? "bg-slate-500"}`} />}
+      {s.repo === here ? "" : s.repo}#{s.number} {s.title}
+    </Link>
   );
 }
 
