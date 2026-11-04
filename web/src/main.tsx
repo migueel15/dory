@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useEffect, useRef, useState } from "react";
 import { List, Moon, Sun, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -91,11 +91,29 @@ function Layout() {
 
   const path = useLocation({ select: (l) => l.pathname });
   const [menu, setMenu] = useState(false);
+  const drawer = useRef<HTMLDialogElement>(null);
   useEffect(() => setMenu(false), [path]);
+  useEffect(() => {
+    if (!menu || !me.data) return;
+    const dialog = drawer.current;
+    if (!dialog) return;
+    const previousOverflow = document.body.style.overflow;
+    dialog.showModal();
+    document.body.style.overflow = "hidden";
+    const desktop = window.matchMedia("(min-width: 640px)");
+    const closeOnDesktop = () => { if (desktop.matches) setMenu(false); };
+    closeOnDesktop();
+    desktop.addEventListener("change", closeOnDesktop);
+    return () => {
+      dialog.close();
+      document.body.style.overflow = previousOverflow;
+      desktop.removeEventListener("change", closeOnDesktop);
+    };
+  }, [menu, !!me.data]);
   if (me.isPending) return null;
   if (!me.data) return <Login />;
   const link = "flex min-h-11 shrink-0 items-center rounded px-3 text-sm sm:min-h-0 sm:px-2 sm:py-1 hover:bg-slate-200 dark:hover:bg-raised [&.active]:bg-slate-900 dark:[&.active]:bg-accent [&.active]:text-white dark:[&.active]:text-white";
-  const group = (name: string) => <span className="col-span-2 mt-1 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-muted sm:hidden">{name}</span>;
+  const group = (name: string) => <span className="mt-4 mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-muted sm:hidden">{name}</span>;
   const sep = <span className="mx-1 hidden h-5 w-px self-center bg-slate-200 dark:bg-border sm:block" aria-hidden="true" />;
   const links = (
     <>
@@ -131,22 +149,46 @@ function Layout() {
             <ThemeToggle />
             <Button variant="ghost" className="hidden sm:inline-flex" onClick={() => logout.mutate()}>Salir</Button>
           </div>
-          <button type="button" aria-label="Menú" aria-expanded={menu} onClick={() => setMenu(!menu)} className="grid size-11 place-items-center rounded hover:bg-slate-200 dark:hover:bg-raised sm:hidden">
+          <button type="button" aria-label="Menú" aria-controls="mobile-navigation" aria-expanded={menu} onClick={() => setMenu(!menu)} className="grid size-11 place-items-center rounded hover:bg-slate-200 dark:hover:bg-raised sm:hidden">
             {menu ? <X className="size-5" aria-hidden="true" /> : <List className="size-5" aria-hidden="true" />}
           </button>
         </div>
-        {menu && (
-          <div className="grid gap-2 pb-3 sm:hidden">
-            <div className="grid grid-cols-2 gap-1">{links}</div>
-            <ProjectFilter />
-            <div className="flex items-center gap-1">
-              <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
-              <span className="ml-auto" />
-              <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
-            </div>
-          </div>
-        )}
       </nav>
+      <dialog
+        ref={drawer}
+        id="mobile-navigation"
+        aria-labelledby="mobile-navigation-title"
+        className="mobile-drawer fixed inset-y-0 left-auto right-0 m-0 h-dvh max-h-none w-80 max-w-[calc(100%-2rem)] flex-col border-l border-slate-200 bg-white p-0 text-slate-900 shadow-2xl dark:border-border dark:bg-surface dark:text-text open:flex sm:hidden"
+        onCancel={() => setMenu(false)}
+        onClose={() => setMenu(false)}
+        onClick={(event) => {
+          if (event.target !== event.currentTarget) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) setMenu(false);
+        }}
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-border">
+          <div>
+            <h2 id="mobile-navigation-title" className="font-bold">Dory</h2>
+            <p className="text-xs text-slate-500 dark:text-muted">Navegación</p>
+          </div>
+          <button type="button" autoFocus aria-label="Cerrar menú" onClick={() => setMenu(false)} className="grid size-11 place-items-center rounded-lg hover:bg-slate-100 dark:hover:bg-raised">
+            <X className="size-5" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4">
+          <nav aria-label="Navegación móvil" className="flex flex-col gap-1" onClick={(event) => {
+            if ((event.target as HTMLElement).closest("a")) setMenu(false);
+          }}>{links}</nav>
+        </div>
+        <div className="shrink-0 space-y-3 border-t border-slate-200 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-border">
+          <ProjectFilter />
+          <div className="flex items-center justify-between gap-3">
+            <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
+            <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
+          </div>
+        </div>
+      </dialog>
       <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main><CommandPalette />
     </div>
   );

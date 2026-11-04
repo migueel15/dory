@@ -46,3 +46,13 @@ body { @apply bg-slate-50 text-slate-900 dark:bg-canvas dark:text-text; }
 .dark .hljs-number, .dark .hljs-symbol, .dark .hljs-bullet, .dark .hljs-variable, .dark .hljs-template-variable, .dark .hljs-attr { color: #fbbf24; }
 .dark .hljs-title, .dark .hljs-section, .dark .hljs-name, .dark .hljs-selector-id, .dark .hljs-selector-class { color: #93c5fd; }
 .dark .hljs-type, .dark .hljs-built_in, .dark .hljs-class .hljs-title, .dark .hljs-tag { color: #67e8f9; }
+
+.mobile-drawer::backdrop { background: rgb(0 0 0 / 0.5); }
+.mobile-drawer[open] { animation: drawer-enter 200ms ease-out; }
+@keyframes drawer-enter {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-drawer[open] { animation: none; }
+}
