@@ -5,7 +5,7 @@ import { Button, ErrorText, Label, Modal, Textarea } from "../components/ui";
 import { useLaunchForm } from "./launch-form";
 
 // Starts one thread per item on the chosen instance. Runs on an explicit click only.
-export function LaunchDialog({ items, role, onClose }: { items: Item[]; role: "triage" | "implementation" | "replan"; onClose: () => void }) {
+export function LaunchDialog({ items, role, onClose, onSuccess }: { items: Item[]; role: "triage" | "implementation" | "replan"; onClose: () => void; onSuccess?: () => void }) {
   const qc = useQueryClient();
   // Analysis never touches code, so only implementation offers a worktree.
   const [feedback, setFeedback] = useState("");
@@ -19,6 +19,7 @@ export function LaunchDialog({ items, role, onClose }: { items: Item[]; role: "t
       qc.invalidateQueries({ queryKey: ["items"] });
       qc.invalidateQueries({ queryKey: ["item-threads"] });
       onClose();
+      onSuccess?.();
     },
   });
   return (
