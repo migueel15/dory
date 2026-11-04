@@ -55,7 +55,8 @@ func launchPrompt(item service.Item, role string, worktree bool, base, feedback 
 		if base != "" {
 			from = "la rama " + base
 		}
-		task += fmt.Sprintf(" Antes de tocar código actualiza el remoto y crea con git un worktree nuevo desde %s, en la rama dory/%s, y trabaja solo allí.", from, item.ID[:8])
+		task += fmt.Sprintf(" Antes de tocar código actualiza el remoto y crea con git un worktree nuevo desde %s, en ~/.t3/worktrees/<repo>/dory-%s (sustituye <repo> por el nombre de la carpeta del repositorio principal), en la rama dory/%s, y trabaja solo allí.", from, item.ID[:8], item.ID[:8])
+		task += " Tras el merge de la PR, vuelve al checkout principal y elimina el worktree con git worktree remove y la rama local con git branch -d, si es posible y sin cambios pendientes. No fuerces la limpieza; si falla o no puede hacerse, explica el motivo en este hilo."
 	}
 	return task
 }
