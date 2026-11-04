@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { ArrowLeft } from "@phosphor-icons/react";
 import { createPortal } from "react-dom";
 
 export type ContextAction = { label: string; run?: () => void; content?: ReactNode; children?: ContextAction[] };
@@ -38,7 +39,7 @@ export function ContextMenu({ x, y, actions, onClose }: { x: number; y: number; 
       else if (e.key === "ArrowLeft" && submenu) { e.preventDefault(); setSubmenu(null); }
       else if (e.key === "ArrowRight" && entries[index - (submenu ? 1 : 0)]?.children) { e.preventDefault(); setSubmenu(entries[index - (submenu ? 1 : 0)].children!); }
     }}>
-    {submenu && <button role="menuitem" className="w-full rounded px-3 py-2 text-left hover:bg-slate-100 focus:bg-slate-100 dark:hover:bg-raised dark:focus:bg-raised" onClick={() => setSubmenu(null)}>← Volver</button>}
+    {submenu && <button role="menuitem" className="w-full rounded px-3 py-2 text-left hover:bg-slate-100 focus:bg-slate-100 dark:hover:bg-raised dark:focus:bg-raised" onClick={() => setSubmenu(null)}><ArrowLeft aria-hidden="true" className="mr-1 inline size-4" />Volver</button>}
     {entries.map((action) => <div key={action.label}>
       {action.content ? <div onClick={onClose}>{action.content}</div> : <button role="menuitem" aria-haspopup={action.children ? "menu" : undefined} aria-expanded={action.children ? false : undefined}
         className="w-full rounded px-3 py-2 text-left hover:bg-slate-100 focus:bg-slate-100 dark:hover:bg-raised dark:focus:bg-raised"

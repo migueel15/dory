@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ArrowLeft } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { api } from "../api/client";
@@ -54,7 +55,7 @@ function ProjectView({ id }: { id: string }) {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <Link to="/projects" className="text-sm text-slate-500 hover:underline dark:text-muted">← Proyectos</Link>
+        <Link to="/projects" className="text-sm text-slate-500 hover:underline dark:text-muted"><ArrowLeft aria-hidden="true" className="mr-1 inline size-4" />Proyectos</Link>
         <div className="flex items-start justify-between gap-2">
           <h1 className="text-xl font-bold break-words">{p.name} <span className="text-sm font-normal text-slate-500 dark:text-muted">{p.slug}</span></h1>
           <Button variant="ghost" onClick={() => setEditing(true)}>Editar</Button>

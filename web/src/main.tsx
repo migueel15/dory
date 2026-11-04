@@ -1,4 +1,5 @@
 import { StrictMode, useEffect, useState } from "react";
+import { List, Moon, Sun, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
@@ -56,16 +57,7 @@ function ThemeToggle() {
   const label = dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro";
   return (
     <Button variant="bare" aria-label={label} title={label} onClick={() => setTheme(dark ? "light" : "dark")}>
-      <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        {dark ? (
-          <>
-            <circle cx="12" cy="12" r="4" />
-            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-          </>
-        ) : (
-          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
-        )}
-      </svg>
+      {dark ? <Sun className="size-5" aria-hidden="true" /> : <Moon className="size-5" aria-hidden="true" />}
     </Button>
   );
 }
@@ -83,7 +75,7 @@ function ProjectFilter() {
   return (
     <span className="inline-flex items-center rounded-full bg-blue-50 text-sm text-blue-800 dark:bg-accent-subtle dark:text-accent-text">
       <Select plain className="w-auto" value={project} onChange={setProject} options={[{ value: "", label: "Todos los proyectos" }, ...list]} />
-      <button type="button" aria-label="Quitar filtro de proyecto" title="Quitar filtro" onClick={() => setProject("")} className="mr-1 grid size-6 place-items-center rounded-full hover:bg-blue-100 dark:hover:bg-accent-border/40">✕</button>
+      <button type="button" aria-label="Quitar filtro de proyecto" title="Quitar filtro" onClick={() => setProject("")} className="mr-1 grid size-6 place-items-center rounded-full hover:bg-blue-100 dark:hover:bg-accent-border/40"><X aria-hidden="true" className="size-3.5" /></button>
     </span>
   );
 }
@@ -140,7 +132,7 @@ function Layout() {
             <Button variant="ghost" className="hidden sm:inline-flex" onClick={() => logout.mutate()}>Salir</Button>
           </div>
           <button type="button" aria-label="Menú" aria-expanded={menu} onClick={() => setMenu(!menu)} className="grid size-11 place-items-center rounded hover:bg-slate-200 dark:hover:bg-raised sm:hidden">
-            <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d={menu ? "M6 6l12 12M18 6L6 18" : "M4 7h16M4 12h16M4 17h16"} /></svg>
+            {menu ? <X className="size-5" aria-hidden="true" /> : <List className="size-5" aria-hidden="true" />}
           </button>
         </div>
         {menu && (

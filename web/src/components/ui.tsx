@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ArrowRight, CaretDown, Check, X } from "@phosphor-icons/react";
 import { createPortal } from "react-dom";
 import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, KeyboardEvent, ReactNode, TextareaHTMLAttributes } from "react";
 import Markdown, { defaultUrlTransform, type Options } from "react-markdown";
@@ -20,7 +21,7 @@ export function Button({ variant = "default", className, ...p }: ButtonHTMLAttri
 // pill styles links that act as secondary buttons (navigation, external links).
 export const pill = "inline-flex min-h-11 sm:min-h-0 shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 dark:border-border dark:bg-surface dark:text-text-secondary dark:hover:border-border-strong dark:hover:bg-raised dark:hover:text-white";
 export const Arrow = ({ back }: { back?: boolean }) => (
-  <svg viewBox="0 0 20 20" fill="currentColor" className={cx("size-3.5", back && "rotate-180")}><path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.64l-4.22-4.22a.75.75 0 1 1 1.06-1.06l5.5 5.5a.75.75 0 0 1 0 1.06l-5.5 5.5a.75.75 0 1 1-1.06-1.06l4.22-4.22H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" /></svg>
+  <ArrowRight aria-hidden="true" className={cx("size-3.5", back && "rotate-180")} />
 );
 
 export const field = "min-h-11 sm:min-h-0 w-full rounded-md border border-slate-300 dark:border-border-strong bg-white dark:bg-surface px-2 py-1.5 text-sm";
@@ -74,7 +75,7 @@ export function Select({ value, onChange, options, disabled, className, placehol
       <button type="button" disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? setOpen(false) : show())} onKeyDown={key}
         className={cx(plain ? "flex min-h-11 items-center gap-1 rounded px-2 py-1 text-left text-sm hover:bg-slate-200 dark:hover:bg-raised sm:min-h-0" : field, !plain && "flex items-center justify-between gap-2 text-left transition-colors hover:border-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:focus-visible:ring-accent/40 disabled:opacity-50 dark:hover:border-muted", !plain && open && "border-blue-500 dark:border-accent")}>
         <span className={cx("flex min-w-0 items-center gap-2 truncate", !current && "text-slate-400")}>{current?.icon}{current?.label ?? placeholder}</span>
-        <svg viewBox="0 0 20 20" fill="currentColor" className={cx("size-4 shrink-0 text-slate-400 transition-transform", open && "rotate-180")}><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clipRule="evenodd" /></svg>
+        <CaretDown aria-hidden="true" className={cx("size-4 shrink-0 text-slate-400 transition-transform", open && "rotate-180")} />
       </button>
       {open && createPortal(
         <div ref={list} role="listbox" style={pos} className="fixed z-50 max-h-72 min-w-48 overflow-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-border dark:bg-surface">
@@ -85,7 +86,7 @@ export function Select({ value, onChange, options, disabled, className, placehol
               <button type="button" role="option" aria-selected={i === hi} aria-disabled={o.disabled} disabled={o.disabled} onMouseEnter={() => setHi(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(o)}
                 className={cx("flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm", i === hi ? "bg-slate-100 dark:bg-raised" : "", o.value === value ? "font-medium text-blue-700 dark:text-accent-text" : "text-slate-700 dark:text-text", o.disabled && "cursor-not-allowed opacity-50")}>
                 <span className="flex min-w-0 items-center gap-2 truncate">{o.icon}{o.label}</span>
-                {o.value === value && <svg viewBox="0 0 20 20" fill="currentColor" className="size-4 shrink-0"><path fillRule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.58l7.3-7.3a1 1 0 0 1 1.4 0Z" clipRule="evenodd" /></svg>}
+                {o.value === value && <Check aria-hidden="true" weight="bold" className="size-4 shrink-0" />}
               </button>
             </div>
           ))}
@@ -165,7 +166,7 @@ export function Modal({ title, onClose, children, wide = false }: { title: strin
         <div className="flex items-start justify-between gap-2">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button type="button" aria-label="Cerrar" onClick={onClose} className="-mr-1 grid size-8 shrink-0 place-items-center rounded text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">
-            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            <X aria-hidden="true" className="size-4" />
           </button>
         </div>
         {children}

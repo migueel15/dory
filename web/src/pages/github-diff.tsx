@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ChatCircle } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { Button, Card, ErrorText } from "../components/ui";
@@ -149,10 +150,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
             <div id={anchor(f.path)} className="mb-1 flex scroll-mt-2 items-start justify-between gap-2">
               <span className="break-all font-mono text-xs font-semibold">{f.path}</span>
               <button type="button" title="Comentar el fichero" aria-label="Comentar el fichero" onClick={() => { setPick({ file: f.path, start: -1, end: -1 }); setOpen(true); }} className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600 dark:hover:text-accent-text dark:hover:bg-raised">
-                <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                  <path d="M12 7v6M9 10h6" />
-                </svg>
+                <ChatCircle aria-hidden="true" className="size-4" />
               </button>
             </div>
             {pick?.file === f.path && pick.start < 0 && form(f, pick, `Comentario sobre ${f.path}…`)}

@@ -1,40 +1,40 @@
 import { Link as RouterLink } from "@tanstack/react-router";
+import { ArrowBendUpLeft, ArrowCounterClockwise, CaretDown, ChatCircle, Check, CheckCircle, Clock, Code, Eye, File, Flag, GitBranch, GitMerge, GitPullRequest, GithubLogo, PencilSimple, Plus, RadioButton, User, X, type Icon as PhosphorIcon, type IconWeight } from "@phosphor-icons/react";
 import { createPortal } from "react-dom";
 import { defaultUrlTransform, Md } from "./ui";
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject, type ReactNode, type Ref, type TextareaHTMLAttributes } from "react";
 
-// Stroke icons in the same 24px style as the rest of the app.
+// Phosphor icons shared by the GitHub views.
 export const icons = {
-  check: "M20 6 9 17l-5-5",
-  comment: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
-  issue: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2z",
-  reply: "M9 17 4 12l5-5M20 18v-2a4 4 0 0 0-4-4H4",
-  x: "M18 6 6 18M6 6l12 12",
-  plus: "M12 5v14M5 12h14",
-  chevron: "m6 9 6 6 6-6",
-  code: "m16 18 6-6-6-6M8 6l-6 6 6 6",
-  merge: "M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9",
-  edit: "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z",
-  draft: "M18 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM6 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM6 9v12M18 5v1M18 10v1",
-  ready: "M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3",
-  reopen: "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5",
-  user: "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+  check: Check,
+  comment: ChatCircle,
+  issue: RadioButton,
+  reply: ArrowBendUpLeft,
+  x: X,
+  plus: Plus,
+  chevron: CaretDown,
+  code: Code,
+  merge: GitMerge,
+  edit: PencilSimple,
+  draft: GitPullRequest,
+  ready: CheckCircle,
+  reopen: ArrowCounterClockwise,
+  user: User,
+  ci: Clock,
+  eye: Eye,
+  clock: Clock,
+  flag: Flag,
+  file: File,
+  branch: GitBranch,
+  pull: GitPullRequest,
 };
 
-export function Icon({ d, className = "size-4" }: { d: string; className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d={d} />
-    </svg>
-  );
+export function Icon({ i: Glyph, className = "size-4", weight }: { i: PhosphorIcon; className?: string; weight?: IconWeight }) {
+  return <Glyph className={className} weight={weight} aria-hidden="true" />;
 }
 
 export function GithubMark({ className = "size-5" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
-    </svg>
-  );
+  return <GithubLogo className={className} weight="fill" aria-hidden="true" />;
 }
 
 // Tip shows a styled tooltip above its child on hover or keyboard focus.
@@ -78,11 +78,11 @@ const tones = {
 };
 
 // IconButton is a square button whose meaning lives in its icon and tooltip.
-export function IconButton({ icon, tip, onClick, disabled, tone = "plain" }: { icon: string; tip: string; onClick: () => void; disabled?: boolean; tone?: keyof typeof tones }) {
+export function IconButton({ icon, tip, onClick, disabled, tone = "plain" }: { icon: PhosphorIcon; tip: string; onClick: () => void; disabled?: boolean; tone?: keyof typeof tones }) {
   return (
     <Tip text={tip}>
       <button type="button" aria-label={tip} disabled={disabled} onClick={onClick} className={`grid size-9 place-items-center rounded-lg border shadow-sm transition-colors disabled:opacity-40 ${tones[tone]}`}>
-        <Icon d={icon} />
+        <Icon i={icon} />
       </button>
     </Tip>
   );
@@ -139,7 +139,7 @@ export function UserPicker({ tip, title, users, note, onPick, disabled, extra }:
       trigger={(open, toggle) => (
         <Tip text={tip}>
           <button type="button" aria-label={tip} disabled={disabled} onClick={toggle} className={`grid size-6 place-items-center rounded-full border border-dashed transition-colors disabled:opacity-40 ${open ? "border-blue-500 dark:border-accent text-blue-600 dark:text-accent-text" : "border-slate-400 text-slate-500 hover:border-blue-500 dark:hover:border-accent hover:text-blue-600 dark:hover:text-accent-text"}`}>
-            <Icon d={icons.plus} className="size-3.5" />
+            <Icon i={icons.plus} className="size-3.5" />
           </button>
         </Tip>
       )}
@@ -244,7 +244,7 @@ function options(mark: string, query: string, people: string[], links: Link[]): 
   return rank(query, links).slice(0, 8).map((l) => ({
     key: String(l.number), insert: `#${l.number}`,
     node: <>
-      <span className={linkColor[l.state] ?? "text-slate-500"}><Icon d={l.pull ? icons.merge : icons.issue} className="size-4" /></span>
+      <span className={linkColor[l.state] ?? "text-slate-500"}><Icon i={l.pull ? icons.merge : icons.issue} className="size-4" /></span>
       <span className="font-mono text-xs text-slate-400">#{l.number}</span>
       <span className="min-w-0 flex-1 truncate">{l.title}</span>
     </>,
