@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ArrowLeft } from "@phosphor-icons/react";
+import { useId, useState } from "react";
+import { ArrowLeft, GithubLogo, Info, PencilSimple } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { api } from "../api/client";
@@ -48,21 +48,43 @@ export function ProjectDetail() {
 
 function ProjectView({ id }: { id: string }) {
   const [editing, setEditing] = useState(false);
+  const infoId = useId();
   const project = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list(), select: (l) => l.find((p) => p.id === id) });
   const repos = useQuery({ queryKey: ["repositories", id], queryFn: () => api.repositories.list({ project_id: id }) });
   const p = project.data;
   if (!p) return <ErrorText error={project.error} />;
   return (
-    <div className="space-y-6">
-      <div className="space-y-1">
-        <Link to="/projects" className="text-sm text-slate-500 hover:underline dark:text-muted"><ArrowLeft aria-hidden="true" className="mr-1 inline size-4" />Proyectos</Link>
-        <div className="flex items-start justify-between gap-2">
-          <h1 className="text-xl font-bold break-words">{p.name} <span className="text-sm font-normal text-slate-500 dark:text-muted">{p.slug}</span></h1>
-          <Button variant="ghost" onClick={() => setEditing(true)}>Editar</Button>
+    <div className="space-y-3">
+      <div className="flex min-w-0 items-center gap-1">
+        <Link to="/projects" aria-label="Volver a proyectos" title="Volver a proyectos" className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised sm:min-h-0 sm:min-w-0 sm:p-2">
+          <ArrowLeft aria-hidden="true" className="size-5" />
+        </Link>
+        <h1 className="min-w-0 flex-1 truncate text-xl font-bold" title={p.name}>{p.name}</h1>
+        <div className="flex max-w-[35%] min-w-0 items-center overflow-x-auto">
+          {repos.data?.map((r) => (
+            <a key={r.id} href={r.remote_url.replace(/\.git$/, "")} target="_blank" rel="noopener noreferrer"
+              aria-label={`Abrir repositorio ${r.remote_url}`} title={r.remote_url.replace(/\.git$/, "")}
+              className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-md hover:bg-slate-100 dark:hover:bg-raised sm:min-h-0 sm:min-w-0 sm:p-2">
+              <GithubLogo aria-hidden="true" className="size-5" />
+            </a>
+          ))}
         </div>
-        {p.description && <Md>{p.description}</Md>}
-        <div className="flex flex-wrap gap-1"><Badge>{p.status}</Badge>{p.stack.map((s) => <Badge key={s}>{s}</Badge>)}</div>
-        {repos.data?.map((r) => <div key={r.id} className="break-all text-sm text-slate-600 dark:text-text-secondary">⎇ {r.remote_url} <span className="text-xs">({r.default_branch})</span></div>)}
+        <Button variant="bare" className="shrink-0 px-2" aria-label="Información del proyecto" title={p.description || "Información del proyecto"} popoverTarget={infoId}>
+          <Info aria-hidden="true" className="size-5" />
+        </Button>
+        <div id={infoId} popover="auto" className="fixed inset-0 m-auto max-h-[80dvh] w-80 max-w-[calc(100vw-2rem)] space-y-3 overflow-auto rounded-lg border border-slate-200 bg-white p-4 text-slate-900 shadow-lg dark:border-border dark:bg-surface dark:text-text">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-semibold">Información del proyecto</h2>
+            <Button variant="bare" popoverTarget={infoId} popoverTargetAction="hide" aria-label="Cerrar información">×</Button>
+          </div>
+          {p.description && <Md>{p.description}</Md>}
+          <p className="break-words text-sm">{p.slug}</p>
+          <div className="flex flex-wrap gap-1"><Badge>{p.status}</Badge>{p.stack.map((s) => <Badge key={s}>{s}</Badge>)}</div>
+          {repos.data?.map((r) => <p key={r.id} className="break-all text-sm">{r.remote_url} ({r.default_branch})</p>)}
+        </div>
+        <Button variant="bare" className="shrink-0 px-2" onClick={() => setEditing(true)} aria-label="Editar proyecto" title="Editar proyecto">
+          <PencilSimple aria-hidden="true" className="size-5" />
+        </Button>
       </div>
       <Board projectId={id} />
       <Features projectId={id} />

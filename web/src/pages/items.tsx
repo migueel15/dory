@@ -1,5 +1,5 @@
 import { ThreadStatus } from "../components/thread-status";
-import { ChatCircle, GitPullRequest } from "@phosphor-icons/react";
+import { ChatCircle, GitPullRequest, Plus } from "@phosphor-icons/react";
 import { ThreadLink } from "../components/thread-link";
 import { LaunchDialog } from "./launch";
 import { ContextMenu, type ContextAction } from "../components/context-menu";
@@ -297,7 +297,7 @@ export function Board({ projectId }: { projectId: string }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">Kanban <span className="hidden text-xs font-normal text-slate-500 dark:text-muted sm:inline">(clic para abrir · arrastra para cambiar de estado)</span></h2>
-        <Button onClick={() => setEditing("new")}>Nuevo item</Button>
+        <Button onClick={() => setEditing("new")} aria-label="Nuevo item" title="Nuevo item" className="inline-flex shrink-0 items-center gap-1.5"><Plus aria-hidden="true" className="size-4" /><span className="hidden sm:inline">Nuevo item</span></Button>
       </div>
       {blocking && <BlockDialog item={blocking} onClose={() => setBlocking(null)} onConfirm={(reason) => { move.mutate({ item: blocking, status: "blocked", reason }); setBlocking(null); }} />}
       <ErrorText error={move.error ?? items.error} />
