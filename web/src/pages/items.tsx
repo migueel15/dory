@@ -55,7 +55,7 @@ export function ItemForm({ item, projectId, onClose, initialEdit = false }: { in
     return (
       <Modal title="Item" onClose={onClose} wide>
         <ItemView item={item} project={project?.name} feature={feature?.title} />
-        {launch && <LaunchDialog items={[item]} role={launch} onClose={() => setLaunch(null)} />}
+        {launch && <LaunchDialog items={[item]} role={launch} onClose={() => setLaunch(null)} onSuccess={launch === "replan" ? undefined : onClose} />}
         <div className="sticky -bottom-3 -mx-3 flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white px-3 pt-3 dark:border-border dark:bg-surface sm:-bottom-4 sm:-mx-4 sm:px-4">
           <Button variant="ghost" onClick={() => setEditMode(true)}>Editar</Button>
           {(item.status === "inbox" || item.status === "triaged") && <Button type="button" onClick={() => setLaunch("triage")}>Analizar con un agente</Button>}
