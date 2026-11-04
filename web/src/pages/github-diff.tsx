@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { CaretRight, ChatCircle, CircleNotch, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
+import { ArrowsIn, ArrowsOut, CaretRight, ChatCircle, CircleNotch, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { Button, ErrorText } from "../components/ui";
+import { highlight, languageOf, loadLanguage } from "../highlight";
 
 type Side = "LEFT" | "RIGHT";
 type Line = { text: string; kind: "add" | "del" | "ctx" | "hunk"; old?: number; new?: number };
@@ -112,6 +113,26 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
   const [drag, setDrag] = useState<{ file: string; from: number }>();
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<string>();
+  const [full, setFull] = useState(false);
+  const [loaded, setLoaded] = useState(0); // bumps when a language finishes loading
+  useEffect(() => {
+    if (!full) return;
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setFull(false);
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [full]);
+  useEffect(() => {
+    const langs = new Set(files.map((f) => languageOf(f.path)).filter((l): l is string => !!l));
+    langs.forEach((l) => loadLanguage(l).then((ok) => ok && setLoaded((n) => n + 1)));
+  }, [files]);
+  const html = useMemo(() => {
+    const out = new Map<string, (string | undefined)[]>();
+    for (const f of files) {
+      const lang = languageOf(f.path);
+      if (lang) out.set(f.path, f.lines.map((l) => (l.kind === "hunk" ? undefined : highlight(l.text.slice(1), lang))));
+    }
+    return out;
+  }, [files, loaded]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const stop = () => setDrag((d) => { if (d) setOpen(true); return undefined; });
     window.addEventListener("mouseup", stop);
@@ -164,14 +185,21 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
   }
 
   return (
-    <div className="grid items-start gap-3 md:grid-cols-[16rem_1fr]">
-      <aside className="md:max-h-[80vh] md:overflow-auto">
-        <div className={`${panel} p-2`}>
+    <div className={full ? "fixed inset-0 z-50 overflow-hidden bg-slate-50 p-3 dark:bg-canvas" : ""}>
+    <div className={`grid gap-3 md:grid-cols-[16rem_1fr] ${full ? "h-full grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1" : ""}`}>
+      <aside className={`${full ? "h-[30vh] md:h-auto" : "h-[30vh] md:h-[80vh]"} overflow-auto`}>
+        <div className={`${panel} min-h-full p-2`}>
           <input aria-label="Buscar fichero" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero…" className="mb-2 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-border dark:bg-surface" />
           <Tree dir={treeRoot} jump={jump} active={active} />
         </div>
       </aside>
-      <div className="min-w-0 space-y-3 md:max-h-[80vh] md:overflow-auto md:overscroll-contain">
+      <div className={`min-w-0 space-y-3 overflow-auto overscroll-contain ${full ? "" : "md:h-[80vh]"}`}>
+        <div className="flex justify-end">
+          <button type="button" onClick={() => setFull((v) => !v)} title={full ? "Salir de pantalla completa (Esc)" : "Pantalla completa"} aria-label={full ? "Salir de pantalla completa" : "Pantalla completa"} className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-100 dark:border-border dark:bg-surface dark:hover:bg-raised">
+            {full ? <ArrowsIn aria-hidden="true" className="size-4" /> : <ArrowsOut aria-hidden="true" className="size-4" />}
+            {full ? "Salir" : "Pantalla completa"}
+          </button>
+        </div>
         <ErrorText error={diff.error ?? comment.error} />
         {shown.map((f) => (
           <section key={f.path} className={panel}>
@@ -197,7 +225,11 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
                           <span className="inline-block w-8">{l.old ?? ""}</span> <span className="inline-block w-8">{l.new ?? ""}</span>
                         </button>
                       )}
-                      <span className={`min-w-0 flex-1 px-2 ${l.kind === "hunk" ? "pl-3" : ""}`}>{l.text || " "}</span>
+                      {html.get(f.path)?.[i] !== undefined ? (
+                        <span className="min-w-0 flex-1 px-2"><span>{l.text[0]}</span><span dangerouslySetInnerHTML={{ __html: html.get(f.path)![i]! }} /></span>
+                      ) : (
+                        <span className={`min-w-0 flex-1 px-2 ${l.kind === "hunk" ? "pl-3" : ""}`}>{l.text || " "}</span>
+                      )}
                     </div>
                     {open && !drag && pick?.file === f.path && pick.end === i && (
                       <div className="px-3">{form(f, pick, `Comentario en líneas ${number(f.lines[pick.start])}–${number(l)}…`)}</div>
@@ -209,6 +241,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
           </section>
         ))}
       </div>
+    </div>
     </div>
   );
 }
