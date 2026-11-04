@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Bell, X } from "@phosphor-icons/react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Modal } from "./ui";
 import { ItemForm } from "../pages/items";
@@ -84,7 +85,7 @@ export function Notifications() {
   }
   return <>
     <Button variant="bare" className="relative" aria-label={`Notificaciones: ${feed.data?.unread ?? 0} sin leer`} onClick={() => setOpen(true)}>
-      <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>
+      <Bell className="size-5" aria-hidden="true" />
       {!!feed.data?.unread && <span className="absolute -right-0.5 -top-0.5 grid min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-4 text-white">{feed.data.unread > 99 ? "99+" : feed.data.unread}</span>}
     </Button>
     {open && <Modal title="Notificaciones · todos los proyectos" onClose={() => setOpen(false)}>
@@ -113,7 +114,7 @@ export function Notifications() {
       {history.data && !notices.some(n => n.bell) && <p className="py-4">Sin avisos todavía.</p>}
     </Modal>}
     <div aria-live="polite" className="fixed bottom-4 right-4 z-50 w-80 max-w-[calc(100vw-2rem)] space-y-2">
-      {toasts.map(n => <div key={n.id} className="relative rounded border border-slate-200 dark:border-border bg-white dark:bg-surface p-3 shadow-lg"><a href={n.url} onClick={() => void act(() => read(n))} className="block pr-6"><span className="block text-sm font-semibold">{n.title}</span>{n.body && <span className="block break-words text-sm">{n.body}</span>}</a><button className="absolute right-1 top-1 px-2" aria-label="Cerrar aviso" onClick={() => setToasts(old => old.filter(x => x.id !== n.id))}>×</button></div>)}
+      {toasts.map(n => <div key={n.id} className="relative rounded border border-slate-200 dark:border-border bg-white dark:bg-surface p-3 shadow-lg"><a href={n.url} onClick={() => void act(() => read(n))} className="block pr-6"><span className="block text-sm font-semibold">{n.title}</span>{n.body && <span className="block break-words text-sm">{n.body}</span>}</a><button className="absolute right-1 top-1 px-2" aria-label="Cerrar aviso" onClick={() => setToasts(old => old.filter(x => x.id !== n.id))}><X aria-hidden="true" className="size-4" /></button></div>)}
     </div>
   </>;
 }

@@ -1,10 +1,12 @@
 import { DefineIssueDialog } from "./define-issue";
+import { ArrowClockwise, MagnifyingGlass } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { api, type GithubIssue, type GithubPull } from "../api/client";
 import { Card, ErrorText, Select, pill } from "../components/ui";
-import { GithubMark, Tip } from "../components/github-ui";
+import { GithubMark, Icon, Tip, icons } from "../components/github-ui";
+import { type Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { useProject } from "../project";
 
 const ok = "text-green-700 dark:text-green-400";
@@ -28,26 +30,10 @@ export function approvalsText(p: GithubPull) {
 
 const tone = { ok: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300", bad: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300", wait: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300", none: "bg-slate-100 text-slate-600 dark:bg-raised dark:text-text-secondary" };
 const toneOf = (color: string) => (color === ok ? tone.ok : color === bad ? tone.bad : color === wait ? tone.wait : tone.none);
-const icons = {
-  merge: "M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9",
-  check: "M20 6 9 17l-5-5",
-  ci: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 6v6l4 2",
-  x: "M18 6 6 18M6 6l12 12",
-  eye: "M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
-};
-
-function Icon({ d, className = "size-3.5" }: { d: string; className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d={d} />
-    </svg>
-  );
-}
-
-function Chip({ icon, label, color, title }: { icon: string; label: string; color: string; title: string }) {
+function Chip({ icon, label, color, title }: { icon: PhosphorIcon; label: string; color: string; title: string }) {
   return (
     <Tip text={title}><span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${toneOf(color)}`}>
-      <Icon d={icon} /> {label}
+      <Icon i={icon} className="size-3.5" /> {label}
     </span></Tip>
   );
 }
@@ -57,7 +43,7 @@ export function Avatar({ login, mark, ring, title }: { login: string; mark?: str
   return (
     <Tip text={title ?? login}><span className="relative inline-block">
       <img src={`https://github.com/${login}.png?size=48`} alt={login} loading="lazy" className={`size-6 rounded-full bg-slate-200 ring-2 dark:bg-hover ${ring ?? "ring-white dark:ring-surface"}`} />
-      {mark && <span className={`absolute -bottom-1 -right-1 rounded-full p-px ring-2 ring-white dark:ring-surface ${mark}`}><Icon d={mark.includes("green") ? icons.check : mark.includes("red") ? icons.x : icons.eye} className="size-2.5 text-white" /></span>}
+      {mark && <span className={`absolute -bottom-1 -right-1 rounded-full p-px ring-2 ring-white dark:ring-surface ${mark}`}><Icon i={mark.includes("green") ? icons.check : mark.includes("red") ? icons.x : icons.eye} className="size-2.5 text-white" /></span>}
     </span></Tip>
   );
 }
@@ -101,18 +87,8 @@ export function ago(iso: string) {
   return n < 1 ? "ahora" : `hace ${n} ${u}`;
 }
 
-const metaIcons = {
-  comment: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
-  clock: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 6v6l4 2",
-  flag: "M4 22V4M4 4h12l-2 4 2 4H4",
-  file: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6",
-  branch: "M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9",
-  issue: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 11v.01",
-  pull: "M18 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 9v12M18 15V8a2 2 0 0 0-2-2h-3",
-};
-
-const Meta = ({ icon, children, title }: { icon: string; children: React.ReactNode; title: string }) => (
-  <Tip text={title}><span className="inline-flex items-center gap-1"><Icon d={icon} className="size-3.5" />{children}</span></Tip>
+const Meta = ({ icon, children, title }: { icon: PhosphorIcon; children: React.ReactNode; title: string }) => (
+  <Tip text={title}><span className="inline-flex items-center gap-1"><Icon i={icon} className="size-3.5" />{children}</span></Tip>
 );
 
 // Label uses the color GitHub gives it, softened so it reads in both themes.
@@ -145,7 +121,7 @@ function Row({ item, kind, meta, children }: { item: CardItem; kind: "pulls" | "
           <div className="font-medium break-words group-hover:text-blue-700 dark:group-hover:text-accent-text">{item.title}</div>
           <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500 dark:text-muted">
             <span title={pull ? "Pull request" : "Issue"} className={`grid size-4.5 shrink-0 place-items-center rounded-full ${pull ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" : "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300"}`}>
-              <Icon d={pull ? metaIcons.pull : metaIcons.issue} className="size-3" />
+              <Icon i={pull ? icons.pull : icons.issue} className="size-3" />
             </span>
             <span className="truncate font-mono">{item.repo}</span><span className="font-semibold">#{item.number}</span>
           </div>
@@ -154,8 +130,8 @@ function Row({ item, kind, meta, children }: { item: CardItem; kind: "pulls" | "
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-muted">
         <span className="inline-flex items-center gap-1.5"><Avatar login={item.author} title={`Autor: ${item.author}`} /><span className="font-medium text-slate-700 dark:text-text">{item.author}</span></span>
-        <Meta icon={metaIcons.clock} title={`Creada ${new Date(item.created_at).toLocaleString()} · actualizada ${new Date(item.updated_at).toLocaleString()}`}>{ago(item.updated_at)}</Meta>
-        <Meta icon={metaIcons.comment} title={`${item.comments} comentarios`}>{item.comments}</Meta>
+        <Meta icon={icons.clock} title={`Creada ${new Date(item.created_at).toLocaleString()} · actualizada ${new Date(item.updated_at).toLocaleString()}`}>{ago(item.updated_at)}</Meta>
+        <Meta icon={icons.comment} title={`${item.comments} comentarios`}>{item.comments}</Meta>
         {meta}
         {item.assignees.length > 0 && (
           <span className="ml-auto flex items-center -space-x-1.5">{item.assignees.map((a) => <Avatar key={a} login={a} title={`Asignada a ${a}`} />)}</span>
@@ -179,7 +155,7 @@ const linked = (repo: string, prefix: "PR" | "Issue", refs: { number: number; ti
     <Tip key={r.number} text={r.title}>
       <Link to="/github/$owner/$repo/$kind/$number" params={{ owner, repo: name, kind: prefix === "PR" ? "pulls" : "issues", number: String(r.number) }}
         className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 dark:border-border dark:bg-surface dark:text-text dark:hover:border-accent dark:hover:bg-accent-subtle dark:hover:text-accent-text">
-        <Icon d={prefix === "PR" ? metaIcons.pull : metaIcons.issue} className="size-3" />{prefix} #{r.number}
+        <Icon i={prefix === "PR" ? icons.pull : icons.issue} className="size-3" />{prefix} #{r.number}
       </Link>
     </Tip>
   ));
@@ -233,7 +209,7 @@ const Skeleton = () => (
 function Empty({ filtered, kind, state }: { filtered: boolean; kind: Tab; state: State }) {
   return (
     <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center dark:border-border">
-      <span className="grid size-10 place-items-center rounded-full bg-slate-100 text-slate-500 dark:bg-raised dark:text-muted"><Icon d={kind === "pulls" ? metaIcons.pull : metaIcons.issue} className="size-5" /></span>
+      <span className="grid size-10 place-items-center rounded-full bg-slate-100 text-slate-500 dark:bg-raised dark:text-muted"><Icon i={kind === "pulls" ? icons.pull : icons.issue} className="size-5" /></span>
       <p className="font-medium">{filtered ? "Nada coincide con estos filtros" : `No hay ${kind === "pulls" ? "pull requests" : "issues"}${state === "open" ? " abiertas" : state === "closed" ? " cerradas" : ""}`}</p>
       <p className="text-sm text-slate-500 dark:text-muted">{filtered ? "Prueba con otro texto o quita el filtro rápido." : "Cuando haya alguna en los repos del proyecto aparecerá aquí."}</p>
     </div>
@@ -292,7 +268,7 @@ export function Github() {
   const shownIssues = issues.filter(keep("issues"));
   const loading = state === "closed" ? closed.isPending : data.isPending || (refreshing && openPulls.length + openIssues.length === 0) || (state === "all" && closed.isPending);
   // Counters show the open ones: closed totals are unknown until every page is read.
-  const tabs: [Tab, string, number, string][] = [["pulls", "Pull requests", openPulls.length, metaIcons.pull], ["issues", "Issues", openIssues.length, metaIcons.issue]];
+  const tabs: [Tab, string, number, PhosphorIcon][] = [["pulls", "Pull requests", openPulls.length, icons.pull], ["issues", "Issues", openIssues.length, icons.issue]];
   const states: [State, string][] = [["open", "Abiertas"], ["closed", "Cerradas"], ["all", "Todas"]];
   const more = state !== "open" && closed.hasNextPage;
   return (
@@ -307,7 +283,7 @@ export function Github() {
         </div>
         <Tip text="Recargar desde GitHub">
           <button type="button" onClick={refresh} disabled={refreshing} aria-label="Recargar" className={pill}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`size-3.5 ${refreshing ? "animate-spin" : ""}`}><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" /></svg>
+            <ArrowClockwise aria-hidden="true" className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
             {refreshing ? "Recargando" : "Recargar"}
           </button>
         </Tip>
@@ -319,7 +295,7 @@ export function Github() {
             {tabs.map(([id, label, n, icon]) => (
               <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
                 className={`flex min-h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors ${tab === id ? "bg-white text-slate-900 shadow-sm dark:bg-canvas dark:text-white" : "text-slate-500 hover:text-slate-800 dark:text-muted dark:hover:text-text"}`}>
-                <Icon d={icon} className="size-3.5" />{label}
+                <Icon i={icon} className="size-3.5" />{label}
                 <span className={`rounded-full px-1.5 text-xs ${tab === id ? "bg-slate-100 dark:bg-raised" : "bg-slate-200 dark:bg-hover"}`}>{n}</span>
               </button>
             ))}
@@ -333,7 +309,7 @@ export function Github() {
             ))}
           </div>
           <label className="relative min-w-48 flex-1">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+            <MagnifyingGlass aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Buscar por título, repo, autor o etiqueta…" aria-label="Buscar"
               className="min-h-9 w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-sm outline-none focus:border-blue-500 dark:focus:border-accent focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-accent/20 dark:border-border dark:bg-surface" />
           </label>
@@ -356,17 +332,17 @@ export function Github() {
         {loading ? [0, 1, 2].map((n) => <Skeleton key={n} />)
           : tab === "pulls" ? (shownPulls.length === 0 ? <Empty kind="pulls" state={state} filtered={pulls.length > 0} /> : shownPulls.map((p) => (
             <Row key={p.url} item={p} kind="pulls" meta={<>
-              <Meta icon={metaIcons.branch} title={`${p.head_ref} → ${p.base_ref}`}><span className="max-w-40 truncate font-mono">{p.head_ref}</span></Meta>
-              <Meta icon={metaIcons.file} title={`${p.changed_files} ficheros cambiados`}>{p.changed_files}</Meta>
+              <Meta icon={icons.branch} title={`${p.head_ref} → ${p.base_ref}`}><span className="max-w-40 truncate font-mono">{p.head_ref}</span></Meta>
+              <Meta icon={icons.file} title={`${p.changed_files} ficheros cambiados`}>{p.changed_files}</Meta>
               <Tip text="Líneas añadidas y borradas"><span className="font-mono"><span className="text-green-700 dark:text-green-400">+{p.additions}</span> <span className="text-red-600 dark:text-red-400">−{p.deletions}</span></span></Tip>
-              {p.milestone && <Meta icon={metaIcons.flag} title="Milestone">{p.milestone}</Meta>}
+              {p.milestone && <Meta icon={icons.flag} title="Milestone">{p.milestone}</Meta>}
             </>}>
               {p.state === "OPEN" ? <PullStatus pull={p} /> : <ClosedChip item={p} />}{linked(p.repo, "Issue", p.issues)}
               {p.state === "OPEN" && p.mergeable === "CONFLICTING" && <button type="button" className={pill} onClick={(e) => { e.stopPropagation(); setResolving(p); }}>Resolver conflictos</button>}
             </Row>
           )))
           : (shownIssues.length === 0 ? <Empty kind="issues" state={state} filtered={issues.length > 0} /> : shownIssues.map((i) => (
-            <Row key={i.url} item={i} kind="issues" meta={i.milestone && <Meta icon={metaIcons.flag} title="Milestone">{i.milestone}</Meta>}>
+            <Row key={i.url} item={i} kind="issues" meta={i.milestone && <Meta icon={icons.flag} title="Milestone">{i.milestone}</Meta>}>
               {i.state !== "OPEN" && <ClosedChip item={i} />}
               {i.pulls.length > 0 && linked(i.repo, "PR", i.pulls)}
             </Row>

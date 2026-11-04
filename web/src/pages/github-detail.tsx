@@ -33,13 +33,13 @@ function Assignees({ d, act, busy }: { d: GithubDetail; act: Act; busy: boolean 
   const me = assignable.find((u) => u.login === d.viewer);
   return (
     <div className="flex items-center gap-2">
-      <Tip text="Asignados"><span className="text-slate-400"><Icon d={icons.user} /></span></Tip>
+      <Tip text="Asignados"><span className="text-slate-400"><Icon i={icons.user} /></span></Tip>
       <span className="flex -space-x-1.5">
         {d.assignees.map((a) => (
           <Tip key={a.id} text={`${a.login} · clic para quitar`}>
             <button type="button" aria-label={`Quitar a ${a.login}`} disabled={busy} onClick={() => act("unassign", { user_ids: [a.id] })} className="group relative rounded-full">
               <img src={`https://github.com/${a.login}.png?size=48`} alt={a.login} className="size-6 rounded-full bg-slate-200 ring-2 ring-white dark:bg-hover dark:ring-surface" />
-              <span className="absolute inset-0 grid place-items-center rounded-full bg-red-600/80 text-white opacity-0 transition-opacity group-hover:opacity-100"><Icon d={icons.x} className="size-3" /></span>
+              <span className="absolute inset-0 grid place-items-center rounded-full bg-red-600/80 text-white opacity-0 transition-opacity group-hover:opacity-100"><Icon i={icons.x} className="size-3" /></span>
             </button>
           </Tip>
         ))}
@@ -47,7 +47,7 @@ function Assignees({ d, act, busy }: { d: GithubDetail; act: Act; busy: boolean 
       <UserPicker tip="Asignar" title="Asignar a" users={assignable.filter((u) => u.id !== me?.id)} disabled={busy} onPick={(u) => act("assign", { user_ids: [u.id] })}
         extra={me && ((close) => (
           <MenuItem onClick={() => { close(); act("assign", { user_ids: [me.id] }); }}>
-            <span className="grid size-6 place-items-center rounded-full bg-blue-100 text-blue-700 dark:bg-accent-subtle dark:text-accent-text"><Icon d={icons.user} className="size-3.5" /></span>
+            <span className="grid size-6 place-items-center rounded-full bg-blue-100 text-blue-700 dark:bg-accent-subtle dark:text-accent-text"><Icon i={icons.user} className="size-3.5" /></span>
             <span className="flex-1 font-medium">Asignármela</span>
           </MenuItem>
         ))} />
@@ -64,7 +64,7 @@ function MilestonePicker({ d, act, busy }: { d: GithubDetail; act: Act; busy: bo
   const value = known?.id ?? (current ? "current" : "");
   return (
     <span className="inline-flex items-center gap-1.5">
-      <Tip text="Milestone"><span className="text-slate-400"><Icon d="M4 22V4M4 4h12l-2 4 2 4H4" /></span></Tip>
+      <Tip text="Milestone"><span className="text-slate-400"><Icon i={icons.flag} /></span></Tip>
       <Select value={value} disabled={busy} options={options} className="min-w-40" onChange={(v) => v !== value && v !== "current" && act("set_milestone", { milestone_id: v })} />
     </span>
   );
@@ -85,16 +85,16 @@ function MergeButton({ pull, act, busy }: { pull: GithubPull; act: Act; busy: bo
     <Menu align="right" trigger={(open, toggle) => (
       <div className="inline-flex overflow-hidden rounded-lg bg-green-600 text-white shadow-sm">
         <button type="button" disabled={busy} onClick={merge} className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium hover:bg-green-700 disabled:opacity-50">
-          <Icon d={icons.merge} /> {method.name}
+          <Icon i={icons.merge} /> {method.name}
         </button>
         <button type="button" aria-label="Elegir método de merge" disabled={busy} onClick={toggle} className={`border-l border-green-500 px-2 hover:bg-green-700 ${open ? "bg-green-700" : ""}`}>
-          <Icon d={icons.chevron} />
+          <Icon i={icons.chevron} />
         </button>
       </div>
     )}>
       {(close) => methods.map((m) => (
         <MenuItem key={m.value} onClick={() => { setMethod(m); close(); }}>
-          <span className="grid size-5 place-items-center text-green-600">{m.value === method.value && <Icon d={icons.check} />}</span>
+          <span className="grid size-5 place-items-center text-green-600">{m.value === method.value && <Icon i={icons.check} />}</span>
           <span><span className="block font-medium">{m.name}</span><span className="block text-xs text-slate-500">{m.hint}</span></span>
         </MenuItem>
       ))}
@@ -150,8 +150,8 @@ function Message({ author, verb, at, url, body, mine, editType, id, act, busy, o
         <Avatar login={author} />
         <span><span className="font-medium text-slate-700 dark:text-text">{author}</span>{verb && ` ${verb}`} · {url ? <a href={url} target="_blank" rel="noreferrer" className="hover:underline">{when}</a> : when}</span>
         <span className="ml-auto flex gap-0.5 opacity-60 transition-opacity group-hover/msg:opacity-100">
-          {body && <Tip text="Responder citando"><button type="button" aria-label="Responder citando" onClick={() => onReply(quote(author, body))} className={small}><Icon d={icons.reply} /></button></Tip>}
-          {mine && id && draft === undefined && <Tip text="Editar"><button type="button" aria-label="Editar" onClick={() => setDraft(body)} className={small}><Icon d={icons.edit} /></button></Tip>}
+          {body && <Tip text="Responder citando"><button type="button" aria-label="Responder citando" onClick={() => onReply(quote(author, body))} className={small}><Icon i={icons.reply} /></button></Tip>}
+          {mine && id && draft === undefined && <Tip text="Editar"><button type="button" aria-label="Editar" onClick={() => setDraft(body)} className={small}><Icon i={icons.edit} /></button></Tip>}
         </span>
       </div>
       {draft === undefined ? <RefMd onToggle={mine && id && !busy ? (line) => act({ type: editType, comment_id: id, body: toggleTask(body, line) }) : undefined}>{body}</RefMd> : (
@@ -233,11 +233,11 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
             : <h1 className="min-w-0 flex-1 break-words text-lg font-bold leading-snug">{e.title}</h1>}
           {(draft ? (
             <span className="flex shrink-0 gap-1">
-              <Tip text="Guardar"><button type="button" aria-label="Guardar" disabled={busy || !draft.title.trim()} onClick={save} className="grid size-8 place-items-center rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"><Icon d={icons.check} /></button></Tip>
-              <Tip text="Cancelar"><button type="button" aria-label="Cancelar" onClick={() => setDraft(undefined)} className="grid size-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-raised"><Icon d={icons.x} /></button></Tip>
+              <Tip text="Guardar"><button type="button" aria-label="Guardar" disabled={busy || !draft.title.trim()} onClick={save} className="grid size-8 place-items-center rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"><Icon i={icons.check} /></button></Tip>
+              <Tip text="Cancelar"><button type="button" aria-label="Cancelar" onClick={() => setDraft(undefined)} className="grid size-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-raised"><Icon i={icons.x} /></button></Tip>
             </span>
           ) : (
-            <Tip text="Editar título y descripción"><button type="button" aria-label="Editar título y descripción" onClick={() => setDraft({ title: e.title, body: d.body })} className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white"><Icon d={icons.edit} /></button></Tip>
+            <Tip text="Editar título y descripción"><button type="button" aria-label="Editar título y descripción" onClick={() => setDraft({ title: e.title, body: d.body })} className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white"><Icon i={icons.edit} /></button></Tip>
           ))}
           <Tip text="Abrir en GitHub"><a href={e.url} target="_blank" rel="noreferrer" aria-label="Abrir en GitHub" className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white"><GithubMark /></a></Tip>
         </div>
@@ -259,10 +259,10 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
       {d.issue && (
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-slate-100 px-4 py-3 text-xs text-slate-500 dark:border-border dark:text-muted">
           {d.issue.state === "OPEN" ? <Assignees d={d} act={act} busy={busy} /> : d.assignees.length > 0 && (
-            <span className="flex items-center gap-2"><Icon d={icons.user} />{d.assignees.map((a) => <Avatar key={a.id} login={a.login} />)}</span>
+            <span className="flex items-center gap-2"><Icon i={icons.user} />{d.assignees.map((a) => <Avatar key={a.id} login={a.login} />)}</span>
           )}
           <MilestonePicker d={d} act={act} busy={busy} />
-          <span className="inline-flex items-center gap-1.5"><Icon d={icons.comment} />{d.issue.comments} comentarios</span>
+          <span className="inline-flex items-center gap-1.5"><Icon i={icons.comment} />{d.issue.comments} comentarios</span>
           {d.issue.created_at && <span>Abierta {new Date(d.issue.created_at).toLocaleDateString()}</span>}
         </div>
       )}
@@ -379,7 +379,7 @@ export function GithubView() {
           <span className="fixed bottom-5 right-5 z-40">
             <Tip text="Escribir un mensaje">
               <button type="button" aria-label="Escribir un mensaje" onClick={write} className="grid size-12 place-items-center rounded-full bg-blue-600 dark:bg-accent text-white shadow-lg ring-4 ring-white/60 transition-transform hover:scale-105 hover:bg-blue-700 dark:hover:bg-accent dark:ring-surface/60">
-                <Icon d={icons.comment} className="size-5" />
+                <Icon i={icons.comment} className="size-5" />
               </button>
             </Tip>
           </span>
