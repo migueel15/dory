@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChatCircle } from "@phosphor-icons/react";
+import { CaretRight, ChatCircle, CircleNotch, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import { Button, Card, ErrorText } from "../components/ui";
+import { Button, ErrorText } from "../components/ui";
 
 type Side = "LEFT" | "RIGHT";
 type Line = { text: string; kind: "add" | "del" | "ctx" | "hunk"; old?: number; new?: number };
@@ -60,21 +60,29 @@ function tree(files: File[]): Dir {
   return squash(root);
 }
 
-function Tree({ dir, jump }: { dir: Dir; jump: (path: string) => void }) {
+function Tree({ dir, jump, active, depth = 0 }: { dir: Dir; jump: (path: string) => void; active?: string; depth?: number }) {
   return (
-    <ul className="space-y-1 pl-3 text-xs">
+    <ul className={depth ? "ml-2 border-l border-slate-200 pl-1.5 dark:border-border" : ""}>
       {dir.dirs.map((d) => (
         <li key={d.name}>
-          <details open>
-            <summary className="cursor-pointer break-all font-semibold">📁 {d.name}</summary>
-            <Tree dir={d} jump={jump} />
+          <details open className="group">
+            <summary title={d.name} className="flex cursor-pointer list-none items-center gap-1 rounded px-1 py-0.5 text-xs font-medium hover:bg-slate-100 dark:hover:bg-raised [&::-webkit-details-marker]:hidden">
+              <CaretRight aria-hidden="true" className="size-3 shrink-0 text-slate-400 transition-transform group-open:rotate-90" />
+              <Folder aria-hidden="true" className="size-4 shrink-0 text-slate-400 group-open:hidden" />
+              <FolderOpen aria-hidden="true" className="hidden size-4 shrink-0 text-slate-400 group-open:block" />
+              <span className="truncate">{d.name}</span>
+            </summary>
+            <Tree dir={d} jump={jump} active={active} depth={depth + 1} />
           </details>
         </li>
       ))}
       {dir.files.map((f) => (
         <li key={f.path}>
-          <button type="button" title={f.path} onClick={() => jump(f.path)} className="w-full break-all text-left hover:underline">
-            {f.path.split("/").pop()} <span className="text-green-700 dark:text-green-400">+{f.added}</span> <span className="text-red-700 dark:text-red-400">−{f.removed}</span>
+          <button type="button" title={f.path} onClick={() => jump(f.path)} className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-xs hover:bg-slate-100 dark:hover:bg-raised ${active === f.path ? "bg-blue-50 font-medium text-blue-700 dark:bg-raised dark:text-accent-text" : ""}`}>
+            <FileIcon aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
+            <span className="min-w-0 flex-1 truncate">{f.path.split("/").pop()}</span>
+            <span className="shrink-0 font-mono text-[11px] text-green-700 dark:text-green-400">+{f.added}</span>
+            <span className="shrink-0 font-mono text-[11px] text-red-700 dark:text-red-400">−{f.removed}</span>
           </button>
         </li>
       ))}
@@ -84,7 +92,14 @@ function Tree({ dir, jump }: { dir: Dir; jump: (path: string) => void }) {
 
 const side = (l: Line): Side => (l.kind === "del" ? "LEFT" : "RIGHT");
 const number = (l: Line) => (l.kind === "del" ? l.old! : l.new!);
-const color = { add: "bg-green-100 dark:bg-green-950", del: "bg-red-100 dark:bg-red-950", hunk: "text-slate-500 dark:text-muted", ctx: "" };
+const color = {
+  add: "bg-green-50 dark:bg-green-950/60",
+  del: "bg-red-50 dark:bg-red-950/60",
+  hunk: "border-y border-blue-100 bg-blue-50 text-blue-700 dark:border-border dark:bg-raised dark:text-muted",
+  ctx: "",
+};
+const gutter = { add: "bg-green-100 dark:bg-green-900/40", del: "bg-red-100 dark:bg-red-900/40", hunk: "", ctx: "bg-slate-50 dark:bg-raised" };
+const panel = "rounded-lg border border-slate-200 bg-white dark:border-border dark:bg-surface";
 const anchor = (path: string) => `diff-${path}`;
 
 export function Diff({ repo, pr }: { repo: string; pr: number }) {
@@ -96,6 +111,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
   const [body, setBody] = useState("");
   const [drag, setDrag] = useState<{ file: string; from: number }>();
   const [open, setOpen] = useState(false);
+  const [active, setActive] = useState<string>();
   useEffect(() => {
     const stop = () => setDrag((d) => { if (d) setOpen(true); return undefined; });
     window.addEventListener("mouseup", stop);
@@ -133,48 +149,64 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
                         </div>
                       </div>
   );
-  const jump = (path: string) => document.getElementById(anchor(path))?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const jump = (path: string) => {
+    setActive(path);
+    document.getElementById(anchor(path))?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  const treeRoot = useMemo(() => tree(shown), [filter, files]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (diff.isPending) {
+    return (
+      <div className={`${panel} flex items-center justify-center gap-2 p-10 text-sm text-slate-500 dark:text-muted`} role="status">
+        <CircleNotch aria-hidden="true" className="size-5 animate-spin" /> Cargando diff…
+      </div>
+    );
+  }
 
   return (
     <div className="grid items-start gap-3 md:grid-cols-[16rem_1fr]">
       <aside className="md:max-h-[80vh] md:overflow-auto">
-        <Card>
-          <input aria-label="Buscar fichero" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero…" className="mb-2 w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm dark:border-border dark:bg-surface" />
-          <div className="-ml-3"><Tree dir={tree(shown)} jump={jump} /></div>
-        </Card>
+        <div className={`${panel} p-2`}>
+          <input aria-label="Buscar fichero" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero…" className="mb-2 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-border dark:bg-surface" />
+          <Tree dir={treeRoot} jump={jump} active={active} />
+        </div>
       </aside>
       <div className="min-w-0 space-y-3 md:max-h-[80vh] md:overflow-auto md:overscroll-contain">
         <ErrorText error={diff.error ?? comment.error} />
         {shown.map((f) => (
-          <Card key={f.path}>
-            <div id={anchor(f.path)} className="mb-1 flex scroll-mt-2 items-start justify-between gap-2">
-              <span className="break-all font-mono text-xs font-semibold">{f.path}</span>
-              <button type="button" title="Comentar el fichero" aria-label="Comentar el fichero" onClick={() => { setPick({ file: f.path, start: -1, end: -1 }); setOpen(true); }} className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600 dark:hover:text-accent-text dark:hover:bg-raised">
-                <ChatCircle aria-hidden="true" className="size-4" />
-              </button>
+          <section key={f.path} className={panel}>
+            <div id={anchor(f.path)} className="sticky top-0 z-10 flex scroll-mt-0 items-center justify-between gap-2 rounded-t-lg border-b border-slate-200 bg-slate-50 px-3 py-1.5 dark:border-border dark:bg-raised">
+              <span className="min-w-0 truncate font-mono text-xs font-semibold" title={f.path}>{f.path}</span>
+              <span className="flex shrink-0 items-center gap-2 font-mono text-xs">
+                <span className="text-green-700 dark:text-green-400">+{f.added}</span>
+                <span className="text-red-700 dark:text-red-400">−{f.removed}</span>
+                <button type="button" title="Comentar el fichero" aria-label="Comentar el fichero" onClick={() => { setPick({ file: f.path, start: -1, end: -1 }); setOpen(true); }} className="rounded p-0.5 text-slate-400 hover:bg-slate-200 hover:text-blue-600 dark:hover:bg-border dark:hover:text-accent-text">
+                  <ChatCircle aria-hidden="true" className="size-4" />
+                </button>
+              </span>
             </div>
-            {pick?.file === f.path && pick.start < 0 && form(f, pick, `Comentario sobre ${f.path}…`)}
-            <pre className="overflow-x-auto text-xs">
+            {pick?.file === f.path && pick.start < 0 && <div className="px-3">{form(f, pick, `Comentario sobre ${f.path}…`)}</div>}
+            <pre className="overflow-x-auto font-mono text-xs leading-5">
               {f.lines.map((l, i) => {
                 const picked = pick?.file === f.path && i >= pick.start && i <= pick.end;
                 return (
                   <div key={i}>
                     <div onMouseEnter={() => l.kind !== "hunk" && extend(f.path, i)} className={`flex ${picked ? "bg-yellow-100 dark:bg-yellow-900" : color[l.kind]}`}>
-                      {l.kind === "hunk" ? <span className="w-20 shrink-0" /> : (
-                        <button type="button" title="Comentar esta línea" onMouseDown={(e) => { e.preventDefault(); choose(f.path, i, e.shiftKey); }} onMouseEnter={() => extend(f.path, i)} className="w-20 shrink-0 select-none pr-2 text-right text-slate-400 hover:text-blue-600 dark:hover:text-accent-text">
+                      {l.kind === "hunk" ? null : (
+                        <button type="button" title="Comentar esta línea" onMouseDown={(e) => { e.preventDefault(); choose(f.path, i, e.shiftKey); }} onMouseEnter={() => extend(f.path, i)} className={`w-20 shrink-0 select-none border-r border-slate-200 pr-2 text-right text-slate-400 hover:text-blue-600 dark:border-border dark:hover:text-accent-text ${picked ? "" : gutter[l.kind]}`}>
                           <span className="inline-block w-8">{l.old ?? ""}</span> <span className="inline-block w-8">{l.new ?? ""}</span>
                         </button>
                       )}
-                      <span>{l.text || " "}</span>
+                      <span className={`min-w-0 flex-1 px-2 ${l.kind === "hunk" ? "pl-3" : ""}`}>{l.text || " "}</span>
                     </div>
                     {open && !drag && pick?.file === f.path && pick.end === i && (
-                      form(f, pick, `Comentario en líneas ${number(f.lines[pick.start])}–${number(l)}…`)
+                      <div className="px-3">{form(f, pick, `Comentario en líneas ${number(f.lines[pick.start])}–${number(l)}…`)}</div>
                     )}
                   </div>
                 );
               })}
             </pre>
-          </Card>
+          </section>
         ))}
       </div>
     </div>
