@@ -35,6 +35,7 @@ function ThreadReply({ id }: { id: string }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [custom, setCustom] = useState<Record<string, boolean>>({});
   const qc = useQueryClient();
   const ctx = useQuery({ queryKey: ["t3-context", id], queryFn: () => api.t3Context(id), enabled: open, refetchInterval: 5_000 });
   const refresh = () => {
@@ -44,7 +45,7 @@ function ThreadReply({ id }: { id: string }) {
   const send = useMutation({ mutationFn: () => api.t3Send(id, text), onSuccess: () => { setText(""); refresh(); } });
   const respond = useMutation({
     mutationFn: (body: Parameters<typeof api.t3Respond>[2]) => api.t3Respond(id, ctx.data!.pending!.id, body),
-    onSuccess: () => { setAnswers({}); refresh(); },
+    onSuccess: () => { setAnswers({}); setCustom({}); refresh(); },
   });
   if (!open) return <Button variant="ghost" onClick={() => setOpen(true)}>Responder</Button>;
   const pending = ctx.data?.pending;
@@ -64,12 +65,18 @@ function ThreadReply({ id }: { id: string }) {
               <p className="text-sm font-medium">{q.question}</p>
               <div className="flex flex-wrap gap-1">
                 {q.options.map((o) => (
-                  <Button key={o.label} variant={answers[q.id] === o.label ? "default" : "ghost"} title={o.description} onClick={() => setAnswers({ ...answers, [q.id]: o.label })}>{o.label}</Button>
+                  <Button key={o.label} variant={!custom[q.id] && answers[q.id] === o.label ? "default" : "ghost"} title={o.description} onClick={() => { setCustom({ ...custom, [q.id]: false }); setAnswers({ ...answers, [q.id]: o.label }); }}>{o.label}</Button>
                 ))}
+                {q.options.length > 0 && (
+                  <Button variant={custom[q.id] ? "default" : "ghost"} onClick={() => { setCustom({ ...custom, [q.id]: true }); setAnswers({ ...answers, [q.id]: "" }); }}>Otra respuesta</Button>
+                )}
               </div>
+              {(custom[q.id] || q.options.length === 0) && (
+                <Textarea value={answers[q.id] ?? ""} onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })} placeholder="Escribe tu respuesta" />
+              )}
             </div>
           ))}
-          <Button disabled={respond.isPending || questions.length === 0 || questions.some((q) => !answers[q.id])} onClick={() => respond.mutate({ answers })}>Enviar respuesta</Button>
+          <Button disabled={respond.isPending || questions.length === 0 || questions.some((q) => !answers[q.id]?.trim())} onClick={() => respond.mutate({ answers })}>Enviar respuesta</Button>
         </div>
       )}
       {pending && pending.kind !== "user_input" && (
