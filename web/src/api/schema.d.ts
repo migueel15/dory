@@ -1371,6 +1371,12 @@ export interface components {
             priority: number;
             /** @default manual */
             source: string;
+            /**
+             * @description Who wrote the title: pending while an agent generates it, ai once it did, user otherwise. Only the pending to ai change is accepted from an agent; editing the title makes it user.
+             * @default user
+             * @enum {string}
+             */
+            title_source: "pending" | "ai" | "user";
         };
         ItemInput: {
             /** Format: uuid */
@@ -1402,6 +1408,11 @@ export interface components {
             priority: number;
             /** @default manual */
             source: string;
+            /**
+             * @description Who wrote the title: pending while an agent generates it, ai once it did, user otherwise. Only the pending to ai change is accepted from an agent; editing the title makes it user.
+             * @enum {string}
+             */
+            title_source?: "pending" | "ai" | "user";
         };
         Memory: {
             /** Format: uuid */

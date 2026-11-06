@@ -266,10 +266,11 @@ type itemInput struct {
 	BlockedReason string   `json:"blocked_reason,omitempty" jsonschema:"Required when status is blocked: what blocks it and what unblocks it"`
 	Priority      int32    `json:"priority,omitempty"`
 	Source        string   `json:"source,omitempty"`
+	TitleSource   string   `json:"title_source,omitempty" jsonschema:"pending, ai or user; only \"ai\" is meant for agents, and only on an item whose title is pending"`
 }
 type updateInput struct {
 	ID      string         `json:"id"`
-	Changes map[string]any `json:"changes" jsonschema:"Patch fields: project_id and feature_id (nullable), raw_text, title, body_md, progress (short current state, replaced), refs, tags, status, blocked_reason (required for blocked, cleared otherwise), priority, source. Omitted fields are preserved."`
+	Changes map[string]any `json:"changes" jsonschema:"Patch fields: project_id and feature_id (nullable), raw_text, title, body_md, progress (short current state, replaced), refs, tags, status, blocked_reason (required for blocked, cleared otherwise), priority, source, title_source (\"ai\" only when the title is pending). Omitted fields are preserved."`
 }
 type updatesInput struct {
 	Updates []updateInput  `json:"updates,omitempty" jsonschema:"Per-item patches: [{id, changes}]"`
@@ -355,7 +356,7 @@ func updateItem(ctx context.Context, svc service.Service, in updateInput) (servi
 		return service.Item{}, err
 	}
 	for key, value := range in.Changes {
-		if !slices.Contains([]string{"project_id", "feature_id", "raw_text", "title", "body_md", "progress", "refs", "tags", "status", "blocked_reason", "priority", "source"}, key) {
+		if !slices.Contains([]string{"project_id", "feature_id", "raw_text", "title", "body_md", "progress", "refs", "tags", "status", "blocked_reason", "priority", "source", "title_source"}, key) {
 			return service.Item{}, fmt.Errorf("%w: field %s cannot be changed", service.ErrInvalid, key)
 		}
 		if value == nil && key != "project_id" && key != "feature_id" {
@@ -523,7 +524,7 @@ func createItem(ctx context.Context, svc service.Service, in itemInput) (service
 	if strings.TrimSpace(in.Title) == "" {
 		in.Title = deriveTitle(in.RawText)
 	}
-	return putItem(ctx, svc, service.Item{Record: service.Record{ID: in.ID}, ProjectID: in.ProjectID, FeatureID: in.FeatureID, RawText: in.RawText, Title: in.Title, BodyMd: in.BodyMd, Progress: in.Progress, Refs: in.Refs, Tags: in.Tags, Status: in.Status, BlockedReason: in.BlockedReason, Priority: in.Priority, Source: in.Source})
+	return putItem(ctx, svc, service.Item{Record: service.Record{ID: in.ID}, ProjectID: in.ProjectID, FeatureID: in.FeatureID, RawText: in.RawText, Title: in.Title, BodyMd: in.BodyMd, Progress: in.Progress, Refs: in.Refs, Tags: in.Tags, Status: in.Status, BlockedReason: in.BlockedReason, Priority: in.Priority, Source: in.Source, TitleSource: in.TitleSource})
 }
 func putFeature(ctx context.Context, svc service.Service, in featureInput) (service.Feature, error) {
 	if in.Status != "" && !validFeatureStatus(in.Status) {

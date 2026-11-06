@@ -454,7 +454,7 @@ func (b *backend) Features() Resource[Feature] {
 	}
 }
 func (b *backend) Items() Resource[Item] {
-	return resource[Item]{b: b, kind: "item",
+	return titledItems{resource[Item]{b: b, kind: "item",
 		get: func(ctx context.Context, q *store.Queries, id string) ([]byte, error) { return q.GetItem(ctx, id) },
 		list: func(ctx context.Context, q *store.Queries, f Filter, raw []byte) ([][]byte, error) {
 			anyOf, err := json.Marshal(f.AnyOf)
@@ -468,7 +468,7 @@ func (b *backend) Items() Resource[Item] {
 		},
 		put:     func(ctx context.Context, q *store.Queries, raw []byte) ([]byte, error) { return q.PutItem(ctx, raw) },
 		archive: func(ctx context.Context, q *store.Queries, id string) ([]byte, error) { return q.ArchiveItem(ctx, id) },
-	}
+	}}
 }
 func (b *backend) Memories() Resource[Memory] {
 	return resource[Memory]{b: b, kind: "memory",

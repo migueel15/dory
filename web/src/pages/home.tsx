@@ -1,3 +1,4 @@
+import { ItemTitle, pendingPoll } from "../components/item-title";
 import { ThreadLink } from "../components/thread-link";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -46,7 +47,7 @@ export function Home() {
   const blocked = useBlocked();
   const validating = useValidating();
   const github = useGithubOpen();
-  const ideas = useQuery({ queryKey: ["items", "inbox"], queryFn: () => api.items.list({ status: "inbox" }) });
+  const ideas = useQuery({ queryKey: ["items", "inbox"], queryFn: () => api.items.list({ status: "inbox" }), refetchInterval: pendingPoll });
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
   const repos = useQuery({ queryKey: ["repositories", project], queryFn: () => api.repositories.list({ project_id: project }), enabled: !!project });
   const linked = useProjectThreads(project);
@@ -108,7 +109,7 @@ export function Home() {
           ))}
         </Block>
         <Block title={`Ideas recientes (${recent.length})`} to="/inbox" sources={[{ name: "ideas", error: ideas.error }]} pending={ideas.isPending} empty={recent.length === 0}>
-          {recent.slice(0, LIMIT).map((i) => <div key={i.id} className="text-sm break-words">{i.title}</div>)}
+          {recent.slice(0, LIMIT).map((i) => <div key={i.id} className="text-sm"><ItemTitle item={i} /></div>)}
         </Block>
         <Block title={`Pull requests abiertas (${pulls.length})`} to="/github" sources={[{ name: "GitHub", error: github.error }, ...(project ? [{ name: "repositorios", error: repos.error }] : [])]} pending={github.isPending || (!!project && repos.isPending)} empty={pulls.length === 0}>
           {pulls.slice(0, LIMIT).map((p) => {

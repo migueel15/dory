@@ -3390,6 +3390,7 @@ components:
         - "blocked_reason"
         - "priority"
         - "source"
+        - "title_source"
       properties:
         id:
           type: "string"
@@ -3457,6 +3458,14 @@ components:
         source:
           type: "string"
           default: "manual"
+        title_source:
+          type: "string"
+          description: "Who wrote the title: pending while an agent generates it, ai once it did, user otherwise. Only the pending to ai change is accepted from an agent; editing the title makes it user."
+          enum:
+            - "pending"
+            - "ai"
+            - "user"
+          default: "user"
     ItemInput:
       type: "object"
       additionalProperties: false
@@ -3515,6 +3524,13 @@ components:
         source:
           type: "string"
           default: "manual"
+        title_source:
+          type: "string"
+          description: "Who wrote the title: pending while an agent generates it, ai once it did, user otherwise. Only the pending to ai change is accepted from an agent; editing the title makes it user."
+          enum:
+            - "pending"
+            - "ai"
+            - "user"
     Memory:
       type: "object"
       required:
