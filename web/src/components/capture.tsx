@@ -19,6 +19,8 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
   const current = useProject();
   const [text, setText] = useState("");
   const [project, setProject] = useState(projectId || current);
+  // Follow the global filter when it changes; a manual pick only affects this entry.
+  useEffect(() => { setProject(projectId || current); }, [projectId, current]);
   const box = useRef<HTMLTextAreaElement>(null);
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const save = useMutation({
