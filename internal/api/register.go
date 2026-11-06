@@ -46,6 +46,7 @@ func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"url": link})
 	})
+	mountPlans(mux, svc)
 	mountThreads(mux, svc, monitor)
 	mountLaunch(mux, svc, monitor)
 	mountDefine(mux, svc, monitor, gh)
