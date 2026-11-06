@@ -4,7 +4,7 @@ import { ThreadLink } from "../components/thread-link";
 import { LaunchDialog } from "./launch";
 import { ContextMenu, type ContextAction } from "../components/context-menu";
 import { useCallback, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DndContext, type DragEndEvent, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { api, itemInput, type Item, type ItemStatus } from "../api/client";
@@ -15,10 +15,13 @@ const STATUSES: ItemStatus[] = ["inbox", "triaged", "ready", "in_progress", "val
 // Closed columns can grow to hundreds of items: show the most recent ones in pages.
 const PAGED: ItemStatus[] = ["done", "cancelled"];
 const PAGE = 10;
+// DEFINABLE are the statuses whose plan can still be defined in the Define view.
+const DEFINABLE: ItemStatus[] = ["inbox", "triaged", "ready"];
 
 export function ItemForm({ item, projectId, onClose, initialEdit = false }: { initialEdit?: boolean; item?: Item; projectId?: string | null; onClose: () => void }) {
   const qc = useQueryClient();
-  const [launch, setLaunch] = useState<"triage" | "implementation" | "replan" | null>(null);
+  const [launch, setLaunch] = useState<"implementation" | null>(null);
+  const navigate = useNavigate();
   const [title, setTitle] = useState(item?.title ?? "");
   const [body, setBody] = useState(item?.body_md ?? "");
   const [progress, setProgress] = useState(item?.progress ?? "");
@@ -55,11 +58,10 @@ export function ItemForm({ item, projectId, onClose, initialEdit = false }: { in
     return (
       <Modal title="Item" onClose={onClose} wide>
         <ItemView item={item} project={project?.name} feature={feature?.title} />
-        {launch && <LaunchDialog items={[item]} role={launch} onClose={() => setLaunch(null)} onSuccess={launch === "replan" ? undefined : onClose} />}
+        {launch && <LaunchDialog items={[item]} role={launch} onClose={() => setLaunch(null)} onSuccess={onClose} />}
         <div className="sticky -bottom-3 -mx-3 flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white px-3 pt-3 dark:border-border dark:bg-surface sm:-bottom-4 sm:-mx-4 sm:px-4">
           <Button variant="ghost" onClick={() => setEditMode(true)}>Editar</Button>
-          {(item.status === "inbox" || item.status === "triaged") && <Button type="button" onClick={() => setLaunch("triage")}>Analizar con un agente</Button>}
-          {item.status === "ready" && <Button type="button" variant="ghost" onClick={() => setLaunch("replan")}>Solicitar cambios</Button>}
+          {DEFINABLE.includes(item.status) && <Button type="button" variant={item.status === "ready" ? "ghost" : "default"} onClick={() => navigate({ to: "/items/$id/define", params: { id: item.id } })}>{item.status === "ready" ? "Revisar plan" : "Definir"}</Button>}
           {item.status === "ready" && <Button type="button" onClick={() => setLaunch("implementation")}>Enviar a implementar</Button>}
         </div>
       </Modal>
@@ -114,9 +116,9 @@ function BlockDialog({ item, onConfirm, onClose }: { item: Item; onConfirm: (rea
   );
 }
 
-const STATUS_INFO: Record<ItemStatus, { label: string; tone: string; hint: string }> = {
+export const STATUS_INFO: Record<ItemStatus, { label: string; tone: string; hint: string }> = {
   inbox: { label: "Inbox", tone: "bg-slate-100 text-slate-700 dark:bg-raised dark:text-text-secondary", hint: "Idea capturada, sin revisar." },
-  triaged: { label: "Revisado", tone: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300", hint: "Revisado, falta definir el trabajo." },
+  triaged: { label: "En definición", tone: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300", hint: "Conversando con el agente hasta cerrar el plan." },
   ready: { label: "Listo", tone: "bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300", hint: "Definido: un agente puede implementarlo." },
   in_progress: { label: "En curso", tone: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300", hint: "Alguien trabaja en él ahora." },
   validating: { label: "Validando", tone: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300", hint: "Terminado, espera tu prueba." },
@@ -385,7 +387,8 @@ function ItemActions({ item, children }: { item: Item; children: React.ReactNode
   const qc = useQueryClient();
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const [detail, setDetail] = useState<"view" | "edit" | null>(null);
-  const [launch, setLaunch] = useState<"triage" | "implementation" | "replan" | null>(null);
+  const [launch, setLaunch] = useState<"implementation" | null>(null);
+  const navigate = useNavigate();
   const [blocking, setBlocking] = useState(false);
   const close = useCallback(() => setPosition(null), []);
   const threads = useItemThreads(item.id);
@@ -402,8 +405,7 @@ function ItemActions({ item, children }: { item: Item; children: React.ReactNode
   const actions: ContextAction[] = [
     { label: "Abrir detalle", run: () => setDetail("view") },
     { label: "Editar", run: () => setDetail("edit") },
-    ...(["inbox", "triaged"].includes(item.status) ? [{ label: "Analizar con un agente", run: () => setLaunch("triage") }] : []),
-    ...(item.status === "ready" ? [{ label: "Solicitar cambios", run: () => setLaunch("replan") }] : []),
+    ...(DEFINABLE.includes(item.status) ? [{ label: item.status === "ready" ? "Revisar plan" : "Definir", run: () => navigate({ to: "/items/$id/define", params: { id: item.id } }) }] : []),
     ...(item.status === "ready" ? [{ label: "Enviar a implementar", run: () => setLaunch("implementation") }] : []),
     { label: "Mover a estado…", children: STATUSES.filter((s) => s !== item.status).map((s) => ({ label: STATUS_INFO[s].label, run: () => (s === "blocked" ? setBlocking(true) : change.mutate({ status: s })) })) },
     ...(thread ? [{ label: "Abrir último hilo", content: <ThreadLink role="menuitem" className={linkClass} url={thread.url} environmentId={thread.t3_environment_id} threadId={thread.id}>Abrir último hilo</ThreadLink> }] : []),

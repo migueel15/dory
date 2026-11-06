@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { api } from "../api/client";
 import { ThreadStatus } from "../components/thread-status";
+import { PendingRequest } from "../components/pending-request";
 import { Badge, Button, Card, ErrorText, Notice, PageHeader, StatusPill, Textarea } from "../components/ui";
 import { useProject, useProjectThreads } from "../project";
 
@@ -34,8 +35,6 @@ export function useAttentionCount(enabled: boolean) {
 function ThreadReply({ id }: { id: string }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [custom, setCustom] = useState<Record<string, boolean>>({});
   const qc = useQueryClient();
   const ctx = useQuery({ queryKey: ["t3-context", id], queryFn: () => api.t3Context(id), enabled: open, refetchInterval: 5_000 });
   const refresh = () => {
@@ -43,54 +42,17 @@ function ThreadReply({ id }: { id: string }) {
     qc.invalidateQueries({ queryKey: ["t3-status"] });
   };
   const send = useMutation({ mutationFn: () => api.t3Send(id, text), onSuccess: () => { setText(""); refresh(); } });
-  const respond = useMutation({
-    mutationFn: (body: Parameters<typeof api.t3Respond>[2]) => api.t3Respond(id, ctx.data!.pending!.id, body),
-    onSuccess: () => { setAnswers({}); setCustom({}); refresh(); },
-  });
   if (!open) return <Button variant="ghost" onClick={() => setOpen(true)}>Responder</Button>;
   const pending = ctx.data?.pending;
-  const questions = pending?.questions ?? [];
   return (
     <div className="space-y-2">
-      <ErrorText error={ctx.error ?? send.error ?? respond.error} />
+      <ErrorText error={ctx.error ?? send.error} />
       <div className="space-y-1 text-sm">
         {ctx.data?.messages.map((m, i) => (
           <p key={i} className="break-words whitespace-pre-wrap"><span className="text-slate-500 dark:text-muted">{m.role}: </span>{m.text}</p>
         ))}
       </div>
-      {pending && pending.kind === "user_input" && (
-        <div className="space-y-2">
-          {questions.map((q) => (
-            <div key={q.id} className="space-y-1">
-              <p className="text-sm font-medium">{q.question}</p>
-              <div className="flex flex-wrap gap-1">
-                {q.options.map((o) => (
-                  <Button key={o.label} variant={!custom[q.id] && answers[q.id] === o.label ? "default" : "ghost"} title={o.description} onClick={() => { setCustom({ ...custom, [q.id]: false }); setAnswers({ ...answers, [q.id]: o.label }); }}>{o.label}</Button>
-                ))}
-                {q.options.length > 0 && (
-                  <Button variant={custom[q.id] ? "default" : "ghost"} onClick={() => { setCustom({ ...custom, [q.id]: true }); setAnswers({ ...answers, [q.id]: "" }); }}>Otra respuesta</Button>
-                )}
-              </div>
-              {(custom[q.id] || q.options.length === 0) && (
-                <Textarea value={answers[q.id] ?? ""} onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })} placeholder="Escribe tu respuesta" />
-              )}
-            </div>
-          ))}
-          <Button disabled={respond.isPending || questions.length === 0 || questions.some((q) => !answers[q.id]?.trim())} onClick={() => respond.mutate({ answers })}>Enviar respuesta</Button>
-        </div>
-      )}
-      {pending && pending.kind !== "user_input" && (
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Permiso solicitado: {pending.kind}</p>
-          {pending.detail
-            ? <pre className="overflow-x-auto rounded bg-slate-100 dark:bg-raised p-2 text-xs">{pending.detail}</pre>
-            : <p className="text-sm text-slate-500 dark:text-muted">T3 no expone la acción exacta: revísala en T3.</p>}
-          <div className="flex gap-2">
-            <Button disabled={respond.isPending || !pending.detail} onClick={() => respond.mutate({ decision: "accept" })}>Aprobar</Button>
-            <Button variant="danger" disabled={respond.isPending} onClick={() => respond.mutate({ decision: "decline" })}>Rechazar</Button>
-          </div>
-        </div>
-      )}
+      {pending && <PendingRequest key={pending.id} threadId={id} pending={pending} onDone={refresh} />}
       <Textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Mensaje para el agente" />
       <Button disabled={send.isPending || !text.trim()} onClick={() => send.mutate()}>Enviar mensaje</Button>
     </div>

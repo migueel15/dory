@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowRight, CaretDown, Check, X } from "@phosphor-icons/react";
 import { createPortal } from "react-dom";
-import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, KeyboardEvent, ReactNode, TextareaHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, KeyboardEvent, ReactNode, Ref, TextareaHTMLAttributes } from "react";
 import Markdown, { defaultUrlTransform, type Options } from "react-markdown";
 import remarkGfm from "remark-gfm";
 export { defaultUrlTransform };
@@ -26,7 +26,7 @@ export const Arrow = ({ back }: { back?: boolean }) => (
 
 export const field = "min-h-11 sm:min-h-0 w-full rounded-md border border-slate-300 dark:border-border-strong bg-white dark:bg-surface px-2 py-1.5 text-sm";
 export const Input = (p: InputHTMLAttributes<HTMLInputElement>) => <input {...p} className={cx(field, p.className)} />;
-export const Textarea = (p: TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...p} className={cx(field, "min-h-24", p.className)} />;
+export const Textarea = (p: TextareaHTMLAttributes<HTMLTextAreaElement> & { ref?: Ref<HTMLTextAreaElement> }) => <textarea {...p} className={cx(field, "min-h-24", p.className)} />;
 
 export type Option = { value: string; label: string; group?: string; icon?: ReactNode; disabled?: boolean };
 
