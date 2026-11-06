@@ -78,7 +78,9 @@ func run() error {
 		notices.Mount(mux)
 		go notices.Run(ctx)
 		go monitor.Run(ctx)
-		titleGen := titles.New(svc, monitor, titles.Config{Provider: cfg.TitleProvider, Model: cfg.TitleModel, Effort: cfg.TitleEffort, Project: cfg.TitleProject, Timeout: cfg.TitleTimeout})
+		titleSettings := titles.Store{Pool: pool}
+		titleSettings.Mount(mux)
+		titleGen := titles.New(svc, monitor, titleSettings)
 		titleGen.Recover(ctx)
 		api.Register(mux, titleGen.Wrap(svc), monitor, github.New(svc, os.Getenv("DORY_GITHUB_TOKEN")))
 		auth.Register(mux, svc, cfg)

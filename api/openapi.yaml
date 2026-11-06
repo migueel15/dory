@@ -81,6 +81,29 @@ paths:
             schema: { $ref: "#/components/schemas/NotificationSettings" }
       responses:
         "204": { description: Preferences replaced; existing notices are preserved }
+  "/settings/titles":
+    get:
+      operationId: getTitleSettings
+      responses:
+        "200":
+          description: Global settings of the AI title generation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TitleSettings" }
+    put:
+      operationId: putTitleSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TitleSettings" }
+      responses:
+        "200":
+          description: Settings replaced; the next idea uses them
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TitleSettings" }
+        "400": { description: Enabled without instance_id or model, or timeout_seconds outside 0-3600 }
   "/notifications/subscription":
     post:
       operationId: subscribeNotifications
@@ -2324,6 +2347,17 @@ components:
         open_questions: {type: array, items: {type: string}}
         author: {type: string, enum: [agent, user]}
         accepted_at: {type: string, format: date-time, nullable: true}
+    TitleSettings:
+      type: object
+      required: [enabled, instance_id, provider, model, effort, project, timeout_seconds]
+      properties:
+        enabled: { type: boolean }
+        instance_id: { type: string, description: T3 instance where the thread runs }
+        provider: { type: string, description: Provider instance inside T3 }
+        model: { type: string, description: Model slug }
+        effort: { type: string, description: Reasoning effort; empty uses the lowest of the model }
+        project: { type: string, description: T3 project id; empty uses the first }
+        timeout_seconds: { type: integer, minimum: 0, maximum: 3600, description: 0 means the 120 s default }
     NotificationSettings:
       type: object
       additionalProperties: false

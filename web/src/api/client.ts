@@ -24,6 +24,7 @@ export type ItemStatus = Item["status"];
 export type ItemPlan = S["ItemPlan"];
 export type PlanSections = S["PlanSections"];
 export type ItemRefinement = S["ItemRefinement"];
+export type TitleSettings = S["TitleSettings"];
 export type RefineInput = { text?: string; restart?: boolean; instance_id?: string; project_id?: string; provider?: string; model?: string; effort_option?: string; effort?: string };
 
 export class ApiError extends Error {
@@ -81,6 +82,8 @@ export const api = {
   t3Send: (id: string, text: string) => req<void>("POST", `/t3/threads/${id}/messages`, { text }),
   t3Respond: (id: string, requestId: string, body: { decision?: "accept" | "decline"; answers?: Record<string, unknown> }) =>
     req<void>("POST", `/t3/threads/${id}/requests/${encodeURIComponent(requestId)}`, body),
+  titleSettings: () => req<TitleSettings>("GET", "/settings/titles"),
+  saveTitleSettings: (body: TitleSettings) => req<TitleSettings>("PUT", "/settings/titles", body),
   t3Catalog: (id: string) => req<T3Catalog>("GET", `/t3/instances/${id}/catalog`),
   item: (id: string) => req<Item>("GET", `/items/${id}`),
   refinement: (id: string) => req<ItemRefinement>("GET", `/items/${id}/refinement`),
