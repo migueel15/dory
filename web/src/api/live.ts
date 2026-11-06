@@ -11,7 +11,8 @@ const keys: Record<string, string[]> = {
   environment: ["environments"],
   memory: ["memories"],
   link: ["items", "memories"],
-  itemthread: ["item-threads"],
+  itemthread: ["item-threads", "refinement"],
+  itemplan: ["refinement", "items"],
 };
 
 // useLiveUpdates subscribes to the audit SSE stream and invalidates the

@@ -21,6 +21,10 @@ export type GithubPull = S["GithubPull"];
 export type GithubDetail = S["GithubDetail"];
 export type GithubThread = S["GithubThread"];
 export type ItemStatus = Item["status"];
+export type ItemPlan = S["ItemPlan"];
+export type PlanSections = S["PlanSections"];
+export type ItemRefinement = S["ItemRefinement"];
+export type RefineInput = { text?: string; restart?: boolean; instance_id?: string; project_id?: string; provider?: string; model?: string; effort_option?: string; effort?: string };
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -78,6 +82,12 @@ export const api = {
   t3Respond: (id: string, requestId: string, body: { decision?: "accept" | "decline"; answers?: Record<string, unknown> }) =>
     req<void>("POST", `/t3/threads/${id}/requests/${encodeURIComponent(requestId)}`, body),
   t3Catalog: (id: string) => req<T3Catalog>("GET", `/t3/instances/${id}/catalog`),
+  item: (id: string) => req<Item>("GET", `/items/${id}`),
+  refinement: (id: string) => req<ItemRefinement>("GET", `/items/${id}/refinement`),
+  refine: (id: string, body: RefineInput) => req<{ thread_id: string }>("POST", `/items/${id}/refine`, body),
+  plans: (id: string) => req<ItemPlan[]>("GET", `/items/${id}/plans`),
+  createPlan: (id: string, body: { sections: PlanSections; open_questions: string[] }) => req<ItemPlan>("POST", `/items/${id}/plans`, body),
+  acceptPlan: (id: string) => req<{ item: Item; plan: ItemPlan }>("POST", `/items/${id}/plan/accept`),
   t3Launch: (itemId: string, body: T3LaunchInput) => req<{ thread_id: string }>("POST", `/items/${itemId}/launch`, body),
   resolveConflicts: (repo: string, number: number, body: IssueDefineInput) => req<{ thread_id: string }>("POST", `/github/repos/${repo}/pulls/${number}/resolve-conflicts`, body),
   issueDefine: (repo: string, number: number, body: IssueDefineInput) => req<{ thread_id: string }>("POST", `/github/repos/${repo}/issues/${number}/define`, body),

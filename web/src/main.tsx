@@ -17,6 +17,7 @@ import { Jobs } from "./pages/jobs";
 import { Home } from "./pages/home";
 import { Usage } from "./pages/usage";
 import { Inbox } from "./pages/items";
+import { Define } from "./pages/define";
 import { ProjectDetail, Projects, Tasks } from "./pages/projects";
 import { applyTheme, useTheme } from "./theme";
 import "./index.css";
@@ -86,7 +87,7 @@ function Layout() {
   const logout = useMutation({ mutationFn: api.logout, onSuccess: () => qc.clear() });
   useLiveUpdates(!!me.data);
   // The project board needs the full width.
-  const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") || l.pathname === "/tasks" });
+  const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") || l.pathname.startsWith("/items/") || l.pathname === "/tasks" });
   const attention = useAttentionCount(!!me.data);
 
   const path = useLocation({ select: (l) => l.pathname });
@@ -206,6 +207,7 @@ const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/tasks", component: Tasks }),
   createRoute({ getParentRoute: () => root, path: "/projects", component: Projects }),
   createRoute({ getParentRoute: () => root, path: "/projects/$id", component: ProjectDetail }),
+  createRoute({ getParentRoute: () => root, path: "/items/$id/define", component: Define }),
   createRoute({ getParentRoute: () => root, path: "/environments", component: Environments }),
   createRoute({ getParentRoute: () => root, path: "/memories", component: Memories, validateSearch: memorySearch }),
 ]);
