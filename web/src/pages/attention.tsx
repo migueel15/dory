@@ -3,12 +3,13 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { api } from "../api/client";
+import { useThreadLive } from "../api/live";
 import { ThreadStatus } from "../components/thread-status";
 import { PendingRequest } from "../components/pending-request";
 import { Badge, Button, Card, ErrorText, Notice, PageHeader, StatusPill, Textarea } from "../components/ui";
 import { useProject, useProjectThreads } from "../project";
 
-export const useT3 = (enabled = true) => useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 10_000, enabled });
+export const useT3 = (enabled = true) => useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 60_000, enabled });
 export const useBlocked = (enabled = true) => useQuery({ queryKey: ["items", "blocked"], queryFn: () => api.items.list({ status: "blocked" }), enabled });
 
 // useAttention lists the threads waiting for the user and the blocked items,
@@ -36,12 +37,26 @@ function ThreadReply({ id }: { id: string }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const qc = useQueryClient();
-  const ctx = useQuery({ queryKey: ["t3-context", id], queryFn: () => api.t3Context(id), enabled: open, refetchInterval: 5_000 });
+  const ctx = useQuery({ queryKey: ["t3-context", id], queryFn: () => api.t3Context(id), enabled: open, refetchInterval: 60_000 });
+  useThreadLive(open ? id : undefined, ["t3-context", id]);
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["t3-context", id] });
     qc.invalidateQueries({ queryKey: ["t3-status"] });
   };
-  const send = useMutation({ mutationFn: () => api.t3Send(id, text), onSuccess: () => { setText(""); refresh(); } });
+  const key = ["t3-context", id];
+  // The own message shows at once; a failed send puts the previous chat back.
+  const send = useMutation({
+    mutationFn: (msg: string) => api.t3Send(id, msg),
+    onMutate: async (msg) => {
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<typeof ctx.data>(key);
+      if (prev) qc.setQueryData(key, { ...prev, messages: [...prev.messages, { role: "user", text: msg } as (typeof prev.messages)[number]] });
+      setText("");
+      return { prev };
+    },
+    onError: (_e, msg, c) => { if (c?.prev) qc.setQueryData(key, c.prev); setText(msg); },
+    onSettled: refresh,
+  });
   if (!open) return <Button variant="ghost" onClick={() => setOpen(true)}>Responder</Button>;
   const pending = ctx.data?.pending;
   return (
@@ -54,7 +69,7 @@ function ThreadReply({ id }: { id: string }) {
       </div>
       {pending && <PendingRequest key={pending.id} threadId={id} pending={pending} onDone={refresh} />}
       <Textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Mensaje para el agente" />
-      <Button disabled={send.isPending || !text.trim()} onClick={() => send.mutate()}>Enviar mensaje</Button>
+      <Button disabled={send.isPending || !text.trim()} onClick={() => send.mutate(text.trim())}>Enviar mensaje</Button>
     </div>
   );
 }

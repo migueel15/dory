@@ -91,6 +91,7 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 			writeT3Error(w, err)
 			return
 		}
+		monitor.Refresh(body.InstanceID)
 		// The thread exists from here on, so keep it linked even if its turn failed.
 		link := service.ItemThread{ItemID: item.ID, InstanceID: body.InstanceID, ThreadID: threadID, Role: body.Role}
 		if _, lerr := svc.ItemThreads().Put(r.Context(), actor(r), link); lerr != nil {

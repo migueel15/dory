@@ -128,6 +128,7 @@ func launchGithubThread(svc service.Service, monitor *t3.Monitor, gh *github.Cli
 			writeT3Error(w, err)
 			return
 		}
+		monitor.Refresh(body.InstanceID)
 		// The thread exists from here on, so keep it tracked even if its turn failed.
 		link := service.IssueThread{Kind: jobKind, ProjectID: issue.ProjectID, Repo: issue.Repo, Number: issue.Number, IssueURL: issue.URL, Title: issue.Title,
 			InstanceID: body.InstanceID, ThreadID: threadID, Model: body.Model, Effort: body.Effort}

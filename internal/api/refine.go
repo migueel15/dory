@@ -101,6 +101,7 @@ func mountRefine(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 				writeT3Error(w, err)
 				return
 			}
+			monitor.Refresh(link.InstanceID)
 			audit(r, svc, link.ThreadID, map[string]any{"operation": "t3.message", "item_id": item.ID, "text": body.Text})
 			writeJSON(w, http.StatusOK, map[string]string{"thread_id": link.ThreadID})
 			return
@@ -122,6 +123,7 @@ func mountRefine(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 			writeT3Error(w, err)
 			return
 		}
+		monitor.Refresh(body.InstanceID)
 		// The thread exists from here on, so keep it linked even if its turn failed.
 		if _, lerr := svc.ItemThreads().Put(r.Context(), actor(r), service.ItemThread{ItemID: item.ID, InstanceID: body.InstanceID, ThreadID: threadID, Role: roleRefine}); lerr != nil {
 			logError(lerr)

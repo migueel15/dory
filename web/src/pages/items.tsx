@@ -322,8 +322,8 @@ export function Board({ projectId }: { projectId: string }) {
 
 // Shows the T3 threads linked to an item; both queries are shared by every card.
 function useItemThreads(itemId: string) {
-  const links = useQuery({ queryKey: ["item-threads"], queryFn: () => api.itemThreads.list(), refetchInterval: 10_000 });
-  const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 10_000 });
+  const links = useQuery({ queryKey: ["item-threads"], queryFn: () => api.itemThreads.list(), refetchInterval: 60_000 });
+  const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 60_000 });
   return links.data?.filter((l) => l.item_id === itemId).flatMap((l) => {
     const thread = t3.data?.flatMap((s) => s.threads).find((t) => t.id === l.thread_id);
     return thread ? [thread] : [];

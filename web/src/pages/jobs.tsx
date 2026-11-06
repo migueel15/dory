@@ -22,8 +22,8 @@ type Job = { key: string; kind: string; title: string; to?: { owner: string; rep
 // Jobs lists the threads Dory launched in the background with their live state.
 export function Jobs() {
   const t3 = useT3();
-  const issues = useQuery({ queryKey: ["issue-threads"], queryFn: api.issueThreads, refetchInterval: 10_000 });
-  const items = useQuery({ queryKey: ["item-threads"], queryFn: () => api.itemThreads.list(), refetchInterval: 30_000 });
+  const issues = useQuery({ queryKey: ["issue-threads"], queryFn: api.issueThreads, refetchInterval: 60_000 });
+  const items = useQuery({ queryKey: ["item-threads"], queryFn: () => api.itemThreads.list(), refetchInterval: 60_000 });
   const live = new Map<string, { thread: Thread; host: string }>();
   for (const s of t3.data ?? []) for (const t of s.threads) live.set(`${s.instance_id}:${t.id}`, { thread: t, host: s.base_url });
   const host = (instance: string) => t3.data?.find((s) => s.instance_id === instance)?.base_url ?? "";
