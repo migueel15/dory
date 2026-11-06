@@ -697,6 +697,18 @@ func validMemoryScope(scope string, scopeID *string) bool {
 // ThreadLocator finds the T3 instance that reports a thread.
 type ThreadLocator func(threadID string) (string, bool)
 
+// itemWithPlan is an item and its newest plan version.
+type itemWithPlan struct {
+	service.Item
+	Plan *service.ItemPlan `json:"plan"`
+}
+
+type planInput struct {
+	ItemID        string               `json:"item_id" jsonschema:"Item UUID"`
+	Sections      service.PlanSections `json:"sections" jsonschema:"Plan sections in markdown; at least one is required"`
+	OpenQuestions []string             `json:"open_questions,omitempty" jsonschema:"Questions the user still has to answer; the plan cannot be accepted while any remain"`
+}
+
 func Handler(svc service.Service, locate ThreadLocator) http.Handler {
 	s := sdk.NewServer(&sdk.Implementation{Name: "dory", Version: "0.1.0"}, nil)
 	viewListTool(s, "list_projects", "List projects with optional field filters and pagination; view summary (default) or full.", svc.Projects(), summarizeProject)
@@ -715,7 +727,21 @@ func Handler(svc service.Service, locate ThreadLocator) http.Handler {
 		}
 		return mapAll(rows, summarizeItem), nil
 	})
-	getTool(s, "get_item", "Get an unarchived item by UUID.", svc.Items())
+	add(s, "get_item", "Get an unarchived item by UUID, with plan holding its newest plan version (null if none).", func(ctx context.Context, in idInput) (any, error) {
+		item, err := svc.Items().Get(ctx, in.ID)
+		if err != nil {
+			return nil, err
+		}
+		plan, err := service.LatestPlan(ctx, svc, in.ID)
+		return itemWithPlan{item, plan}, err
+	})
+	add(s, "propose_plan", "Store a new version of an item plan with its fixed sections (goal, scope, where, design, requirements, validation, risks; markdown) and the open_questions still pending. It never makes the item ready: an inbox or ready item goes back to triaged, and only the user accepts a plan. Returns {id, item_id, version}.", func(ctx context.Context, in planInput) (any, error) {
+		plan, err := service.ProposePlan(ctx, svc, auth.Actor(ctx), in.ItemID, "agent", in.Sections, in.OpenQuestions)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"id": plan.ID, "item_id": plan.ItemID, "version": plan.Version}, nil
+	})
 	viewListTool(s, "list_features", "List features with optional filters, e.g. status planned, in_progress, implemented or deprecated; view summary (default) or full.", svc.Features(), summarizeFeature)
 	listTool(s, "list_environments", "List environments with optional filters.", svc.Environments())
 	getTool(s, "get_environment", "Get an environment by UUID.", svc.Environments())

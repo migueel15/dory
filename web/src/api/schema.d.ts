@@ -729,10 +729,73 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/items/{id}/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Plan versions of the item, newest first. */
+        get: operations["listItemPlans"];
+        put?: never;
+        /** @description Store a plan version written by the user. It never makes the item ready; an inbox or ready item goes back to triaged. */
+        post: operations["createItemPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/items/{id}/plan/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Accept the newest plan version: copy it to body_md and move the item to ready. Fails while the plan has open questions. */
+        post: operations["acceptItemPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        PlanSections: {
+            goal: string;
+            scope: string;
+            where: string;
+            design: string;
+            requirements: string;
+            validation: string;
+            risks: string;
+        };
+        ItemPlan: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: date-time */
+            readonly updated_at: string;
+            /** Format: date-time */
+            readonly archived_at: string | null;
+            /** Format: uuid */
+            item_id: string;
+            version: number;
+            sections: components["schemas"]["PlanSections"];
+            open_questions: string[];
+            /** @enum {string} */
+            author: "agent" | "user";
+            /** Format: date-time */
+            accepted_at: string | null;
+        };
         NotificationSettings: {
             item_ready?: components["schemas"]["NotificationChannels"];
             item_blocked?: components["schemas"]["NotificationChannels"];
@@ -3612,6 +3675,87 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    listItemPlans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemPlan"][];
+                };
+            };
+            404: components["responses"]["Error404"];
+        };
+    };
+    createItemPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    sections: components["schemas"]["PlanSections"];
+                    open_questions?: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemPlan"];
+                };
+            };
+            400: components["responses"]["Error400"];
+            404: components["responses"]["Error404"];
+        };
+    };
+    acceptItemPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        item: components["schemas"]["Item"];
+                        plan: components["schemas"]["ItemPlan"];
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            404: components["responses"]["Error404"];
         };
     };
 }

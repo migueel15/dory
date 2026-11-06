@@ -85,6 +85,29 @@ type Item struct {
 	Priority      int32    `json:"priority"`
 	Source        string   `json:"source"`
 }
+
+// PlanSections are the fixed sections of an item plan, in reading order.
+type PlanSections struct {
+	Goal         string `json:"goal"`
+	Scope        string `json:"scope"`
+	Where        string `json:"where"`
+	Design       string `json:"design"`
+	Requirements string `json:"requirements"`
+	Validation   string `json:"validation"`
+	Risks        string `json:"risks"`
+}
+
+// ItemPlan is one immutable version of an item plan. Version is assigned by
+// the database; only AcceptedAt changes once the version exists.
+type ItemPlan struct {
+	Record
+	ItemID        string       `json:"item_id"`
+	Version       int          `json:"version"`
+	Sections      PlanSections `json:"sections"`
+	OpenQuestions []string     `json:"open_questions"`
+	Author        string       `json:"author"`
+	AcceptedAt    *time.Time   `json:"accepted_at"`
+}
 type Memory struct {
 	Record
 	Scope   string   `json:"scope"`

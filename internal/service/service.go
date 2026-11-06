@@ -72,6 +72,7 @@ type RepositoryLocations interface {
 }
 type T3Instances interface{ T3Instances() Resource[T3Instance] }
 type ItemThreads interface{ ItemThreads() Resource[ItemThread] }
+type ItemPlans interface{ ItemPlans() Resource[ItemPlan] }
 type IssueThreads interface{ IssueThreads() Resource[IssueThread] }
 type Features interface{ Features() Resource[Feature] }
 type Items interface{ Items() Resource[Item] }
@@ -87,6 +88,7 @@ type Service interface {
 	RepositoryLocations
 	T3Instances
 	ItemThreads
+	ItemPlans
 	IssueThreads
 	Features
 	Items
@@ -248,7 +250,7 @@ func (r resource[T]) Put(ctx context.Context, actor string, v T) (T, error) {
 		var zero T
 		return zero, err
 	}
-	for _, key := range []string{"tags", "refs", "stack", "agents_available", "code_refs", "permissions"} {
+	for _, key := range []string{"tags", "refs", "stack", "agents_available", "code_refs", "permissions", "open_questions"} {
 		if value, exists := payload[key]; exists && value == nil {
 			payload[key] = []string{}
 		}
@@ -404,6 +406,22 @@ func (b *backend) ItemThreads() Resource[ItemThread] {
 		},
 		archive: func(ctx context.Context, q *store.Queries, id string) ([]byte, error) {
 			return q.ArchiveItemThread(ctx, id)
+		},
+	}
+}
+func (b *backend) ItemPlans() Resource[ItemPlan] {
+	return resource[ItemPlan]{b: b, kind: "itemplan",
+		get: func(ctx context.Context, q *store.Queries, id string) ([]byte, error) {
+			return q.GetItemPlan(ctx, id)
+		},
+		list: func(ctx context.Context, q *store.Queries, f Filter, raw []byte) ([][]byte, error) {
+			return q.ListItemPlan(ctx, store.ListItemPlanParams{Filter: raw, IncludeArchived: f.IncludeArchived, PageLimit: f.Limit, PageOffset: f.Offset})
+		},
+		put: func(ctx context.Context, q *store.Queries, raw []byte) ([]byte, error) {
+			return q.PutItemPlan(ctx, raw)
+		},
+		archive: func(ctx context.Context, q *store.Queries, id string) ([]byte, error) {
+			return q.ArchiveItemPlan(ctx, id)
 		},
 	}
 }

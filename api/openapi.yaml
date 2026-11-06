@@ -2114,6 +2114,68 @@ paths:
           $ref: "#/components/responses/Error400"
         "502":
           description: GitHub or T3 unavailable
+  "/items/{id}/plans":
+    get:
+      operationId: listItemPlans
+      description: "Plan versions of the item, newest first."
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/ItemPlan"}
+        "404":
+          $ref: "#/components/responses/Error404"
+    post:
+      operationId: createItemPlan
+      description: "Store a plan version written by the user. It never makes the item ready; an inbox or ready item goes back to triaged."
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sections]
+              properties:
+                sections: {$ref: "#/components/schemas/PlanSections"}
+                open_questions: {type: array, items: {type: string}}
+      responses:
+        "201":
+          description: "Created"
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ItemPlan"}
+        "400":
+          $ref: "#/components/responses/Error400"
+        "404":
+          $ref: "#/components/responses/Error404"
+  "/items/{id}/plan/accept":
+    post:
+      operationId: acceptItemPlan
+      description: "Accept the newest plan version: copy it to body_md and move the item to ready. Fails while the plan has open questions."
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: "Accepted"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item, plan]
+                properties:
+                  item: {$ref: "#/components/schemas/Item"}
+                  plan: {$ref: "#/components/schemas/ItemPlan"}
+        "400":
+          $ref: "#/components/responses/Error400"
+        "404":
+          $ref: "#/components/responses/Error404"
 components:
   responses:
     Error400:
@@ -2161,6 +2223,31 @@ components:
       type: "http"
       scheme: "bearer"
   schemas:
+    PlanSections:
+      type: object
+      required: [goal, scope, where, design, requirements, validation, risks]
+      properties:
+        goal: {type: string}
+        scope: {type: string}
+        where: {type: string}
+        design: {type: string}
+        requirements: {type: string}
+        validation: {type: string}
+        risks: {type: string}
+    ItemPlan:
+      type: object
+      required: [id, created_at, updated_at, archived_at, item_id, version, sections, open_questions, author, accepted_at]
+      properties:
+        id: {type: string, format: uuid, readOnly: true}
+        created_at: {type: string, format: date-time, readOnly: true}
+        updated_at: {type: string, format: date-time, readOnly: true}
+        archived_at: {type: string, format: date-time, nullable: true, readOnly: true}
+        item_id: {type: string, format: uuid}
+        version: {type: integer}
+        sections: {$ref: "#/components/schemas/PlanSections"}
+        open_questions: {type: array, items: {type: string}}
+        author: {type: string, enum: [agent, user]}
+        accepted_at: {type: string, format: date-time, nullable: true}
     NotificationSettings:
       type: object
       additionalProperties: false

@@ -68,6 +68,7 @@ type IssueThread struct {
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
 	ArchivedAt pgtype.Timestamptz
+	Kind       string
 }
 
 type Item struct {
@@ -88,6 +89,19 @@ type Item struct {
 	FeatureID     pgtype.UUID
 	BlockedReason string
 	Refs          []string
+}
+
+type ItemPlan struct {
+	ID            pgtype.UUID
+	ItemID        pgtype.UUID
+	Version       int32
+	Sections      []byte
+	OpenQuestions []string
+	Author        string
+	AcceptedAt    pgtype.Timestamptz
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	ArchivedAt    pgtype.Timestamptz
 }
 
 type ItemThread struct {
@@ -125,6 +139,54 @@ type Memory struct {
 	Kind         string
 	Title        string
 	SearchVector interface{}
+}
+
+type Notification struct {
+	ID        int64
+	UserID    pgtype.UUID
+	Title     string
+	Url       string
+	Kinds     []string
+	Bell      bool
+	Toast     bool
+	Push      bool
+	ReadAt    pgtype.Timestamptz
+	CreatedAt pgtype.Timestamptz
+	Body      string
+}
+
+type NotificationInstance struct {
+	InstanceID string
+}
+
+type NotificationKey struct {
+	ID         bool
+	PrivateKey string
+	PublicKey  string
+}
+
+type NotificationPreference struct {
+	UserID   pgtype.UUID
+	Settings []byte
+}
+
+type NotificationPush struct {
+	NotificationID int64
+	Endpoint       string
+	Attempts       int32
+	NextAt         pgtype.Timestamptz
+}
+
+type NotificationSubscription struct {
+	UserID       pgtype.UUID
+	Endpoint     string
+	Subscription []byte
+}
+
+type NotificationThread struct {
+	InstanceID string
+	ThreadID   string
+	State      []byte
 }
 
 type Project struct {

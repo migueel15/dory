@@ -52,7 +52,7 @@ T3 Code y los agentes deben ejecutarse en una máquina con acceso a la URL de do
 
 ## Herramientas disponibles
 
-`session_start`, `list_projects`, `get_project`, `list_items`, `get_item`, `create_item`, `update_item`, `update_items`, `move_item`, `archive_item`, `list_features`, `upsert_feature`, `list_environments`, `get_environment`, `list_repositories`, `remember`, `update_memory`, `archive_memory`, `recall`, `link`, `upsert_project`, `archive_project`, `upsert_repository`, `set_repository_location`, `link_thread`.
+`session_start`, `list_projects`, `get_project`, `list_items`, `get_item`, `create_item`, `update_item`, `update_items`, `move_item`, `archive_item`, `list_features`, `upsert_feature`, `list_environments`, `get_environment`, `list_repositories`, `remember`, `update_memory`, `archive_memory`, `recall`, `link`, `upsert_project`, `archive_project`, `upsert_repository`, `set_repository_location`, `link_thread`, `propose_plan`.
 
 Los environments son de solo lectura: los crea el descubrimiento de T3 Code (`DORY_T3_DISCOVERY_CIDR`). La API REST solo expone `GET /api/environments`.
 
@@ -67,13 +67,21 @@ Se recomienda que el agente llame a `session_start` al empezar cada sesión.
 - Proyecto resumido: `id`, `slug`, `name`, `status`, `stack`.
 - Memoria resumida (`recall`): `id`, `kind`, `title`, `tags` y los 200 primeros caracteres de `content`.
 
-Con `view: "full"` se devuelven los registros completos, como antes. `get_item` siempre devuelve el item entero.
+Con `view: "full"` se devuelven los registros completos, como antes. `get_item` siempre devuelve el item entero, con `plan` (la versión más reciente de su plan, o `null`).
 
 ## Respuestas de escritura y contexto de proyecto
 
 `create_item`, `update_item` y `move_item` devuelven `{id, status, updated_at}`. Con `return: "full"` devuelven el item completo.
 
 `get_project` y `session_start` usan la vista resumida para los items abiertos y las memorias. Los cuerpos se leen con `get_item` y `recall` con `view: "full"`.
+
+## Plan versionado de un item
+
+`propose_plan(item_id, sections, open_questions)` guarda una nueva versión del plan. Las secciones son fijas y van en markdown: `goal`, `scope`, `where`, `design`, `requirements`, `validation` y `risks`; al menos una no puede estar vacía. `open_questions` recoge lo que el usuario aún debe responder. Devuelve `{id, item_id, version}`.
+
+Proponer un plan nunca deja el item en `ready`: un item `inbox` o `ready` vuelve a `triaged`. Solo se puede proponer en `inbox`, `triaged` o `ready`. Las versiones no cambian una vez creadas.
+
+Solo el usuario acepta el plan, desde la web o con `POST /api/items/{id}/plan/accept`. Aceptar exige que la última versión no tenga preguntas abiertas, copia el plan a `body_md` (con `## Cómo probar` para `validation`) y pasa el item a `ready`. `GET /api/items/{id}/plans` lista las versiones de la más reciente a la más antigua y `POST /api/items/{id}/plans` guarda una versión escrita por el usuario.
 
 ## Filtros de `list_items`
 
