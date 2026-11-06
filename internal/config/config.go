@@ -18,19 +18,12 @@ type Config struct {
 	PublicOrigin   string        `toml:"public_origin"`
 	SessionTTL     time.Duration `toml:"-"`
 	SessionTTLText string        `toml:"session_ttl"`
-	// Title generation: an empty TitleModel turns it off.
-	TitleProvider    string        `toml:"title_provider"`
-	TitleModel       string        `toml:"title_model"`
-	TitleEffort      string        `toml:"title_effort"`
-	TitleProject     string        `toml:"title_project"`
-	TitleTimeout     time.Duration `toml:"-"`
-	TitleTimeoutText string        `toml:"title_timeout"`
 }
 
 // Load uses DORY_CONFIG, or ~/.config/dory/config.toml. An explicitly selected
 // missing file is an error; the implicit default file is optional.
 func Load() (Config, error) {
-	c := Config{Listen: "127.0.0.1:8080", CookieSecure: true, SessionTTLText: "168h", TitleTimeoutText: "2m"}
+	c := Config{Listen: "127.0.0.1:8080", CookieSecure: true, SessionTTLText: "168h"}
 	path := os.Getenv("DORY_CONFIG")
 	explicit := path != ""
 	if !explicit {
@@ -48,7 +41,7 @@ func Load() (Config, error) {
 	} else if explicit || !os.IsNotExist(err) {
 		return c, err
 	}
-	for key, target := range map[string]*string{"DORY_LISTEN": &c.Listen, "DORY_DATABASE_URL": &c.DatabaseURL, "DORY_SESSION_TTL": &c.SessionTTLText, "DORY_PUBLIC_ORIGIN": &c.PublicOrigin, "DORY_TITLE_PROVIDER": &c.TitleProvider, "DORY_TITLE_MODEL": &c.TitleModel, "DORY_TITLE_EFFORT": &c.TitleEffort, "DORY_TITLE_PROJECT": &c.TitleProject, "DORY_TITLE_TIMEOUT": &c.TitleTimeoutText} {
+	for key, target := range map[string]*string{"DORY_LISTEN": &c.Listen, "DORY_DATABASE_URL": &c.DatabaseURL, "DORY_SESSION_TTL": &c.SessionTTLText, "DORY_PUBLIC_ORIGIN": &c.PublicOrigin} {
 		if v, ok := os.LookupEnv(key); ok {
 			*target = v
 		}
@@ -72,10 +65,6 @@ func Load() (Config, error) {
 	c.SessionTTL, err = time.ParseDuration(c.SessionTTLText)
 	if err != nil || c.SessionTTL <= 0 {
 		return c, fmt.Errorf("session_ttl must be a positive duration")
-	}
-	c.TitleTimeout, err = time.ParseDuration(c.TitleTimeoutText)
-	if err != nil || c.TitleTimeout <= 0 {
-		return c, fmt.Errorf("title_timeout must be a positive duration")
 	}
 	if c.PublicOrigin != "" {
 		if err = validateOrigin(c.PublicOrigin); err != nil {

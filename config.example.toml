@@ -20,16 +20,3 @@ cookie_secure = true
 # Duración de la sesión web (DORY_SESSION_TTL), formato de Go: "168h" = 7 días.
 session_ttl = "168h"
 
-# Título de las ideas con IA. Al crear una idea desde el cuadro de idea, un hilo de T3 con
-# un modelo rápido genera el título; lo que escribes queda como descripción.
-# Sin title_model, la función está apagada y el título es la primera línea.
-# Cada clave tiene su variable DORY_TITLE_* (PROVIDER, MODEL, EFFORT, PROJECT, TIMEOUT).
-# title_provider: instancia de proveedor en T3 (por ejemplo "codex"); vacío usa la primera con ese modelo.
-# title_provider = "codex"
-# title_model = "gpt-6-luna"
-# Nivel de razonamiento; vacío usa el más bajo que ofrezca el modelo.
-# title_effort = "low"
-# Proyecto de T3 donde se abre el hilo (id o título); vacío usa el primero.
-# title_project = ""
-# Tiempo máximo antes de quedarse con el título provisional.
-title_timeout = "2m"

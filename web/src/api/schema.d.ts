@@ -52,6 +52,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/titles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getTitleSettings"];
+        put: operations["putTitleSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/notifications/subscription": {
         parameters: {
             query?: never;
@@ -845,6 +861,21 @@ export interface components {
             author: "agent" | "user";
             /** Format: date-time */
             accepted_at: string | null;
+        };
+        TitleSettings: {
+            enabled: boolean;
+            /** @description T3 instance where the thread runs */
+            instance_id: string;
+            /** @description Provider instance inside T3 */
+            provider: string;
+            /** @description Model slug */
+            model: string;
+            /** @description Reasoning effort; empty uses the lowest of the model */
+            effort: string;
+            /** @description T3 project id; empty uses the first */
+            project: string;
+            /** @description 0 means the 120 s default */
+            timeout_seconds: number;
         };
         NotificationSettings: {
             item_ready?: components["schemas"]["NotificationChannels"];
@@ -1698,6 +1729,57 @@ export interface operations {
         responses: {
             /** @description Preferences replaced; existing notices are preserved */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getTitleSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Global settings of the AI title generation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TitleSettings"];
+                };
+            };
+        };
+    };
+    putTitleSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TitleSettings"];
+            };
+        };
+        responses: {
+            /** @description Settings replaced; the next idea uses them */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TitleSettings"];
+                };
+            };
+            /** @description Enabled without instance_id or model */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

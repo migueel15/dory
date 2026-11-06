@@ -16,6 +16,7 @@ import { Attention, useAttentionCount } from "./pages/attention";
 import { Jobs } from "./pages/jobs";
 import { Home } from "./pages/home";
 import { Usage } from "./pages/usage";
+import { Settings } from "./pages/settings";
 import { Inbox } from "./pages/items";
 import { Define } from "./pages/define";
 import { ProjectDetail, Projects, Tasks } from "./pages/projects";
@@ -133,6 +134,7 @@ function Layout() {
       <Link to="/github" className={link}>GitHub</Link>
       <Link to="/environments" className={link}>Entornos</Link>
       <Link to="/memories" className={link}>Memorias</Link>
+      <Link to="/settings" className={link}>Ajustes</Link>
     </>
   );
   return (
@@ -202,6 +204,7 @@ const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/attention", component: Attention }),
   createRoute({ getParentRoute: () => root, path: "/jobs", component: Jobs }),
   createRoute({ getParentRoute: () => root, path: "/usage", component: Usage }),
+  createRoute({ getParentRoute: () => root, path: "/settings", component: Settings }),
   createRoute({ getParentRoute: () => root, path: "/github", component: Github }),
   createRoute({ getParentRoute: () => root, path: "/github/$owner/$repo/$kind/$number", component: GithubView }),
   createRoute({ getParentRoute: () => root, path: "/tasks", component: Tasks }),

@@ -21,6 +21,7 @@ var pollEvery = 2 * time.Second
 
 // Config selects the model and limits the generation. An empty Model turns it off.
 type Config struct {
+	Instance string
 	Provider string
 	Model    string
 	Effort   string
@@ -31,21 +32,34 @@ type Config struct {
 // Generator starts title threads for pending items.
 type Generator struct {
 	svc    service.Service
-	cfg    Config
-	launch func(ctx context.Context, title, prompt string) error
+	load   func(ctx context.Context) (Config, error)
+	launch func(ctx context.Context, cfg Config, title, prompt string) error
 }
 
-// New builds a Generator that launches threads through the connected T3 instances.
-func New(svc service.Service, monitor *t3.Monitor, cfg Config) *Generator {
-	g := &Generator{svc: svc, cfg: cfg}
-	g.launch = func(ctx context.Context, title, prompt string) error {
-		return launchOnT3(ctx, monitor, cfg, title, prompt)
+// New builds a Generator that reads the stored settings on every generation and
+// launches threads through the connected T3 instances.
+func New(svc service.Service, monitor *t3.Monitor, store Store) *Generator {
+	return &Generator{
+		svc: svc,
+		load: func(ctx context.Context) (Config, error) {
+			s, err := store.Load(ctx)
+			return s.Config(), err
+		},
+		launch: func(ctx context.Context, cfg Config, title, prompt string) error {
+			return launchOnT3(ctx, monitor, cfg, title, prompt)
+		},
 	}
-	return g
 }
 
-// Enabled reports whether titles are generated.
-func (g *Generator) Enabled() bool { return g != nil && g.cfg.Model != "" }
+// config returns the current settings; unreadable settings mean off.
+func (g *Generator) config(ctx context.Context) Config {
+	cfg, err := g.load(ctx)
+	if err != nil {
+		log.Printf("titles: settings: %v", err)
+		return Config{}
+	}
+	return cfg
+}
 
 // Prompt is the fixed instruction: the item id, a single title change and the full description.
 func Prompt(item service.Item) string {
@@ -55,10 +69,10 @@ func Prompt(item service.Item) string {
 
 // Generate runs in the background: it starts the thread and waits until the title
 // is no longer pending. On a failure or a timeout the provisional title stays as the user's.
-func (g *Generator) Generate(item service.Item) {
-	ctx, cancel := context.WithTimeout(context.Background(), g.cfg.Timeout)
+func (g *Generator) Generate(item service.Item, cfg Config) {
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
 	defer cancel()
-	if err := g.launch(ctx, "Título: "+item.Title, Prompt(item)); err != nil {
+	if err := g.launch(ctx, cfg, "Título: "+item.Title, Prompt(item)); err != nil {
 		log.Printf("titles: item %s: %v", item.ID, err)
 		g.giveUp(item.ID)
 		return
@@ -134,22 +148,26 @@ func (r generatingItems) Put(ctx context.Context, by string, in service.Item) (s
 		}
 	}
 	pending := created && in.TitleSource == service.TitlePending
-	if pending && !r.g.Enabled() {
-		in.TitleSource = service.TitleUser
-		pending = false
+	var cfg Config
+	if pending {
+		if cfg = r.g.config(ctx); cfg.Model == "" {
+			in.TitleSource = service.TitleUser
+			pending = false
+		}
 	}
 	out, err := r.Resource.Put(ctx, by, in)
 	if err == nil && pending && out.TitleSource == service.TitlePending {
-		go r.g.Generate(out)
+		go r.g.Generate(out, cfg)
 	}
 	return out, err
 }
 
-// launchOnT3 starts the thread on the first connected instance that offers the model.
+// launchOnT3 starts the thread on the chosen instance, or on the first connected
+// one that offers the model when none is chosen.
 func launchOnT3(ctx context.Context, monitor *t3.Monitor, cfg Config, title, prompt string) error {
 	var last error = t3.ErrInstanceUnavailable
 	for _, st := range monitor.Statuses() {
-		if st.State != t3.StateAvailable {
+		if st.State != t3.StateAvailable || (cfg.Instance != "" && st.InstanceID != cfg.Instance) {
 			continue
 		}
 		c, err := monitor.InstanceClient(ctx, st.InstanceID)

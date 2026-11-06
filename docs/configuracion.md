@@ -37,12 +37,15 @@ de datos; no se añaden variables de entorno.
 
 Al crear una idea desde el cuadro de idea, lo que se escribe queda como descripción (`raw_text`) y un hilo de T3 con un modelo rápido genera el título. Mientras tanto el item muestra la primera línea como título provisional y «Generando título…»; al terminar, el título lleva la etiqueta «IA». Si el hilo falla o se agota el tiempo, se queda el título provisional como título del usuario. Al arrancar, Dory trata igual los títulos que hubieran quedado pendientes.
 
-| TOML | Variable | Significado |
-|---|---|---|
-| `title_model` | `DORY_TITLE_MODEL` | Modelo de T3 (slug). Vacío apaga la función. |
-| `title_provider` | `DORY_TITLE_PROVIDER` | Instancia de proveedor en T3. Vacío usa la primera que ofrezca el modelo. |
-| `title_effort` | `DORY_TITLE_EFFORT` | Nivel de razonamiento. Vacío usa el más bajo del modelo. |
-| `title_project` | `DORY_TITLE_PROJECT` | Proyecto de T3 (id o título) donde se abre el hilo. Vacío usa el primero. |
-| `title_timeout` | `DORY_TITLE_TIMEOUT` | Tiempo máximo de espera. Por defecto `2m`. |
+Se configura en la web, en **Ajustes → Títulos con IA**. Los ajustes son globales, se guardan en la tabla `title_settings` (`GET`/`PUT /api/settings/titles`) y se aplican a la siguiente idea sin reiniciar Dory. Ya no hay claves `title_*` en el TOML ni variables `DORY_TITLE_*`.
+
+| Campo | Significado |
+|---|---|
+| Generar el título | Activa la función. Desactivada, el título es la primera línea. |
+| Conexión | Instancia (máquina) de T3 donde se abre el hilo. Obligatoria si está activa. |
+| Modelo | Proveedor y modelo del catálogo de esa instancia. Obligatorio si está activa. |
+| Esfuerzo | Nivel de razonamiento. Vacío usa el más bajo del modelo. |
+| Proyecto de T3 | Proyecto donde se abre el hilo. Vacío usa el primero. |
+| Tiempo máximo | Segundos de espera (0–3600). Por defecto 120. |
 
 El hilo necesita el MCP de Dory para llamar a `update_item`. `title_source` (`pending`, `ai`, `user`) indica quién escribió el título: la IA solo puede pasar `pending` a `ai`; editar el título lo deja en `user` y nunca se sobrescribe.

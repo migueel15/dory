@@ -61,16 +61,31 @@ type fakeService struct {
 
 func (s fakeService) Items() service.Resource[service.Item] { return s.items }
 
-func newGen(item service.Item, launch func(context.Context, string, string) error, timeout time.Duration) (*Generator, *fakeItems) {
+func newGen(item service.Item, launch func(context.Context, string, string) error, timeout time.Duration) (*Generator, *fakeItems, Config) {
 	items := &fakeItems{item: item}
 	pollEvery = 5 * time.Millisecond
-	return &Generator{svc: fakeService{items: items}, cfg: Config{Model: "m", Timeout: timeout}, launch: launch}, items
+	cfg := Config{Model: "m", Timeout: timeout}
+	return &Generator{svc: fakeService{items: items}, load: func(context.Context) (Config, error) { return cfg, nil },
+		launch: func(ctx context.Context, _ Config, title, prompt string) error { return launch(ctx, title, prompt) }}, items, cfg
+}
+
+func TestSettingsConfig(t *testing.T) {
+	if c := (Settings{Model: "m"}).Config(); c.Model != "" || c.Timeout != DefaultTimeout {
+		t.Fatalf("disabled settings must turn generation off: %+v", c)
+	}
+	c := Settings{Enabled: true, InstanceID: "i", Provider: "codex", Model: "m", Effort: "low", TimeoutSeconds: 30}.Config()
+	if c.Instance != "i" || c.Model != "m" || c.Effort != "low" || c.Timeout != 30*time.Second {
+		t.Fatalf("got %+v", c)
+	}
+	if (Settings{Enabled: true, Model: "m"}).valid() || !(Settings{Enabled: true, InstanceID: "i", Model: "m"}).valid() || !(Settings{}).valid() {
+		t.Fatal("enabled settings need an instance and a model")
+	}
 }
 
 func TestGenerateFailureLeavesUserTitle(t *testing.T) {
 	item := service.Item{Record: service.Record{ID: "1"}, Title: "borrador", TitleSource: service.TitlePending}
-	g, items := newGen(item, func(context.Context, string, string) error { return errors.New("t3 caído") }, time.Second)
-	g.Generate(item)
+	g, items, cfg := newGen(item, func(context.Context, string, string) error { return errors.New("t3 caído") }, time.Second)
+	g.Generate(item, cfg)
 	if items.item.TitleSource != service.TitleUser || items.item.Title != "borrador" {
 		t.Fatalf("got %+v", items.item)
 	}
@@ -79,8 +94,8 @@ func TestGenerateFailureLeavesUserTitle(t *testing.T) {
 func TestGenerateTimeoutLeavesUserTitle(t *testing.T) {
 	item := service.Item{Record: service.Record{ID: "1"}, Title: "borrador", TitleSource: service.TitlePending}
 	var prompt string
-	g, items := newGen(item, func(_ context.Context, _, p string) error { prompt = p; return nil }, 40*time.Millisecond)
-	g.Generate(item)
+	g, items, cfg := newGen(item, func(_ context.Context, _, p string) error { prompt = p; return nil }, 40*time.Millisecond)
+	g.Generate(item, cfg)
 	if prompt != Prompt(item) {
 		t.Fatalf("unexpected prompt %q", prompt)
 	}
@@ -93,11 +108,12 @@ func TestGenerateStopsWhenTitleArrives(t *testing.T) {
 	item := service.Item{Record: service.Record{ID: "1"}, Title: "borrador", TitleSource: service.TitlePending}
 	var items *fakeItems
 	var g *Generator
-	g, items = newGen(item, func(context.Context, string, string) error {
+	var cfg Config
+	g, items, cfg = newGen(item, func(context.Context, string, string) error {
 		items.item.Title, items.item.TitleSource = "Corto", service.TitleAI
 		return nil
 	}, time.Second)
-	g.Generate(item)
+	g.Generate(item, cfg)
 	if items.item.TitleSource != service.TitleAI || items.item.Title != "Corto" {
 		t.Fatalf("got %+v", items.item)
 	}
