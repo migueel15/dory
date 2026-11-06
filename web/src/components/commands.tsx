@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { IdeaModal } from "./capture";
+import { Input } from "./ui";
 
 type Command = { id: string; label: string; hint?: string; run: () => void };
 
@@ -55,8 +56,8 @@ function Palette({ commands, onClose }: { commands: Command[]; onClose: () => vo
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 p-2 pt-[15vh] sm:p-4 sm:pt-[15vh]" onClick={onClose}>
       <div className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-border dark:bg-surface" onClick={(e) => e.stopPropagation()}>
-        <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={key} placeholder="Escribe un comando…" aria-label="Buscar comando"
-          className="w-full border-b border-slate-200 bg-transparent px-4 py-3 text-sm outline-none dark:border-border" />
+        <Input bare autoFocus value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={key} placeholder="Escribe un comando…" aria-label="Buscar comando"
+          className="border-b border-slate-200 px-4 py-3 dark:border-border" />
         <div ref={list} role="listbox" className="max-h-80 overflow-auto p-1">
           {shown.length === 0 && <p className="px-3 py-2 text-sm text-slate-400">Sin comandos.</p>}
           {shown.map((c, i) => (

@@ -24,9 +24,12 @@ export const Arrow = ({ back }: { back?: boolean }) => (
   <ArrowRight aria-hidden="true" className={cx("size-3.5", back && "rotate-180")} />
 );
 
-export const field = "min-h-11 sm:min-h-0 w-full rounded-md border border-slate-300 dark:border-border-strong bg-white dark:bg-surface px-2 py-1.5 text-sm";
-export const Input = (p: InputHTMLAttributes<HTMLInputElement>) => <input {...p} className={cx(field, p.className)} />;
-export const Textarea = (p: TextareaHTMLAttributes<HTMLTextAreaElement> & { ref?: Ref<HTMLTextAreaElement> }) => <textarea {...p} className={cx(field, "min-h-24", p.className)} />;
+// field is the one text-field style: neutral border that darkens on focus, never an accent outline.
+export const field = "min-h-11 sm:min-h-0 w-full rounded-md border border-slate-300 dark:border-border-strong bg-white dark:bg-surface px-2 py-1.5 text-sm !outline-none transition-colors focus:border-slate-500 dark:focus:border-muted";
+// bare drops border and background for fields embedded in a framed container (capture box, command palette).
+const bareField = "w-full bg-transparent text-sm !outline-none";
+export const Input = ({ bare, className, ...p }: InputHTMLAttributes<HTMLInputElement> & { bare?: boolean; ref?: Ref<HTMLInputElement> }) => <input {...p} className={cx(bare ? bareField : field, className)} />;
+export const Textarea = ({ bare, className, ...p }: TextareaHTMLAttributes<HTMLTextAreaElement> & { bare?: boolean; ref?: Ref<HTMLTextAreaElement> }) => <textarea {...p} className={cx(bare ? bareField : field, !bare && !p.rows && "min-h-24", className)} />;
 
 export type Option = { value: string; label: string; group?: string; icon?: ReactNode; disabled?: boolean };
 

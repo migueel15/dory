@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
-import { Label, Select } from "../components/ui";
+import { Input, Label, Select } from "../components/ui";
 import { saveEffort, savedEffort } from "../effort";
 import { useT3 } from "./attention";
 
@@ -87,7 +87,7 @@ export function useLaunchForm({ doryProject, repo: repoPathIn, worktree: worktre
       {canWorktree && worktree && (
         <Label text="Rama base">
           {branchOptions.length ? <Select value={baseValue} onChange={setBase} options={branchOptions.map((b) => ({ value: b, label: b === repo?.default_branch ? `${b} (por defecto)` : b }))} />
-            : <input value={base} onChange={(e) => setBase(e.target.value)} placeholder="Rama por defecto del repositorio" className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-sm dark:border-border" />}
+            : <Input value={base} onChange={(e) => setBase(e.target.value)} placeholder="Rama por defecto del repositorio" />}
         </Label>
       )}
     </>

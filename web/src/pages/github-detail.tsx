@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { api, type GithubDetail, type GithubPull, type GithubThread } from "../api/client";
-import { Badge, Button, Card, Select, ErrorText, Md, Arrow, pill, toggleTask } from "../components/ui";
+import { Badge, Button, Card, Input, Select, ErrorText, Md, Arrow, pill, toggleTask, Textarea } from "../components/ui";
 import { Avatar, PullStatus } from "./github";
 import { Diff } from "./github-diff";
 import { DefineIssueDialog } from "./define-issue";
@@ -151,7 +151,7 @@ function Message({ author, verb, at, url, body, mine, editType, id, act, busy, o
       </div>
       {draft === undefined ? <RefMd onToggle={mine && id && !busy ? (line) => act({ type: editType, comment_id: id, body: toggleTask(body, line) }) : undefined}>{body}</RefMd> : (
         <div className="space-y-2">
-          <textarea aria-label="Editar mensaje" autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setDraft(undefined)} rows={Math.min(14, draft.split("\n").length + 2)} className="w-full rounded-md border border-slate-300 bg-white p-2 font-mono text-sm dark:border-border-strong dark:bg-surface" />
+          <Textarea aria-label="Editar mensaje" autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setDraft(undefined)} rows={Math.min(14, draft.split("\n").length + 2)} className="p-2 font-mono" />
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setDraft(undefined)}>Cancelar</Button>
             <Button disabled={busy || !draft.trim()} onClick={() => act({ type: editType, comment_id: id, body: draft }).then(() => setDraft(undefined))}>Guardar</Button>
@@ -187,7 +187,7 @@ function ThreadCard({ t, me, people, links, act, busy }: { t: GithubThread; me: 
             <Message author={c.author} at={c.at} url={c.url} body={c.body} mine={c.author === me} editType="edit_thread_comment" id={c.id} act={act} busy={busy} onReply={(q) => setReply(q + reply)} />
           </div>
         ))}
-        <MentionArea people={people} links={links} aria-label="Responder en el hilo" value={reply} onValue={setReply} rows={2} placeholder="Responder…" className="mt-2 w-full rounded border border-slate-300 bg-white p-2 text-sm dark:border-border dark:bg-surface" />
+        <MentionArea people={people} links={links} aria-label="Responder en el hilo" value={reply} onValue={setReply} rows={2} placeholder="Responder…" className="mt-2 p-2" />
         <div className="flex gap-2">
           <Button disabled={busy || !reply.trim()} onClick={send}>Responder</Button>
           {reply && <Button variant="ghost" onClick={() => setReply("")}>Descartar</Button>}
@@ -217,14 +217,14 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
   const [owner, repo] = e.repo.split("/");
   const [draft, setDraft] = useState<{ title: string; body: string }>();
   const save = () => { if (draft) { act(d.pull ? "edit_pull" : "edit_issue", draft); setDraft(undefined); } };
-  const box = "w-full rounded-md border border-slate-300 bg-white px-2 py-1 dark:border-border-strong dark:bg-surface";
+  const box = "py-1";
   return (
     <Card className="p-0">
       <div className="space-y-2 p-4">
         <div className="flex items-start gap-3">
           <span className={`mt-0.5 shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold text-white ${stateColor[e.state] ?? "bg-slate-500"}`}>{stateName[e.state] ?? e.state}</span>
           {draft
-            ? <input aria-label="Título" autoFocus value={draft.title} onChange={(ev) => setDraft({ ...draft, title: ev.target.value })} onKeyDown={(ev) => ev.key === "Escape" && setDraft(undefined)} className={`${box} min-w-0 flex-1 text-lg font-bold`} />
+            ? <Input aria-label="Título" autoFocus value={draft.title} onChange={(ev) => setDraft({ ...draft, title: ev.target.value })} onKeyDown={(ev) => ev.key === "Escape" && setDraft(undefined)} className={`${box} min-w-0 flex-1 !text-lg font-bold`} />
             : <h1 className="min-w-0 flex-1 break-words text-lg font-bold leading-snug">{e.title}</h1>}
           {(draft ? (
             <span className="flex shrink-0 gap-1">
@@ -268,7 +268,7 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
         </div>
       )}
       {draft
-        ? <div className="border-t border-slate-100 px-4 py-3 dark:border-border"><MentionArea aria-label="Descripción" value={draft.body} onValue={(body) => setDraft({ ...draft, body })} people={people} links={d.links} rows={12} className={`${box} font-mono text-sm`} /></div>
+        ? <div className="border-t border-slate-100 px-4 py-3 dark:border-border"><MentionArea aria-label="Descripción" value={draft.body} onValue={(body) => setDraft({ ...draft, body })} people={people} links={d.links} rows={12} className={`${box} font-mono`} /></div>
         : d.body && <div className="max-h-[60vh] overflow-auto border-t border-slate-100 px-4 py-3 dark:border-border"><RefMd onToggle={busy ? undefined : (line) => act(d.pull ? "edit_pull" : "edit_issue", { title: e.title, body: toggleTask(d.body, line) })}>{d.body}</RefMd></div>}
       <div className="flex flex-wrap items-center gap-2 rounded-b-lg border-t border-slate-100 bg-slate-50 px-4 py-2.5 dark:border-border dark:bg-canvas/40">{actions}</div>
     </Card>
@@ -354,7 +354,7 @@ export function GithubView() {
         ))}
         <div ref={bottom}>
           <Card className="space-y-2">
-            <MentionArea boxRef={box} people={people} links={d.links} id="composer" aria-label="Mensaje" value={text} onValue={setText} onKeyDown={(e) => e.key === "Escape" && box.current?.blur()} rows={4} placeholder="Escribe un mensaje…" className="w-full rounded-md border border-slate-300 bg-white p-2 text-sm dark:border-border-strong dark:bg-surface" />
+            <MentionArea boxRef={box} people={people} links={d.links} id="composer" aria-label="Mensaje" value={text} onValue={setText} onKeyDown={(e) => e.key === "Escape" && box.current?.blur()} rows={4} placeholder="Escribe un mensaje…" className="p-2" />
             <div className="flex flex-wrap gap-2">
               <Button disabled={action.isPending || !text.trim()} onClick={() => action.mutate({ type: "comment", body: text })}>Comentar</Button>
               {d.pull && open && <Button variant="ghost" disabled={action.isPending || !text.trim()} onClick={() => action.mutate({ type: "request_changes", body: text })}>Pedir cambios</Button>}

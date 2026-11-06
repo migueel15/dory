@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { api, type GithubIssue, type GithubPull } from "../api/client";
-import { Card, ErrorText, Select, pill } from "../components/ui";
+import { Card, ErrorText, Input, Select, pill } from "../components/ui";
 import { GithubMark, Icon, Tip, icons } from "../components/github-ui";
 import { type Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { useProject } from "../project";
@@ -310,8 +310,8 @@ export function Github() {
           </div>
           <label className="relative min-w-48 flex-1">
             <MagnifyingGlass aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Buscar por título, repo, autor o etiqueta…" aria-label="Buscar"
-              className="min-h-9 w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-sm outline-none focus:border-blue-500 dark:focus:border-accent focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-accent/20 dark:border-border dark:bg-surface" />
+            <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Buscar por título, repo, autor o etiqueta…" aria-label="Buscar"
+              className="min-h-9 pl-8" />
           </label>
           <Select value={milestone} onChange={setMilestone} options={milestoneOptions} className="min-w-44" />
         </div>

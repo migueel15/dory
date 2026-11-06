@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type TitleSettings } from "../api/client";
-import { Button, Card, ErrorText, Label, Select } from "../components/ui";
+import { Button, Card, ErrorText, Input, Label, Select } from "../components/ui";
 import { useT3 } from "./attention";
 import { ProviderIcon } from "./launch-form";
 
@@ -59,8 +59,8 @@ function TitlesSection() {
         <Select value={form.project} placeholder="El primero de la máquina" disabled={!catalog.data} onChange={(v) => set({ project: v })} options={(catalog.data?.projects ?? []).map((p) => ({ value: p.id, label: p.title }))} />
       </Label>
       <Label text="Tiempo máximo (segundos)">
-        <input type="number" min={0} max={3600} value={form.timeout_seconds} onChange={(e) => set({ timeout_seconds: Number(e.target.value) || 0 })}
-          className="w-32 rounded border border-slate-300 bg-transparent px-2 py-1 text-sm dark:border-border" />
+        <Input type="number" min={0} max={3600} value={form.timeout_seconds} onChange={(e) => set({ timeout_seconds: Number(e.target.value) || 0 })}
+          className="!w-32" />
       </Label>
       {!ready && <p className="text-sm text-amber-600">Para activarlo, elige una máquina y un modelo.</p>}
       <ErrorText error={save.error} />

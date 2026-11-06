@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { api } from "../api/client";
-import { Button, ErrorText, Modal, Select, uuid } from "./ui";
+import { Button, ErrorText, Modal, Select, Textarea, uuid } from "./ui";
 import { useProject } from "../project";
 
 // createIdea saves raw text as an inbox item; the definition agent fills in the rest.
@@ -52,9 +52,9 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
   };
   return (
     <div className="space-y-2 rounded-lg border border-slate-300 bg-white p-3 focus-within:border-slate-500 dark:border-border dark:bg-surface dark:focus-within:border-border-strong">
-      <textarea ref={box} autoFocus={autoFocus} rows={4} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKeyDown} disabled={save.isPending} aria-label="Nueva idea"
+      <Textarea bare ref={box} autoFocus={autoFocus} rows={4} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKeyDown} disabled={save.isPending} aria-label="Nueva idea"
         placeholder="¿Qué quieres hacer? Cuéntalo a grandes rasgos; el agente se encarga del resto."
-        className="max-h-[60vh] min-h-24 w-full resize-none bg-transparent text-sm !outline-none" />
+        className="max-h-[60vh] min-h-24 resize-none" />
       <div className="flex items-center gap-2">
         <Select plain className="min-w-0 flex-1 sm:min-w-36 sm:flex-none" value={project} onChange={setProject} options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
         <span className="hidden flex-1 text-[11px] text-slate-400 sm:inline">Enter nueva línea · Ctrl+Enter inbox · Ctrl+Shift+Enter definir</span>
