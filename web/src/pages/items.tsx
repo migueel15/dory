@@ -215,10 +215,10 @@ export function Inbox() {
   return (
     <div className="space-y-3">
       <PageHeader title="Inbox" subtitle="Ideas capturadas pendientes de revisar">
-        {!!items.data?.length && <Button variant="ghost" onClick={() => setBatch(true)}>Analizar todo</Button>}
+        {!!items.data?.length && <Button variant="ghost" onClick={() => setBatch(true)}>Definir todo</Button>}
         <Button onClick={() => setEditing("new")}>Nuevo item</Button>
       </PageHeader>
-      {batch && items.data && <LaunchDialog items={items.data} role="triage" onClose={() => setBatch(false)} />}
+      {batch && items.data && <LaunchDialog items={items.data} role="refine" onClose={() => setBatch(false)} />}
       <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (quick.trim()) add.mutate(quick.trim()); }}>
         <Input placeholder="Captura rápida…" value={quick} onChange={(e) => setQuick(e.target.value)} />
         <Button disabled={add.isPending}>Añadir</Button>
