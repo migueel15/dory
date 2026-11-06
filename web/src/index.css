@@ -27,6 +27,12 @@
 }
 .dark :where(input, textarea)::placeholder { color: var(--color-muted); }
 
+/* Tailwind v4 leaves buttons with the default cursor: show the pointer on anything clickable or draggable. */
+@layer base {
+  :where(button, [role="button"], [role="option"], [role="tab"], [role="menuitem"], summary, label[for], input[type="checkbox"], input[type="radio"], select, [draggable="true"]):not(:disabled, [aria-disabled="true"]) { cursor: pointer; }
+  :where(button, [role="option"], [role="menuitem"]):is(:disabled, [aria-disabled="true"]) { cursor: not-allowed; }
+}
+
 html { color-scheme: light; }
 html.dark { color-scheme: dark; }
 body { @apply bg-slate-50 text-slate-900 dark:bg-canvas dark:text-text; }
