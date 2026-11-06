@@ -277,21 +277,24 @@ export function Features({ projectId }: { projectId: string }) {
   const [editing, setEditing] = useState<Feature | "new" | null>(null);
   const feats = useQuery({ queryKey: ["features", projectId], queryFn: () => api.features.list({ project_id: projectId }) });
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold">Features</h2>
-        <Button variant="ghost" onClick={() => setEditing("new")}>Nueva feature</Button>
-      </div>
+    <>
+    <details className="group rounded-lg border border-slate-200 bg-white dark:border-border dark:bg-surface">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm">
+        <span className="font-semibold">Features <span className="font-normal text-slate-500 dark:text-muted">({feats.data?.length ?? 0})</span><span aria-hidden="true" className="ml-1 inline-block text-slate-400 transition-transform group-open:rotate-90 motion-reduce:transition-none">›</span></span>
+        <Button variant="ghost" onClick={(e) => { e.preventDefault(); setEditing("new"); }}>Nueva feature</Button>
+      </summary>
       <ErrorText error={feats.error} />
-      {feats.data?.map((f) => (
-        <Card key={f.id} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-raised">
-          <div onClick={() => setEditing(f)}>
-            <div className="flex flex-wrap items-center gap-2"><span className="font-medium">{f.title}</span><Badge>{f.status}</Badge>{f.code_refs.map((r) => <code key={r} className="break-all text-xs text-slate-500 dark:text-muted">{r}</code>)}</div>
-            {f.body_md && <Md>{f.body_md}</Md>}
-          </div>
-        </Card>
-      ))}
-      {editing && <FeatureForm feature={editing === "new" ? undefined : editing} projectId={projectId} onClose={() => setEditing(null)} />}
-    </div>
+      <ul className="divide-y divide-slate-100 border-t border-slate-200 dark:divide-border dark:border-border">
+        {feats.data?.map((f) => (
+          <li key={f.id}>
+            <button type="button" onClick={() => setEditing(f)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-raised">
+              <span className="min-w-0 flex-1 truncate">{f.title}</span><Badge>{f.status}</Badge>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </details>
+    {editing && <FeatureForm feature={editing === "new" ? undefined : editing} projectId={projectId} onClose={() => setEditing(null)} />}
+    </>
   );
 }
