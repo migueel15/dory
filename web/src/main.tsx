@@ -118,9 +118,9 @@ function Layout() {
   }, [menu, !!me.data]);
   if (me.isPending) return null;
   if (!me.data) return <Login />;
-  const link = "flex min-h-11 shrink-0 items-center rounded px-3 text-sm sm:min-h-0 sm:px-2 sm:py-1 hover:bg-slate-200 dark:hover:bg-raised [&.active]:bg-slate-900 dark:[&.active]:bg-accent [&.active]:text-white dark:[&.active]:text-white";
+  const link = "flex min-h-11 shrink-0 items-center rounded px-3 text-sm font-medium text-slate-800 dark:text-text sm:min-h-0 sm:px-2 sm:py-1 hover:bg-slate-200 dark:hover:bg-raised [&.active]:bg-slate-900 dark:[&.active]:bg-accent [&.active]:text-white dark:[&.active]:text-white";
   // Group headings share the links' left padding and a rule above, so each section reads as a block.
-  const group = (name: string) => <span className="mt-3 mb-1 border-t border-slate-200 px-3 pt-3 text-xs font-semibold uppercase tracking-wider text-slate-600 first:mt-1 first:border-t-0 first:pt-0 dark:border-border dark:text-text-secondary sm:px-2">{name}</span>;
+  const group = (name: string) => <span className="mt-3 mb-1 border-t border-slate-200 px-3 pt-3 text-xs font-semibold uppercase tracking-wider text-slate-400 first:mt-1 first:border-t-0 first:pt-0 dark:border-border dark:text-muted sm:px-2">{name}</span>;
   const links = (
     <>
       {group("Trabajo")}
