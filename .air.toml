@@ -1,0 +1,14 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/dory ./cmd/dory"
+entrypoint = ["./tmp/dory", "serve"]
+include_ext = ["go", "sql"]
+exclude_dir = ["web", "tmp", "node_modules", "docs", "deploy"]
+delay = 500
+kill_delay = "2s"
+send_interrupt = true
+
+[log]
+main_only = true
