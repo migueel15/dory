@@ -264,7 +264,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
       {panelOpen ? (
       <aside className={`${full ? "h-[30vh] md:h-auto" : "h-[30vh] md:h-[80vh]"} overflow-auto`}>
         <div className={`${panel} min-h-full p-2`}>
-          <div className="mb-2 flex gap-1.5">
+          <div className="sticky top-0 z-10 -mx-2 -mt-2 mb-2 flex gap-1.5 rounded-t-lg bg-white p-2 dark:bg-surface">
             <Input aria-label="Buscar fichero o texto" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero o texto…" className="min-w-0 flex-1 py-1" />
             {tools}
           </div>
