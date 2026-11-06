@@ -333,7 +333,7 @@ export function GithubView() {
       <Link to="/github" className={pill}><Arrow back /> GitHub</Link>
       <ErrorText error={detail.error ?? action.error} />
       {d && <RefContext.Provider value={{ owner: full.split("/")[0], repo: full.split("/")[1], links: d.links }}>
-        <Header d={d} act={act} busy={action.isPending} people={people} actions={<>
+        <Header d={d} act={act} busy={false} people={people} actions={<>
           {d.pull && <PullActions pull={d.pull} me={d.viewer} act={act} busy={false} diff={showDiff} toggleDiff={() => setShowDiff(!showDiff)} />}
           {d.pull?.mergeable === "CONFLICTING" && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Resolver conflictos</Button>}
           {d.issue && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Definir tareas</Button>}
@@ -380,7 +380,13 @@ export function GithubView() {
 type GithubAction = { type: string; title?: string; body?: string; method?: string; thread_id?: string; user_ids?: string[]; comment_id?: string; milestone_id?: string };
 
 // State changes show at once and are applied to the cached detail before GitHub answers.
-const optimistic: Record<string, (d: GithubDetail) => GithubDetail> = {
+const logins = (d: GithubDetail, ids: string[] = []) => d.candidates.filter((u) => ids.includes(u.id));
+const optimistic: Record<string, (d: GithubDetail, a: GithubAction) => GithubDetail> = {
+  assign: (d, a) => ({ ...d, assignees: [...d.assignees, ...logins(d, a.user_ids).filter((u) => !d.assignees.some((x) => x.id === u.id))] }),
+  unassign: (d, a) => ({ ...d, assignees: d.assignees.filter((u) => !a.user_ids?.includes(u.id)) }),
+  request_review: (d, a) => (d.pull ? { ...d, pull: { ...d.pull, review_requests: [...new Set([...d.pull.review_requests, ...logins(d, a.user_ids).map((u) => u.login)])] } } : d),
+  approve: (d) => (d.pull ? { ...d, pull: { ...d.pull, approved_by: [...new Set([...d.pull.approved_by, d.viewer])], changes_by: d.pull.changes_by.filter((l) => l !== d.viewer), review_requests: d.pull.review_requests.filter((l) => l !== d.viewer) } } : d),
+  request_changes: (d) => (d.pull ? { ...d, pull: { ...d.pull, changes_by: [...new Set([...d.pull.changes_by, d.viewer])], approved_by: d.pull.approved_by.filter((l) => l !== d.viewer), review_requests: d.pull.review_requests.filter((l) => l !== d.viewer) } } : d),
   ready: (d) => (d.pull ? { ...d, pull: { ...d.pull, draft: false } } : d),
   draft: (d) => (d.pull ? { ...d, pull: { ...d.pull, draft: true } } : d),
   close_pull: (d) => (d.pull ? { ...d, pull: { ...d.pull, state: "CLOSED" } } : d),
@@ -403,7 +409,7 @@ function useActionQueue(key: unknown[], onDone: (a: GithubAction) => void) {
     const mine = epoch.current;
     setError(null);
     const patch = optimistic[a.type];
-    if (patch) { qc.cancelQueries({ queryKey: key }); qc.setQueryData<GithubDetail>(key, (d) => (d ? patch(d) : d)); }
+    if (patch) { qc.cancelQueries({ queryKey: key }); qc.setQueryData<GithubDetail>(key, (d) => (d ? patch(d, a) : d)); }
     setPending((p) => p + 1);
     const run = tail.current.catch(() => {}).then(async () => {
       if (epoch.current !== mine) throw new Error("Cancelada: falló una acción anterior.");
