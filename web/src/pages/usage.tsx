@@ -67,7 +67,7 @@ export function Usage() {
   const qc = useQueryClient();
   const refresh = useMutation({ mutationFn: api.t3UsageRefresh, onSuccess: (data) => qc.setQueryData(["t3-usage"], data) });
   const { mutate } = refresh;
-  useEffect(() => mutate(), [mutate]);
+  useEffect(() => { mutate(); }, [mutate]);
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
