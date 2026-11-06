@@ -61,10 +61,14 @@ func (g *Generator) config(ctx context.Context) Config {
 	return cfg
 }
 
-// Prompt is the fixed instruction: the item id, a single title change and the full description.
+// Prompt is the fixed instruction: the item id, a single title change, archiving the
+// agent's own thread with the T3 Code tools and the full description.
 func Prompt(item service.Item) string {
 	return fmt.Sprintf("Genera un título breve (≤ 80 caracteres, en el idioma del texto) para el item de Dory `%s`. "+
-		"Llama una sola vez a `update_item` con `{title, title_source: \"ai\"}` y termina. No hagas nada más. Descripción:\n%s", item.ID, item.RawText)
+		"Llama una sola vez a `update_item` con `{title, title_source: \"ai\"}`. "+
+		"Después archiva tu propio hilo con la herramienta de T3 Code que lo permita (por ejemplo `t3_thread_update`; "+
+		"son herramientas diferidas: cárgalas antes con ToolSearch) y termina sin hacer nada más. "+
+		"Si no puedes generar el título, archiva igualmente tu hilo antes de acabar. Descripción:\n%s", item.ID, item.RawText)
 }
 
 // Generate runs in the background: it starts the thread and waits until the title
