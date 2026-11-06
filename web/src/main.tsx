@@ -147,7 +147,7 @@ function Layout() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex">
       <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-slate-200 bg-white dark:border-border dark:bg-surface sm:flex">
-        <span className="flex items-center gap-2 px-4 py-3 font-bold">Dory<DevBadge /></span>
+        <Link to="/" className="flex items-center gap-2 px-4 py-3 font-bold">Dory<DevBadge /></Link>
         <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4">{links}</nav>
         <div className="shrink-0 space-y-2 border-t border-slate-200 p-3 dark:border-border">
           <div className="flex items-center justify-between gap-2">
@@ -160,7 +160,7 @@ function Layout() {
       <div className="min-w-0 flex-1">
       <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2 sm:px-4">
         <div className="flex h-12 items-center gap-1">
-          <span className="mr-3 flex items-center gap-2 font-bold sm:hidden">Dory<DevBadge /></span>
+          <Link to="/" className="mr-3 flex items-center gap-2 font-bold sm:hidden">Dory<DevBadge /></Link>
           <div className="ml-auto flex items-center gap-1">
             <div className="hidden items-center gap-1 sm:flex"><ProjectFilter /></div>
             <Notifications />
