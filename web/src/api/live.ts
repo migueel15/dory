@@ -38,3 +38,17 @@ export function useLiveUpdates(enabled: boolean) {
     return () => { clearTimeout(timer); source.close(); };
   }, [enabled, qc]);
 }
+
+// useThreadLive follows one T3 thread while a view shows its conversation and
+// refetches the given query on each burst of changes. EventSource reconnects
+// on its own if the server or T3 drops the stream.
+export function useThreadLive(threadId: string | undefined, queryKey: unknown[]) {
+  const qc = useQueryClient();
+  const key = JSON.stringify(queryKey);
+  useEffect(() => {
+    if (!threadId) return;
+    const source = new EventSource(`/api/t3/threads/${encodeURIComponent(threadId)}/stream`, { withCredentials: true });
+    source.addEventListener("thread", () => qc.invalidateQueries({ queryKey: JSON.parse(key) }));
+    return () => source.close();
+  }, [threadId, key, qc]);
+}

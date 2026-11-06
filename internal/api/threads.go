@@ -1,10 +1,13 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/migueel15/dory/internal/service"
 	"github.com/migueel15/dory/internal/t3"
@@ -36,6 +39,7 @@ func mountThreads(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) 
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
+	mux.HandleFunc("GET /api/t3/threads/{id}/stream", streamThread(svc, monitor))
 	mux.HandleFunc("POST /api/t3/threads/{id}/messages", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Text string `json:"text"`
@@ -110,3 +114,77 @@ func audit(r *http.Request, svc service.Service, threadID string, change map[str
 }
 
 func logError(err error) { log.Printf("api: audit t3 action: %v", err) }
+
+// threadDebounce groups the events of a running turn into one refetch.
+const threadDebounce = 250 * time.Millisecond
+
+// threadClient reaches a thread the monitor reports or, as with definition
+// threads (ADR-004), one Dory linked to an item on an available instance.
+func threadClient(ctx context.Context, svc service.Service, monitor *t3.Monitor, id string) (t3.Client, error) {
+	c, err := monitor.ThreadClient(ctx, id)
+	if err == nil {
+		return c, nil
+	}
+	links, lerr := svc.ItemThreads().List(ctx, service.Filter{Fields: map[string]any{"thread_id": id}, Limit: 1})
+	if lerr != nil || len(links) == 0 {
+		return t3.Client{}, err
+	}
+	return monitor.InstanceClient(ctx, links[0].InstanceID)
+}
+
+// streamThread follows one thread while the client keeps the request open and
+// emits "event: thread" after each burst of changes, so the open conversation
+// refetches without polling. It ends when the client leaves or T3 drops it;
+// the browser's EventSource reconnects on its own.
+func streamThread(svc service.Service, monitor *t3.Monitor) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		c, err := threadClient(r.Context(), svc, monitor, id)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			writeError(w, http.StatusInternalServerError, "internal", "streaming unsupported")
+			return
+		}
+		h := w.Header()
+		h.Set("Content-Type", "text/event-stream")
+		h.Set("Cache-Control", "no-cache")
+		h.Set("X-Accel-Buffering", "no")
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
+
+		ctx, cancel := context.WithCancel(r.Context())
+		defer cancel()
+		signal := make(chan struct{}, 1)
+		failed := make(chan error, 1)
+		go func() { failed <- t3.FollowThread(ctx, c, id, signal) }()
+		beat := time.NewTicker(heartbeat)
+		defer beat.Stop()
+		var debounce <-chan time.Time
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case err := <-failed:
+				if ctx.Err() == nil {
+					log.Printf("api: thread stream %s: %v", id, err)
+				}
+				return
+			case <-beat.C:
+				fmt.Fprint(w, ": keep-alive\n\n")
+				flusher.Flush()
+			case <-signal:
+				if debounce == nil {
+					debounce = time.After(threadDebounce)
+				}
+			case <-debounce:
+				debounce = nil
+				fmt.Fprintf(w, "event: thread\ndata: {\"thread_id\":%q}\n\n", id)
+				flusher.Flush()
+			}
+		}
+	}
+}

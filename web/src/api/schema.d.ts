@@ -347,6 +347,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/t3/threads/{id}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description SSE stream of one thread while the client stays connected. Emits event: thread with {"thread_id"} after each burst of changes; refetch the conversation then. Ends when T3 drops the subscription. Heartbeat comments are allowed. */
+        get: operations["streamT3Thread"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/t3/threads/{id}/messages": {
         parameters: {
             query?: never;
@@ -671,7 +688,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description SSE audit stream ordered by event ID. Each message has id, event: change and JSON Event data. Resume using after or Last-Event-ID (header takes precedence); after=latest starts at the newest event, skipping history. Heartbeat comments are allowed. */
+        /** @description SSE audit stream ordered by event ID. Each message has id, event: change and JSON Event data. Resume using after or Last-Event-ID (header takes precedence); after=latest starts at the newest event, skipping history. Heartbeat comments are allowed. Changes of the T3 monitor arrive as event: change with data {"entity_type":"t3"} and no id; they cannot be resumed. */
         get: operations["streamEvents"];
         put?: never;
         post?: never;
@@ -2602,6 +2619,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["T3ThreadContext"];
                 };
+            };
+        };
+    };
+    streamT3Thread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Event stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description No instance reports the thread */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

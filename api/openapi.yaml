@@ -880,6 +880,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/T3ThreadContext"
+  "/t3/threads/{id}/stream":
+    get:
+      operationId: "streamT3Thread"
+      description: "SSE stream of one thread while the client stays connected. Emits event: thread with {\"thread_id\"} after each burst of changes; refetch the conversation then. Ends when T3 drops the subscription. Heartbeat comments are allowed."
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+      responses:
+        "200":
+          description: "Event stream"
+          content:
+            text/event-stream:
+              schema: {type: "string"}
+        "404":
+          description: "No instance reports the thread"
   "/t3/threads/{id}/messages":
     post:
       operationId: "sendT3ThreadMessage"
@@ -1960,7 +1974,7 @@ paths:
   "/events/stream":
     get:
       operationId: "streamEvents"
-      description: "SSE audit stream ordered by event ID. Each message has id, event: change and JSON Event data. Resume using after or Last-Event-ID (header takes precedence); after=latest starts at the newest event, skipping history. Heartbeat comments are allowed."
+      description: "SSE audit stream ordered by event ID. Each message has id, event: change and JSON Event data. Resume using after or Last-Event-ID (header takes precedence); after=latest starts at the newest event, skipping history. Heartbeat comments are allowed. Changes of the T3 monitor arrive as event: change with data {\"entity_type\":\"t3\"} and no id; they cannot be resumed."
       parameters:
         -
           name: "after"

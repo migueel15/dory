@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { api } from "../api/client";
+import { useThreadLive } from "../api/live";
 import { ThreadStatus } from "../components/thread-status";
 import { PendingRequest } from "../components/pending-request";
 import { Badge, Button, Card, ErrorText, Notice, PageHeader, StatusPill, Textarea } from "../components/ui";
@@ -36,7 +37,8 @@ function ThreadReply({ id }: { id: string }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const qc = useQueryClient();
-  const ctx = useQuery({ queryKey: ["t3-context", id], queryFn: () => api.t3Context(id), enabled: open, refetchInterval: 5_000 });
+  const ctx = useQuery({ queryKey: ["t3-context", id], queryFn: () => api.t3Context(id), enabled: open, refetchInterval: 60_000 });
+  useThreadLive(open ? id : undefined, ["t3-context", id]);
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["t3-context", id] });
     qc.invalidateQueries({ queryKey: ["t3-status"] });
