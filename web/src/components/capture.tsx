@@ -52,7 +52,7 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
     <div className="space-y-2 rounded-lg border border-slate-300 bg-white p-3 focus-within:border-slate-500 dark:border-border dark:bg-surface dark:focus-within:border-border-strong">
       <textarea ref={box} autoFocus={autoFocus} rows={4} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKeyDown} disabled={save.isPending} aria-label="Nueva idea"
         placeholder="¿Qué quieres hacer? Cuéntalo a grandes rasgos; el agente se encarga del resto."
-        className="max-h-[60vh] min-h-24 w-full resize-none bg-transparent text-sm outline-none" />
+        className="max-h-[60vh] min-h-24 w-full resize-none bg-transparent text-sm !outline-none" />
       <div className="flex flex-wrap items-center gap-2">
         <Select plain className="min-w-36" value={project} onChange={setProject} options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
         <span className="hidden flex-1 text-[11px] text-slate-400 sm:inline">Enter nueva línea · Ctrl+Enter inbox · Ctrl+Shift+Enter definir</span>
