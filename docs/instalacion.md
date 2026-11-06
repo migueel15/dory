@@ -99,15 +99,15 @@ Tailscale sirve HTTPS, así que `cookie_secure = true` funciona sin cambios.
 ## Desarrollo
 
 ```sh
-scripts/dev.sh           # web en http://localhost:5173, API en 127.0.0.1:8081
-scripts/dev.sh --reset   # vuelve a copiar la base real antes de arrancar
+scripts/dev.sh   # web en http://localhost:5173, API en 127.0.0.1:8081
 ```
 
 Requiere `air` (`go install github.com/air-verse/air@latest`). El script:
 
-- Usa la base `dory_dev` del mismo Postgres. La primera vez (o con `--reset`) la copia de `dory`, así que tiene los mismos usuarios, datos e instancias de T3.
+- Usa la base `dory_dev` del mismo Postgres. En cada arranque la borra y la copia de nuevo de `dory`, así que tiene los mismos usuarios, datos e instancias de T3.
 - Aplica las migraciones a `dory_dev`; la base real no se toca.
 - Arranca el backend con air (recompila y reinicia al guardar `.go` o `.sql`, según `.air.toml`) y la web con Vite, que aplica los cambios de `web/src` al instante y reenvía `/api` al backend.
+- La web muestra un distintivo «dev» junto a «Dory» (solo con Vite en desarrollo, nunca en el build).
 - Desactiva la cookie segura y fija el origen en `http://localhost:5173`.
 
 Variables opcionales: `DORY_ENV_FILE`, `DORY_DEV_DB`, `DORY_DEV_LISTEN` y `DORY_DEV_WEB_PORT`.
