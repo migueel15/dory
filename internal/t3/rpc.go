@@ -319,12 +319,22 @@ func (c Client) ThreadContext(ctx context.Context, threadID string) (ThreadConte
 	if err := c.call(ctx, "orchestration.getThreadProjection", map[string]any{"threadId": threadID}, &p); err != nil {
 		return ThreadContext{}, err
 	}
-	return p.context(), nil
+	return p.context(contextMessages), nil
 }
 
-func (p wireProjection) context() ThreadContext {
+// ThreadConversation reads every message and the open request of a thread.
+func (c Client) ThreadConversation(ctx context.Context, threadID string) (ThreadContext, error) {
+	var p wireProjection
+	if err := c.call(ctx, "orchestration.getThreadProjection", map[string]any{"threadId": threadID}, &p); err != nil {
+		return ThreadContext{}, err
+	}
+	return p.context(len(p.Messages)), nil
+}
+
+// context keeps the last limit messages.
+func (p wireProjection) context(limit int) ThreadContext {
 	out := ThreadContext{Messages: []Message{}}
-	for _, m := range p.Messages[max(0, len(p.Messages)-contextMessages):] {
+	for _, m := range p.Messages[max(0, len(p.Messages)-limit):] {
 		out.Messages = append(out.Messages, Message{Role: m.Role, Text: m.Text})
 	}
 	for _, r := range p.RuntimeRequests {

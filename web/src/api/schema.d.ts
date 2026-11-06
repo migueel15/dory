@@ -764,10 +764,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/items/{id}/refine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Send a message to the single definition thread of the item. Without a thread, or with restart, it launches one (instance_id, project_id, provider and model required) and moves an inbox item to triaged. */
+        post: operations["refineItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/items/{id}/refinement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Definition state of the item: its thread, every message, the open request and the newest plan. thread_error explains an empty chat when the thread cannot be read. */
+        get: operations["getItemRefinement"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ItemRefinement: {
+            thread: {
+                thread_id: string;
+                instance_id: string;
+                /** @description Empty when no instance reports the thread right now */
+                status: string;
+                attention: boolean;
+                url: string;
+                model: string;
+                effort: string;
+            } | null;
+            messages: components["schemas"]["T3ThreadContext"]["messages"];
+            pending: components["schemas"]["T3ThreadContext"]["pending"];
+            thread_error?: string;
+            plan: components["schemas"]["ItemPlan"] | null;
+        };
         PlanSections: {
             goal: string;
             scope: string;
@@ -3755,6 +3805,87 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error400"];
+            404: components["responses"]["Error404"];
+        };
+    };
+    refineItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    text?: string;
+                    restart?: boolean;
+                    instance_id?: string;
+                    project_id?: string;
+                    provider?: string;
+                    model?: string;
+                    effort_option?: string;
+                    effort?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Message sent to the existing thread */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        thread_id: string;
+                    };
+                };
+            };
+            /** @description Definition thread launched */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        thread_id: string;
+                    };
+                };
+            };
+            400: components["responses"]["Error400"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            /** @description T3 unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getItemRefinement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemRefinement"];
+                };
+            };
             404: components["responses"]["Error404"];
         };
     };

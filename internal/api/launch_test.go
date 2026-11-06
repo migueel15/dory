@@ -41,3 +41,18 @@ func TestLaunchPrompt(t *testing.T) {
 		t.Fatalf("replan prompt wrong: %s", p)
 	}
 }
+
+func TestRefineFirstMessage(t *testing.T) {
+	item := service.Item{Title: "Idea", RawText: "botones"}
+	item.ID = "12345678-aaaa"
+	msg := refineFirstMessage(item, "")
+	if !strings.Contains(msg, "propose_plan") || !strings.Contains(msg, "No cambies el código") || strings.Contains(msg, "Indicaciones del usuario") {
+		t.Fatalf("unexpected first message: %s", msg)
+	}
+	if strings.Contains(msg, "move_item") || strings.Contains(msg, "pásala a ready") {
+		t.Fatalf("the definition agent must not move the item: %s", msg)
+	}
+	if msg := refineFirstMessage(item, "usa el color de marca"); !strings.HasSuffix(msg, "Indicaciones del usuario:\nusa el color de marca") {
+		t.Fatalf("user text missing: %s", msg)
+	}
+}

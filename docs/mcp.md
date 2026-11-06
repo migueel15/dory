@@ -83,6 +83,14 @@ Proponer un plan nunca deja el item en `ready`: un item `inbox` o `ready` vuelve
 
 Solo el usuario acepta el plan, desde la web o con `POST /api/items/{id}/plan/accept`. Aceptar exige que la última versión no tenga preguntas abiertas, copia el plan a `body_md` (con `## Cómo probar` para `validation`) y pasa el item a `ready`. `GET /api/items/{id}/plans` lista las versiones de la más reciente a la más antigua y `POST /api/items/{id}/plans` guarda una versión escrita por el usuario.
 
+### Hilo de definición
+
+Cada item tiene un único hilo de definición en T3 Code (rol `refine` en `item_threads`).
+
+- `POST /api/items/{id}/refine` lo crea con el modelo elegido y pasa el item de `inbox` a `triaged`. Si ya existe, envía el mensaje del usuario a ese hilo; `restart: true` abre uno nuevo.
+- El agente pregunta con preguntas estructuradas, publica cada versión con `propose_plan` y nunca toca `body_md` ni el estado.
+- `GET /api/items/{id}/refinement` devuelve el hilo, todos sus mensajes, la pregunta pendiente y el último plan. Si la máquina no está disponible, devuelve el plan y explica el problema en `thread_error`.
+
 ## Filtros de `list_items`
 
 `fields` filtra por igualdad exacta; `tags` y `refs` usan contención. `status` e `id` aceptan además un array con el sentido "cualquiera de", por ejemplo `{"status": ["triaged", "in_progress"]}`. `open: true` excluye los items `done` y `cancelled`, y se combina con el resto de filtros.
