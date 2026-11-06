@@ -133,7 +133,13 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<string>();
   const [full, setFull] = useState(false);
-  const [split, setSplit] = useState(false);
+  // The last chosen layout is remembered in this browser for every diff.
+  const [split, setSplitState] = useState(() => { try { return localStorage.getItem("dory.diff-view") === "split"; } catch { return false; } });
+  const setSplit = (f: (v: boolean) => boolean) => setSplitState((v) => {
+    const next = f(v);
+    try { localStorage.setItem("dory.diff-view", next ? "split" : "unified"); } catch { /* storage unavailable */ }
+    return next;
+  });
   const [loaded, setLoaded] = useState(0); // bumps when a language finishes loading
   useEffect(() => {
     if (!full) return;
