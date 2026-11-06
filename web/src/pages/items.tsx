@@ -362,7 +362,7 @@ function CardLinks({ item }: { item: Item }) {
   const pull = [...(item.refs ?? [])].reverse().map((r) => /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)$/.exec(r)).find(Boolean);
   if (!t && !pull) return null;
   const dot = t ? dotFor(t.status, t.attention) : undefined;
-  const chip = "inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-200 px-2 py-0.5 text-xs text-slate-600 no-underline hover:bg-slate-100 dark:border-border dark:text-muted dark:hover:bg-white/5";
+  const chip = "inline-flex max-w-full items-center gap-1.5 rounded-md border border-slate-200 px-2 py-0.5 text-xs text-slate-600 no-underline hover:bg-slate-100 dark:border-border dark:text-muted dark:hover:bg-white/5";
   return (
     <div className="mt-1 flex flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
       {t && dot && (

@@ -154,7 +154,7 @@ const linked = (repo: string, prefix: "PR" | "Issue", refs: { number: number; ti
   return refs.map((r) => (
     <Tip key={r.number} text={r.title}>
       <Link to="/github/$owner/$repo/$kind/$number" params={{ owner, repo: name, kind: prefix === "PR" ? "pulls" : "issues", number: String(r.number) }}
-        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 dark:border-border dark:bg-surface dark:text-text dark:hover:border-accent dark:hover:bg-accent-subtle dark:hover:text-accent-text">
+        className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 dark:border-border dark:bg-surface dark:text-text dark:hover:border-accent dark:hover:bg-accent-subtle dark:hover:text-accent-text">
         <Icon i={prefix === "PR" ? icons.pull : icons.issue} className="size-3" />{prefix} #{r.number}
       </Link>
     </Tip>
@@ -321,7 +321,7 @@ export function Github() {
             const needsMe = !!f.me && !me;
             return (
               <button key={f.id} type="button" disabled={needsMe} onClick={() => setFilter(on ? "" : f.id)}
-                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40 ${on ? "border-blue-500 bg-blue-50 text-blue-700 dark:border-accent dark:bg-accent-subtle dark:text-accent-text" : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-border dark:text-text-secondary dark:hover:bg-raised"}`}>
+                className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40 ${on ? "border-blue-500 bg-blue-50 text-blue-700 dark:border-accent dark:bg-accent-subtle dark:text-accent-text" : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-border dark:text-text-secondary dark:hover:bg-raised"}`}>
                 {f.label}
               </button>
             );

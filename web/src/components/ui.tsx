@@ -19,7 +19,7 @@ export function Button({ variant = "default", className, ...p }: ButtonHTMLAttri
 }
 
 // pill styles links that act as secondary buttons (navigation, external links).
-export const pill = "inline-flex min-h-11 sm:min-h-0 shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 dark:border-border dark:bg-surface dark:text-text-secondary dark:hover:border-border-strong dark:hover:bg-raised dark:hover:text-white";
+export const pill = "inline-flex min-h-11 sm:min-h-0 shrink-0 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 dark:border-border dark:bg-surface dark:text-text-secondary dark:hover:border-border-strong dark:hover:bg-raised dark:hover:text-white";
 export const Arrow = ({ back }: { back?: boolean }) => (
   <ArrowRight aria-hidden="true" className={cx("size-3.5", back && "rotate-180")} />
 );
