@@ -91,7 +91,8 @@ export function Select({ value, onChange, options, disabled, className, placehol
             </div>
           ))}
         </div>,
-        document.body,
+        // Un <dialog> modal vive en la top layer: la lista debe montarse dentro para quedar por encima.
+        box.current?.closest("dialog") ?? document.body,
       )}
     </div>
   );
