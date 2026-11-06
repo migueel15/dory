@@ -6,7 +6,7 @@ import { Badge, Button, Card, Select, ErrorText, Md, Arrow, pill, toggleTask } f
 import { Avatar, PullStatus } from "./github";
 import { Diff } from "./github-diff";
 import { DefineIssueDialog } from "./define-issue";
-import { GithubMark, Icon, IconButton, Menu, MenuItem, RefContext, RefMd, Tip, UserPicker, icons, useConfirm, MentionArea } from "../components/github-ui";
+import { GithubMark, Icon, IconButton, Menu, MenuItem, RefContext, RefMd, Tip, UserPicker, icons, useArm, MentionArea } from "../components/github-ui";
 
 const labels: Record<string, string> = {
   IssueComment: "comentó", PullRequestReview: "revisó", PullRequestCommit: "hizo un commit", ClosedEvent: "cerró", ReopenedEvent: "reabrió", MergedEvent: "mergeó", LabeledEvent: "añadió la etiqueta", AssignedEvent: "asignó", ReadyForReviewEvent: "marcó como lista", ConvertToDraftEvent: "pasó a draft", ReviewRequestedEvent: "pidió revisión", CrossReferencedEvent: "referenció desde",
@@ -79,13 +79,12 @@ const methods = [
 // MergeButton is a split button: the main part merges with the chosen method.
 function MergeButton({ pull, act, busy }: { pull: GithubPull; act: Act; busy: boolean }) {
   const [method, setMethod] = useState(methods[0]);
-  const [confirm, dialog] = useConfirm();
-  const merge = () => confirm({ title: "¿Mergear la PR?", text: `${method.name} de ${pull.repo}#${pull.number} (${pull.head_ref}) en ${pull.base_ref}.`, ok: "Mergear", run: () => act("merge", { method: method.value }) });
-  return (<>{dialog}
+  const [armed, merge] = useArm(() => act("merge", { method: method.value }));
+  return (<>
     <Menu align="right" trigger={(open, toggle) => (
       <div className="inline-flex overflow-hidden rounded-lg bg-green-600 text-white shadow-sm">
         <button type="button" disabled={busy} onClick={merge} className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium hover:bg-green-700 disabled:opacity-50">
-          <Icon i={icons.merge} /> {method.name}
+          <Icon i={icons.merge} /> {armed ? `¿${method.name}? Confirmar` : method.name}
         </button>
         <button type="button" aria-label="Elegir método de merge" disabled={busy} onClick={toggle} className={`border-l border-green-500 px-2 hover:bg-green-700 ${open ? "bg-green-700" : ""}`}>
           <Icon i={icons.chevron} />
@@ -103,18 +102,16 @@ function MergeButton({ pull, act, busy }: { pull: GithubPull; act: Act; busy: bo
 }
 
 function PullActions({ pull, me, act, busy, diff, toggleDiff }: { pull: GithubPull; me: string; act: Act; busy: boolean; diff: boolean; toggleDiff: () => void }) {
-  const [confirm, dialog] = useConfirm();
   const view = <IconButton icon={icons.code} tip={diff ? "Ocultar diff" : "Ver diff"} tone={diff ? "active" : "plain"} onClick={toggleDiff} />;
-  if (pull.state !== "OPEN") return <>{dialog}{view}{pull.state === "CLOSED" && <IconButton icon={icons.reopen} tip="Reabrir" disabled={busy} onClick={() => confirm({ title: "¿Reabrir la PR?", text: "Volverá a estar abierta para revisión y merge.", ok: "Reabrir", run: () => act("reopen_pull") })} />}</>;
+  if (pull.state !== "OPEN") return <>{view}{pull.state === "CLOSED" && <IconButton icon={icons.reopen} tip="Reabrir" disabled={busy} confirm onClick={() => act("reopen_pull")} />}</>;
   return (
     <>
-      {dialog}
       {view}
       {pull.draft
-        ? <IconButton icon={icons.ready} tip="Marcar como lista para revisión" disabled={busy} onClick={() => confirm({ title: "¿Marcar como lista?", text: "Saldrá de draft y se avisará a los revisores.", ok: "Marcar como lista", run: () => act("ready") })} />
-        : <IconButton icon={icons.draft} tip="Pasar a draft" disabled={busy} onClick={() => confirm({ title: "¿Pasar a draft?", text: "No se podrá mergear hasta que vuelva a estar lista.", ok: "Pasar a draft", run: () => act("draft") })} />}
+        ? <IconButton icon={icons.ready} tip="Marcar como lista para revisión" disabled={busy} confirm onClick={() => act("ready")} />
+        : <IconButton icon={icons.draft} tip="Pasar a draft" disabled={busy} confirm onClick={() => act("draft")} />}
       {canApprove(pull, me) && <IconButton icon={icons.check} tip="Aprobar" tone="green" disabled={busy} onClick={() => act("approve")} />}
-      <IconButton icon={icons.x} tip="Cerrar sin mergear" tone="red" disabled={busy} onClick={() => confirm({ title: "¿Cerrar la PR sin mergear?", text: "Se cerrará sin integrar los cambios. Podrás reabrirla después.", ok: "Cerrar PR", danger: true, run: () => act("close_pull") })} />
+      <IconButton icon={icons.x} tip="Cerrar sin mergear" tone="red" disabled={busy} confirm onClick={() => act("close_pull")} />
       <span className="ml-auto"><MergeButton pull={pull} act={act} busy={busy} /></span>
     </>
   );
@@ -122,13 +119,11 @@ function PullActions({ pull, me, act, busy, diff, toggleDiff }: { pull: GithubPu
 
 // IssueActions closes an issue as completed or not planned, or reopens it.
 function IssueActions({ open, act, busy }: { open: boolean; act: Act; busy: boolean }) {
-  const [confirm, dialog] = useConfirm();
-  if (!open) return <>{dialog}<IconButton icon={icons.reopen} tip="Reabrir issue" disabled={busy} onClick={() => confirm({ title: "¿Reabrir la issue?", text: "Volverá a estar abierta.", ok: "Reabrir", run: () => act("reopen_issue") })} /></>;
+  if (!open) return <><IconButton icon={icons.reopen} tip="Reabrir issue" disabled={busy} confirm onClick={() => act("reopen_issue")} /></>;
   return (
     <>
-      {dialog}
-      <IconButton icon={icons.ready} tip="Cerrar como completada" tone="green" disabled={busy} onClick={() => confirm({ title: "¿Cerrar como completada?", text: "Se marcará como resuelta. Podrás reabrirla después.", ok: "Cerrar como completada", run: () => act("close_issue", { method: "COMPLETED" }) })} />
-      <IconButton icon={icons.x} tip="Cerrar como no planificada" tone="red" disabled={busy} onClick={() => confirm({ title: "¿Cerrar como no planificada?", text: "Se cerrará sin resolver: no se va a hacer, está duplicada o ya no aplica.", ok: "Cerrar como no planificada", danger: true, run: () => act("close_issue", { method: "NOT_PLANNED" }) })} />
+      <IconButton icon={icons.ready} tip="Cerrar como completada" tone="green" disabled={busy} confirm onClick={() => act("close_issue", { method: "COMPLETED" })} />
+      <IconButton icon={icons.x} tip="Cerrar como no planificada" tone="red" disabled={busy} confirm onClick={() => act("close_issue", { method: "NOT_PLANNED" })} />
     </>
   );
 }
@@ -313,7 +308,6 @@ export function GithubView() {
   const write = () => { bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }); focusBox(); };
   const [showDiff, setShowDiff] = useState(false);
   const [defining, setDefining] = useState(false);
-  const [confirm, dialog] = useConfirm();
   const key = ["github-detail", full, kind, n];
   const detail = useQuery({ queryKey: key, queryFn: () => api.githubDetail(full, kind, n), refetchInterval: 60_000 });
   // The floating button hides while the composer area is on screen.
@@ -338,7 +332,6 @@ export function GithubView() {
     <div className="space-y-3">
       <Link to="/github" className={pill}><Arrow back /> GitHub</Link>
       <ErrorText error={detail.error ?? action.error} />
-      {dialog}
       {d && <RefContext.Provider value={{ owner: full.split("/")[0], repo: full.split("/")[1], links: d.links }}>
         <Header d={d} act={act} busy={action.isPending} people={people} actions={<>
           {d.pull && <PullActions pull={d.pull} me={d.viewer} act={act} busy={false} diff={showDiff} toggleDiff={() => setShowDiff(!showDiff)} />}

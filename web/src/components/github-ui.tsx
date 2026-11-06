@@ -78,11 +78,25 @@ const tones = {
 };
 
 // IconButton is a square button whose meaning lives in its icon and tooltip.
-export function IconButton({ icon, tip, onClick, disabled, tone = "plain" }: { icon: PhosphorIcon; tip: string; onClick: () => void; disabled?: boolean; tone?: keyof typeof tones }) {
+// useArm makes an action need a second click: the first arms it for a few seconds.
+export function useArm(run: () => void, ms = 3000): [boolean, () => void] {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), ms);
+    return () => clearTimeout(t);
+  }, [armed, ms]);
+  return [armed, () => { if (armed) { setArmed(false); run(); } else setArmed(true); }];
+}
+
+// IconButton with confirm asks for a second click instead of opening a dialog.
+export function IconButton({ icon, tip, onClick, disabled, tone = "plain", confirm = false }: { icon: PhosphorIcon; tip: string; onClick: () => void; disabled?: boolean; tone?: keyof typeof tones; confirm?: boolean }) {
+  const [armed, click] = useArm(onClick);
+  const ask = confirm && armed;
   return (
-    <Tip text={tip}>
-      <button type="button" aria-label={tip} disabled={disabled} onClick={onClick} className={`grid size-9 place-items-center rounded-lg border shadow-sm transition-colors disabled:opacity-40 ${tones[tone]}`}>
-        <Icon i={icon} />
+    <Tip text={ask ? "Pulsa otra vez para confirmar" : tip}>
+      <button type="button" aria-label={ask ? `Confirmar: ${tip}` : tip} disabled={disabled} onClick={confirm ? click : onClick} className={`flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg border shadow-sm transition-colors disabled:opacity-40 ${ask ? "px-2.5 text-sm font-medium" : ""} ${tones[tone]}`}>
+        <Icon i={icon} />{ask && <span>¿Confirmar?</span>}
       </button>
     </Tip>
   );
