@@ -262,14 +262,12 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
     <div className={full ? "fixed inset-0 z-50 h-dvh overflow-hidden overscroll-none bg-slate-50 p-3 dark:bg-canvas" : ""}>
     <div className={`grid gap-3 ${panelOpen ? "md:grid-cols-[16rem_1fr]" : "md:grid-cols-[2.25rem_1fr]"} ${full ? "h-full grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1" : ""}`}>
       {panelOpen ? (
-      <aside className={`${full ? "h-[30vh] md:h-auto" : "h-[30vh] md:h-[80vh]"} overflow-auto`}>
-        <div className={`${panel} min-h-full p-2`}>
-          <div className="sticky top-0 z-10 -mx-2 -mt-2 mb-2 flex gap-1.5 rounded-t-lg bg-white p-2 dark:bg-surface">
+      <aside className={`${full ? "h-[30vh] md:h-auto" : "h-[30vh] md:h-[80vh]"} ${panel} flex min-h-0 flex-col overflow-hidden`}>
+          <div className="flex shrink-0 gap-1.5 p-2">
             <Input aria-label="Buscar fichero o texto" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero o texto…" className="min-w-0 flex-1 py-1" />
             {tools}
           </div>
-          <Tree dir={treeRoot} jump={jump} active={active} />
-        </div>
+          <div className="min-h-0 flex-1 overflow-auto overscroll-contain px-2 pb-2"><Tree dir={treeRoot} jump={jump} active={active} /></div>
       </aside>
       ) : (
       <aside className="flex gap-1.5 md:flex-col">{tools}</aside>
