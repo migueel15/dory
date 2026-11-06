@@ -1,16 +1,12 @@
 ---
 name: dory-dev-preview
-description: Start the Dory development environment from the current branch or worktree so the user can try a finished feature at http://infra-admin:5173 before merging. Use only in the Dory repository, when an item is ready for the user to test (moving to validating), or when the user asks to preview, stop or check the dev environment.
+description: Start, stop or check the Dory development environment for the current branch or worktree, served at http://infra-admin:5173. Only when the user explicitly asks for it; never start it on your own when a task finishes.
+disable-model-invocation: true
 ---
 
 # Dory dev preview
 
-Only for work on the Dory project itself, on `infra-admin`, where production Dory runs.
-
-## When
-
-- Right after the work on a Dory item is finished and pushed, before or as you move the item to `validating`.
-- When the user asks to preview a branch, or to stop or check the dev environment.
+Only for the Dory repository, on `infra-admin`, where production Dory runs. Run it only when the user asks; the user decides when the dev environment is up.
 
 ## How
 
@@ -23,13 +19,12 @@ scripts/dev-preview.sh stop     # stops it
 ```
 
 - `start` copies production data into `dory_dev`, runs migrations and serves the branch with Vite (HMR) and air, in the user systemd unit `dory-dev`. It returns once the page answers, or prints the unit log if it fails.
-- There is only one dev environment. `start` replaces the previous one, including one launched by hand with `scripts/dev.sh`. Concurrent `start` calls wait for each other and the last one wins; if another agent's branch was live, tell the user it was replaced and how to relaunch it (`scripts/dev-preview.sh start` from that branch's checkout). Production (`:8080`, database `dory`) is never touched.
+- There is only one dev environment. `start` replaces the previous one, including one launched by hand with `scripts/dev.sh`; say so if another branch was live. Production (`:8080`, database `dory`) is never touched.
+- It stops when another branch starts, on `stop`, or by itself within a minute after the branch pull request is merged (into any base).
 - It needs `air` (`go install github.com/air-verse/air@latest`) and runs `npm install` in `web/` when `node_modules` is missing.
 - Logs: `journalctl --user -u dory-dev -f`.
 
-## After starting
+## After running it
 
-- Tell the user the URL (`http://infra-admin:5173`) and the branch, so they can try it from any device at home or over Tailscale. The UI shows a `dev` badge next to "Dory".
-- Mention in the item `progress` that the branch is live in the dev environment.
-- Leave it running. It stops when another branch starts, when the user asks, or by itself within a minute after the branch pull request is merged (into any base). Merging is the validation: Dory then moves the item to `done` on its own.
-- If `start` fails, report the log lines and record the failure in the item `progress`; do not loop on retries.
+- Tell the user the result: the URL (`http://infra-admin:5173`) and the branch after `start`, or that it is stopped.
+- If `start` fails, report the log lines; do not retry on your own.
