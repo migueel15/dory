@@ -162,7 +162,13 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
     if (!full) return;
     const esc = (e: KeyboardEvent) => e.key === "Escape" && setFull(false);
     window.addEventListener("keydown", esc);
-    return () => window.removeEventListener("keydown", esc);
+    // Lock the page behind so only the diff scrolls.
+    const html = document.documentElement, prev = [html.style.overflow, document.body.style.overflow];
+    html.style.overflow = document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", esc);
+      [html.style.overflow, document.body.style.overflow] = prev;
+    };
   }, [full]);
   useEffect(() => {
     const langs = new Set(files.map((f) => languageOf(f.path)).filter((l): l is string => !!l));
@@ -232,7 +238,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
   }
 
   return (
-    <div className={full ? "fixed inset-0 z-50 overflow-hidden bg-slate-50 p-3 dark:bg-canvas" : ""}>
+    <div className={full ? "fixed inset-0 z-50 h-dvh overflow-hidden overscroll-none bg-slate-50 p-3 dark:bg-canvas" : ""}>
     <div className={`grid gap-3 md:grid-cols-[16rem_1fr] ${full ? "h-full grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1" : ""}`}>
       <aside className={`${full ? "h-[30vh] md:h-auto" : "h-[30vh] md:h-[80vh]"} overflow-auto`}>
         <div className={`${panel} min-h-full p-2`}>
