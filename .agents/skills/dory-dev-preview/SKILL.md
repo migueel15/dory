@@ -23,7 +23,7 @@ scripts/dev-preview.sh stop     # stops it
 ```
 
 - `start` copies production data into `dory_dev`, runs migrations and serves the branch with Vite (HMR) and air, in the user systemd unit `dory-dev`. It returns once the page answers, or prints the unit log if it fails.
-- There is only one dev environment. `start` replaces the previous one, including one launched by hand with `scripts/dev.sh`. Production (`:8080`, database `dory`) is never touched.
+- There is only one dev environment. `start` replaces the previous one, including one launched by hand with `scripts/dev.sh`. Concurrent `start` calls wait for each other and the last one wins; if another agent's branch was live, tell the user it was replaced and how to relaunch it (`scripts/dev-preview.sh start` from that branch's checkout). Production (`:8080`, database `dory`) is never touched.
 - It needs `air` (`go install github.com/air-verse/air@latest`) and runs `npm install` in `web/` when `node_modules` is missing.
 - Logs: `journalctl --user -u dory-dev -f`.
 

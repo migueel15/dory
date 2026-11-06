@@ -29,6 +29,9 @@ stop_manual() {
 
 case "${1:-}" in
 start)
+	# Dos start a la vez se esperan en vez de chocar; gana el último.
+	exec 9>"${XDG_RUNTIME_DIR:-/tmp}/dory-dev.lock"
+	flock 9
 	systemctl --user stop "$UNIT" 2>/dev/null || true
 	systemctl --user reset-failed "$UNIT" 2>/dev/null || true
 	stop_manual
