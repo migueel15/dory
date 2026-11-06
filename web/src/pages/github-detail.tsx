@@ -403,6 +403,7 @@ function useActionQueue(key: unknown[], onDone: (a: GithubAction) => void) {
   const tail = useRef<Promise<unknown>>(Promise.resolve());
   const epoch = useRef(0);
   const [pending, setPending] = useState(0);
+  const inflight = useRef(0);
   const [error, setError] = useState<unknown>(null);
   const mutateAsync = (a: GithubAction) => {
     const [, full, kind, n] = key as [string, string, string, number];
@@ -410,6 +411,7 @@ function useActionQueue(key: unknown[], onDone: (a: GithubAction) => void) {
     setError(null);
     const patch = optimistic[a.type];
     if (patch) { qc.cancelQueries({ queryKey: key }); qc.setQueryData<GithubDetail>(key, (d) => (d ? patch(d, a) : d)); }
+    inflight.current++;
     setPending((p) => p + 1);
     const run = tail.current.catch(() => {}).then(async () => {
       if (epoch.current !== mine) throw new Error("Cancelada: falló una acción anterior.");
@@ -420,11 +422,15 @@ function useActionQueue(key: unknown[], onDone: (a: GithubAction) => void) {
         epoch.current++;
         setError(e);
         throw e;
-      } finally {
+      }
+    }).finally(() => {
+      setPending((p) => p - 1);
+      // Reload only once the queue is empty, so a later optimistic change is not overwritten.
+      if (--inflight.current === 0) {
         qc.invalidateQueries({ queryKey: key });
         qc.invalidateQueries({ queryKey: ["github"] });
-      }
-    }).finally(() => setPending((p) => p - 1));
+      } else qc.cancelQueries({ queryKey: key });
+    });
     tail.current = run;
     return run;
   };
