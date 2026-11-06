@@ -171,7 +171,11 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
       qc.invalidateQueries({ queryKey: ["github-detail", repo, "pulls", pr] });
     },
   });
-  const shown = files.filter((f) => f.path.toLowerCase().includes(filter.toLowerCase()));
+  // The search matches file paths and the text of the changed lines.
+  const q = filter.trim().toLowerCase();
+  const hit = (l: Line) => !!q && l.kind !== "hunk" && l.text.slice(1).toLowerCase().includes(q);
+  const hits = useMemo(() => new Map(files.map((f) => [f.path, q ? f.lines.filter(hit).length : 0])), [files, q]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = files.filter((f) => !q || f.path.toLowerCase().includes(q) || hits.get(f.path)! > 0);
 
   const choose = (file: string, i: number, shift: boolean) => {
     const from = shift && pick?.file === file && pick.start >= 0 ? pick.start : i;
@@ -216,7 +220,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
       <aside className={`${full ? "h-[30vh] md:h-auto" : "h-[30vh] md:h-[80vh]"} overflow-auto`}>
         <div className={`${panel} min-h-full p-2`}>
           <div className="mb-2 flex gap-1.5">
-            <Input aria-label="Buscar fichero" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero…" className="min-w-0 flex-1 py-1" />
+            <Input aria-label="Buscar fichero o texto" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero o texto…" className="min-w-0 flex-1 py-1" />
             <button type="button" onClick={() => setSplit((v) => !v)} title={split ? "Vista unificada" : "Vista dividida"} aria-label={split ? "Vista unificada" : "Vista dividida"} aria-pressed={split} className="grid w-8 shrink-0 place-items-center rounded-md border border-slate-300 bg-white hover:bg-slate-100 dark:border-border dark:bg-surface dark:hover:bg-raised">
               {split ? <Rows aria-hidden="true" className="size-4" /> : <Columns aria-hidden="true" className="size-4" />}
             </button>
@@ -234,6 +238,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
             <div id={anchor(f.path)} className="sticky top-0 z-10 flex scroll-mt-0 items-center justify-between gap-2 rounded-t-lg border-b border-slate-200 bg-slate-50 px-3 py-1.5 dark:border-border dark:bg-raised">
               <span className="min-w-0 truncate font-mono text-xs font-semibold" title={f.path}>{f.path}</span>
               <span className="flex shrink-0 items-center gap-2 font-mono text-xs">
+                {hits.get(f.path)! > 0 && <span className="rounded bg-amber-100 px-1.5 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">{hits.get(f.path)} coincidencia{hits.get(f.path) === 1 ? "" : "s"}</span>}
                 <span className="text-green-700 dark:text-green-400">+{f.added}</span>
                 <span className="text-red-700 dark:text-red-400">−{f.removed}</span>
                 <button type="button" title="Comentar el fichero" aria-label="Comentar el fichero" onClick={() => { setPick({ file: f.path, start: -1, end: -1 }); setOpen(true); }} className="rounded p-0.5 text-slate-400 hover:bg-slate-200 hover:text-blue-600 dark:hover:bg-border dark:hover:text-accent-text">
@@ -252,7 +257,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
                     const picked = pick?.file === f.path && i >= pick.start && i <= pick.end;
                     const kind = l.kind === "ctx" ? "ctx" : l.kind;
                     return (
-                      <div onMouseEnter={() => extend(f.path, i)} className={`flex min-w-0 ${picked ? "bg-yellow-100 dark:bg-yellow-900" : color[kind]}`}>
+                      <div onMouseEnter={() => extend(f.path, i)} className={`flex min-w-0 ${picked ? "bg-yellow-100 dark:bg-yellow-900" : color[kind]} ${hit(l) ? "ring-1 ring-inset ring-amber-400/70" : ""}`}>
                         <button type="button" title="Comentar esta línea" onMouseDown={(e) => { e.preventDefault(); choose(f.path, i, e.shiftKey); }} className={`w-10 shrink-0 select-none border-r border-slate-200 pr-2 text-right text-slate-400 hover:text-blue-600 dark:border-border dark:hover:text-accent-text ${picked ? "" : gutter[kind]}`}>{l[at] ?? ""}</button>
                         {html.get(f.path)?.[i] !== undefined
                           ? <span className="min-w-0 flex-1 whitespace-pre-wrap break-all px-2"><span>{l.text[0]}</span><span dangerouslySetInnerHTML={{ __html: html.get(f.path)![i]! }} /></span>
@@ -278,7 +283,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
                 const picked = pick?.file === f.path && i >= pick.start && i <= pick.end;
                 return (
                   <div key={i}>
-                    <div onMouseEnter={() => l.kind !== "hunk" && extend(f.path, i)} className={`flex ${picked ? "bg-yellow-100 dark:bg-yellow-900" : color[l.kind]}`}>
+                    <div onMouseEnter={() => l.kind !== "hunk" && extend(f.path, i)} className={`flex ${picked ? "bg-yellow-100 dark:bg-yellow-900" : color[l.kind]} ${hit(l) ? "ring-1 ring-inset ring-amber-400/70" : ""}`}>
                       {l.kind === "hunk" ? null : (
                         <button type="button" title="Comentar esta línea" onMouseDown={(e) => { e.preventDefault(); choose(f.path, i, e.shiftKey); }} onMouseEnter={() => extend(f.path, i)} className={`w-20 shrink-0 select-none border-r border-slate-200 pr-2 text-right text-slate-400 hover:text-blue-600 dark:border-border dark:hover:text-accent-text ${picked ? "" : gutter[l.kind]}`}>
                           <span className="inline-block w-8">{l.old ?? ""}</span> <span className="inline-block w-8">{l.new ?? ""}</span>
