@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { api, type GithubDetail, type GithubPull, type GithubThread } from "../api/client";
-import { Badge, Button, Card, Input, Select, ErrorText, Md, Arrow, pill, toggleTask, Textarea } from "../components/ui";
+import { Badge, Button, Card, Input, Select, ErrorText, Md, Arrow, pill, toggleTask, Textarea, keepAboveKeyboard } from "../components/ui";
 import { Avatar, PullStatus } from "./github";
 import { Diff } from "./github-diff";
 import { DefineIssueDialog } from "./define-issue";
@@ -301,9 +301,7 @@ export function GithubView() {
   const focusBox = () => requestAnimationFrame(() => {
     const el = box.current; if (!el) return;
     el.focus({ preventScroll: true });
-    const vv = window.visualViewport;
-    const show = () => el.scrollIntoView({ block: "center" });
-    if (vv) { vv.addEventListener("resize", show, { once: true }); setTimeout(() => vv.removeEventListener("resize", show), 1000); }
+    keepAboveKeyboard(bottom.current);
   });
   const write = () => { bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }); focusBox(); };
   const [showDiff, setShowDiff] = useState(false);

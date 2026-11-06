@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowsIn, ArrowsOut, CaretRight, Columns, Rows, SidebarSimple, ChatCircle, CircleNotch, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import { Button, ErrorText, Input, Textarea } from "../components/ui";
+import { Button, ErrorText, Input, Textarea, keepAboveKeyboard } from "../components/ui";
 import { highlight, languageOf, loadLanguage } from "../highlight";
 
 type Side = "LEFT" | "RIGHT";
@@ -219,24 +219,6 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
     if (p.start < 0) return comment.mutate({ type: "comment_file", body, path: f.path });
     const first = f.lines[p.start], last = f.lines[p.end];
     comment.mutate({ type: "comment_lines", body, path: f.path, line: number(last), side: side(last), start_line: number(first), start_side: side(first) });
-  };
-  // On phones the keyboard covers the bottom of the screen: once it opens, scroll the
-  // comment box so its buttons sit just above the keyboard.
-  const keepAboveKeyboard = (box: HTMLElement) => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const fit = () => {
-      const bottom = box.getBoundingClientRect().bottom, visible = vv.offsetTop + vv.height;
-      const gap = 16; // breathing room under the buttons
-      if (bottom <= visible - gap) return;
-      let el = box.parentElement;
-      while (el && !(el.scrollHeight > el.clientHeight && /auto|scroll/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
-      (el ?? document.scrollingElement)?.scrollBy({ top: bottom - visible + gap });
-    };
-    // The keyboard opens in steps: keep fitting while it animates.
-    vv.addEventListener("resize", fit);
-    setTimeout(fit, 350);
-    setTimeout(() => { vv.removeEventListener("resize", fit); fit(); }, 800);
   };
   const form = (f: File, p: Pick, placeholder: string) => (
     <div className="my-2 whitespace-normal font-sans">

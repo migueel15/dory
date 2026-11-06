@@ -24,6 +24,23 @@ export const Arrow = ({ back }: { back?: boolean }) => (
   <ArrowRight aria-hidden="true" className={cx("size-3.5", back && "rotate-180")} />
 );
 
+// keepAboveKeyboard scrolls box, smoothly, until its bottom sits just above the phone keyboard.
+// It measures again on every step of the keyboard animation, so it never overshoots.
+export function keepAboveKeyboard(box: HTMLElement | null | undefined, gap = 16) {
+  const vv = window.visualViewport;
+  if (!vv || !box) return;
+  const fit = () => {
+    const bottom = box.getBoundingClientRect().bottom, visible = vv.offsetTop + vv.height;
+    if (Math.abs(bottom - (visible - gap)) < 2 || bottom <= visible - gap) return;
+    let el = box.parentElement;
+    while (el && !(el.scrollHeight > el.clientHeight && /auto|scroll/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
+    (el ?? document.scrollingElement)?.scrollBy({ top: bottom - visible + gap, behavior: "smooth" });
+  };
+  vv.addEventListener("resize", fit);
+  setTimeout(fit, 500);
+  setTimeout(() => vv.removeEventListener("resize", fit), 1000);
+}
+
 // field is the one text-field style: neutral border that darkens on focus, never an accent outline.
 export const field = "min-h-11 sm:min-h-0 w-full rounded-md border border-slate-300 dark:border-border-strong bg-white dark:bg-surface px-2 py-1.5 text-sm !outline-none transition-colors focus:border-slate-500 dark:focus:border-muted";
 // bare drops border and background for fields embedded in a framed container (capture box, command palette).
