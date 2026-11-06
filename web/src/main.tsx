@@ -82,6 +82,16 @@ function ProjectFilter() {
   );
 }
 
+function VersionBadge() {
+  const v = useQuery({ queryKey: ["version"], queryFn: api.version, staleTime: Infinity });
+  if (!v.data) return null;
+  const { revision, short, time, modified } = v.data;
+  const cls = "font-mono text-xs text-slate-400 dark:text-muted hover:underline";
+  if (revision === "dev") return <span className={cls} title="Sin datos de VCS">dev</span>;
+  const title = `${time ? new Date(time).toLocaleString() : revision}${modified ? " +cambios" : ""}`;
+  return <a className={cls} href={`https://github.com/migueel15/dory/commit/${revision}`} target="_blank" rel="noreferrer" title={title}>{short}{modified && "+"}</a>;
+}
+
 function Layout() {
   const qc = useQueryClient();
   const me = useQuery({ queryKey: ["me"], queryFn: api.me, retry: false });
@@ -147,6 +157,7 @@ function Layout() {
             <div className="hidden items-center gap-1 sm:flex">
               <ProjectFilter />
               <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
+              <VersionBadge />
             </div>
             <Notifications />
             <ThemeToggle />
@@ -190,6 +201,7 @@ function Layout() {
             <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
             <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
           </div>
+          <VersionBadge />
         </div>
       </dialog>
       <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main><CommandPalette />

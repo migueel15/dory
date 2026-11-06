@@ -938,6 +938,17 @@ paths:
           description: "Delivered"
         "409":
           description: "The request is no longer open"
+  "/version":
+    get:
+      operationId: "getVersion"
+      summary: "Build version of the running binary"
+      responses:
+        "200":
+          description: "VCS revision embedded by go build, or dev without VCS data"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Version"
   "/t3/status":
     get:
       operationId: "getT3Status"
@@ -3111,6 +3122,14 @@ components:
                           type: "string"
                         description:
                           type: "string"
+    Version:
+      type: "object"
+      required: [revision, short, time, modified]
+      properties:
+        revision: { type: "string" }
+        short: { type: "string" }
+        time: { type: "string" }
+        modified: { type: "boolean" }
     T3Status:
       type: "object"
       required: ["instance_id", "environment_id", "base_url", "state", "version", "last_seen", "threads"]
