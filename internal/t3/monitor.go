@@ -236,6 +236,20 @@ func (m *Monitor) Locate(threadID string) (string, bool) {
 	return "", false
 }
 
+// Thread returns the live view of a thread reported by an instance.
+func (m *Monitor) Thread(threadID string) (Thread, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, s := range m.byID {
+		for _, t := range s.Threads {
+			if t.ID == threadID {
+				return t, true
+			}
+		}
+	}
+	return Thread{}, false
+}
+
 // ThreadClient returns a client for the instance that reports a thread, so
 // writes can only reach threads Dory is already showing.
 func (m *Monitor) ThreadClient(ctx context.Context, threadID string) (Client, error) {

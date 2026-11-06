@@ -2176,6 +2176,60 @@ paths:
           $ref: "#/components/responses/Error400"
         "404":
           $ref: "#/components/responses/Error404"
+  "/items/{id}/refine":
+    post:
+      operationId: refineItem
+      description: "Send a message to the single definition thread of the item. Without a thread, or with restart, it launches one (instance_id, project_id, provider and model required) and moves an inbox item to triaged."
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: {type: string}
+                restart: {type: boolean}
+                instance_id: {type: string}
+                project_id: {type: string}
+                provider: {type: string}
+                model: {type: string}
+                effort_option: {type: string}
+                effort: {type: string}
+      responses:
+        "200":
+          description: "Message sent to the existing thread"
+          content:
+            application/json:
+              schema: {type: object, required: [thread_id], properties: {thread_id: {type: string}}}
+        "201":
+          description: "Definition thread launched"
+          content:
+            application/json:
+              schema: {type: object, required: [thread_id], properties: {thread_id: {type: string}}}
+        "400":
+          $ref: "#/components/responses/Error400"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "502":
+          description: T3 unavailable
+  "/items/{id}/refinement":
+    get:
+      operationId: getItemRefinement
+      description: "Definition state of the item: its thread, every message, the open request and the newest plan. thread_error explains an empty chat when the thread cannot be read."
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: "Success"
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ItemRefinement"}
+        "404":
+          $ref: "#/components/responses/Error404"
 components:
   responses:
     Error400:
@@ -2223,6 +2277,28 @@ components:
       type: "http"
       scheme: "bearer"
   schemas:
+    ItemRefinement:
+      type: object
+      required: [thread, messages, pending, plan]
+      properties:
+        thread:
+          type: object
+          nullable: true
+          required: [thread_id, instance_id, status, attention, url, model, effort]
+          properties:
+            thread_id: {type: string}
+            instance_id: {type: string}
+            status: {type: string, description: "Empty when no instance reports the thread right now"}
+            attention: {type: boolean}
+            url: {type: string}
+            model: {type: string}
+            effort: {type: string}
+        messages: {$ref: "#/components/schemas/T3ThreadContext/properties/messages"}
+        pending: {$ref: "#/components/schemas/T3ThreadContext/properties/pending"}
+        thread_error: {type: string}
+        plan:
+          allOf: [{$ref: "#/components/schemas/ItemPlan"}]
+          nullable: true
     PlanSections:
       type: object
       required: [goal, scope, where, design, requirements, validation, risks]

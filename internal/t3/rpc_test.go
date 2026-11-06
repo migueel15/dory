@@ -91,7 +91,7 @@ func TestContextFindsExactCommandAndQuestions(t *testing.T) {
 	q := wireProjection{}
 	json.Unmarshal([]byte(`{"runtimeRequests":[{"id":"q","kind":"user_input","status":"pending"}],
 		"turnItems":[{"type":"user_input_request","requestId":"q","questions":[{"id":"c","question":"¿color?","multiSelect":true,"options":[{"label":"Rojo"}]}]}]}`), &q)
-	p := q.context().Pending
+	p := q.context(contextMessages).Pending
 	if len(p.Questions) != 1 || !p.Questions[0].Multi || p.Questions[0].Options[0].Label != "Rojo" {
 		t.Errorf("questions %+v", p)
 	}
