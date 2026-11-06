@@ -204,9 +204,12 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
   const touch = useRef(false);
   const choose = (file: string, i: number, shift: boolean) => {
     const from = shift && pick?.file === file && pick.start >= 0 ? pick.start : i;
+    setPick({ file, start: Math.min(from, i), end: Math.max(from, i) });
+    // A tap has no drag: the comment box moves when the range changes, and a drag
+    // would keep extending to whatever line slides under the finger.
+    if (touch.current) { setDrag(undefined); setOpen(true); return; }
     setOpen(false);
     setDrag({ file, from });
-    setPick({ file, start: Math.min(from, i), end: Math.max(from, i) });
   };
   const extend = (file: string, i: number) => {
     if (drag?.file === file) setPick({ file, start: Math.min(drag.from, i), end: Math.max(drag.from, i) });
