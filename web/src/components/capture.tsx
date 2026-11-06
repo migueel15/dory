@@ -12,12 +12,12 @@ function createIdea(raw: string, projectId: string) {
 }
 
 // IdeaCapture is the only way to create items: a large text box, the project and two save actions.
-export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false }: { onDone?: () => void; focusOnSlash?: boolean; autoFocus?: boolean }) {
+export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, projectId }: { onDone?: () => void; focusOnSlash?: boolean; autoFocus?: boolean; projectId?: string }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const current = useProject();
   const [text, setText] = useState("");
-  const [project, setProject] = useState(current);
+  const [project, setProject] = useState(projectId || current);
   const box = useRef<HTMLTextAreaElement>(null);
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const save = useMutation({
@@ -66,11 +66,11 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false }:
 }
 
 // IdeaModal shows IdeaCapture in a modal.
-export function IdeaModal({ onClose }: { onClose: () => void }) {
+export function IdeaModal({ onClose, projectId }: { onClose: () => void; projectId?: string }) {
   return (
     <Modal title="Nueva idea" onClose={onClose} wide>
       <h2 className="font-semibold">Nueva idea</h2>
-      <IdeaCapture autoFocus onDone={onClose} />
+      <IdeaCapture autoFocus onDone={onClose} projectId={projectId} />
     </Modal>
   );
 }
