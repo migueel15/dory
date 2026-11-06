@@ -55,12 +55,12 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
       <textarea ref={box} autoFocus={autoFocus} rows={4} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKeyDown} disabled={save.isPending} aria-label="Nueva idea"
         placeholder="¿Qué quieres hacer? Cuéntalo a grandes rasgos; el agente se encarga del resto."
         className="max-h-[60vh] min-h-24 w-full resize-none bg-transparent text-sm !outline-none" />
-      <div className="flex flex-wrap items-center gap-2">
-        <Select plain className="min-w-36" value={project} onChange={setProject} options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
+      <div className="flex items-center gap-2">
+        <Select plain className="min-w-0 flex-1 sm:min-w-36 sm:flex-none" value={project} onChange={setProject} options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
         <span className="hidden flex-1 text-[11px] text-slate-400 sm:inline">Enter nueva línea · Ctrl+Enter inbox · Ctrl+Shift+Enter definir</span>
-        <div className="ml-auto flex gap-2">
-          <Button type="button" variant="ghost" disabled={!text.trim() || save.isPending} onClick={() => submit(false)}>Guardar en inbox</Button>
-          <Button type="button" disabled={!text.trim() || save.isPending} onClick={() => submit(true)}>Guardar y definir</Button>
+        <div className="ml-auto flex shrink-0 gap-2">
+          <Button type="button" variant="ghost" disabled={!text.trim() || save.isPending} onClick={() => submit(false)} title="Guardar en inbox"><span className="sm:hidden">Inbox</span><span className="hidden sm:inline">Guardar en inbox</span></Button>
+          <Button type="button" disabled={!text.trim() || save.isPending} onClick={() => submit(true)} title="Guardar y definir"><span className="sm:hidden">Definir</span><span className="hidden sm:inline">Guardar y definir</span></Button>
         </div>
       </div>
       <ErrorText error={save.error} />
