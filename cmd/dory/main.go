@@ -14,6 +14,7 @@ import (
 	"github.com/migueel15/dory/internal/notifications"
 	"github.com/migueel15/dory/internal/service"
 	"github.com/migueel15/dory/internal/t3"
+	"github.com/migueel15/dory/internal/titles"
 	"github.com/migueel15/dory/migrations"
 	"github.com/migueel15/dory/web"
 	"github.com/pressly/goose/v3"
@@ -77,9 +78,11 @@ func run() error {
 		notices.Mount(mux)
 		go notices.Run(ctx)
 		go monitor.Run(ctx)
-		api.Register(mux, svc, monitor, github.New(svc, os.Getenv("DORY_GITHUB_TOKEN")))
+		titleGen := titles.New(svc, monitor, titles.Config{Provider: cfg.TitleProvider, Model: cfg.TitleModel, Effort: cfg.TitleEffort, Project: cfg.TitleProject, Timeout: cfg.TitleTimeout})
+		titleGen.Recover(ctx)
+		api.Register(mux, titleGen.Wrap(svc), monitor, github.New(svc, os.Getenv("DORY_GITHUB_TOKEN")))
 		auth.Register(mux, svc, cfg)
-		mux.Handle("/mcp", mcp.Handler(svc, monitor.Locate))
+		mux.Handle("/mcp", mcp.Handler(titleGen.Wrap(svc), monitor.Locate))
 		mux.Handle("/", web.Handler())
 		server := &http.Server{Addr: cfg.Listen, Handler: auth.Middleware(svc, cfg)(mux), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 		done := make(chan error, 1)

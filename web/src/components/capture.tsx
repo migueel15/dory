@@ -8,7 +8,8 @@ import { useProject } from "../project";
 // createIdea saves raw text as an inbox item; the definition agent fills in the rest.
 function createIdea(raw: string, projectId: string) {
   const title = (raw.split("\n").find((l) => l.trim()) ?? raw).trim().slice(0, 80);
-  return api.items.create({ id: uuid(), title, raw_text: raw, status: "inbox", source: "web", tags: [], project_id: projectId || null });
+  // The title is provisional until the server replaces it with a generated one (title_source pending).
+  return api.items.create({ id: uuid(), title, raw_text: raw, status: "inbox", source: "web", title_source: "pending", tags: [], project_id: projectId || null });
 }
 
 // IdeaCapture is the only way to create items: a large text box, the project and two save actions.

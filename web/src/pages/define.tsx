@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Item, type ItemPlan, type ItemRefinement, type PlanSections, type RefineInput } from "../api/client";
+import { ItemTitle, pendingPoll } from "../components/item-title";
 import { PendingRequest } from "../components/pending-request";
 import { ThreadLink } from "../components/thread-link";
 import { ThreadStatus } from "../components/thread-status";
@@ -34,7 +35,7 @@ export function Define() {
   const [draft, setDraft] = useState("");
   const [implement, setImplement] = useState(false);
   const composer = useRef<HTMLTextAreaElement>(null);
-  const item = useQuery({ queryKey: ["items", "one", id], queryFn: () => api.item(id) });
+  const item = useQuery({ queryKey: ["items", "one", id], queryFn: () => api.item(id), refetchInterval: pendingPoll });
   const refinement = useQuery({ queryKey: ["refinement", id], queryFn: () => api.refinement(id), refetchInterval: (q) => (working(q.state.data) ? 3_000 : 10_000) });
   const plans = useQuery({ queryKey: ["refinement", id, "plans"], queryFn: () => api.plans(id) });
   const refresh = () => ["refinement", "items", "t3-status"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
@@ -56,7 +57,7 @@ export function Define() {
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 space-y-1">
           <Link to={it.project_id ? "/projects/$id" : "/inbox"} params={{ id: it.project_id ?? "" }} className={`${muted} hover:underline`}>← Volver</Link>
-          <h1 className="text-lg font-semibold break-words">{it.title}</h1>
+          <h1 className="text-lg font-semibold break-words"><ItemTitle item={it} /></h1>
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${info.tone}`}>{info.label}</span>
             {refinement.data?.thread && <ThreadState refinement={refinement.data} />}

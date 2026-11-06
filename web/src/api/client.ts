@@ -122,5 +122,6 @@ export const itemInput = (i: Item, patch: Partial<ItemInput> = {}): ItemInput =>
   blocked_reason: i.blocked_reason,
   priority: i.priority,
   source: i.source,
+  title_source: i.title_source,
   ...patch,
 });

@@ -89,6 +89,7 @@ type Item struct {
 	FeatureID     pgtype.UUID
 	BlockedReason string
 	Refs          []string
+	TitleSource   string
 }
 
 type ItemPlan struct {

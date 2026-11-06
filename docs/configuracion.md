@@ -32,3 +32,17 @@ El hilo recibe instrucciones para trabajar en un worktree temporal, incorporar l
 Ver [notificaciones](notificaciones.md) para los ajustes por usuario, la activación
 por dispositivo y la migración necesaria. Las claves VAPID se conservan en la base
 de datos; no se añaden variables de entorno.
+
+## Título de las ideas con IA
+
+Al crear una idea desde el cuadro de idea, lo que se escribe queda como descripción (`raw_text`) y un hilo de T3 con un modelo rápido genera el título. Mientras tanto el item muestra la primera línea como título provisional y «Generando título…»; al terminar, el título lleva la etiqueta «IA». Si el hilo falla o se agota el tiempo, se queda el título provisional como título del usuario. Al arrancar, Dory trata igual los títulos que hubieran quedado pendientes.
+
+| TOML | Variable | Significado |
+|---|---|---|
+| `title_model` | `DORY_TITLE_MODEL` | Modelo de T3 (slug). Vacío apaga la función. |
+| `title_provider` | `DORY_TITLE_PROVIDER` | Instancia de proveedor en T3. Vacío usa la primera que ofrezca el modelo. |
+| `title_effort` | `DORY_TITLE_EFFORT` | Nivel de razonamiento. Vacío usa el más bajo del modelo. |
+| `title_project` | `DORY_TITLE_PROJECT` | Proyecto de T3 (id o título) donde se abre el hilo. Vacío usa el primero. |
+| `title_timeout` | `DORY_TITLE_TIMEOUT` | Tiempo máximo de espera. Por defecto `2m`. |
+
+El hilo necesita el MCP de Dory para llamar a `update_item`. `title_source` (`pending`, `ai`, `user`) indica quién escribió el título: la IA solo puede pasar `pending` a `ai`; editar el título lo deja en `user` y nunca se sobrescribe.

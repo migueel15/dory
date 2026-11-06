@@ -6,6 +6,7 @@ import { IdeaCapture, IdeaModal } from "../components/capture";
 import { ContextMenu, type ContextAction } from "../components/context-menu";
 import { useCallback, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { ItemTitle, pendingPoll } from "../components/item-title";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DndContext, type DragEndEvent, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { api, itemInput, type Item, type ItemStatus } from "../api/client";
@@ -39,7 +40,7 @@ export function ItemForm({ item, onClose, initialEdit = false }: { initialEdit?:
   const save = useMutation({
     mutationFn: () => {
       const data = { title, body_md: body, progress, refs: csv(refs), tags: csv(tags), status, blocked_reason: status === "blocked" ? reason : "", priority, project_id: pid || null, feature_id: (pid && fid) || null };
-      return api.items.update(item.id, itemInput(item, data));
+      return api.items.update(item.id, itemInput(item, { ...data, ...(title !== item.title && { title_source: "user" as const }) }));
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["items"] });
@@ -154,7 +155,7 @@ function ItemView({ item, project, feature }: { item: Item; project?: string; fe
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <h2 className="text-lg font-semibold break-words">{item.title}</h2>
+        <h2 className="text-lg font-semibold break-words"><ItemTitle item={item} /></h2>
         <div className="flex flex-wrap items-center gap-2">
           <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${info.tone}`}>{info.label}</span>
           {item.priority > 0 && <Badge>Prioridad {item.priority}</Badge>}
@@ -204,7 +205,7 @@ export function Inbox() {
   const [creating, setCreating] = useState(false);
   const [batch, setBatch] = useState(false);
   const project = useProject();
-  const items = useQuery({ queryKey: ["items", "inbox"], queryFn: () => api.items.list({ status: "inbox" }), select: (l) => (project ? l.filter((i) => i.project_id === project) : l) });
+  const items = useQuery({ queryKey: ["items", "inbox"], queryFn: () => api.items.list({ status: "inbox" }), refetchInterval: pendingPoll, select: (l) => (project ? l.filter((i) => i.project_id === project) : l) });
   return (
     <div className="space-y-3">
       <PageHeader title="Inbox" subtitle="Ideas capturadas pendientes de revisar">
@@ -218,7 +219,7 @@ export function Inbox() {
         {items.data?.map((i) => (
           <ItemActions key={i.id} item={i}><Card className="cursor-pointer hover:bg-slate-50 dark:hover:bg-raised">
             <div onClick={() => setEditing(i)}>
-              <div className="flex flex-wrap items-center gap-2"><span className="font-medium break-words">{i.title}</span>{i.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div>
+              <div className="flex flex-wrap items-center gap-2"><ItemTitle item={i} className="font-medium" />{i.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div>
               {i.progress && <p className="text-xs text-slate-500 dark:text-muted">{i.progress}</p>}
               {i.body_md && <p className="line-clamp-2 text-sm text-slate-600 dark:text-text-secondary">{i.body_md.replace(/[#*`>\[\]]/g, "")}</p>}
             </div>
@@ -255,7 +256,7 @@ function Draggable({ item, onOpen }: { item: Item; onOpen: () => void }) {
   const style = transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined;
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes} className={isDragging ? "relative z-10 opacity-80" : ""}>
-      <ItemActions item={item}><Card className={`cursor-grab ${item.status === "blocked" ? "border-l-4 border-l-red-500 dark:border-l-red-500" : ""}`}><div onClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><span className="font-medium break-words">{item.title}</span></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}<CardLinks item={item} />{item.status === "blocked" && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{item.blocked_reason}</p>}</div></Card></ItemActions>
+      <ItemActions item={item}><Card className={`cursor-grab ${item.status === "blocked" ? "border-l-4 border-l-red-500 dark:border-l-red-500" : ""}`}><div onClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><ItemTitle item={item} className="font-medium" /></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}<CardLinks item={item} />{item.status === "blocked" && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{item.blocked_reason}</p>}</div></Card></ItemActions>
     </div>
   );
 }
@@ -269,7 +270,7 @@ export function Board({ projectId }: { projectId: string }) {
   const [folded, setFolded] = useState<Set<ItemStatus>>(new Set(PAGED));
   const [limits, setLimits] = useState<Partial<Record<ItemStatus, number>>>({});
   const key = ["items", "board", projectId];
-  const items = useQuery({ queryKey: key, queryFn: () => api.items.list(projectId ? { project_id: projectId } : {}) });
+  const items = useQuery({ queryKey: key, queryFn: () => api.items.list(projectId ? { project_id: projectId } : {}), refetchInterval: pendingPoll });
   const move = useMutation({
     mutationFn: ({ item, status, reason }: { item: Item; status: ItemStatus; reason: string }) => api.items.update(item.id, itemInput(item, { status, blocked_reason: reason })),
     onMutate: ({ item, status }) => {
