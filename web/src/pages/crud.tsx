@@ -142,7 +142,7 @@ function Machine({ env, status, usage }: { env: Environment; status: T3Status; u
 // Las máquinas las descubre T3 Code; aquí solo se muestran las que tienen instancia.
 export function Environments() {
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
-  const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 10_000 });
+  const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 60_000 });
   const usage = useQuery({ queryKey: ["t3-usage"], queryFn: api.t3Usage, refetchInterval: 30_000 });
   const machines = (envs.data ?? []).flatMap((env) => {
     const status = t3.data?.find((s) => s.environment_id === env.id);

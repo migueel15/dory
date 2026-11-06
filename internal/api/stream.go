@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/service"
+	"github.com/migueel15/dory/internal/t3"
 )
 
 const (
@@ -37,7 +38,9 @@ func search(svc service.Service) http.HandlerFunc {
 }
 
 // streamEvents polls the audit log and emits each new event as an SSE message.
-func streamEvents(svc service.Service) http.HandlerFunc {
+// Monitor changes are merged in as {"entity_type":"t3"} without an id: they
+// cannot be resumed, the SPA refetches on reconnect.
+func streamEvents(svc service.Service, monitor *t3.Monitor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var after int64
 		var err error
@@ -80,6 +83,12 @@ func streamEvents(svc service.Service) http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 		flusher.Flush()
 
+		var live <-chan struct{}
+		if monitor != nil && (kind == "" || kind == "t3") {
+			ch, cancel := monitor.Subscribe()
+			defer cancel()
+			live = ch
+		}
 		poll := time.NewTicker(pollInterval)
 		defer poll.Stop()
 		beat := time.NewTicker(heartbeat)
@@ -109,6 +118,10 @@ func streamEvents(svc service.Service) http.HandlerFunc {
 				return
 			case <-beat.C:
 				fmt.Fprint(w, ": keep-alive\n\n")
+				flusher.Flush()
+				continue
+			case <-live:
+				fmt.Fprint(w, "event: change\ndata: {\"entity_type\":\"t3\"}\n\n")
 				flusher.Flush()
 				continue
 			case <-poll.C:

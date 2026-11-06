@@ -3,6 +3,7 @@ package t3
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/migueel15/dory/internal/service"
 )
@@ -38,5 +39,33 @@ func TestRefreshUsageSharesRecentRead(t *testing.T) {
 	}
 	if instances.err != nil {
 		t.Fatalf("read got cancelled: %v", instances.err)
+	}
+}
+
+func TestMonitorSubscribeSignalsChanges(t *testing.T) {
+	m := NewMonitor(instancesService{})
+	ch, cancel := m.Subscribe()
+	defer cancel()
+	s := Status{InstanceID: "a", State: StateAvailable, Threads: []Thread{{ID: "t", Status: "running"}}}
+	m.store(s)
+	select {
+	case <-ch:
+	default:
+		t.Fatal("first status did not signal")
+	}
+	now := time.Now()
+	s.LastSeen = &now
+	m.store(s)
+	select {
+	case <-ch:
+		t.Fatal("LastSeen alone must not signal")
+	default:
+	}
+	s.Threads = []Thread{{ID: "t", Status: "ready"}}
+	m.store(s)
+	select {
+	case <-ch:
+	default:
+		t.Fatal("thread change did not signal")
 	}
 }

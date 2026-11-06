@@ -49,10 +49,12 @@ type Monitor struct {
 	// polling keeps usage reads in order, so a slow read cannot replace a newer one.
 	polling   sync.Mutex
 	refreshed time.Time
+	subMu     sync.Mutex
+	subs      map[chan struct{}]struct{}
 }
 
 func NewMonitor(svc service.Service) *Monitor {
-	return &Monitor{svc: svc, client: &http.Client{Timeout: requestTimeout}, byID: map[string]Status{}, usage: map[string]InstanceUsage{}}
+	return &Monitor{svc: svc, client: &http.Client{Timeout: requestTimeout}, byID: map[string]Status{}, usage: map[string]InstanceUsage{}, subs: map[chan struct{}]struct{}{}}
 }
 
 // Run polls until ctx ends.
@@ -82,10 +84,7 @@ func (m *Monitor) poll(ctx context.Context) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			s := m.check(ctx, in)
-			m.mu.Lock()
-			defer m.mu.Unlock()
-			m.byID[in.ID] = s
+			m.store(m.check(ctx, in))
 		}()
 	}
 	wg.Wait()
@@ -94,11 +93,93 @@ func (m *Monitor) poll(ctx context.Context) {
 		current[in.ID] = true
 	}
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	removed := false
 	for id := range m.byID {
 		if !current[id] {
 			delete(m.byID, id)
+			removed = true
 		}
+	}
+	m.mu.Unlock()
+	if removed {
+		m.notify()
+	}
+}
+
+// store saves a status and signals subscribers when what the SPA shows changed.
+func (m *Monitor) store(s Status) {
+	m.mu.Lock()
+	old, had := m.byID[s.InstanceID]
+	m.byID[s.InstanceID] = s
+	m.mu.Unlock()
+	if !had || !sameView(old, s) {
+		m.notify()
+	}
+}
+
+// sameView ignores LastSeen, which changes on every successful read.
+func sameView(a, b Status) bool {
+	a.LastSeen, b.LastSeen = nil, nil
+	x, _ := json.Marshal(a)
+	y, _ := json.Marshal(b)
+	return string(x) == string(y)
+}
+
+// Subscribe returns a channel that receives a signal after each change of the
+// statuses. Signals coalesce: a slow reader gets one for a burst. cancel frees it.
+func (m *Monitor) Subscribe() (<-chan struct{}, func()) {
+	ch := make(chan struct{}, 1)
+	m.subMu.Lock()
+	m.subs[ch] = struct{}{}
+	m.subMu.Unlock()
+	return ch, func() {
+		m.subMu.Lock()
+		delete(m.subs, ch)
+		m.subMu.Unlock()
+	}
+}
+
+func (m *Monitor) notify() {
+	m.subMu.Lock()
+	defer m.subMu.Unlock()
+	for ch := range m.subs {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// refreshDelays re-read an instance after a write: right away, and again
+// shortly after because T3 applies some commands asynchronously.
+var refreshDelays = []time.Duration{0, time.Second, 3 * time.Second}
+
+// Refresh re-reads one instance in the background after Dory wrote to it, so
+// the views do not wait for the next poll.
+func (m *Monitor) Refresh(instanceID string) {
+	go func() {
+		for i, d := range refreshDelays {
+			if i > 0 {
+				time.Sleep(d - refreshDelays[i-1])
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*requestTimeout)
+			in, err := m.svc.T3Instances().Get(ctx, instanceID)
+			if err == nil {
+				m.store(m.check(ctx, in))
+			}
+			cancel()
+			if err != nil {
+				log.Printf("t3: refresh %s: %v", instanceID, err)
+				return
+			}
+		}
+	}()
+}
+
+// RefreshThread refreshes the instance that reports a thread, if any.
+func (m *Monitor) RefreshThread(threadID string) {
+	if id, ok := m.Locate(threadID); ok {
+		m.Refresh(id)
 	}
 }
 

@@ -53,6 +53,7 @@ func mountThreads(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) 
 			writeT3Error(w, err)
 			return
 		}
+		monitor.RefreshThread(id)
 		audit(r, svc, id, map[string]any{"operation": "t3.message", "text": body.Text})
 		w.WriteHeader(http.StatusNoContent)
 	})
@@ -95,6 +96,7 @@ func mountThreads(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) 
 			writeT3Error(w, err)
 			return
 		}
+		monitor.RefreshThread(id)
 		audit(r, svc, id, map[string]any{"operation": "t3.respond", "request": tc.Pending, "decision": body.Decision, "answers": body.Answers})
 		w.WriteHeader(http.StatusNoContent)
 	})

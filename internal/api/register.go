@@ -120,7 +120,7 @@ func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *
 		writeJSON(w, http.StatusOK, map[string]string{"diff": diff})
 	})
 	mux.HandleFunc("GET /api/search", search(svc))
-	mux.HandleFunc("GET /api/events/stream", streamEvents(svc))
+	mux.HandleFunc("GET /api/events/stream", streamEvents(svc, monitor))
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "route not found")
 	})

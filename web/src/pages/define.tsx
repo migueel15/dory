@@ -36,7 +36,7 @@ export function Define() {
   const [implement, setImplement] = useState(false);
   const composer = useRef<HTMLTextAreaElement>(null);
   const item = useQuery({ queryKey: ["items", "one", id], queryFn: () => api.item(id), refetchInterval: pendingPoll });
-  const refinement = useQuery({ queryKey: ["refinement", id], queryFn: () => api.refinement(id), refetchInterval: (q) => (working(q.state.data) ? 3_000 : 10_000) });
+  const refinement = useQuery({ queryKey: ["refinement", id], queryFn: () => api.refinement(id), refetchInterval: (q) => (working(q.state.data) ? 3_000 : 60_000) });
   const plans = useQuery({ queryKey: ["refinement", id, "plans"], queryFn: () => api.plans(id) });
   const refresh = () => ["refinement", "items", "t3-status"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   const accept = useMutation({ mutationFn: () => api.acceptPlan(id), onSuccess: refresh });
@@ -95,7 +95,23 @@ function ThreadState({ refinement }: { refinement: ItemRefinement }) {
 
 function Chat({ item, data, draft, setDraft, composer, onChange }: { item: Item; data?: ItemRefinement; draft: string; setDraft: (s: string) => void; composer: React.RefObject<HTMLTextAreaElement | null>; onChange: () => void }) {
   const [restart, setRestart] = useState(false);
-  const send = useMutation({ mutationFn: (body: RefineInput) => api.refine(item.id, body), onSuccess: () => { setDraft(""); setRestart(false); onChange(); } });
+  const qc = useQueryClient();
+  const key = ["refinement", item.id];
+  // A message to an open thread shows at once; a failed send restores the chat and the draft.
+  const send = useMutation({
+    mutationFn: (body: RefineInput) => api.refine(item.id, body),
+    onMutate: async (body) => {
+      const prev = qc.getQueryData<ItemRefinement>(key);
+      if (!prev?.thread || body.restart || !body.text) return { prev: undefined };
+      await qc.cancelQueries({ queryKey: key });
+      qc.setQueryData<ItemRefinement>(key, { ...prev, messages: [...prev.messages, { role: "user", text: body.text } as ItemRefinement["messages"][number]] });
+      setDraft("");
+      return { prev };
+    },
+    onError: (_e, body, c) => { if (c?.prev) { qc.setQueryData(key, c.prev); setDraft(body.text ?? ""); } },
+    onSuccess: () => { setDraft(""); setRestart(false); },
+    onSettled: onChange,
+  });
   const end = useRef<HTMLDivElement>(null);
   const count = data?.messages.length ?? 0;
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [count, data?.pending?.id]);
