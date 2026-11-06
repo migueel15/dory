@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { api, type GithubDetail, type GithubPull, type GithubThread } from "../api/client";
 import { Badge, Button, Card, Select, ErrorText, Md, Arrow, pill, toggleTask } from "../components/ui";
@@ -326,13 +326,8 @@ export function GithubView() {
     io.observe(el);
     return () => io.disconnect();
   }, [detail.isSuccess]);
-  const action = useMutation({
-    mutationFn: (a: { type: string; title?: string; body?: string; method?: string; thread_id?: string; user_ids?: string[]; comment_id?: string }) => api.githubAct(full, kind, n, a),
-    onSuccess: (_, a) => {
-      if (a.body && !a.thread_id && !a.type.startsWith("edit_")) discard();
-      qc.invalidateQueries({ queryKey: key });
-      qc.invalidateQueries({ queryKey: ["github"] });
-    },
+  const action = useActionQueue(key, (a) => {
+    if (a.body && !a.thread_id && !a.type.startsWith("edit_")) discard();
   });
   const d = detail.data;
   // People who can be mentioned: the repo's users and everyone in the conversation.
@@ -346,10 +341,10 @@ export function GithubView() {
       {dialog}
       {d && <RefContext.Provider value={{ owner: full.split("/")[0], repo: full.split("/")[1], links: d.links }}>
         <Header d={d} act={act} busy={action.isPending} people={people} actions={<>
-          {d.pull && <PullActions pull={d.pull} me={d.viewer} act={act} busy={action.isPending} diff={showDiff} toggleDiff={() => setShowDiff(!showDiff)} />}
+          {d.pull && <PullActions pull={d.pull} me={d.viewer} act={act} busy={false} diff={showDiff} toggleDiff={() => setShowDiff(!showDiff)} />}
           {d.pull?.mergeable === "CONFLICTING" && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Resolver conflictos</Button>}
           {d.issue && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Definir tareas</Button>}
-          {d.issue && <IssueActions open={open} act={act} busy={action.isPending} />}
+          {d.issue && <IssueActions open={open} act={act} busy={false} />}
         </>} />
         {defining && <DefineIssueDialog resolve={!!d.pull} repo={full} number={n} onClose={() => setDefining(false)} />}
         {showDiff && <Diff repo={full} pr={n} />}
@@ -387,4 +382,52 @@ export function GithubView() {
       </RefContext.Provider>}
     </div>
   );
+}
+
+type GithubAction = { type: string; title?: string; body?: string; method?: string; thread_id?: string; user_ids?: string[]; comment_id?: string; milestone_id?: string };
+
+// State changes show at once and are applied to the cached detail before GitHub answers.
+const optimistic: Record<string, (d: GithubDetail) => GithubDetail> = {
+  ready: (d) => (d.pull ? { ...d, pull: { ...d.pull, draft: false } } : d),
+  draft: (d) => (d.pull ? { ...d, pull: { ...d.pull, draft: true } } : d),
+  close_pull: (d) => (d.pull ? { ...d, pull: { ...d.pull, state: "CLOSED" } } : d),
+  reopen_pull: (d) => (d.pull ? { ...d, pull: { ...d.pull, state: "OPEN" } } : d),
+  merge: (d) => (d.pull ? { ...d, pull: { ...d.pull, state: "MERGED" } } : d),
+  close_issue: (d) => (d.issue ? { ...d, issue: { ...d.issue, state: "CLOSED" } } : d),
+  reopen_issue: (d) => (d.issue ? { ...d, issue: { ...d.issue, state: "OPEN" } } : d),
+};
+
+// useActionQueue sends GitHub actions one after another, in click order. When one fails,
+// the detail is reloaded from GitHub (undoing the optimistic change) and the queued ones are dropped.
+function useActionQueue(key: unknown[], onDone: (a: GithubAction) => void) {
+  const qc = useQueryClient();
+  const tail = useRef<Promise<unknown>>(Promise.resolve());
+  const epoch = useRef(0);
+  const [pending, setPending] = useState(0);
+  const [error, setError] = useState<unknown>(null);
+  const mutateAsync = (a: GithubAction) => {
+    const [, full, kind, n] = key as [string, string, string, number];
+    const mine = epoch.current;
+    setError(null);
+    const patch = optimistic[a.type];
+    if (patch) { qc.cancelQueries({ queryKey: key }); qc.setQueryData<GithubDetail>(key, (d) => (d ? patch(d) : d)); }
+    setPending((p) => p + 1);
+    const run = tail.current.catch(() => {}).then(async () => {
+      if (epoch.current !== mine) throw new Error("Cancelada: falló una acción anterior.");
+      try {
+        await api.githubAct(full, kind, n, a);
+        onDone(a);
+      } catch (e) {
+        epoch.current++;
+        setError(e);
+        throw e;
+      } finally {
+        qc.invalidateQueries({ queryKey: key });
+        qc.invalidateQueries({ queryKey: ["github"] });
+      }
+    }).finally(() => setPending((p) => p - 1));
+    tail.current = run;
+    return run;
+  };
+  return { mutateAsync, mutate: (a: GithubAction) => { mutateAsync(a).catch(() => {}); }, isPending: pending > 0, error };
 }
