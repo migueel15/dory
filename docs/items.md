@@ -15,3 +15,4 @@ El doble clic y el arrastre del kanban conservan sus manejadores. En móvil se m
 - **Chat:** la primera vez se elige máquina, proyecto de T3, modelo y razonamiento, con indicaciones opcionales. Después cada mensaje va al mismo hilo de definición (Ctrl+Enter envía). Las preguntas del agente aparecen como tarjetas con opciones y respuesta libre. Si el hilo no es accesible, se puede empezar uno nuevo.
 - **Plan:** la última versión, sección a sección. Las secciones que cambiaron respecto a la versión anterior se resaltan. «Comentar» cita la sección en el chat. «Editar» guarda una versión escrita por el usuario.
 - **Aceptar plan** solo se activa sin preguntas abiertas. Copia el plan a la descripción y deja el item en ready. Desde ready, «Enviar a implementar» abre el diálogo de lanzamiento.
+- **Definir todo**, en el Inbox, abre un hilo de definición por cada nota con la misma máquina y modelo.

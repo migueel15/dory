@@ -10,15 +10,8 @@ import (
 func TestLaunchPrompt(t *testing.T) {
 	item := service.Item{Title: "Idea"}
 	item.ID = "12345678-aaaa"
-	triage := launchPrompt(item, roleTriage, false, "", "")
-	if !strings.Contains(triage, "No cambies el código") {
-		t.Fatalf("triage prompt allows code changes: %s", triage)
-	}
-	if !strings.Contains(triage, "pásala a ready") || !strings.Contains(triage, "upsert_feature") {
-		t.Fatalf("triage prompt does not define the item: %s", triage)
-	}
 	for _, base := range []string{"", "main"} {
-		p := launchPrompt(item, roleImplementation, true, base, "")
+		p := launchPrompt(item, true, base)
 		from := "origin/HEAD"
 		if base != "" {
 			from = "la rama " + base
@@ -34,11 +27,8 @@ func TestLaunchPrompt(t *testing.T) {
 			}
 		}
 	}
-	if p := launchPrompt(item, roleImplementation, false, "", ""); strings.Contains(p, "worktree") {
+	if p := launchPrompt(item, false, ""); strings.Contains(p, "worktree") {
 		t.Fatalf("unexpected worktree: %s", p)
-	}
-	if p := launchPrompt(item, roleReplan, false, "", "añade tests"); !strings.Contains(p, "añade tests") || !strings.Contains(p, "No cambies el código") || strings.Contains(p, "Implementa este item") {
-		t.Fatalf("replan prompt wrong: %s", p)
 	}
 }
 

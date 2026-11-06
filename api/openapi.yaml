@@ -3263,6 +3263,7 @@ components:
             - "implementation"
             - "replan"
             - "review"
+            - "refine"
     ItemThreadInput:
       type: "object"
       additionalProperties: false
@@ -3289,6 +3290,7 @@ components:
             - "implementation"
             - "replan"
             - "review"
+            - "refine"
     Feature:
       type: "object"
       required:

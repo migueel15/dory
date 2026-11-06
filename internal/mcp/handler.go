@@ -624,7 +624,7 @@ type threadLinkInput struct {
 	ItemID     string `json:"item_id"`
 	ThreadID   string `json:"thread_id"`
 	InstanceID string `json:"instance_id,omitempty" jsonschema:"T3 instance UUID; found from the thread when omitted"`
-	Role       string `json:"role,omitempty" jsonschema:"triage, implementation (default) or review"`
+	Role       string `json:"role,omitempty" jsonschema:"implementation (default), review or refine"`
 }
 
 func linkThread(ctx context.Context, svc service.Service, locate ThreadLocator, in threadLinkInput) (any, error) {
@@ -902,7 +902,7 @@ func Handler(svc service.Service, locate ThreadLocator) http.Handler {
 		}
 		return svc.RepositoryLocations().Put(ctx, auth.Actor(ctx), loc)
 	})
-	add(s, "link_thread", "Declare the T3 Code thread working on an item. The instance is found from the thread; pass instance_id only if it is not found. Calling it again is harmless. Role: triage, implementation (default) or review.", func(ctx context.Context, in threadLinkInput) (any, error) {
+	add(s, "link_thread", "Declare the T3 Code thread working on an item. The instance is found from the thread; pass instance_id only if it is not found. Calling it again is harmless. Role: implementation (default), review or refine.", func(ctx context.Context, in threadLinkInput) (any, error) {
 		return linkThread(ctx, svc, locate, in)
 	})
 	add(s, "recall", "Search memories by full text query, tags (all must match) and/or kind, optionally filtered by scope and scope_id, with pagination; view summary (default) or full.", func(ctx context.Context, in recallInput) (any, error) { return recall(ctx, svc, in) })

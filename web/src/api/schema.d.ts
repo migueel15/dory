@@ -1286,7 +1286,7 @@ export interface components {
             instance_id: string;
             thread_id: string;
             /** @enum {string} */
-            role: "triage" | "implementation" | "replan" | "review";
+            role: "triage" | "implementation" | "replan" | "review" | "refine";
         };
         ItemThreadInput: {
             /** Format: uuid */
@@ -1297,7 +1297,7 @@ export interface components {
             instance_id: string;
             thread_id: string;
             /** @enum {string} */
-            role?: "triage" | "implementation" | "replan" | "review";
+            role?: "triage" | "implementation" | "replan" | "review" | "refine";
         };
         Feature: {
             /** Format: uuid */
