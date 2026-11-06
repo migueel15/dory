@@ -163,8 +163,8 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
   };
   const form = (f: File, p: Pick, placeholder: string) => (
     <div className="my-2 whitespace-normal font-sans">
-                        <textarea aria-label="Comentario de revisión" autoFocus value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder={placeholder} className="w-full rounded border border-slate-300 bg-white p-2 text-sm dark:border-border dark:bg-surface" />
-                        <div className="flex gap-2">
+                        <textarea aria-label="Comentario de revisión" autoFocus value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder={placeholder} className="w-full rounded border border-slate-300 bg-white p-2 text-sm !outline-none dark:border-border dark:bg-surface" />
+                        <div className="mt-2 flex gap-2">
                           <Button disabled={comment.isPending || !body.trim()} onClick={() => publish(f, p)}>Publicar en GitHub</Button>
                           <Button variant="ghost" onClick={() => setPick(undefined)}>Cancelar</Button>
                         </div>
