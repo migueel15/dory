@@ -2,6 +2,7 @@ import { ThreadStatus } from "../components/thread-status";
 import { ChatCircle, GitPullRequest, Plus } from "@phosphor-icons/react";
 import { ThreadLink } from "../components/thread-link";
 import { LaunchDialog } from "./launch";
+import { IdeaCapture, IdeaModal } from "../components/capture";
 import { ContextMenu, type ContextAction } from "../components/context-menu";
 import { useCallback, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -18,27 +19,27 @@ const PAGE = 10;
 // DEFINABLE are the statuses whose plan can still be defined in the Define view.
 const DEFINABLE: ItemStatus[] = ["inbox", "triaged", "ready"];
 
-export function ItemForm({ item, projectId, onClose, initialEdit = false }: { initialEdit?: boolean; item?: Item; projectId?: string | null; onClose: () => void }) {
+export function ItemForm({ item, onClose, initialEdit = false }: { initialEdit?: boolean; item: Item; onClose: () => void }) {
   const qc = useQueryClient();
   const [launch, setLaunch] = useState<"implementation" | null>(null);
   const navigate = useNavigate();
-  const [title, setTitle] = useState(item?.title ?? "");
-  const [body, setBody] = useState(item?.body_md ?? "");
-  const [progress, setProgress] = useState(item?.progress ?? "");
-  const [refs, setRefs] = useState(item?.refs.join(", ") ?? "");
-  const [tags, setTags] = useState(item?.tags.join(", ") ?? "");
-  const [status, setStatus] = useState<ItemStatus>(item?.status ?? "inbox");
-  const [priority, setPriority] = useState(item?.priority ?? 0);
-  const [pid, setPid] = useState(item?.project_id ?? projectId ?? "");
-  const [fid, setFid] = useState(item?.feature_id ?? "");
-  const [reason, setReason] = useState(item?.blocked_reason ?? "");
-  const [editMode, setEditMode] = useState(!item || initialEdit);
+  const [title, setTitle] = useState(item.title ?? "");
+  const [body, setBody] = useState(item.body_md ?? "");
+  const [progress, setProgress] = useState(item.progress ?? "");
+  const [refs, setRefs] = useState(item.refs.join(", ") ?? "");
+  const [tags, setTags] = useState(item.tags.join(", ") ?? "");
+  const [status, setStatus] = useState<ItemStatus>(item.status ?? "inbox");
+  const [priority, setPriority] = useState(item.priority ?? 0);
+  const [pid, setPid] = useState(item.project_id ?? "");
+  const [fid, setFid] = useState(item.feature_id ?? "");
+  const [reason, setReason] = useState(item.blocked_reason ?? "");
+  const [editMode, setEditMode] = useState(initialEdit);
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const features = useQuery({ queryKey: ["features", pid], queryFn: () => api.features.list({ project_id: pid }), enabled: !!pid });
   const save = useMutation({
     mutationFn: () => {
       const data = { title, body_md: body, progress, refs: csv(refs), tags: csv(tags), status, blocked_reason: status === "blocked" ? reason : "", priority, project_id: pid || null, feature_id: (pid && fid) || null };
-      return item ? api.items.update(item.id, itemInput(item, data)) : api.items.create({ id: uuid(), ...data });
+      return api.items.update(item.id, itemInput(item, data));
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["items"] });
@@ -46,13 +47,13 @@ export function ItemForm({ item, projectId, onClose, initialEdit = false }: { in
     },
   });
   const archive = useMutation({
-    mutationFn: () => api.items.archive(item!.id),
+    mutationFn: () => api.items.archive(item.id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["items"] });
       onClose();
     },
   });
-  if (item && !editMode) {
+  if (!editMode) {
     const project = projects.data?.find((p) => p.id === item.project_id);
     const feature = features.data?.find((f) => f.id === item.feature_id);
     return (
@@ -68,7 +69,7 @@ export function ItemForm({ item, projectId, onClose, initialEdit = false }: { in
     );
   }
   return (
-    <Modal title={item ? "Editar item" : "Nuevo item"} onClose={onClose} wide={!!item}>
+    <Modal title="Editar item" onClose={onClose} wide>
       <Label text="Título"><Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus /></Label>
       <Label text="Descripción (markdown)"><Textarea value={body} onChange={(e) => setBody(e.target.value)} /></Label>
       <Label text="Progreso (estado actual)"><Input value={progress} onChange={(e) => setProgress(e.target.value)} placeholder="Rama · último commit · qué falta" /></Label>
@@ -89,9 +90,9 @@ export function ItemForm({ item, projectId, onClose, initialEdit = false }: { in
       {status === "blocked" && <Label text="Motivo del bloqueo"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Qué lo bloquea y qué lo desbloquea" /></Label>}
       <ErrorText error={save.error ?? archive.error} />
       <div className="flex justify-between">
-        {item ? <Button variant="danger" onClick={() => { if (window.confirm(`¿Archivar «${item.title}»?`)) archive.mutate(); }}>Archivar</Button> : <span />}
+        <Button variant="danger" onClick={() => { if (window.confirm(`¿Archivar «${item.title}»?`)) archive.mutate(); }}>Archivar</Button>
         <div className="flex gap-2">
-          <Button variant="ghost" onClick={item ? () => setEditMode(false) : onClose}>Cancelar</Button>
+          <Button variant="ghost" onClick={() => setEditMode(false)}>Cancelar</Button>
           <Button disabled={!title.trim() || (status === "blocked" && !reason.trim()) || save.isPending} onClick={() => save.mutate()}>Guardar</Button>
         </div>
       </div>
@@ -199,31 +200,20 @@ function ItemView({ item, project, feature }: { item: Item; project?: string; fe
 }
 
 export function Inbox() {
-  const [editing, setEditing] = useState<Item | "new" | null>(null);
-  const [quick, setQuick] = useState("");
+  const [editing, setEditing] = useState<Item | null>(null);
+  const [creating, setCreating] = useState(false);
   const [batch, setBatch] = useState(false);
-  const qc = useQueryClient();
   const project = useProject();
   const items = useQuery({ queryKey: ["items", "inbox"], queryFn: () => api.items.list({ status: "inbox" }), select: (l) => (project ? l.filter((i) => i.project_id === project) : l) });
-  const add = useMutation({
-    mutationFn: (title: string) => api.items.create({ id: uuid(), title, raw_text: title, source: "web", project_id: project || null }),
-    onSuccess: () => {
-      setQuick("");
-      qc.invalidateQueries({ queryKey: ["items"] });
-    },
-  });
   return (
     <div className="space-y-3">
       <PageHeader title="Inbox" subtitle="Ideas capturadas pendientes de revisar">
         {!!items.data?.length && <Button variant="ghost" onClick={() => setBatch(true)}>Definir todo</Button>}
-        <Button onClick={() => setEditing("new")}>Nuevo item</Button>
+        <Button onClick={() => setCreating(true)}>Nuevo item</Button>
       </PageHeader>
       {batch && items.data && <LaunchDialog items={items.data} role="refine" onClose={() => setBatch(false)} />}
-      <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (quick.trim()) add.mutate(quick.trim()); }}>
-        <Input placeholder="Captura rápida…" value={quick} onChange={(e) => setQuick(e.target.value)} />
-        <Button disabled={add.isPending}>Añadir</Button>
-      </form>
-      <ErrorText error={add.error ?? items.error} />
+      <IdeaCapture />
+      <ErrorText error={items.error} />
       <div className="space-y-2">
         {items.data?.map((i) => (
           <ItemActions key={i.id} item={i}><Card className="cursor-pointer hover:bg-slate-50 dark:hover:bg-raised">
@@ -237,7 +227,8 @@ export function Inbox() {
         {items.isPending && <Notice loading />}
         {items.data?.length === 0 && <Notice>Inbox vacío. Captura una idea arriba.</Notice>}
       </div>
-      {editing && <ItemForm item={editing === "new" ? undefined : editing} projectId={project || null} onClose={() => setEditing(null)} />}
+      {editing && <ItemForm item={editing} onClose={() => setEditing(null)} />}
+      {creating && <IdeaModal onClose={() => setCreating(false)} />}
     </div>
   );
 }
@@ -272,8 +263,9 @@ function Draggable({ item, onOpen }: { item: Item; onOpen: () => void }) {
 // Board shows the kanban of one project, or of every project when projectId is empty.
 export function Board({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
-  const [editing, setEditing] = useState<Item | "new" | null>(null);
+  const [editing, setEditing] = useState<Item | null>(null);
   const [blocking, setBlocking] = useState<Item | null>(null);
+  const [creating, setCreating] = useState(false);
   const [folded, setFolded] = useState<Set<ItemStatus>>(new Set(PAGED));
   const [limits, setLimits] = useState<Partial<Record<ItemStatus, number>>>({});
   const key = ["items", "board", projectId];
@@ -299,7 +291,7 @@ export function Board({ projectId }: { projectId: string }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">Kanban <span className="hidden text-xs font-normal text-slate-500 dark:text-muted sm:inline">(clic para abrir · arrastra para cambiar de estado)</span></h2>
-        <Button onClick={() => setEditing("new")} aria-label="Nuevo item" title="Nuevo item" className="inline-flex shrink-0 items-center gap-1.5"><Plus aria-hidden="true" className="size-4" /><span className="hidden sm:inline">Nuevo item</span></Button>
+        <Button onClick={() => setCreating(true)} aria-label="Nuevo item" title="Nuevo item" className="inline-flex shrink-0 items-center gap-1.5"><Plus aria-hidden="true" className="size-4" /><span className="hidden sm:inline">Nuevo item</span></Button>
       </div>
       {blocking && <BlockDialog item={blocking} onClose={() => setBlocking(null)} onConfirm={(reason) => { move.mutate({ item: blocking, status: "blocked", reason }); setBlocking(null); }} />}
       <ErrorText error={move.error ?? items.error} />
@@ -321,7 +313,8 @@ export function Board({ projectId }: { projectId: string }) {
           })}
         </div>
       </DndContext>
-      {editing && <ItemForm item={editing === "new" ? undefined : editing} projectId={projectId || null} onClose={() => setEditing(null)} />}
+      {editing && <ItemForm item={editing} onClose={() => setEditing(null)} />}
+      {creating && <IdeaModal onClose={() => setCreating(false)} />}
     </div>
   );
 }
