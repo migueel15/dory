@@ -5,7 +5,7 @@ import { Link } from "@tanstack/react-router";
 import { api, type GithubPull, type Repository } from "../api/client";
 import { Arrow, Badge, Card, PageHeader, errMsg, pill } from "../components/ui";
 import { useProject, useProjectThreads } from "../project";
-import { QuickCapture } from "../components/capture";
+import { IdeaCapture } from "../components/capture";
 import { ThreadStatus } from "../components/thread-status";
 import { useBlocked, useT3, useValidating } from "./attention";
 import { PullStatus, useGithubOpen } from "./github";
@@ -67,7 +67,7 @@ export function Home() {
   return (
     <div className="space-y-3">
       <PageHeader title="Inicio" subtitle="Qué necesita tu atención ahora" />
-      <QuickCapture />
+      <IdeaCapture focusOnSlash />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           { to: "/attention", n: needing.length, label: "Agentes te necesitan", warn: needing.length > 0 },

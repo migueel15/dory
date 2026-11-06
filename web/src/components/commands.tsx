@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { api } from "../api/client";
-import { useProject } from "../project";
-import { Button, ErrorText, Input, Label, Modal, Select } from "./ui";
+import { IdeaModal } from "./capture";
 
 type Command = { id: string; label: string; hint?: string; run: () => void };
 
@@ -35,7 +32,7 @@ export function CommandPalette() {
   return (
     <>
       {open && <Palette commands={commands} onClose={() => setOpen(false)} />}
-      {idea && <IdeaForm onClose={() => setIdea(false)} />}
+      {idea && <IdeaModal onClose={() => setIdea(false)} />}
     </>
   );
 }
@@ -75,34 +72,5 @@ function Palette({ commands, onClose }: { commands: Command[]; onClose: () => vo
         </div>
       </div>
     </div>
-  );
-}
-
-// IdeaForm saves a new idea to the inbox, linked to the selected project by default.
-function IdeaForm({ onClose }: { onClose: () => void }) {
-  const qc = useQueryClient();
-  const current = useProject();
-  const [text, setText] = useState("");
-  const [project, setProject] = useState(current);
-  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
-  const save = useMutation({
-    mutationFn: (raw: string) => api.items.create({ title: raw.split("\n")[0].slice(0, 80), raw_text: raw, status: "inbox", tags: [], project_id: project || null }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["items"] }); onClose(); },
-  });
-  const submit = () => { if (text.trim() && !save.isPending) save.mutate(text.trim()); };
-  return (
-    <Modal title="Nueva idea" onClose={onClose}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); submit(); }} onKeyDown={(e) => e.key === "Escape" && onClose()}>
-        <Label text="Idea"><Input autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="¿Qué se te ha ocurrido?" /></Label>
-        <Label text="Proyecto">
-          <Select value={project} onChange={setProject} options={[{ value: "", label: "— ninguno —" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
-        </Label>
-        <ErrorText error={save.error} />
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button type="submit" disabled={!text.trim() || save.isPending}>Guardar en inbox</Button>
-        </div>
-      </form>
-    </Modal>
   );
 }
