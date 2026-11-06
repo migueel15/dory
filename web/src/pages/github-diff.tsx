@@ -220,9 +220,24 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
     const first = f.lines[p.start], last = f.lines[p.end];
     comment.mutate({ type: "comment_lines", body, path: f.path, line: number(last), side: side(last), start_line: number(first), start_side: side(first) });
   };
+  // On phones the keyboard covers the bottom of the screen: once it opens, scroll the
+  // comment box so its buttons sit just above the keyboard.
+  const keepAboveKeyboard = (box: HTMLElement) => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const fit = () => {
+      const bottom = box.getBoundingClientRect().bottom, visible = vv.offsetTop + vv.height;
+      if (bottom <= visible - 8) return;
+      let el = box.parentElement;
+      while (el && !(el.scrollHeight > el.clientHeight && /auto|scroll/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
+      (el ?? document.scrollingElement)?.scrollBy({ top: bottom - visible + 8 });
+    };
+    vv.addEventListener("resize", fit, { once: true });
+    setTimeout(() => { vv.removeEventListener("resize", fit); fit(); }, 400);
+  };
   const form = (f: File, p: Pick, placeholder: string) => (
     <div className="my-2 whitespace-normal font-sans">
-                        <Textarea aria-label="Comentario de revisión" autoFocus value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder={placeholder} className="p-2" />
+                        <Textarea aria-label="Comentario de revisión" autoFocus onFocus={(e) => keepAboveKeyboard(e.currentTarget.parentElement!)} value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder={placeholder} className="p-2" />
                         <div className="mt-2 flex gap-2">
                           <Button disabled={comment.isPending || !body.trim()} onClick={() => publish(f, p)}>Publicar en GitHub</Button>
                           <Button variant="ghost" onClick={() => setPick(undefined)}>Cancelar</Button>
