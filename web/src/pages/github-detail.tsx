@@ -84,7 +84,7 @@ function MergeButton({ pull, act, busy }: { pull: GithubPull; act: Act; busy: bo
     <Menu align="right" trigger={(open, toggle) => (
       <div className="inline-flex overflow-hidden rounded-lg bg-green-600 text-white shadow-sm">
         <button type="button" disabled={busy} onClick={merge} className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium hover:bg-green-700 disabled:opacity-50">
-          <Icon i={icons.merge} /> {armed ? `¿${method.name}? Confirmar` : method.name}
+          <Icon i={icons.merge} /> {method.name}<span aria-hidden={!armed} className={`overflow-hidden whitespace-nowrap transition-all duration-200 ease-out motion-reduce:transition-none ${armed ? "max-w-28 opacity-100" : "max-w-0 opacity-0"}`}>· ¿Confirmar?</span>
         </button>
         <button type="button" aria-label="Elegir método de merge" disabled={busy} onClick={toggle} className={`border-l border-green-500 px-2 hover:bg-green-700 ${open ? "bg-green-700" : ""}`}>
           <Icon i={icons.chevron} />

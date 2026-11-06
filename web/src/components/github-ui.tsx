@@ -95,8 +95,9 @@ export function IconButton({ icon, tip, onClick, disabled, tone = "plain", confi
   const ask = confirm && armed;
   return (
     <Tip text={ask ? "Pulsa otra vez para confirmar" : tip}>
-      <button type="button" aria-label={ask ? `Confirmar: ${tip}` : tip} disabled={disabled} onClick={confirm ? click : onClick} className={`flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg border shadow-sm transition-colors disabled:opacity-40 ${ask ? "px-2.5 text-sm font-medium" : ""} ${tones[tone]}`}>
-        <Icon i={icon} />{ask && <span>¿Confirmar?</span>}
+      <button type="button" aria-label={ask ? `Confirmar: ${tip}` : tip} disabled={disabled} onClick={confirm ? click : onClick} className={`flex h-9 min-w-9 items-center justify-center rounded-lg border text-sm font-medium shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none disabled:opacity-40 ${ask ? "px-2.5" : "px-0"} ${tones[tone]}`}>
+        <Icon i={icon} />
+        {confirm && <span aria-hidden={!ask} className={`overflow-hidden whitespace-nowrap transition-all duration-200 ease-out motion-reduce:transition-none ${ask ? "ml-1.5 max-w-28 opacity-100" : "ml-0 max-w-0 opacity-0"}`}>¿Confirmar?</span>}
       </button>
     </Tip>
   );
