@@ -64,22 +64,16 @@ function ThemeToggle() {
   );
 }
 
-// ProjectFilter sets the global project every page filters by. Unset it reads as a
-// plain "Filtrar por proyecto" label; set it becomes a removable badge.
-function ProjectFilter() {
+// ProjectFilter sets the global project every page filters by. It uses the standard selector,
+// with "Todos los proyectos" to clear it.
+function ProjectFilter({ className }: { className?: string }) {
   const project = useProject();
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   // Forget a selection that no longer exists (archived or from another database).
   const gone = !!project && !!projects.data && !projects.data.some((p) => p.id === project);
   useEffect(() => { if (gone) setProject(""); }, [gone]);
   const list = (projects.data ?? []).map((p) => ({ value: p.id, label: p.name }));
-  if (!project || gone) return <Select plain className="w-auto" value="" onChange={setProject} placeholder="Filtrar por proyecto" options={list} />;
-  return (
-    <span className="inline-flex items-center rounded-full bg-blue-50 text-sm text-blue-800 dark:bg-accent-subtle dark:text-accent-text">
-      <Select plain className="w-auto" value={project} onChange={setProject} options={[{ value: "", label: "Todos los proyectos" }, ...list]} />
-      <button type="button" aria-label="Quitar filtro de proyecto" title="Quitar filtro" onClick={() => setProject("")} className="mr-1 grid size-6 place-items-center rounded-full hover:bg-blue-100 dark:hover:bg-accent-border/40"><X aria-hidden="true" className="size-3.5" /></button>
-    </span>
-  );
+  return <Select className={className} value={gone ? "" : project} onChange={setProject} options={[{ value: "", label: "Todos los proyectos" }, ...list]} />;
 }
 
 function VersionBadge() {
@@ -162,7 +156,7 @@ function Layout() {
         <div className="flex h-12 items-center gap-1">
           <Link to="/" className="mr-3 flex items-center gap-2 font-bold sm:hidden">Dory<DevBadge /></Link>
           <div className="ml-auto flex items-center gap-1">
-            <div className="hidden items-center gap-1 sm:flex"><ProjectFilter /></div>
+            <div className="hidden items-center gap-1 sm:flex"><ProjectFilter className="w-52" /></div>
             <Notifications />
             <ThemeToggle />
           </div>
