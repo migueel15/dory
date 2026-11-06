@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { api, type Environment, type Feature, type Memory, type Project, type T3InstanceUsage, type T3Status } from "../api/client";
 import { Limit, Models } from "./usage";
-import { Badge, Button, Card, ErrorText, Arrow, Input, Label, Md, Modal, pill, Select, Textarea, csv, opts } from "../components/ui";
+import { Badge, Button, Card, ErrorText, Arrow, Input, Label, Md, Modal, pill, Select, StatusPill, Textarea, csv, opts } from "../components/ui";
 import { useProject } from "../project";
 
 // Hook compartido: guardar/archivar e invalidar la lista.
@@ -273,8 +273,32 @@ function FeatureForm({ feature, projectId, onClose }: { feature?: Feature; proje
   );
 }
 
+const FEATURE_TONE = { planned: "slate", in_progress: "blue", implemented: "green", deprecated: "amber" } as const;
+
+function FeatureDetail({ feature, onEdit, onClose }: { feature: Feature; onEdit: () => void; onClose: () => void }) {
+  return (
+    <Modal title={feature.title} onClose={onClose} wide>
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusPill tone={FEATURE_TONE[feature.status] ?? "slate"}>{feature.status.replace("_", " ")}</StatusPill>
+      </div>
+      {feature.body_md ? <div className="max-h-[60vh] overflow-y-auto"><Md>{feature.body_md}</Md></div> : <p className="text-sm italic text-slate-500 dark:text-muted">Sin descripción.</p>}
+      {feature.code_refs.length > 0 && (
+        <div className="space-y-1">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-muted">Código</h3>
+          <div className="flex flex-wrap gap-1.5">{feature.code_refs.map((r) => <code key={r} className="break-all rounded bg-slate-100 px-1.5 py-0.5 text-xs dark:bg-raised">{r}</code>)}</div>
+        </div>
+      )}
+      <div className="flex justify-end gap-2 border-t border-slate-200 pt-3 dark:border-border">
+        <Button variant="ghost" onClick={onClose}>Cerrar</Button>
+        <Button onClick={onEdit}>Editar</Button>
+      </div>
+    </Modal>
+  );
+}
+
 export function Features({ projectId }: { projectId: string }) {
   const [editing, setEditing] = useState<Feature | "new" | null>(null);
+  const [viewing, setViewing] = useState<Feature | null>(null);
   const feats = useQuery({ queryKey: ["features", projectId], queryFn: () => api.features.list({ project_id: projectId }) });
   return (
     <>
@@ -287,13 +311,14 @@ export function Features({ projectId }: { projectId: string }) {
       <ul className="divide-y divide-slate-100 border-t border-slate-200 dark:divide-border dark:border-border">
         {feats.data?.map((f) => (
           <li key={f.id}>
-            <button type="button" onClick={() => setEditing(f)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-raised">
+            <button type="button" onClick={() => setViewing(f)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-raised">
               <span className="min-w-0 flex-1 truncate">{f.title}</span><Badge>{f.status}</Badge>
             </button>
           </li>
         ))}
       </ul>
     </details>
+    {viewing && <FeatureDetail feature={viewing} onClose={() => setViewing(null)} onEdit={() => { setEditing(viewing); setViewing(null); }} />}
     {editing && <FeatureForm feature={editing === "new" ? undefined : editing} projectId={projectId} onClose={() => setEditing(null)} />}
     </>
   );
