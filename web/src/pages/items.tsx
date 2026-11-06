@@ -139,13 +139,10 @@ function refLabel(ref: string) {
   return m ? `${m[2] === "pull" ? "PR" : "Issue"} #${m[3]} · ${m[1]}` : ref;
 }
 
-function Section({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-1.5">
-      <div>
-        <h3 className="text-sm font-semibold">{title}</h3>
-        <p className={muted}>{hint}</p>
-      </div>
+      <h3 className="text-sm font-semibold">{title}</h3>
       {children}
     </section>
   );
@@ -154,7 +151,7 @@ function Section({ title, hint, children }: { title: string; hint: string; child
 function OriginalText({ item }: { item: Item }) {
   if (!item.raw_text || item.raw_text === item.title) return null;
   return (
-    <Section title="Texto original" hint="Texto que se escribió al capturar el ticket.">
+    <Section title="Texto original">
       <blockquote className="border-l-4 border-slate-300 pl-3 text-sm whitespace-pre-wrap break-words dark:border-border">{item.raw_text}</blockquote>
     </Section>
   );
@@ -171,7 +168,6 @@ function ItemView({ item, project, feature }: { item: Item; project?: string; fe
           {item.priority > 0 && <Badge>Prioridad {item.priority}</Badge>}
           {item.tags.map((t) => <Badge key={t}>#{t}</Badge>)}
         </div>
-        <p className={muted}>{info.hint}</p>
       </div>
       {item.status === "blocked" && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/40">
@@ -185,14 +181,14 @@ function ItemView({ item, project, feature }: { item: Item; project?: string; fe
         <div><dt className={muted}>Creado</dt><dd>{date(item.created_at)}</dd></div>
         <div><dt className={muted}>Actualizado</dt><dd>{date(item.updated_at)}</dd></div>
       </dl>
-      <Section title="Progreso" hint="Estado actual en una línea. El agente lo reemplaza al avanzar para que otro pueda retomar.">
+      <Section title="Progreso">
         {item.progress ? <p className="rounded-md border-l-4 border-amber-400 bg-amber-50 px-3 py-2 text-sm dark:bg-amber-950/30">{item.progress}</p> : <p className={muted}>Sin progreso registrado.</p>}
       </Section>
       <OriginalText item={item} />
-      <Section title="Descripción" hint="Objetivo, alcance y cómo probarlo. Es lo que lee el agente para trabajar.">
+      <Section title="Descripción">
         {item.body_md ? <div className="rounded-md border border-slate-200 p-3 dark:border-border"><Md>{item.body_md}</Md></div> : <p className={muted}>Sin descripción.</p>}
       </Section>
-      <Section title="Referencias" hint="Enlaces estables: pull requests, issues y ramas.">
+      <Section title="Referencias">
         {item.refs.length ? (
           <ul className="space-y-1 text-sm">
             {item.refs.map((r) => {
@@ -204,7 +200,7 @@ function ItemView({ item, project, feature }: { item: Item; project?: string; fe
           </ul>
         ) : <p className={muted}>Sin referencias.</p>}
       </Section>
-      <Section title="Agentes" hint="Hilos de T3 Code enlazados a este item.">
+      <Section title="Agentes">
         <div><ThreadBadges itemId={item.id} /></div>
       </Section>
     </div>
