@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowsIn, ArrowsOut, CaretRight, Columns, Rows, ChatCircle, CircleNotch, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
@@ -200,6 +200,8 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
   const hits = useMemo(() => new Map(files.map((f) => [f.path, q ? f.lines.filter(hit).length : 0])), [files, q]); // eslint-disable-line react-hooks/exhaustive-deps
   const shown = files.filter((f) => !q || f.path.toLowerCase().includes(q) || hits.get(f.path)! > 0);
 
+  // On touch screens a drag scrolls; tapping a second line number extends the selection instead.
+  const touch = useRef(false);
   const choose = (file: string, i: number, shift: boolean) => {
     const from = shift && pick?.file === file && pick.start >= 0 ? pick.start : i;
     setOpen(false);
@@ -281,7 +283,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
                     const kind = l.kind === "ctx" ? "ctx" : l.kind;
                     return (
                       <div onMouseEnter={() => extend(f.path, i)} className={`flex min-w-0 ${picked ? "bg-yellow-100 dark:bg-yellow-900" : color[kind]} ${hit(l) ? "ring-1 ring-inset ring-amber-400/70" : ""}`}>
-                        <button type="button" title="Comentar esta línea" onMouseDown={(e) => { e.preventDefault(); choose(f.path, i, e.shiftKey); }} className={`w-10 shrink-0 select-none border-r border-slate-200 pr-2 text-right text-slate-400 hover:text-blue-600 dark:border-border dark:hover:text-accent-text ${picked ? "" : gutter[kind]}`}>{l[at] ?? ""}</button>
+                        <button type="button" title="Comentar esta línea (en móvil, toca otra para ampliar el rango)" onPointerDown={(e) => { touch.current = e.pointerType !== "mouse"; }} onMouseDown={(e) => { e.preventDefault(); choose(f.path, i, e.shiftKey || touch.current); }} className={`w-10 shrink-0 touch-manipulation select-none border-r border-slate-200 pr-2 text-right text-slate-400 hover:text-blue-600 dark:border-border dark:hover:text-accent-text ${picked ? "" : gutter[kind]}`}>{l[at] ?? ""}</button>
                         {html.get(f.path)?.[i] !== undefined
                           ? <span className="min-w-0 flex-1 whitespace-pre-wrap break-all px-2"><span>{l.text[0]}</span><span dangerouslySetInnerHTML={{ __html: markHtml(html.get(f.path)![i]!, q) }} /></span>
                           : <span className="min-w-0 flex-1 whitespace-pre-wrap break-all px-2">{l.text ? <>{l.text[0]}{markText(l.text.slice(1), q)}</> : " "}</span>}
@@ -308,7 +310,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
                   <div key={i}>
                     <div onMouseEnter={() => l.kind !== "hunk" && extend(f.path, i)} className={`flex ${picked ? "bg-yellow-100 dark:bg-yellow-900" : color[l.kind]} ${hit(l) ? "ring-1 ring-inset ring-amber-400/70" : ""}`}>
                       {l.kind === "hunk" ? null : (
-                        <button type="button" title="Comentar esta línea" onMouseDown={(e) => { e.preventDefault(); choose(f.path, i, e.shiftKey); }} onMouseEnter={() => extend(f.path, i)} className={`w-20 shrink-0 select-none border-r border-slate-200 pr-2 text-right text-slate-400 hover:text-blue-600 dark:border-border dark:hover:text-accent-text ${picked ? "" : gutter[l.kind]}`}>
+                        <button type="button" title="Comentar esta línea (en móvil, toca otra para ampliar el rango)" onPointerDown={(e) => { touch.current = e.pointerType !== "mouse"; }} onMouseDown={(e) => { e.preventDefault(); choose(f.path, i, e.shiftKey || touch.current); }} onMouseEnter={() => extend(f.path, i)} className={`w-20 shrink-0 touch-manipulation select-none border-r border-slate-200 pr-2 text-right text-slate-400 hover:text-blue-600 dark:border-border dark:hover:text-accent-text ${picked ? "" : gutter[l.kind]}`}>
                           <span className="inline-block w-8">{l.old ?? ""}</span> <span className="inline-block w-8">{l.new ?? ""}</span>
                         </button>
                       )}
