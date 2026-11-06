@@ -307,9 +307,9 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
                         </button>
                       )}
                       {html.get(f.path)?.[i] !== undefined ? (
-                        <span className="min-w-0 flex-1 px-2"><span>{l.text[0]}</span><span dangerouslySetInnerHTML={{ __html: markHtml(html.get(f.path)![i]!, q) }} /></span>
+                        <span className="min-w-0 flex-1 whitespace-pre-wrap break-all px-2"><span>{l.text[0]}</span><span dangerouslySetInnerHTML={{ __html: markHtml(html.get(f.path)![i]!, q) }} /></span>
                       ) : (
-                        <span className={`min-w-0 flex-1 px-2 ${l.kind === "hunk" ? "pl-3" : ""}`}>{l.kind === "hunk" || !l.text ? l.text || " " : <>{l.text[0]}{markText(l.text.slice(1), q)}</>}</span>
+                        <span className={`min-w-0 flex-1 whitespace-pre-wrap break-all px-2 ${l.kind === "hunk" ? "pl-3" : ""}`}>{l.kind === "hunk" || !l.text ? l.text || " " : <>{l.text[0]}{markText(l.text.slice(1), q)}</>}</span>
                       )}
                     </div>
                     {open && !drag && pick?.file === f.path && pick.end === i && (
