@@ -110,6 +110,8 @@ Requiere `air` (`go install github.com/air-verse/air@latest`). El script:
 - La web muestra un distintivo «dev» junto a «Dory» (solo con Vite en desarrollo, nunca en el build).
 - Desactiva la cookie segura y fija el origen en `http://localhost:5173`.
 
+Producción sigue sirviendo en `:8080` con la base `dory`; el modo desarrollo usa `127.0.0.1:8081` y `:5173` y puede correr a la vez. Si un puerto está ocupado, el script se detiene antes de tocar nada.
+
 Variables opcionales: `DORY_ENV_FILE`, `DORY_DEV_DB`, `DORY_DEV_LISTEN` y `DORY_DEV_WEB_PORT`.
 
 La instancia de desarrollo habla con las instancias reales de T3: lo que se lance desde ella (hilos, títulos con IA) ocurre de verdad, y sus notificaciones push se suman a las de producción.

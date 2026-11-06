@@ -12,6 +12,14 @@ WEB_PORT="${DORY_DEV_WEB_PORT:-5173}"
 command -v air >/dev/null || { echo "Falta air: go install github.com/air-verse/air@latest" >&2; exit 1; }
 [[ -f "$ENV_FILE" ]] || { echo "No existe $ENV_FILE" >&2; exit 1; }
 
+# Producción sigue en marcha (8080): los puertos de desarrollo deben estar libres.
+for port in "${API_ADDR##*:}" "$WEB_PORT"; do
+	if ss -Hltn "sport = :$port" | grep -q .; then
+		echo "El puerto $port está ocupado (¿producción u otra sesión de desarrollo?). Cámbialo con DORY_DEV_LISTEN o DORY_DEV_WEB_PORT." >&2
+		exit 1
+	fi
+done
+
 set -a
 # shellcheck disable=SC1090
 source "$ENV_FILE"
