@@ -115,3 +115,15 @@ Producción sigue sirviendo en `:8080` con la base `dory`; el modo desarrollo us
 Variables opcionales: `DORY_ENV_FILE`, `DORY_DEV_DB`, `DORY_DEV_LISTEN` y `DORY_DEV_WEB_PORT`.
 
 La instancia de desarrollo habla con las instancias reales de T3: lo que se lance desde ella (hilos, títulos con IA) ocurre de verdad, y sus notificaciones push se suman a las de producción.
+
+### Probar una rama
+
+Para probar una rama sin mergearla, desde su checkout o worktree:
+
+```sh
+scripts/dev-preview.sh start    # cierra cualquier entorno de desarrollo abierto y levanta esta rama
+scripts/dev-preview.sh status   # rama levantada y URL
+scripts/dev-preview.sh stop     # lo para
+```
+
+Corre en segundo plano como unidad systemd de usuario `dory-dev` (logs: `journalctl --user -u dory-dev -f`) y queda en `http://infra-admin:5173` hasta que se levanta otra rama o se para. Solo hay un entorno de desarrollo a la vez. Los agentes lo lanzan al terminar una función con la skill del proyecto `dory-dev-preview` (`.agents/skills/`, enlazada en `.claude/skills/`).
