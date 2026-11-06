@@ -19,7 +19,7 @@ function ProjectList() {
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   return (
     <div className="space-y-3">
-      <PageHeader title="Proyectos" subtitle="Elige uno para ver su tablero. El filtro global se cambia arriba.">
+      <PageHeader title="Proyectos">
         <Button onClick={() => setCreating(true)}>Nuevo</Button>
       </PageHeader>
       <ErrorText error={projects.error} />
@@ -99,7 +99,7 @@ export function Tasks() {
   const name = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list(), select: (l) => l.find((p) => p.id === project)?.name });
   return (
     <div className="space-y-6">
-      <PageHeader title="Tareas" subtitle={project ? `Proyecto: ${name.data ?? "…"}` : "Todos los proyectos. Elige uno arriba para filtrar."} />
+      <PageHeader title="Tareas" subtitle={project ? name.data : undefined} />
       <Board projectId={project} />
       {project && <Features projectId={project} />}
     </div>

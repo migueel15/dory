@@ -40,7 +40,7 @@ export function Jobs() {
   ].sort((a, b) => b.created.localeCompare(a.created));
   return (
     <div className="space-y-3">
-      <PageHeader title="Trabajos" subtitle="Hilos lanzados desde Dory y su estado" />
+      <PageHeader title="Trabajos" />
       <ErrorText error={t3.error ?? issues.error ?? items.error} />
       {(t3.isPending || issues.isPending) && <Notice loading />}
       {jobs.length === 0 && issues.isSuccess && <Notice>Aún no se ha lanzado ningún hilo desde Dory.</Notice>}

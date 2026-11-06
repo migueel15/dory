@@ -274,12 +274,12 @@ export function Github() {
   return (
     <div className="space-y-4">
       {resolving && <DefineIssueDialog resolve repo={resolving.repo} number={resolving.number} onClose={() => setResolving(null)} />}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold"><GithubMark className="size-6" /> GitHub</h1>
-          <p className="text-xs text-slate-500 dark:text-muted">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <h1 className="text-xl font-bold">GitHub</h1>
+          <span className="truncate text-sm text-slate-500 dark:text-muted">
             {refreshing ? "Actualizando…" : data.data?.fetched_at ? `Actualizado ${ago(data.data.fetched_at)}` : ""}{me && ` · como ${me}`}
-          </p>
+          </span>
         </div>
         <Tip text="Recargar desde GitHub">
           <button type="button" onClick={refresh} disabled={refreshing} aria-label="Recargar" className={pill}>

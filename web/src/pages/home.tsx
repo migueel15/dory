@@ -67,7 +67,7 @@ export function Home() {
 
   return (
     <div className="space-y-3">
-      <PageHeader title="Inicio" subtitle="Qué necesita tu atención ahora" />
+      <PageHeader title="Inicio" />
       <IdeaCapture focusOnSlash />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[

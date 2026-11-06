@@ -81,7 +81,7 @@ export function Attention() {
   const envName = (id: string) => envs.data?.find((e) => e.id === id)?.name ?? "";
   return (
     <div className="space-y-3">
-      <PageHeader title="Atención" subtitle="Lo que espera una decisión tuya" />
+      <PageHeader title="Atención" />
       {(t3.isPending || blocked.isPending) && <Notice loading />}
       <ErrorText error={error} />
       {down.map((s) => <p key={s.instance_id} className="text-sm text-slate-500 dark:text-muted">Sin datos de {envName(s.environment_id)}: instancia no disponible.</p>)}

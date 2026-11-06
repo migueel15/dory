@@ -218,7 +218,7 @@ export function Inbox() {
   const items = useQuery({ queryKey: ["items", "inbox"], queryFn: () => api.items.list({ status: "inbox" }), refetchInterval: pendingPoll, select: (l) => (project ? l.filter((i) => i.project_id === project) : l) });
   return (
     <div className="space-y-3">
-      <PageHeader title="Inbox" subtitle="Ideas capturadas pendientes de revisar">
+      <PageHeader title="Inbox">
         {!!items.data?.length && <Button variant="ghost" onClick={() => setBatch(true)}>Definir todo</Button>}
       </PageHeader>
       {batch && items.data && <LaunchDialog items={items.data} role="refine" onClose={() => setBatch(false)} />}

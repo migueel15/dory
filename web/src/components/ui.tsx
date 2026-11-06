@@ -179,9 +179,9 @@ export function Modal({ title, onClose, children, wide = false }: { title: strin
 // PageHeader gives every page the same title scale, optional subtitle and actions.
 export const PageHeader = ({ title, subtitle, children }: { title: string; subtitle?: string; children?: ReactNode }) => (
   <div className="flex flex-wrap items-center justify-between gap-2">
-    <div>
+    <div className="flex min-w-0 items-baseline gap-2">
       <h1 className="text-xl font-bold">{title}</h1>
-      {subtitle && <p className="text-sm text-slate-500 dark:text-muted">{subtitle}</p>}
+      {subtitle && <span className="truncate text-sm text-slate-500 dark:text-muted">{subtitle}</span>}
     </div>
     {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
   </div>
