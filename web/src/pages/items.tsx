@@ -72,6 +72,7 @@ export function ItemForm({ item, onClose, initialEdit = false }: { initialEdit?:
   return (
     <Modal title="Editar item" onClose={onClose} wide>
       <Label text="Título"><Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus /></Label>
+      <OriginalText item={item} />
       <Label text="Descripción (markdown)"><Textarea value={body} onChange={(e) => setBody(e.target.value)} /></Label>
       <Label text="Progreso (estado actual)"><Input value={progress} onChange={(e) => setProgress(e.target.value)} placeholder="Rama · último commit · qué falta" /></Label>
       <Label text="Referencias (coma): PR, issue, rama"><Input value={refs} onChange={(e) => setRefs(e.target.value)} /></Label>
@@ -150,6 +151,15 @@ function Section({ title, hint, children }: { title: string; hint: string; child
   );
 }
 
+function OriginalText({ item }: { item: Item }) {
+  if (!item.raw_text || item.raw_text === item.title) return null;
+  return (
+    <Section title="Texto original" hint="Texto que se escribió al capturar el ticket.">
+      <blockquote className="border-l-4 border-slate-300 pl-3 text-sm whitespace-pre-wrap break-words dark:border-border">{item.raw_text}</blockquote>
+    </Section>
+  );
+}
+
 function ItemView({ item, project, feature }: { item: Item; project?: string; feature?: string }) {
   const info = STATUS_INFO[item.status];
   return (
@@ -178,6 +188,7 @@ function ItemView({ item, project, feature }: { item: Item; project?: string; fe
       <Section title="Progreso" hint="Estado actual en una línea. El agente lo reemplaza al avanzar para que otro pueda retomar.">
         {item.progress ? <p className="rounded-md border-l-4 border-amber-400 bg-amber-50 px-3 py-2 text-sm dark:bg-amber-950/30">{item.progress}</p> : <p className={muted}>Sin progreso registrado.</p>}
       </Section>
+      <OriginalText item={item} />
       <Section title="Descripción" hint="Objetivo, alcance y cómo probarlo. Es lo que lee el agente para trabajar.">
         {item.body_md ? <div className="rounded-md border border-slate-200 p-3 dark:border-border"><Md>{item.body_md}</Md></div> : <p className={muted}>Sin descripción.</p>}
       </Section>
