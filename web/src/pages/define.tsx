@@ -97,7 +97,7 @@ function Chat({ item, data, draft, setDraft, composer, onChange }: { item: Item;
   const send = useMutation({ mutationFn: (body: RefineInput) => api.refine(item.id, body), onSuccess: () => { setDraft(""); setRestart(false); onChange(); } });
   const end = useRef<HTMLDivElement>(null);
   const count = data?.messages.length ?? 0;
-  useEffect(() => end.current?.scrollIntoView({ block: "end" }), [count, data?.pending?.id]);
+  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [count, data?.pending?.id]);
   if (!data) return <Notice loading />;
   const open = definable(item.status);
   if (open && (!data.thread || restart)) return <StartForm item={item} draft={draft} setDraft={setDraft} restart={restart} send={send} onCancel={data.thread ? () => setRestart(false) : undefined} />;

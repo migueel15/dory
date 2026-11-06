@@ -93,7 +93,7 @@ function Layout() {
   const path = useLocation({ select: (l) => l.pathname });
   const [menu, setMenu] = useState(false);
   const drawer = useRef<HTMLDialogElement>(null);
-  useEffect(() => setMenu(false), [path]);
+  useEffect(() => { setMenu(false); }, [path]);
   useEffect(() => {
     if (!menu || !me.data) return;
     const dialog = drawer.current;
