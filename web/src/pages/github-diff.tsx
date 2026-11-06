@@ -122,6 +122,23 @@ const gutter = { add: "bg-green-100 dark:bg-green-900/40", del: "bg-red-100 dark
 const panel = "rounded-lg border border-slate-200 bg-white dark:border-border dark:bg-surface";
 const anchor = (path: string) => `diff-${path}`;
 
+const markClass = "rounded-sm bg-amber-300 text-slate-900 dark:bg-amber-500/70 dark:text-white";
+const escRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escHtml = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+// markHtml wraps the search term inside highlighted code, touching only the text between tags.
+function markHtml(html: string, q: string) {
+  if (!q) return html;
+  const re = new RegExp(`(${escRe(escHtml(q))})`, "gi");
+  return html.split(/(<[^>]+>)/).map((part) => (part.startsWith("<") ? part : part.replace(re, `<mark class="${markClass}">$1</mark>`))).join("");
+}
+
+// markText does the same for plain lines.
+function markText(text: string, q: string) {
+  if (!q) return text;
+  return text.split(new RegExp(`(${escRe(q)})`, "gi")).map((part, i) => (i % 2 ? <mark key={i} className={markClass}>{part}</mark> : part));
+}
+
 export function Diff({ repo, pr }: { repo: string; pr: number }) {
   const qc = useQueryClient();
   const diff = useQuery({ queryKey: ["github-diff", repo, pr], queryFn: () => api.githubDiff(repo, pr) });
@@ -260,8 +277,8 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
                       <div onMouseEnter={() => extend(f.path, i)} className={`flex min-w-0 ${picked ? "bg-yellow-100 dark:bg-yellow-900" : color[kind]} ${hit(l) ? "ring-1 ring-inset ring-amber-400/70" : ""}`}>
                         <button type="button" title="Comentar esta línea" onMouseDown={(e) => { e.preventDefault(); choose(f.path, i, e.shiftKey); }} className={`w-10 shrink-0 select-none border-r border-slate-200 pr-2 text-right text-slate-400 hover:text-blue-600 dark:border-border dark:hover:text-accent-text ${picked ? "" : gutter[kind]}`}>{l[at] ?? ""}</button>
                         {html.get(f.path)?.[i] !== undefined
-                          ? <span className="min-w-0 flex-1 whitespace-pre-wrap break-all px-2"><span>{l.text[0]}</span><span dangerouslySetInnerHTML={{ __html: html.get(f.path)![i]! }} /></span>
-                          : <span className="min-w-0 flex-1 whitespace-pre-wrap break-all px-2">{l.text || " "}</span>}
+                          ? <span className="min-w-0 flex-1 whitespace-pre-wrap break-all px-2"><span>{l.text[0]}</span><span dangerouslySetInnerHTML={{ __html: markHtml(html.get(f.path)![i]!, q) }} /></span>
+                          : <span className="min-w-0 flex-1 whitespace-pre-wrap break-all px-2">{l.text ? <>{l.text[0]}{markText(l.text.slice(1), q)}</> : " "}</span>}
                       </div>
                     );
                   };
@@ -290,9 +307,9 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
                         </button>
                       )}
                       {html.get(f.path)?.[i] !== undefined ? (
-                        <span className="min-w-0 flex-1 px-2"><span>{l.text[0]}</span><span dangerouslySetInnerHTML={{ __html: html.get(f.path)![i]! }} /></span>
+                        <span className="min-w-0 flex-1 px-2"><span>{l.text[0]}</span><span dangerouslySetInnerHTML={{ __html: markHtml(html.get(f.path)![i]!, q) }} /></span>
                       ) : (
-                        <span className={`min-w-0 flex-1 px-2 ${l.kind === "hunk" ? "pl-3" : ""}`}>{l.text || " "}</span>
+                        <span className={`min-w-0 flex-1 px-2 ${l.kind === "hunk" ? "pl-3" : ""}`}>{l.kind === "hunk" || !l.text ? l.text || " " : <>{l.text[0]}{markText(l.text.slice(1), q)}</>}</span>
                       )}
                     </div>
                     {open && !drag && pick?.file === f.path && pick.end === i && (
