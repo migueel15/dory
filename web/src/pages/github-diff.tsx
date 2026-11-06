@@ -227,13 +227,16 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
     if (!vv) return;
     const fit = () => {
       const bottom = box.getBoundingClientRect().bottom, visible = vv.offsetTop + vv.height;
-      if (bottom <= visible - 8) return;
+      const gap = 16; // breathing room under the buttons
+      if (bottom <= visible - gap) return;
       let el = box.parentElement;
       while (el && !(el.scrollHeight > el.clientHeight && /auto|scroll/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
-      (el ?? document.scrollingElement)?.scrollBy({ top: bottom - visible + 8 });
+      (el ?? document.scrollingElement)?.scrollBy({ top: bottom - visible + gap });
     };
-    vv.addEventListener("resize", fit, { once: true });
-    setTimeout(() => { vv.removeEventListener("resize", fit); fit(); }, 400);
+    // The keyboard opens in steps: keep fitting while it animates.
+    vv.addEventListener("resize", fit);
+    setTimeout(fit, 350);
+    setTimeout(() => { vv.removeEventListener("resize", fit); fit(); }, 800);
   };
   const form = (f: File, p: Pick, placeholder: string) => (
     <div className="my-2 whitespace-normal font-sans">
