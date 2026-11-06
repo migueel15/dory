@@ -31,5 +31,5 @@ scripts/dev-preview.sh stop     # stops it
 
 - Tell the user the URL (`http://infra-admin:5173`) and the branch, so they can try it from any device at home or over Tailscale. The UI shows a `dev` badge next to "Dory".
 - Mention in the item `progress` that the branch is live in the dev environment.
-- Leave it running. It stops when another branch starts or when the user asks.
+- Leave it running. It stops when another branch starts, when the user asks, or by itself within a minute after the branch pull request is merged (into any base). Merging is the validation: Dory then moves the item to `done` on its own.
 - If `start` fails, report the log lines and record the failure in the item `progress`; do not loop on retries.

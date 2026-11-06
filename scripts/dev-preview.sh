@@ -3,6 +3,7 @@
 #   start   para el entorno anterior y lanza scripts/dev.sh desde este checkout o worktree
 #   stop    lo para
 #   status  muestra qué rama está levantada y dónde
+# Mientras corre, vigila la PR de la rama: si se mergea (a cualquier rama), el entorno se cierra solo.
 set -euo pipefail
 
 UNIT=dory-dev
@@ -46,7 +47,8 @@ start)
 		--working-directory="$ROOT" \
 		--setenv=PATH="$PATH:$(go env GOPATH)/bin" \
 		--setenv=HOME="$HOME" \
-		"$ROOT/scripts/dev.sh" >/dev/null
+		--setenv=DORY_DEV_MERGE_POLL="${DORY_DEV_MERGE_POLL:-60}" \
+		"$ROOT/scripts/dev-preview.sh" run "$branch" >/dev/null
 	echo "Levantando ${branch:-HEAD} desde $ROOT..."
 	for _ in $(seq 120); do
 		if ! systemctl --user is-active -q "$UNIT"; then
@@ -74,6 +76,24 @@ status)
 	else
 		echo "No hay entorno de desarrollo levantado."
 	fi
+	;;
+run)
+	# Lo ejecuta la unidad: dev.sh más la vigilancia de la PR de la rama.
+	branch="${2:-}"
+	setsid "$ROOT/scripts/dev.sh" &
+	dev=$!
+	trap 'kill -TERM -- "-$dev" 2>/dev/null; wait "$dev" || true' EXIT INT TERM
+	while kill -0 "$dev" 2>/dev/null; do
+		sleep "${DORY_DEV_MERGE_POLL:-60}" &
+		wait $! || true
+		[[ -n "$branch" ]] || continue
+		merged="$(cd "$ROOT" && gh pr list --head "$branch" --state merged --json number --jq 'length' 2>/dev/null || echo 0)"
+		if [[ "$merged" != "0" ]]; then
+			echo "La PR de $branch está mergeada: cierro el entorno de desarrollo."
+			exit 0
+		fi
+	done
+	wait "$dev"
 	;;
 *)
 	echo "Uso: $0 start|stop|status" >&2
