@@ -40,7 +40,7 @@ export DORY_DATABASE_URL="${DORY_DATABASE_URL%%\?*}"
 export DORY_DATABASE_URL="${DORY_DATABASE_URL%/*}/$DEV_DB?sslmode=disable"
 export DORY_LISTEN="$API_ADDR"
 export DORY_COOKIE_SECURE=false
-export DORY_PUBLIC_ORIGIN="http://localhost:$WEB_PORT"
+export DORY_PUBLIC_ORIGIN="" # compara Origin con Host: vale para localhost, IP o Tailscale
 export DORY_DEV_API="http://$API_ADDR"
 
 go run ./cmd/dory migrate
@@ -49,5 +49,5 @@ go run ./cmd/dory migrate
 
 trap 'kill 0' EXIT INT TERM
 air &
-(cd web && npm run dev -- --port "$WEB_PORT" --strictPort) &
+(cd web && npm run dev -- --host 0.0.0.0 --port "$WEB_PORT" --strictPort) &
 wait
