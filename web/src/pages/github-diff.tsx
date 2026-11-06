@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowsIn, ArrowsOut, CaretRight, ChatCircle, CircleNotch, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
+import { ArrowsIn, ArrowsOut, CaretRight, Columns, Rows, ChatCircle, CircleNotch, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { Button, ErrorText } from "../components/ui";
@@ -37,6 +37,25 @@ function parseDiff(diff: string): File[] {
     }
   }
   return files;
+}
+
+type Row = { hunk?: number; left?: number; right?: number };
+
+// splitRows pairs removed and added lines side by side, like GitHub's split view.
+function splitRows(lines: Line[]): Row[] {
+  const rows: Row[] = [];
+  let dels: number[] = [], adds: number[] = [];
+  const flush = () => {
+    for (let k = 0; k < Math.max(dels.length, adds.length); k++) rows.push({ left: dels[k], right: adds[k] });
+    dels = []; adds = [];
+  };
+  lines.forEach((l, i) => {
+    if (l.kind === "del") { if (adds.length) flush(); dels.push(i); }
+    else if (l.kind === "add") adds.push(i);
+    else { flush(); rows.push(l.kind === "hunk" ? { hunk: i } : { left: i, right: i }); }
+  });
+  flush();
+  return rows;
 }
 
 type Dir = { name: string; dirs: Dir[]; files: File[] };
@@ -114,6 +133,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<string>();
   const [full, setFull] = useState(false);
+  const [split, setSplit] = useState(false);
   const [loaded, setLoaded] = useState(0); // bumps when a language finishes loading
   useEffect(() => {
     if (!full) return;
@@ -191,6 +211,9 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
         <div className={`${panel} min-h-full p-2`}>
           <div className="mb-2 flex gap-1.5">
             <input aria-label="Buscar fichero" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero…" className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-border dark:bg-surface" />
+            <button type="button" onClick={() => setSplit((v) => !v)} title={split ? "Vista unificada" : "Vista dividida"} aria-label={split ? "Vista unificada" : "Vista dividida"} aria-pressed={split} className="grid w-8 shrink-0 place-items-center rounded-md border border-slate-300 bg-white hover:bg-slate-100 dark:border-border dark:bg-surface dark:hover:bg-raised">
+              {split ? <Rows aria-hidden="true" className="size-4" /> : <Columns aria-hidden="true" className="size-4" />}
+            </button>
             <button type="button" onClick={() => setFull((v) => !v)} title={full ? "Salir de pantalla completa (Esc)" : "Pantalla completa"} aria-label={full ? "Salir de pantalla completa" : "Pantalla completa"} className="grid w-8 shrink-0 place-items-center rounded-md border border-slate-300 bg-white hover:bg-slate-100 dark:border-border dark:bg-surface dark:hover:bg-raised">
               {full ? <ArrowsIn aria-hidden="true" className="size-4" /> : <ArrowsOut aria-hidden="true" className="size-4" />}
             </button>
@@ -213,6 +236,37 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
               </span>
             </div>
             {pick?.file === f.path && pick.start < 0 && <div className="px-3">{form(f, pick, `Comentario sobre ${f.path}…`)}</div>}
+            {split ? (
+              <div className="overflow-x-auto font-mono text-xs leading-5">
+                {splitRows(f.lines).map((r, k) => {
+                  if (r.hunk !== undefined) return <div key={k} className={`whitespace-pre py-0 pl-3 ${color.hunk}`}>{f.lines[r.hunk].text}</div>;
+                  const cell = (i: number | undefined, at: "old" | "new") => {
+                    if (i === undefined) return <div className="flex min-w-0 bg-slate-50 dark:bg-raised/50"><span className="w-10 shrink-0 border-r border-slate-200 dark:border-border" /></div>;
+                    const l = f.lines[i];
+                    const picked = pick?.file === f.path && i >= pick.start && i <= pick.end;
+                    const kind = l.kind === "ctx" ? "ctx" : l.kind;
+                    return (
+                      <div onMouseEnter={() => extend(f.path, i)} className={`flex min-w-0 ${picked ? "bg-yellow-100 dark:bg-yellow-900" : color[kind]}`}>
+                        <button type="button" title="Comentar esta línea" onMouseDown={(e) => { e.preventDefault(); choose(f.path, i, e.shiftKey); }} className={`w-10 shrink-0 select-none border-r border-slate-200 pr-2 text-right text-slate-400 hover:text-blue-600 dark:border-border dark:hover:text-accent-text ${picked ? "" : gutter[kind]}`}>{l[at] ?? ""}</button>
+                        {html.get(f.path)?.[i] !== undefined
+                          ? <span className="min-w-0 flex-1 whitespace-pre-wrap break-all px-2"><span>{l.text[0]}</span><span dangerouslySetInnerHTML={{ __html: html.get(f.path)![i]! }} /></span>
+                          : <span className="min-w-0 flex-1 whitespace-pre-wrap break-all px-2">{l.text || " "}</span>}
+                      </div>
+                    );
+                  };
+                  const ends = open && !drag && pick?.file === f.path && pick.start >= 0 && (r.left === pick.end || r.right === pick.end);
+                  return (
+                    <div key={k}>
+                      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] divide-x divide-slate-200 dark:divide-border">
+                        {cell(r.left, "old")}
+                        {cell(r.right, "new")}
+                      </div>
+                      {ends && <div className="px-3">{form(f, pick!, `Comentario en líneas ${number(f.lines[pick!.start])}–${number(f.lines[pick!.end])}…`)}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
             <pre className="overflow-x-auto font-mono text-xs leading-5">
               {f.lines.map((l, i) => {
                 const picked = pick?.file === f.path && i >= pick.start && i <= pick.end;
@@ -237,6 +291,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
                 );
               })}
             </pre>
+            )}
           </section>
         ))}
       </div>
