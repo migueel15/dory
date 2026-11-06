@@ -213,7 +213,6 @@ function ItemView({ item, project, feature }: { item: Item; project?: string; fe
 
 export function Inbox() {
   const [editing, setEditing] = useState<Item | null>(null);
-  const [creating, setCreating] = useState(false);
   const [batch, setBatch] = useState(false);
   const project = useProject();
   const items = useQuery({ queryKey: ["items", "inbox"], queryFn: () => api.items.list({ status: "inbox" }), refetchInterval: pendingPoll, select: (l) => (project ? l.filter((i) => i.project_id === project) : l) });
@@ -221,7 +220,6 @@ export function Inbox() {
     <div className="space-y-3">
       <PageHeader title="Inbox" subtitle="Ideas capturadas pendientes de revisar">
         {!!items.data?.length && <Button variant="ghost" onClick={() => setBatch(true)}>Definir todo</Button>}
-        <Button onClick={() => setCreating(true)}>Nuevo item</Button>
       </PageHeader>
       {batch && items.data && <LaunchDialog items={items.data} role="refine" onClose={() => setBatch(false)} />}
       <IdeaCapture />
@@ -240,7 +238,6 @@ export function Inbox() {
         {items.data?.length === 0 && <Notice>Inbox vacío. Captura una idea arriba.</Notice>}
       </div>
       {editing && <ItemForm item={editing} onClose={() => setEditing(null)} />}
-      {creating && <IdeaModal onClose={() => setCreating(false)} />}
     </div>
   );
 }
