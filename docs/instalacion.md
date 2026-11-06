@@ -108,9 +108,9 @@ Requiere `air` (`go install github.com/air-verse/air@latest`). El script:
 - Aplica las migraciones a `dory_dev`; la base real no se toca.
 - Arranca el backend con air (recompila y reinicia al guardar `.go` o `.sql`, según `.air.toml`) y la web con Vite, que aplica los cambios de `web/src` al instante y reenvía `/api` al backend.
 - La web muestra un distintivo «dev» junto a «Dory» (solo con Vite en desarrollo, nunca en el build).
-- Desactiva la cookie segura y fija el origen en `http://localhost:5173`.
+- Desactiva la cookie segura y deja vacío `DORY_PUBLIC_ORIGIN`: el backend compara `Origin` con `Host`, que el proxy de Vite conserva, así que el login funciona con cualquier nombre de host.
 
-Producción sigue sirviendo en `:8080` con la base `dory`; el modo desarrollo usa `127.0.0.1:8081` y `:5173` y puede correr a la vez. Si un puerto está ocupado, el script se detiene antes de tocar nada.
+Producción sigue sirviendo en `:8080` con la base `dory`; el modo desarrollo usa `127.0.0.1:8081` (solo local) y `0.0.0.0:5173` (accesible desde la red y Tailscale, p. ej. `http://infra-admin:5173`) y puede correr a la vez. Si un puerto está ocupado, el script se detiene antes de tocar nada.
 
 Variables opcionales: `DORY_ENV_FILE`, `DORY_DEV_DB`, `DORY_DEV_LISTEN` y `DORY_DEV_WEB_PORT`.
 
