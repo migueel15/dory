@@ -43,7 +43,7 @@ function Login() {
       onSubmit={(e) => { e.preventDefault(); login.mutate(); }}
     >
       <div>
-        <h1 className="text-xl font-bold">Dory</h1>
+        <h1 className="flex items-center gap-2 text-xl font-bold">Dory<DevBadge /></h1>
         <p className="text-sm text-slate-500 dark:text-muted">Memoria y tareas para tus agentes</p>
       </div>
       <Label text="Usuario"><Input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus /></Label>
@@ -151,7 +151,7 @@ function Layout() {
     <div className="min-h-screen bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text">
       <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2 sm:static sm:px-4">
         <div className="flex h-12 items-center gap-1 sm:h-auto sm:py-2">
-          <span className="mr-3 font-bold">Dory</span>
+          <span className="mr-3 flex items-center gap-2 font-bold">Dory<DevBadge /></span>
           <div className="hidden items-center gap-1 sm:flex">{links}</div>
           <div className="ml-auto flex items-center gap-1">
             <div className="hidden items-center gap-1 sm:flex">
@@ -183,7 +183,7 @@ function Layout() {
       >
         <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-border">
           <div>
-            <h2 id="mobile-navigation-title" className="font-bold">Dory</h2>
+            <h2 id="mobile-navigation-title" className="flex items-center gap-2 font-bold">Dory<DevBadge /></h2>
             <p className="text-xs text-slate-500 dark:text-muted">Navegación</p>
           </div>
           <button type="button" autoFocus aria-label="Cerrar menú" onClick={() => setMenu(false)} className="grid size-11 place-items-center rounded-lg hover:bg-slate-100 dark:hover:bg-raised">
@@ -240,3 +240,8 @@ createRoot(document.getElementById("root")!).render(
 );
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+
+function DevBadge() {
+  if (!import.meta.env.DEV) return null;
+  return <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">dev</span>;
+}
