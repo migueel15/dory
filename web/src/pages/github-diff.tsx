@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowsIn, ArrowsOut, CaretRight, Columns, Rows, ChatCircle, CircleNotch, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
+import { ArrowsIn, ArrowsOut, CaretRight, Columns, Rows, SidebarSimple, ChatCircle, CircleNotch, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { Button, ErrorText, Input, Textarea } from "../components/ui";
@@ -151,6 +151,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
   const [active, setActive] = useState<string>();
   const [full, setFull] = useState(false);
   // The last chosen layout is remembered in this browser for every diff.
+  const [panelOpen, setPanelOpen] = useState(true);
   const [split, setSplitState] = useState(() => { try { return localStorage.getItem("dory.diff-view") === "split"; } catch { return false; } });
   const setSplit = (f: (v: boolean) => boolean) => setSplitState((v) => {
     const next = f(v);
@@ -242,23 +243,37 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
     );
   }
 
+  const toolBtn = "grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-300 bg-white hover:bg-slate-100 dark:border-border dark:bg-surface dark:hover:bg-raised";
+  const tools = (
+    <>
+      <button type="button" onClick={() => setPanelOpen((v) => !v)} title={panelOpen ? "Ocultar panel" : "Mostrar panel"} aria-label={panelOpen ? "Ocultar panel" : "Mostrar panel"} aria-expanded={panelOpen} className={toolBtn}>
+        {panelOpen ? <SidebarSimple aria-hidden="true" weight="fill" className="size-4" /> : <SidebarSimple aria-hidden="true" className="size-4" />}
+      </button>
+      <button type="button" onClick={() => setSplit((v) => !v)} title={split ? "Vista unificada" : "Vista dividida"} aria-label={split ? "Vista unificada" : "Vista dividida"} aria-pressed={split} className={toolBtn}>
+        {split ? <Rows aria-hidden="true" className="size-4" /> : <Columns aria-hidden="true" className="size-4" />}
+      </button>
+      <button type="button" onClick={() => setFull((v) => !v)} title={full ? "Salir de pantalla completa (Esc)" : "Pantalla completa"} aria-label={full ? "Salir de pantalla completa" : "Pantalla completa"} className={toolBtn}>
+        {full ? <ArrowsIn aria-hidden="true" className="size-4" /> : <ArrowsOut aria-hidden="true" className="size-4" />}
+      </button>
+    </>
+  );
+
   return (
     <div className={full ? "fixed inset-0 z-50 h-dvh overflow-hidden overscroll-none bg-slate-50 p-3 dark:bg-canvas" : ""}>
-    <div className={`grid gap-3 md:grid-cols-[16rem_1fr] ${full ? "h-full grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1" : ""}`}>
+    <div className={`grid gap-3 ${panelOpen ? "md:grid-cols-[16rem_1fr]" : "md:grid-cols-[2.25rem_1fr]"} ${full ? "h-full grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1" : ""}`}>
+      {panelOpen ? (
       <aside className={`${full ? "h-[30vh] md:h-auto" : "h-[30vh] md:h-[80vh]"} overflow-auto`}>
         <div className={`${panel} min-h-full p-2`}>
           <div className="mb-2 flex gap-1.5">
             <Input aria-label="Buscar fichero o texto" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero o texto…" className="min-w-0 flex-1 py-1" />
-            <button type="button" onClick={() => setSplit((v) => !v)} title={split ? "Vista unificada" : "Vista dividida"} aria-label={split ? "Vista unificada" : "Vista dividida"} aria-pressed={split} className="grid w-8 shrink-0 place-items-center rounded-md border border-slate-300 bg-white hover:bg-slate-100 dark:border-border dark:bg-surface dark:hover:bg-raised">
-              {split ? <Rows aria-hidden="true" className="size-4" /> : <Columns aria-hidden="true" className="size-4" />}
-            </button>
-            <button type="button" onClick={() => setFull((v) => !v)} title={full ? "Salir de pantalla completa (Esc)" : "Pantalla completa"} aria-label={full ? "Salir de pantalla completa" : "Pantalla completa"} className="grid w-8 shrink-0 place-items-center rounded-md border border-slate-300 bg-white hover:bg-slate-100 dark:border-border dark:bg-surface dark:hover:bg-raised">
-              {full ? <ArrowsIn aria-hidden="true" className="size-4" /> : <ArrowsOut aria-hidden="true" className="size-4" />}
-            </button>
+            {tools}
           </div>
           <Tree dir={treeRoot} jump={jump} active={active} />
         </div>
       </aside>
+      ) : (
+      <aside className="flex gap-1.5 md:flex-col">{tools}</aside>
+      )}
       <div className={`min-w-0 space-y-3 overflow-auto overscroll-contain ${full ? "" : "md:h-[80vh]"}`}>
         <ErrorText error={diff.error ?? comment.error} />
         {shown.map((f) => (
