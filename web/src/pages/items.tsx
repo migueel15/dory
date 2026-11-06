@@ -314,7 +314,7 @@ export function Board({ projectId }: { projectId: string }) {
         </div>
       </DndContext>
       {editing && <ItemForm item={editing} onClose={() => setEditing(null)} />}
-      {creating && <IdeaModal onClose={() => setCreating(false)} />}
+      {creating && <IdeaModal projectId={projectId} onClose={() => setCreating(false)} />}
     </div>
   );
 }
