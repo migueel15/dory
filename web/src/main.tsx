@@ -125,21 +125,18 @@ function Layout() {
   if (me.isPending) return null;
   if (!me.data) return <Login />;
   const link = "flex min-h-11 shrink-0 items-center rounded px-3 text-sm sm:min-h-0 sm:px-2 sm:py-1 hover:bg-slate-200 dark:hover:bg-raised [&.active]:bg-slate-900 dark:[&.active]:bg-accent [&.active]:text-white dark:[&.active]:text-white";
-  const group = (name: string) => <span className="mt-4 mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-muted sm:hidden">{name}</span>;
-  const sep = <span className="mx-1 hidden h-5 w-px self-center bg-slate-200 dark:bg-border sm:block" aria-hidden="true" />;
+  const group = (name: string) => <span className="mt-4 mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-muted">{name}</span>;
   const links = (
     <>
       {group("Trabajo")}
       <Link to="/" activeOptions={{ exact: true }} className={link}>Inicio</Link>
       <Link to="/inbox" className={link}>Inbox</Link>
       <Link to="/projects" className={link}>Proyectos</Link>
-      {sep}
       {group("Agentes")}
       <Link to="/tasks" className={link}>Tareas</Link>
       <Link to="/attention" className={link}>Atención{attention > 0 && <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-white">{attention}</span>}</Link>
       <Link to="/jobs" className={link}>Trabajos</Link>
       <Link to="/usage" className={link}>Uso</Link>
-      {sep}
       {group("Sistema")}
       <Link to="/github" className={link}>GitHub</Link>
       <Link to="/environments" className={link}>Entornos</Link>
@@ -148,20 +145,26 @@ function Layout() {
     </>
   );
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text">
-      <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2 sm:static sm:px-4">
-        <div className="flex h-12 items-center gap-1 sm:h-auto sm:py-2">
-          <span className="mr-3 flex items-center gap-2 font-bold">Dory<DevBadge /></span>
-          <div className="hidden items-center gap-1 sm:flex">{links}</div>
+    <div className="min-h-screen bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex">
+      <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-slate-200 bg-white dark:border-border dark:bg-surface sm:flex">
+        <span className="flex items-center gap-2 px-4 py-3 font-bold">Dory<DevBadge /></span>
+        <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4">{links}</nav>
+        <div className="shrink-0 space-y-2 border-t border-slate-200 p-3 dark:border-border">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
+            <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
+          </div>
+          <VersionBadge />
+        </div>
+      </aside>
+      <div className="min-w-0 flex-1">
+      <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2 sm:px-4">
+        <div className="flex h-12 items-center gap-1">
+          <span className="mr-3 flex items-center gap-2 font-bold sm:hidden">Dory<DevBadge /></span>
           <div className="ml-auto flex items-center gap-1">
-            <div className="hidden items-center gap-1 sm:flex">
-              <ProjectFilter />
-              <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
-              <VersionBadge />
-            </div>
+            <div className="hidden items-center gap-1 sm:flex"><ProjectFilter /></div>
             <Notifications />
             <ThemeToggle />
-            <Button variant="ghost" className="hidden sm:inline-flex" onClick={() => logout.mutate()}>Salir</Button>
           </div>
           <button type="button" aria-label="Menú" aria-controls="mobile-navigation" aria-expanded={menu} onClick={() => setMenu(!menu)} className="grid size-11 place-items-center rounded hover:bg-slate-200 dark:hover:bg-raised sm:hidden">
             {menu ? <X className="size-5" aria-hidden="true" /> : <List className="size-5" aria-hidden="true" />}
@@ -204,7 +207,7 @@ function Layout() {
           <VersionBadge />
         </div>
       </dialog>
-      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main><CommandPalette />
+      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main></div><CommandPalette />
     </div>
   );
 }
