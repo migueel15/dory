@@ -185,9 +185,12 @@ function ItemView({ item, project, feature }: { item: Item; project?: string; fe
         {item.progress ? <p className="rounded-md border-l-4 border-amber-400 bg-amber-50 px-3 py-2 text-sm dark:bg-amber-950/30">{item.progress}</p> : <p className={muted}>Sin progreso registrado.</p>}
       </Section>
       <OriginalText item={item} />
-      <Section title="Descripción">
-        {item.body_md ? <div className="rounded-md border border-slate-200 p-3 dark:border-border"><Md>{item.body_md}</Md></div> : <p className={muted}>Sin descripción.</p>}
-      </Section>
+      {item.body_md ? (
+        <details className="group space-y-1.5">
+          <summary className="cursor-pointer list-none text-sm font-semibold">Descripción <span aria-hidden="true" className="ml-1 inline-block text-slate-400 transition-transform group-open:rotate-90 motion-reduce:transition-none">›</span></summary>
+          <div className="rounded-md border border-slate-200 p-3 dark:border-border"><Md>{item.body_md}</Md></div>
+        </details>
+      ) : <Section title="Descripción"><p className={muted}>Sin descripción.</p></Section>}
       <Section title="Referencias">
         {item.refs.length ? (
           <ul className="space-y-1 text-sm">
