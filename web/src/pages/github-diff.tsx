@@ -172,7 +172,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
   );
   const jump = (path: string) => {
     setActive(path);
-    document.getElementById(anchor(path))?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById(anchor(path))?.closest("section")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const treeRoot = useMemo(() => tree(shown), [filter, files]); // eslint-disable-line react-hooks/exhaustive-deps
 
