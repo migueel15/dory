@@ -189,17 +189,16 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
     <div className={`grid gap-3 md:grid-cols-[16rem_1fr] ${full ? "h-full grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1" : ""}`}>
       <aside className={`${full ? "h-[30vh] md:h-auto" : "h-[30vh] md:h-[80vh]"} overflow-auto`}>
         <div className={`${panel} min-h-full p-2`}>
-          <input aria-label="Buscar fichero" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero…" className="mb-2 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-border dark:bg-surface" />
+          <div className="mb-2 flex gap-1.5">
+            <input aria-label="Buscar fichero" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero…" className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-border dark:bg-surface" />
+            <button type="button" onClick={() => setFull((v) => !v)} title={full ? "Salir de pantalla completa (Esc)" : "Pantalla completa"} aria-label={full ? "Salir de pantalla completa" : "Pantalla completa"} className="grid w-8 shrink-0 place-items-center rounded-md border border-slate-300 bg-white hover:bg-slate-100 dark:border-border dark:bg-surface dark:hover:bg-raised">
+              {full ? <ArrowsIn aria-hidden="true" className="size-4" /> : <ArrowsOut aria-hidden="true" className="size-4" />}
+            </button>
+          </div>
           <Tree dir={treeRoot} jump={jump} active={active} />
         </div>
       </aside>
       <div className={`min-w-0 space-y-3 overflow-auto overscroll-contain ${full ? "" : "md:h-[80vh]"}`}>
-        <div className="flex justify-end">
-          <button type="button" onClick={() => setFull((v) => !v)} title={full ? "Salir de pantalla completa (Esc)" : "Pantalla completa"} aria-label={full ? "Salir de pantalla completa" : "Pantalla completa"} className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-100 dark:border-border dark:bg-surface dark:hover:bg-raised">
-            {full ? <ArrowsIn aria-hidden="true" className="size-4" /> : <ArrowsOut aria-hidden="true" className="size-4" />}
-            {full ? "Salir" : "Pantalla completa"}
-          </button>
-        </div>
         <ErrorText error={diff.error ?? comment.error} />
         {shown.map((f) => (
           <section key={f.path} className={panel}>
