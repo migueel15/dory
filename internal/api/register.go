@@ -11,6 +11,7 @@ import (
 	"github.com/migueel15/dory/internal/github"
 	"github.com/migueel15/dory/internal/service"
 	"github.com/migueel15/dory/internal/t3"
+	"github.com/migueel15/dory/internal/version"
 )
 
 // actor identifies the writer in audit events using the authenticated identity.
@@ -29,6 +30,7 @@ func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *
 	mountResource(mux, "items", svc.Items(), func(v *service.Item) *service.Record { return &v.Record })
 	mountResource(mux, "memories", svc.Memories(), func(v *service.Memory) *service.Record { return &v.Record })
 	mountResource(mux, "links", svc.Links(), func(v *service.Link) *service.Record { return &v.Record })
+	mux.HandleFunc("GET /api/version", version.Handler())
 	mux.HandleFunc("GET /api/t3/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, monitor.Statuses())
 	})

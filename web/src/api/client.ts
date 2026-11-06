@@ -96,6 +96,7 @@ export const api = {
   issueDefine: (repo: string, number: number, body: IssueDefineInput) => req<{ thread_id: string }>("POST", `/github/repos/${repo}/issues/${number}/define`, body),
   branches: (repo: string) => req<string[]>("GET", `/github/repos/${repo}/branches`),
   issueThreads: () => req<IssueThread[]>("GET", "/issue-threads?limit=200"),
+  version: () => req<S["Version"]>("GET", "/version"),
   t3Status: () => req<T3Status[]>("GET", "/t3/status"),
   t3Usage: () => req<T3InstanceUsage[]>("GET", "/t3/usage"),
   t3UsageRefresh: () => req<T3InstanceUsage[]>("POST", "/t3/usage/refresh"),

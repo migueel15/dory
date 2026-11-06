@@ -398,6 +398,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Build version of the running binary */
+        get: operations["getVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/t3/status": {
         parameters: {
             query?: never;
@@ -1244,6 +1261,12 @@ export interface components {
                     }[];
                 }[];
             } | null;
+        };
+        Version: {
+            revision: string;
+            short: string;
+            time: string;
+            modified: boolean;
         };
         T3Status: {
             /** Format: uuid */
@@ -2712,6 +2735,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description VCS revision embedded by go build, or dev without VCS data */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Version"];
+                };
             };
         };
     };
