@@ -2,6 +2,7 @@ package dictation
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"sync"
 	"testing"
@@ -10,17 +11,19 @@ import (
 
 // fakeEngine returns the WAV bytes as text, optionally failing on one batch.
 type fakeEngine struct {
-	mu    sync.Mutex
-	order []string
-	fail  string
-	delay time.Duration
+	mu      sync.Mutex
+	order   []string
+	prompts []string
+	fail    string
+	delay   time.Duration
 }
 
-func (f *fakeEngine) Transcribe(_ context.Context, wav []byte) (string, error) {
+func (f *fakeEngine) Transcribe(_ context.Context, wav []byte, prompt string) (string, error) {
 	time.Sleep(f.delay)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.order = append(f.order, string(wav))
+	f.prompts = append(f.prompts, prompt)
 	if string(wav) == f.fail {
 		return "", errors.New("boom")
 	}
@@ -57,6 +60,9 @@ func TestOrderAndFinishInsert(t *testing.T) {
 	}
 	if len(eng.order) != 3 || eng.order[2] != "estás" {
 		t.Fatalf("batches out of order: %v", eng.order)
+	}
+	if eng.prompts[0] != "" || eng.prompts[1] != "hola qué" || eng.prompts[2] != "hola qué tal" {
+		t.Fatalf("prompts should be the previous text: %q", eng.prompts)
 	}
 	if _, err := m.Add("u", st.ID, 3, []byte("x")); !errors.Is(err, ErrFinished) {
 		t.Fatalf("want finished, got %v", err)
@@ -129,5 +135,50 @@ func TestMerge(t *testing.T) {
 		if got := Merge(c[0], c[1]); got != c[2] {
 			t.Errorf("Merge(%q,%q)=%q want %q", c[0], c[1], got, c[2])
 		}
+	}
+}
+
+// pcmWAV builds a 16 kHz mono 16-bit WAV of n samples at amplitude amp.
+func pcmWAV(n int, amp int16) []byte {
+	b := make([]byte, 44+2*n)
+	copy(b, "RIFF")
+	binary.LittleEndian.PutUint32(b[4:], uint32(36+2*n))
+	copy(b[8:], "WAVEfmt ")
+	binary.LittleEndian.PutUint32(b[16:], 16)
+	binary.LittleEndian.PutUint16(b[20:], 1)
+	binary.LittleEndian.PutUint16(b[22:], 1)
+	binary.LittleEndian.PutUint32(b[24:], 16000)
+	binary.LittleEndian.PutUint32(b[28:], 32000)
+	binary.LittleEndian.PutUint16(b[32:], 2)
+	binary.LittleEndian.PutUint16(b[34:], 16)
+	copy(b[36:], "data")
+	binary.LittleEndian.PutUint32(b[40:], uint32(2*n))
+	for i := 0; i < n; i++ {
+		v := amp
+		if i%2 == 1 {
+			v = -amp
+		}
+		binary.LittleEndian.PutUint16(b[44+2*i:], uint16(v))
+	}
+	return b
+}
+
+func TestSilentBatchSkipped(t *testing.T) {
+	eng := &fakeEngine{}
+	m := New(eng)
+	st, _ := m.Create("u")
+	out, err := m.Add("u", st.ID, 0, pcmWAV(16000, 50))
+	if err != nil || out.Pending != 0 {
+		t.Fatalf("silent batch should not queue: %+v %v", out, err)
+	}
+	if _, err := m.Add("u", st.ID, 1, []byte("hola")); err != nil {
+		t.Fatalf("next seq should be accepted: %v", err)
+	}
+	if !silent(pcmWAV(1600, 0)) || silent(pcmWAV(16000, 3000)) {
+		t.Fatal("silence detection wrong")
+	}
+	out, _ = m.Finish(context.Background(), "u", st.ID, nil)
+	if out.Text != "hola" || len(eng.order) != 1 {
+		t.Fatalf("engine must only see the voiced batch: %+v %v", out, eng.order)
 	}
 }

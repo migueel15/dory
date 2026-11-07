@@ -6,9 +6,11 @@ package dictation
 import (
 	"context"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"log"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -29,10 +31,18 @@ var (
 	ErrUnavailable = errors.New("dictation engine not configured")
 )
 
-// Engine transcribes one self-contained WAV batch.
+// Engine transcribes one self-contained WAV batch. prompt is the end of the
+// text already transcribed in the session, given as context; it may be empty.
 type Engine interface {
-	Transcribe(ctx context.Context, wav []byte) (string, error)
+	Transcribe(ctx context.Context, wav []byte, prompt string) (string, error)
 }
+
+// PromptWords bounds the context passed to the engine with each batch.
+const PromptWords = 30
+
+// Silence is the RMS of a 100 ms frame below which it counts as silence; the
+// web client uses the same threshold.
+const Silence = 0.01
 
 // Deliver sends the final text somewhere once a session in send mode ends.
 type Deliver func(ctx context.Context, text string) error
@@ -144,6 +154,11 @@ func (m *Manager) Add(owner, id string, seq int, wav []byte) (State, error) {
 		return State{}, ErrQueueFull
 	}
 	s.next++
+	if silent(wav) {
+		// Nothing to transcribe: keep the order but skip the engine.
+		s.mu.Unlock()
+		return s.state(), nil
+	}
 	s.pending++
 	s.queue <- chunk{seq: seq, wav: wav}
 	s.mu.Unlock()
@@ -243,12 +258,13 @@ func (m *Manager) work(s *session) {
 	for c := range s.queue {
 		s.mu.Lock()
 		failed := s.status == "failed"
+		prompt := tail(s.text, PromptWords)
 		s.mu.Unlock()
 		var text string
 		var err error
 		if !failed {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-			text, err = m.engine.Transcribe(ctx, c.wav)
+			text, err = m.engine.Transcribe(ctx, c.wav, prompt)
 			cancel()
 		}
 		s.mu.Lock()
@@ -295,4 +311,60 @@ func Merge(prev, next string) string {
 
 func norm(w string) string {
 	return strings.ToLower(strings.TrimFunc(w, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }))
+}
+
+// tail returns the last n words of text.
+func tail(text string, n int) string {
+	w := strings.Fields(text)
+	if len(w) > n {
+		w = w[len(w)-n:]
+	}
+	return strings.Join(w, " ")
+}
+
+// silent reports whether wav is a 16-bit PCM WAV where no 100 ms frame
+// reaches Silence. Anything it cannot parse counts as voice.
+func silent(wav []byte) bool {
+	if len(wav) < 12 || string(wav[0:4]) != "RIFF" || string(wav[8:12]) != "WAVE" {
+		return false
+	}
+	rate, bits := 0, 0
+	for p := 12; p+8 <= len(wav); {
+		id, size := string(wav[p:p+4]), int(binary.LittleEndian.Uint32(wav[p+4:p+8]))
+		body := wav[p+8:]
+		if size > len(body) {
+			size = len(body)
+		}
+		switch id {
+		case "fmt ":
+			if size < 16 || binary.LittleEndian.Uint16(body[0:2]) != 1 || binary.LittleEndian.Uint16(body[2:4]) != 1 {
+				return false
+			}
+			rate, bits = int(binary.LittleEndian.Uint32(body[4:8])), int(binary.LittleEndian.Uint16(body[14:16]))
+		case "data":
+			if bits != 16 || rate <= 0 {
+				return false
+			}
+			return quiet(body[:size], rate/10)
+		}
+		p += 8 + size + size%2
+	}
+	return false
+}
+
+// quiet reports whether every frame of 16-bit samples stays under Silence.
+func quiet(pcm []byte, frame int) bool {
+	n := len(pcm) / 2
+	for f := 0; f < n; f += frame {
+		end := min(f+frame, n)
+		var sum float64
+		for i := f; i < end; i++ {
+			v := float64(int16(binary.LittleEndian.Uint16(pcm[2*i:]))) / 32768
+			sum += v * v
+		}
+		if math.Sqrt(sum/float64(end-f)) >= Silence {
+			return false
+		}
+	}
+	return true
 }
