@@ -155,7 +155,7 @@ function Machine({ env, status }: { env: Environment; status: T3Status }) {
       {env.notes && <p className="whitespace-pre-wrap rounded-md bg-slate-50 p-2 text-xs text-slate-600 dark:bg-raised dark:text-text-secondary">{env.notes}</p>}
 
       <div className="mt-auto flex justify-end border-t border-slate-100 pt-3 dark:border-border">
-        <button type="button" className={pill} onClick={() => openT3(status)}>Abrir T3 Code <Arrow /></button>
+        {status.instance_id && <button type="button" className={pill} onClick={() => openT3(status)}>Abrir T3 Code <Arrow /></button>}
       </div>
     </Card>
   );
@@ -165,18 +165,20 @@ function Machine({ env, status }: { env: Environment; status: T3Status }) {
 export function Environments() {
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
   const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 60_000 });
-  const machines = (envs.data ?? []).flatMap((env) => {
-    const status = t3.data?.find((s) => s.environment_id === env.id);
-    return status ? [{ env, status }] : [];
-  }).sort((a, b) => a.env.name.localeCompare(b.env.name));
+  // Every environment is listed; one without a status yet (or between reads) counts as disconnected,
+  // so a machine going offline never vanishes from the page or the count.
+  const machines = (envs.data ?? []).map((env) => ({
+    env,
+    status: t3.data?.find((s) => s.environment_id === env.id) ?? { instance_id: "", environment_id: env.id, base_url: "", state: "disconnected" as const, version: "", last_seen: null, threads: [] },
+  })).sort((a, b) => a.env.name.localeCompare(b.env.name));
   const online = machines.filter((m) => m.status.state === "available").length;
   return (
     <div className="space-y-3">
-      <PageHeader title="Entornos" subtitle={machines.length ? `${online} de ${machines.length} disponibles` : undefined} />
+      <PageHeader title="Entornos" subtitle={t3.data && machines.length ? `${online} de ${machines.length} disponibles` : undefined} />
       <ErrorText error={envs.error ?? t3.error} />
       {envs.data && t3.data && machines.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">T3 Code no ha detectado ninguna máquina.</p>}
       <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
-        {machines.map(({ env, status }) => <Machine key={env.id} env={env} status={status} />)}
+        {t3.data && machines.map(({ env, status }) => <Machine key={env.id} env={env} status={status} />)}
       </div>
     </div>
   );
