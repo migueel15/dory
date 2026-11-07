@@ -90,12 +90,12 @@ function Chat({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const end = useRef<HTMLDivElement>(null);
   const last = v.messages.at(-1);
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [v.messages.length, last?.text.length, !!v.pending, v.queue.length]);
-  const working = !!v.active_run_id && !last?.streaming;
+  const working = !!v.active_run_id && !last?.streaming && (last?.role === "user" || last?.role === "assistant" || !last);
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto py-3"><div className="mx-auto w-full max-w-3xl space-y-4 px-3 sm:px-6 [&>.step+.step]:!mt-1.5">
+      <div className="min-h-0 flex-1 overflow-y-auto py-3"><div className="mx-auto w-full max-w-3xl space-y-4 px-3 sm:px-6">
         {v.messages.length === 0 && <p className="py-10 text-center text-sm text-slate-500 dark:text-muted">Sin mensajes todavía. Escribe abajo para empezar.</p>}
-        {v.messages.map((m) => m.role === "reasoning" ? <Reasoning key={m.id} m={m} /> : m.role === "tool" ? <ToolStep key={m.id} m={m} /> : m.role === "user" ? (
+        {groups(v.messages).map((m, gi, all) => Array.isArray(m) ? <WorkBlock key={m[0].id} steps={m} live={!!v.active_run_id && gi === all.length - 1} /> : m.role === "user" ? (
           <div key={m.id} className="flex justify-end">
             <div className="max-w-[85%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-2.5 text-white shadow-sm dark:bg-raised [&_*]:!text-inherit"><Md>{m.text}</Md></div>
           </div>
@@ -122,31 +122,73 @@ function Chat({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   );
 }
 
-// Reasoning shows the model's thinking, open while it streams and folded after.
-function Reasoning({ m }: { m: T3ViewMessage }) {
-  const [open, setOpen] = useState<boolean | null>(null);
-  const shown = open ?? m.streaming;
-  if (!m.text && !m.streaming) return null;
+const isStep = (m: T3ViewMessage) => m.role === "reasoning" || m.role === "tool";
+
+// groups folds each run of consecutive reasoning and tool steps into one block.
+function groups(ms: T3ViewMessage[]): (T3ViewMessage | T3ViewMessage[])[] {
+  const out: (T3ViewMessage | T3ViewMessage[])[] = [];
+  for (const m of ms) {
+    const prev = out.at(-1);
+    if (!isStep(m)) out.push(m);
+    else if (Array.isArray(prev)) prev.push(m);
+    else out.push([m]);
+  }
+  return out;
+}
+
+const stepRunning = (m: T3ViewMessage) => m.streaming || (m.role === "tool" && !["completed", "failed", "error", "declined"].includes(m.status ?? ""));
+const stepFailed = (m: T3ViewMessage) => m.status === "failed" || m.status === "error";
+const stepLabel = (m: T3ViewMessage) => m.role === "reasoning" ? (m.streaming ? "Pensando…" : "Razonamiento") : m.title || "Herramienta";
+
+function StepIcon({ m }: { m: T3ViewMessage }) {
+  if (stepFailed(m)) return <X className="size-3.5 shrink-0 text-red-500" />;
+  if (stepRunning(m)) return <span className="size-3 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />;
+  return m.role === "reasoning" ? <Brain className="size-3.5 shrink-0" /> : <Wrench className="size-3.5 shrink-0" />;
+}
+
+// WorkBlock is one label that follows the model's current step; unfolded it
+// lists every thought and tool of that stretch, each foldable on its own.
+function WorkBlock({ steps, live }: { steps: T3ViewMessage[]; live: boolean }) {
+  const [open, setOpen] = useState(false);
+  const last = steps[steps.length - 1];
+  const running = live || steps.some(stepRunning);
+  const tools = steps.filter((m) => m.role === "tool").length;
+  const summary = running ? stepLabel(last) : `${steps.length} pasos${tools ? ` · ${tools} herramientas` : ""}`;
+  const preview = running && (last.role === "tool" ? last.detail : last.text.split("\n").filter(Boolean).at(-1));
   return (
     <div className="text-sm">
-      <button type="button" onClick={() => setOpen(!shown)} className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
-        <Brain className={`size-3.5 ${m.streaming ? "motion-safe:animate-pulse" : ""}`} />{m.streaming ? "Pensando…" : "Razonamiento"}
-        {shown ? <CaretDown className="size-3" /> : <CaretRight className="size-3" />}
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
+        className="flex max-w-full items-center gap-2 rounded-lg py-0.5 text-xs text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
+        {running ? <StepIcon m={{ ...last, streaming: true }} /> : <Check className="size-3.5 shrink-0" />}
+        <span className="shrink-0 font-medium">{summary}</span>
+        {preview && <span className="min-w-0 truncate font-mono opacity-70">{preview}</span>}
+        {open ? <CaretDown className="size-3 shrink-0" /> : <CaretRight className="size-3 shrink-0" />}
       </button>
-      {shown && <div className="mt-1 border-l-2 border-slate-200 pl-3 text-slate-500 dark:border-border dark:text-muted [&_*]:!text-inherit"><Md>{m.text || "…"}</Md></div>}
+      {open && (
+        <div className="mt-1 space-y-1 border-l-2 border-slate-200 pl-3 dark:border-border">
+          {steps.map((m) => <Step key={m.id} m={m} />)}
+        </div>
+      )}
     </div>
   );
 }
 
-// ToolStep is one compact line per tool the model ran.
-function ToolStep({ m }: { m: T3ViewMessage }) {
-  const failed = m.status === "failed" || m.status === "error";
-  const running = !failed && m.status !== "completed" && m.status !== "declined";
+// Step is one thought or tool call inside a WorkBlock; it unfolds its text or input.
+function Step({ m }: { m: T3ViewMessage }) {
+  const body = m.role === "reasoning" ? m.text : m.detail ?? "";
+  const [open, setOpen] = useState<boolean | null>(null);
+  const shown = open ?? (m.role === "reasoning" && m.streaming);
   return (
-    <div className="step flex min-w-0 items-center gap-2 text-xs text-slate-500 dark:text-muted" title={m.detail}>
-      {failed ? <X className="size-3.5 shrink-0 text-red-500" /> : running ? <span className="size-3 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <Wrench className="size-3.5 shrink-0" />}
-      <span className="shrink-0 font-medium text-slate-700 dark:text-text-secondary">{m.title}</span>
-      {m.detail && <code className="min-w-0 truncate font-mono">{m.detail}</code>}
+    <div className="text-xs text-slate-500 dark:text-muted">
+      <button type="button" disabled={!body} onClick={() => setOpen(!shown)} className="flex max-w-full items-center gap-2 py-0.5 hover:text-slate-900 disabled:hover:text-inherit dark:hover:text-white">
+        <StepIcon m={m} />
+        <span className="shrink-0 font-medium text-slate-700 dark:text-text-secondary">{stepLabel(m)}</span>
+        {!shown && m.role === "tool" && body && <code className="min-w-0 truncate font-mono">{body}</code>}
+        {body && (shown ? <CaretDown className="size-3 shrink-0" /> : <CaretRight className="size-3 shrink-0" />)}
+      </button>
+      {shown && body && (m.role === "reasoning"
+        ? <div className="pb-1 pl-5 text-slate-500 dark:text-muted [&_*]:!text-inherit"><Md>{body}</Md></div>
+        : <pre className="mb-1 ml-5 max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-100 p-2 font-mono text-[11px] dark:bg-raised">{body}</pre>)}
     </div>
   );
 }
