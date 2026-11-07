@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowsIn, ArrowsOut, CaretRight, Columns, Rows, SidebarSimple, ChatCircle, CircleNotch, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
+import { ArrowsIn, ArrowsOut, CaretRight, Columns, Rows, SidebarSimple, ChatCircle, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { Button, ErrorText, Input, Textarea, keepAboveKeyboard } from "../components/ui";
@@ -235,13 +235,26 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
   };
   const treeRoot = useMemo(() => tree(shown), [filter, files]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (diff.isPending) {
-    return (
-      <div className={`${panel} flex items-center justify-center gap-2 p-10 text-sm text-slate-500 dark:text-muted`} role="status">
-        <CircleNotch aria-hidden="true" className="size-5 animate-spin" /> Cargando diff…
+  // While the diff loads, the real layout renders with placeholder bars in place of files and code.
+  const loading = diff.isPending;
+  const bar = "rounded bg-slate-200 motion-safe:animate-pulse dark:bg-raised";
+  const widths = [72, 55, 88, 40, 64, 80, 35, 70, 50, 60];
+  const treeSkeleton = (
+    <div role="status" aria-label="Cargando ficheros" className="space-y-2 px-1 pt-1">
+      {widths.slice(0, 8).map((w, i) => <div key={i} className={`h-3.5 ${bar}`} style={{ width: `${w}%`, marginLeft: i % 3 ? 12 : 0 }} />)}
+    </div>
+  );
+  const filesSkeleton = [0, 1].map((k) => (
+    <section key={k} className={panel} aria-hidden="true">
+      <div className="flex items-center justify-between gap-2 rounded-t-lg border-b border-slate-200 bg-slate-50 px-3 py-2 dark:border-border dark:bg-raised">
+        <div className={`h-3.5 w-56 max-w-[60%] ${bar}`} />
+        <div className={`h-3.5 w-16 ${bar}`} />
       </div>
-    );
-  }
+      <div className="space-y-2 p-3">
+        {widths.map((w, i) => <div key={i} className={`h-3 ${bar}`} style={{ width: `${(w + k * 13) % 90 + 10}%` }} />)}
+      </div>
+    </section>
+  ));
 
   const toolBtn = "grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-300 bg-white hover:bg-slate-100 dark:border-border dark:bg-surface dark:hover:bg-raised";
   const tools = (
@@ -267,13 +280,14 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
             <Input aria-label="Buscar fichero o texto" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero o texto…" className="min-w-0 flex-1 py-1" />
             {tools}
           </div>
-          <div className="min-h-0 flex-1 overflow-auto overscroll-contain px-2 pb-2"><Tree dir={treeRoot} jump={jump} active={active} /></div>
+          <div className="min-h-0 flex-1 overflow-auto overscroll-contain px-2 pb-2">{loading ? treeSkeleton : <Tree dir={treeRoot} jump={jump} active={active} />}</div>
       </aside>
       ) : (
       <aside className="flex gap-1.5 md:flex-col">{tools}</aside>
       )}
       <div className={`min-w-0 space-y-3 overflow-auto overscroll-contain ${full ? "" : "md:h-[80vh]"}`}>
         <ErrorText error={diff.error ?? comment.error} />
+        {loading && filesSkeleton}
         {shown.map((f) => (
           <section key={f.path} className={panel}>
             <div id={anchor(f.path)} className="sticky top-0 z-10 flex scroll-mt-0 items-center justify-between gap-2 rounded-t-lg border-b border-slate-200 bg-slate-50 px-3 py-1.5 dark:border-border dark:bg-raised">
