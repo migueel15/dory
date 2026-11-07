@@ -29,6 +29,9 @@ export type ItemRefinement = S["ItemRefinement"];
 export type TitleSettings = S["TitleSettings"];
 export type RefineInput = { text?: string; restart?: boolean; instance_id?: string; project_id?: string; provider?: string; model?: string; effort_option?: string; effort?: string };
 
+export type PullReview = { path: string; patch_hash: string; reviewed_at: string };
+export type PullAgent = { available: boolean; item_id?: string; thread_id?: string; url?: string; t3_environment_id?: string };
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -79,6 +82,12 @@ export const api = {
   githubDetail: (repo: string, kind: string, number: number) => req<GithubDetail>("GET", `/github/repos/${repo}/${kind}/${number}`),
   githubAct: (repo: string, kind: string, number: number, action: S["GithubAction"]) => req<void>("POST", `/github/repos/${repo}/${kind}/${number}/actions`, action),
   githubDiff: (repo: string, number: number) => req<{ diff: string }>("GET", `/github/repos/${repo}/pulls/${number}/diff`),
+  pullReviews: (repo: string, number: number) => req<PullReview[]>("GET", `/github/repos/${repo}/pulls/${number}/reviews`),
+  markPullReview: (repo: string, number: number, path: string, patch_hash: string) => req<void>("PUT", `/github/repos/${repo}/pulls/${number}/reviews`, { path, patch_hash }),
+  unmarkPullReview: (repo: string, number: number, path: string) => req<void>("DELETE", `/github/repos/${repo}/pulls/${number}/reviews?path=${encodeURIComponent(path)}`),
+  pullAgent: (repo: string, number: number) => req<PullAgent>("GET", `/github/repos/${repo}/pulls/${number}/agent`),
+  askPullAgent: (repo: string, number: number, body: { path: string; start: number; end: number; snippet: string; question: string }) =>
+    req<PullAgent>("POST", `/github/repos/${repo}/pulls/${number}/ask`, body),
   t3Pair: (id: string) => req<{ url: string }>("POST", `/t3/instances/${id}/pair`),
   t3Context: (id: string) => req<T3ThreadContext>("GET", `/t3/threads/${id}/context`),
   t3Send: (id: string, text: string) => req<void>("POST", `/t3/threads/${id}/messages`, { text }),

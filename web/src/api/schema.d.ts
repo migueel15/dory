@@ -313,6 +313,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/github/repos/{owner}/{repo}/pulls/{number}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Files of a pull request marked as reviewed */
+        get: operations["listPullReviews"];
+        /** Mark a file as reviewed */
+        put: operations["markPullReview"];
+        post?: never;
+        /** Remove the review mark of a file */
+        delete: operations["unmarkPullReview"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/github/repos/{owner}/{repo}/pulls/{number}/agent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Implementation thread that answers review questions, if any */
+        get: operations["getPullAgent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/github/repos/{owner}/{repo}/pulls/{number}/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a private review question to the implementation thread */
+        post: operations["askPullAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/t3/instances/{id}/pair": {
         parameters: {
             query?: never;
@@ -2720,6 +2773,165 @@ export interface operations {
                         diff: string;
                     };
                 };
+            };
+        };
+    };
+    listPullReviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                owner: string;
+                repo: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Marks with the patch hash at marking time */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        path: string;
+                        patch_hash: string;
+                        /** Format: date-time */
+                        reviewed_at: string;
+                    }[];
+                };
+            };
+        };
+    };
+    markPullReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                owner: string;
+                repo: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    path: string;
+                    patch_hash: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Marked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    unmarkPullReview: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                owner: string;
+                repo: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unmarked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getPullAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                owner: string;
+                repo: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Whether a thread is available */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        available: boolean;
+                        item_id?: string;
+                        thread_id?: string;
+                        url?: string;
+                        t3_environment_id?: string;
+                    };
+                };
+            };
+        };
+    };
+    askPullAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                owner: string;
+                repo: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    path: string;
+                    start: number;
+                    end: number;
+                    snippet?: string;
+                    question: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Sent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        available: boolean;
+                        item_id?: string;
+                        thread_id?: string;
+                        url?: string;
+                        t3_environment_id?: string;
+                    };
+                };
+            };
+            /** @description No Dory item with an implementation thread */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

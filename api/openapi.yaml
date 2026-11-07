@@ -850,6 +850,118 @@ paths:
                 properties:
                   diff:
                     type: "string"
+  "/github/repos/{owner}/{repo}/pulls/{number}/reviews":
+    get:
+      operationId: "listPullReviews"
+      summary: "Files of a pull request marked as reviewed"
+      parameters:
+        - {name: "owner", in: "path", required: true, schema: {type: "string"}}
+        - {name: "repo", in: "path", required: true, schema: {type: "string"}}
+        - {name: "number", in: "path", required: true, schema: {type: "integer"}}
+      responses:
+        "200":
+          description: "Marks with the patch hash at marking time"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  type: "object"
+                  required: ["path", "patch_hash", "reviewed_at"]
+                  properties:
+                    path: {type: "string"}
+                    patch_hash: {type: "string"}
+                    reviewed_at: {type: "string", format: "date-time"}
+    put:
+      operationId: "markPullReview"
+      summary: "Mark a file as reviewed"
+      parameters:
+        - {name: "owner", in: "path", required: true, schema: {type: "string"}}
+        - {name: "repo", in: "path", required: true, schema: {type: "string"}}
+        - {name: "number", in: "path", required: true, schema: {type: "integer"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              required: ["path", "patch_hash"]
+              properties:
+                path: {type: "string"}
+                patch_hash: {type: "string"}
+      responses:
+        "204":
+          description: "Marked"
+    delete:
+      operationId: "unmarkPullReview"
+      summary: "Remove the review mark of a file"
+      parameters:
+        - {name: "owner", in: "path", required: true, schema: {type: "string"}}
+        - {name: "repo", in: "path", required: true, schema: {type: "string"}}
+        - {name: "number", in: "path", required: true, schema: {type: "integer"}}
+        - {name: "path", in: "query", required: true, schema: {type: "string"}}
+      responses:
+        "204":
+          description: "Unmarked"
+  "/github/repos/{owner}/{repo}/pulls/{number}/agent":
+    get:
+      operationId: "getPullAgent"
+      summary: "Implementation thread that answers review questions, if any"
+      parameters:
+        - {name: "owner", in: "path", required: true, schema: {type: "string"}}
+        - {name: "repo", in: "path", required: true, schema: {type: "string"}}
+        - {name: "number", in: "path", required: true, schema: {type: "integer"}}
+      responses:
+        "200":
+          description: "Whether a thread is available"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                required: ["available"]
+                properties:
+                  available: {type: "boolean"}
+                  item_id: {type: "string"}
+                  thread_id: {type: "string"}
+                  url: {type: "string"}
+                  t3_environment_id: {type: "string"}
+  "/github/repos/{owner}/{repo}/pulls/{number}/ask":
+    post:
+      operationId: "askPullAgent"
+      summary: "Send a private review question to the implementation thread"
+      parameters:
+        - {name: "owner", in: "path", required: true, schema: {type: "string"}}
+        - {name: "repo", in: "path", required: true, schema: {type: "string"}}
+        - {name: "number", in: "path", required: true, schema: {type: "integer"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              required: ["path", "start", "end", "question"]
+              properties:
+                path: {type: "string"}
+                start: {type: "integer"}
+                end: {type: "integer"}
+                snippet: {type: "string"}
+                question: {type: "string"}
+      responses:
+        "200":
+          description: "Sent"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                required: ["available"]
+                properties:
+                  available: {type: "boolean"}
+                  item_id: {type: "string"}
+                  thread_id: {type: "string"}
+                  url: {type: "string"}
+                  t3_environment_id: {type: "string"}
+        "409":
+          description: "No Dory item with an implementation thread"
   "/t3/instances/{id}/pair":
     post:
       operationId: "pairT3Instance"
