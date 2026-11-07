@@ -33,6 +33,7 @@ export function Notifications() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
@@ -79,8 +80,9 @@ export function Notifications() {
     finally { setBusy(false); }
   }
   useEffect(() => {
-    if (!open) return;
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    if (!open) { setConfirmClear(false); return; }
+    // Esc first dismisses a pending confirmation, then the panel.
+    const esc = (e: KeyboardEvent) => { if (e.key !== "Escape") return; setConfirmClear((c) => { if (!c) setOpen(false); return false; }); };
     window.addEventListener("keydown", esc);
     return () => window.removeEventListener("keydown", esc);
   }, [open]);
@@ -115,9 +117,18 @@ export function Notifications() {
               {!settingsOpen && !!feed.data?.unread && <span className="rounded-md bg-red-600 px-1.5 text-[11px] font-bold leading-4 text-white">{feed.data.unread}</span>}
             </h2>
             <button type="button" title={settingsOpen ? "Volver a la lista" : "Ajustes"} aria-label={settingsOpen ? "Volver a la lista" : "Ajustes"} aria-pressed={settingsOpen} onClick={() => setSettingsOpen(!settingsOpen)} className={iconBtn}>{settingsOpen ? <ArrowLeft aria-hidden="true" className="size-4" /> : <GearSix aria-hidden="true" className="size-4" />}</button>
-            {!settingsOpen && <button type="button" title="Borrar todo el historial" aria-label="Borrar todo el historial" disabled={busy || !notices.length} onClick={() => { if (window.confirm("¿Borrar todo el historial de notificaciones? No se puede deshacer.")) void act(() => request("", "DELETE")); }} className={iconBtn}><Trash aria-hidden="true" className="size-4" /></button>}
+            {!settingsOpen && <button type="button" title="Borrar todo el historial" aria-label="Borrar todo el historial" disabled={busy || !notices.length} onClick={() => setConfirmClear(true)} aria-pressed={confirmClear} className={iconBtn}><Trash aria-hidden="true" className="size-4" /></button>}
             <button type="button" title="Cerrar" aria-label="Cerrar" autoFocus onClick={() => setOpen(false)} className={iconBtn}><X aria-hidden="true" className="size-4" /></button>
           </div>
+          {confirmClear && !settingsOpen && (
+            <div role="alertdialog" aria-label="Borrar historial" className="notif-in shrink-0 space-y-2 border-b border-red-200 bg-red-50 px-3 py-2.5 dark:border-red-900 dark:bg-red-950/40">
+              <p className="text-sm"><span className="font-semibold text-red-800 dark:text-red-300">¿Borrar todo el historial?</span> <span className="text-red-700 dark:text-red-300/80">Se eliminarán todas las notificaciones. No se puede deshacer.</span></p>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" autoFocus onClick={() => setConfirmClear(false)}>Cancelar</Button>
+                <Button className="!bg-red-600 hover:!bg-red-700 dark:!bg-red-600 dark:hover:!bg-red-700" disabled={busy} onClick={() => { setConfirmClear(false); void act(() => request("", "DELETE")); }}>Borrar todo</Button>
+              </div>
+            </div>
+          )}
           {(error || feed.error || prefs.error) && <p role="alert" className="shrink-0 border-b border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error || "No se pueden cargar las notificaciones"}</p>}
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {settingsOpen ? (
