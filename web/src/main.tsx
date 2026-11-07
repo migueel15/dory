@@ -1,5 +1,5 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
-import { Gear, List, Moon, SignOut, Sun, X } from "@phosphor-icons/react";
+import { Brain, ChartBar, FolderSimple, Gear, GithubLogo, HardDrives, House, Kanban, List, Moon, Robot, SignOut, Sun, Tray, BellRinging, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
@@ -134,24 +134,25 @@ function Layout() {
   }, [menu, !!me.data]);
   if (me.isPending) return null;
   if (!me.data) return <Login />;
+  const ico = "mr-2.5 size-[18px] shrink-0 opacity-80";
   const link = "flex min-h-11 shrink-0 items-center rounded px-3 text-sm font-medium text-slate-800 dark:text-text sm:min-h-0 sm:px-2 sm:py-1 hover:bg-slate-200 dark:hover:bg-raised [&.active]:bg-slate-900 dark:[&.active]:bg-accent [&.active]:text-white dark:[&.active]:text-white";
   // Group headings share the links' left padding and a rule above, so each section reads as a block.
   const group = (name: string) => <span className="mt-3 mb-1 border-t border-slate-200 px-3 pt-3 text-xs font-semibold uppercase tracking-wider text-slate-400 first:mt-1 first:border-t-0 first:pt-0 dark:border-border dark:text-muted sm:px-2">{name}</span>;
   const links = (
     <>
       {group("Trabajo")}
-      <Link to="/" activeOptions={{ exact: true }} className={link}>Inicio</Link>
-      <Link to="/inbox" className={link}>Inbox</Link>
-      <Link to="/projects" className={link}>Proyectos</Link>
+      <Link to="/" activeOptions={{ exact: true }} className={link}><House weight="duotone" className={ico} aria-hidden="true" />Inicio</Link>
+      <Link to="/inbox" className={link}><Tray weight="duotone" className={ico} aria-hidden="true" />Inbox</Link>
+      <Link to="/projects" className={link}><FolderSimple weight="duotone" className={ico} aria-hidden="true" />Proyectos</Link>
       {group("Agentes")}
-      <Link to="/tasks" className={link}>Tareas</Link>
-      <Link to="/attention" className={link}>Atención{attention > 0 && <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-white">{attention}</span>}</Link>
-      <Link to="/jobs" className={link}>Trabajos</Link>
-      <Link to="/usage" className={link}>Uso</Link>
+      <Link to="/tasks" className={link}><Kanban weight="duotone" className={ico} aria-hidden="true" />Tareas</Link>
+      <Link to="/attention" className={link}><BellRinging weight="duotone" className={ico} aria-hidden="true" />Atención{attention > 0 && <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-white">{attention}</span>}</Link>
+      <Link to="/jobs" className={link}><Robot weight="duotone" className={ico} aria-hidden="true" />Trabajos</Link>
+      <Link to="/usage" className={link}><ChartBar weight="duotone" className={ico} aria-hidden="true" />Uso</Link>
       {group("Sistema")}
-      <Link to="/github" className={link}>GitHub</Link>
-      <Link to="/environments" className={link}>Entornos</Link>
-      <Link to="/memories" className={link}>Memorias</Link>
+      <Link to="/github" className={link}><GithubLogo weight="duotone" className={ico} aria-hidden="true" />GitHub</Link>
+      <Link to="/environments" className={link}><HardDrives weight="duotone" className={ico} aria-hidden="true" />Entornos</Link>
+      <Link to="/memories" className={link}><Brain weight="duotone" className={ico} aria-hidden="true" />Memorias</Link>
     </>
   );
   return (
