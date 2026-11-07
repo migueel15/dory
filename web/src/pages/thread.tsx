@@ -8,6 +8,7 @@ import { Button, ErrorText, Input, Md, Notice, PageHeader, Select, StatusPill, p
 import { OpenInT3 } from "../components/thread-link";
 import { PendingRequest } from "../components/pending-request";
 import { ProviderIcon } from "./launch-form";
+import { saveEffort, savedEffort } from "../effort";
 import { Diff, type Suggestion } from "./github-diff";
 
 // threadIdFrom accepts a T3 thread link or a bare id.
@@ -302,6 +303,67 @@ function Chip({ value, options, onChange, title, icon }: { value: string; option
   );
 }
 
+// ModelPicker joins model and effort in one chip; its panel lists models on
+// the left and the efforts of the highlighted model on the right. Picking a
+// model preselects the effort last used with it.
+function ModelPicker({ models, selected, effort, effortsOf, onChange }: { models: MenuOption[]; selected: string; effort: string; effortsOf: (value: string) => { values: string[]; initial: string } | undefined; onChange: (value: string, effort: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [hover, setHover] = useState(selected);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    setHover(selected);
+    const close = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [open, selected]);
+  const current = models.find((m) => m.value === selected);
+  const efforts = effortsOf(hover);
+  const pickModel = (value: string) => {
+    const e = effortsOf(value);
+    setHover(value);
+    onChange(value, e?.initial ?? "");
+    if (!e) setOpen(false);
+  };
+  const row = "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised";
+  return (
+    <div ref={box} className="relative">
+      <button type="button" title="Modelo y esfuerzo" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}
+        onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
+        className="inline-flex h-8 max-w-[15rem] items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white">
+        {current?.icon}<span className="truncate">{current?.label ?? selected}</span>
+        {effort && <span className="shrink-0 text-slate-400">· {effort}</span>}<CaretDown className="size-3 shrink-0 opacity-60" />
+      </button>
+      {open && (
+        <div role="dialog" aria-label="Modelo y esfuerzo" className="absolute bottom-full left-0 z-20 mb-2 flex max-h-80 w-[min(30rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-border dark:bg-surface">
+          <ul className="min-w-0 flex-1 overflow-y-auto p-1">
+            {models.map((o, i) => (
+              <li key={o.value}>
+                {o.group && o.group !== models[i - 1]?.group && <p className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{o.group}</p>}
+                <button type="button" onMouseEnter={() => setHover(o.value)} onFocus={() => setHover(o.value)} onClick={() => pickModel(o.value)}
+                  className={`${row} ${o.value === hover ? "bg-slate-100 dark:bg-raised" : ""}`}>
+                  {o.icon}<span className="min-w-0 flex-1 truncate">{o.label}</span>{o.value === selected && <Check className="size-3.5" />}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="w-32 shrink-0 overflow-y-auto border-l border-slate-200 p-1 dark:border-border">
+            <p className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Esfuerzo</p>
+            {efforts ? efforts.values.map((x) => {
+              const active = hover === selected ? x === effort : x === efforts.initial;
+              return (
+                <button key={x} type="button" onClick={() => { onChange(hover, x); setOpen(false); }} className={`${row} ${active ? "font-medium" : ""}`}>
+                  <span className="min-w-0 flex-1 truncate">{x}</span>{active && <Check className="size-3.5" />}
+                </button>
+              );
+            }) : <p className="px-2 py-1.5 text-xs text-slate-400">Sin opciones</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const qc = useQueryClient();
   const catalog = useQuery({ queryKey: ["t3-catalog", v.instance_id], queryFn: () => api.t3Catalog(v.instance_id), enabled: !!v.instance_id, staleTime: 60_000 });
@@ -313,7 +375,7 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const selected = choice || `${v.provider_id}|${v.model}`;
   const [providerId, slug] = selected.split("|");
   const model = catalog.data?.providers.find((p) => p.instance_id === providerId)?.models.find((m) => m.slug === slug);
-  const effortValue = effort || (choice ? model?.effort?.default ?? "" : v.effort);
+  const effortValue = effort || (choice ? (model?.effort ? savedEffort(model.slug, model.effort.values) || model.effort.default : "") : v.effort);
   const changed = !!choice || !!effort;
 
   // Grow the textarea with its content, up to about ten lines.
@@ -329,7 +391,7 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
       text, mode: steer ? "steer" : "auto",
       ...(changed ? { provider_id: providerId, model: slug, effort_option: model?.effort?.id, effort: model?.effort ? effortValue : undefined } : {}),
     }),
-    onSuccess: () => { setText(""); setSteer(false); qc.invalidateQueries({ queryKey }); },
+    onSuccess: () => { if (changed && model?.effort && effortValue) saveEffort(model.slug, effortValue); setText(""); setSteer(false); qc.invalidateQueries({ queryKey }); },
   });
   const settings = useMutation({ mutationFn: (b: { interaction_mode?: string; runtime_mode?: string }) => api.t3Settings(v.id, b), onSuccess: () => qc.invalidateQueries({ queryKey }) });
   const busy = !!v.active_run_id;
@@ -348,8 +410,9 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
         className="block max-h-60 w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 !outline-none placeholder:text-slate-400" />
       <div className="flex items-center gap-0.5 px-2 pb-2">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
-          <Chip title="Modelo" value={selected} options={models} onChange={(x) => { setChoice(x); setEffort(""); }} />
-          {model?.effort && <Chip title="Esfuerzo" value={effortValue} options={model.effort.values.map((x) => ({ value: x, label: x }))} onChange={setEffort} />}
+          <ModelPicker models={models} selected={selected} effort={effortValue}
+            effortsOf={(value) => { const [pid, sl] = value.split("|"); const m = catalog.data?.providers.find((p) => p.instance_id === pid)?.models.find((x) => x.slug === sl); return m?.effort ? { values: m.effort.values, initial: value === selected ? effortValue : savedEffort(sl, m.effort.values) || m.effort.default } : undefined; }}
+            onChange={(value, eff) => { setChoice(value); setEffort(eff); const sl = value.split("|")[1]; if (eff) saveEffort(sl, eff); }} />
           <Chip title="Modo" value={v.interaction_mode || "default"} options={interactionModes} onChange={(x) => settings.mutate({ interaction_mode: x })} />
           <Chip title="Permisos" value={v.runtime_mode} options={runtimeModes} onChange={(x) => settings.mutate({ runtime_mode: x })} />
           {busy && (
