@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Bell, X } from "@phosphor-icons/react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Modal } from "./ui";
@@ -29,6 +29,7 @@ export function Notifications() {
   const [busy, setBusy] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
   const [toasts, setToasts] = useState<Notice[]>([]);
+  const [expanded, setExpanded] = useState(false);
   const since = useRef<string | null>(null);
   const seen = useRef(new Set<number>());
   const feed = useQuery({ queryKey: ["notifications", "feed"], queryFn: () => request<{ items: Notice[]; unread: number; server_time: string }>(""), refetchInterval: 3000, refetchOnWindowFocus: true });
@@ -60,7 +61,9 @@ export function Notifications() {
     data.items.forEach(n => seen.current.add(n.id));
     if (document.visibilityState === "visible" && fresh.length) setToasts(old => [...fresh, ...old].slice(0, 4));
   }, [feed.data]);
-  useEffect(() => { if (!toasts.length) return; const timer = window.setTimeout(() => setToasts([]), 8000); return () => clearTimeout(timer); }, [toasts]);
+  // Auto-dismiss pauses while the stack is open; a stack of one cannot stay expanded.
+  useEffect(() => { if (!toasts.length || expanded) return; const timer = window.setTimeout(() => setToasts([]), 8000); return () => clearTimeout(timer); }, [toasts, expanded]);
+  useEffect(() => { if (toasts.length < 2) setExpanded(false); }, [toasts.length]);
   async function act(fn: () => Promise<unknown>) {
     setBusy(true); setError("");
     try { await fn(); await qc.invalidateQueries({ queryKey: ["notifications"] }); await qc.invalidateQueries({ queryKey: ["notification-preferences"] }); }
@@ -113,9 +116,7 @@ export function Notifications() {
       {history.hasNextPage && <Button disabled={history.isFetchingNextPage} onClick={() => void history.fetchNextPage()}>Cargar avisos anteriores</Button>}
       {history.data && !notices.some(n => n.bell) && <p className="py-4">Sin avisos todavía.</p>}
     </Modal>}
-    <div aria-live="polite" className="fixed bottom-4 right-4 z-50 w-80 max-w-[calc(100vw-2rem)] space-y-2">
-      {toasts.map(n => <div key={n.id} className="relative rounded border border-slate-200 dark:border-border bg-white dark:bg-surface p-3 shadow-lg"><a href={n.url} onClick={() => void act(() => read(n))} className="block pr-6"><span className="block text-sm font-semibold">{n.title}</span>{n.body && <span className="block break-words text-sm">{n.body}</span>}</a><button className="absolute right-1 top-1 px-2" aria-label="Cerrar aviso" onClick={() => setToasts(old => old.filter(x => x.id !== n.id))}><X aria-hidden="true" className="size-4" /></button></div>)}
-    </div>
+    <ToastStack toasts={toasts} expanded={expanded} setExpanded={setExpanded} onOpen={(n) => void act(() => read(n))} onClose={(id) => setToasts(old => old.filter(x => x.id !== id))} />
   </>;
 }
 
@@ -128,4 +129,38 @@ export function NotificationItem() {
   if (!item.data) return null;
   if (!item.data[0]) return <p>El item ya no está disponible.</p>;
   return <ItemForm item={item.data[0]} onClose={() => { window.location.href = "/inbox"; }} />;
+}
+
+// ToastStack shows in-app notices bottom-center. Collapsed, the newest sits on top and the
+// older ones peek out above it; a click expands the stack upwards to show all of them.
+function ToastStack({ toasts, expanded, setExpanded, onOpen, onClose }: { toasts: Notice[]; expanded: boolean; setExpanded: (v: boolean) => void; onOpen: (n: Notice) => void; onClose: (id: number) => void }) {
+  const refs = useRef(new Map<number, HTMLDivElement>());
+  const [heights, setHeights] = useState<Record<number, number>>({});
+  useLayoutEffect(() => {
+    const next: Record<number, number> = {};
+    refs.current.forEach((el, id) => { next[id] = el.offsetHeight; });
+    setHeights((old) => (JSON.stringify(old) === JSON.stringify(next) ? old : next));
+  }, [toasts]);
+  const stacked = toasts.length > 1 && !expanded;
+  let offset = 0;
+  return (
+    <div aria-live="polite" onMouseLeave={() => setExpanded(false)}
+      className="fixed bottom-4 left-1/2 z-50 w-96 max-w-[calc(100vw-2rem)] -translate-x-1/2"
+      style={{ height: toasts.length ? (expanded ? toasts.reduce((h, n) => h + (heights[n.id] ?? 72) + 8, -8) : (heights[toasts[0]?.id] ?? 72) + Math.min(toasts.length - 1, 3) * 8) : 0 }}>
+      {toasts.map((n, i) => {
+        const y = expanded ? offset : i * 8;
+        offset += (heights[n.id] ?? 72) + 8;
+        return (
+          <div key={n.id} ref={(el) => { if (el) refs.current.set(n.id, el); else refs.current.delete(n.id); }}
+            onClickCapture={(e) => { if (stacked && !(e.target as HTMLElement).closest("button")) { e.preventDefault(); e.stopPropagation(); setExpanded(true); } }}
+            style={{ transform: `translateY(-${y}px) scale(${expanded ? 1 : 1 - i * 0.05})`, zIndex: 10 - i, opacity: !expanded && i > 2 ? 0 : 1 }}
+            className="toast-in absolute inset-x-0 bottom-0 origin-bottom rounded-lg border border-slate-200 bg-white p-3 shadow-lg transition-all duration-300 ease-out motion-reduce:transition-none dark:border-border dark:bg-surface">
+            <a href={n.url} onClick={() => onOpen(n)} className="block pr-6"><span className="block text-sm font-semibold">{n.title}</span>{n.body && <span className={`block break-words text-sm ${stacked && i > 0 ? "line-clamp-1" : ""}`}>{n.body}</span>}</a>
+            <button className="absolute right-1 top-1 px-2" aria-label="Cerrar aviso" onClick={() => onClose(n.id)}><X aria-hidden="true" className="size-4" /></button>
+            {stacked && i === 0 && <span className="mt-1 block text-xs text-slate-500 dark:text-muted">+{toasts.length - 1} más · clic para ver</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
