@@ -4,8 +4,8 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { api, type GithubIssue, type GithubPull } from "../api/client";
-import { Card, ErrorText, Input, Select, pill } from "../components/ui";
-import { GithubMark, Icon, Tip, icons } from "../components/github-ui";
+import { Arrow, Card, ErrorText, Input, Select, pill } from "../components/ui";
+import { GithubMark, Icon, PrRefChip, Tip, icons } from "../components/github-ui";
 import { type Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { useProject } from "../project";
 import { buildStacks, groupByStack, pullKey } from "../stack";
@@ -401,15 +401,14 @@ export function StackBar({ repo, number }: { repo: string; number: number }) {
   const go = (i: number) => navigate({ to: "/github/$owner/$repo/$kind/$number", params: { owner, repo: name, kind: "pulls", number: String(stack.nodes[i].pull.number) } });
   const arrow = "grid size-7 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent dark:text-muted dark:hover:bg-raised";
   return (
-    <nav aria-label="Stack de pull requests" className="flex flex-wrap items-center gap-1 rounded-xl border border-violet-200 bg-violet-50/60 px-2 py-1.5 text-sm dark:border-violet-900 dark:bg-violet-950/30">
-      <Tip text="Anterior del stack"><button type="button" aria-label="Anterior del stack" disabled={at <= 0} onClick={() => go(at - 1)} className={arrow}>←</button></Tip>
-      <Tip text="Siguiente del stack"><button type="button" aria-label="Siguiente del stack" disabled={at >= stack.nodes.length - 1} onClick={() => go(at + 1)} className={arrow}>→</button></Tip>
-      <span className="mr-1 font-medium text-violet-700 dark:text-violet-300">Stack:</span>
+    <nav aria-label="Stack de pull requests" className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm shadow-sm dark:border-border dark:bg-surface">
+      <Tip text="Anterior del stack"><button type="button" aria-label="Anterior del stack" disabled={at <= 0} onClick={() => go(at - 1)} className={arrow}><Arrow back /></button></Tip>
+      <Tip text="Siguiente del stack"><button type="button" aria-label="Siguiente del stack" disabled={at >= stack.nodes.length - 1} onClick={() => go(at + 1)} className={arrow}><Arrow /></button></Tip>
+      <span className="mr-1 font-medium text-slate-500 dark:text-muted">Stack</span>
       {stack.nodes.map(({ pull: p }, i) => (
         <span key={p.number} className="inline-flex items-center gap-1">
-          {i > 0 && <span aria-hidden="true" className="text-slate-400">→</span>}
-          {i === at ? <strong aria-current="page">#{p.number}</strong>
-            : <Tip text={p.title}><Link to="/github/$owner/$repo/$kind/$number" params={{ owner, repo: name, kind: "pulls", number: String(p.number) }} className="text-blue-700 hover:underline dark:text-accent-text">#{p.number}</Link></Tip>}
+          {i > 0 && <span aria-hidden="true" className="text-slate-400"><Arrow /></span>}
+          <PrRefChip owner={owner} repo={name} number={p.number} title={p.title} state={p.state} current={i === at} className={i === at ? "bg-slate-100 dark:bg-raised" : ""} />
         </span>
       ))}
     </nav>
