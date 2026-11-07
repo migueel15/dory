@@ -1,14 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowsIn, ArrowsOut, CaretRight, Columns, Rows, SidebarSimple, ChatCircle, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
+import { ArrowsIn, CaretDown, ArrowsOut, CaretRight, Columns, Rows, SidebarSimple, ChatCircle, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { Button, ErrorText, Input, Textarea, keepAboveKeyboard } from "../components/ui";
+import { ThreadLink } from "../components/thread-link";
 import { highlight, languageOf, loadLanguage } from "../highlight";
 
 type Side = "LEFT" | "RIGHT";
 type Line = { text: string; kind: "add" | "del" | "ctx" | "hunk"; old?: number; new?: number };
 type File = { path: string; lines: Line[]; added: number; removed: number };
 type Pick = { file: string; start: number; end: number }; // start -1: whole file
+
+// patchHash fingerprints a file patch so a review mark expires when the file changes.
+async function patchHash(f: File): Promise<string> {
+  const data = new TextEncoder().encode(f.lines.map((l) => l.text).join("\n"));
+  return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-1", data)), (b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 // parseDiff splits a unified diff into files with old and new line numbers.
 function parseDiff(diff: string): File[] {
@@ -80,7 +87,9 @@ function tree(files: File[]): Dir {
   return squash(root);
 }
 
-function Tree({ dir, jump, active, depth = 0 }: { dir: Dir; jump: (path: string) => void; active?: string; depth?: number }) {
+type Review = { reviewed: Set<string>; toggle: (path: string) => void };
+
+function Tree({ dir, jump, active, review, depth = 0 }: { dir: Dir; jump: (path: string) => void; active?: string; review: Review; depth?: number }) {
   return (
     <ul className={depth ? "ml-2 border-l border-slate-200 pl-1.5 dark:border-border" : ""}>
       {dir.dirs.map((d) => (
@@ -92,13 +101,14 @@ function Tree({ dir, jump, active, depth = 0 }: { dir: Dir; jump: (path: string)
               <FolderOpen aria-hidden="true" className="hidden size-4 shrink-0 text-slate-400 group-open:block" />
               <span className="truncate">{d.name}</span>
             </summary>
-            <Tree dir={d} jump={jump} active={active} depth={depth + 1} />
+            <Tree dir={d} jump={jump} active={active} review={review} depth={depth + 1} />
           </details>
         </li>
       ))}
       {dir.files.map((f) => (
-        <li key={f.path}>
-          <button type="button" title={f.path} onClick={() => jump(f.path)} className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-xs hover:bg-slate-100 dark:hover:bg-raised ${active === f.path ? "bg-blue-50 font-medium text-blue-700 dark:bg-raised dark:text-accent-text" : ""}`}>
+        <li key={f.path} className="flex items-center gap-1">
+          <input type="checkbox" aria-label={`Revisado: ${f.path}`} title="Revisado" checked={review.reviewed.has(f.path)} onChange={() => review.toggle(f.path)} className="ml-1 shrink-0" />
+          <button type="button" title={f.path} onClick={() => jump(f.path)} className={`flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5 text-left text-xs hover:bg-slate-100 dark:hover:bg-raised ${review.reviewed.has(f.path) ? "text-slate-400" : ""} ${active === f.path ? "bg-blue-50 font-medium text-blue-700 dark:bg-raised dark:text-accent-text" : ""}`}>
             <FileIcon aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
             <span className="min-w-0 flex-1 truncate">{f.path.split("/").pop()}</span>
             <span className="shrink-0 font-mono text-[11px] text-green-700 dark:text-green-400">+{f.added}</span>
@@ -188,6 +198,38 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
     window.addEventListener("mouseup", stop);
     return () => window.removeEventListener("mouseup", stop);
   }, []);
+  // Review marks live in Dory and only count while the file patch is unchanged.
+  const [hashes, setHashes] = useState(new Map<string, string>());
+  useEffect(() => {
+    let live = true;
+    Promise.all(files.map(async (f) => [f.path, await patchHash(f)] as const)).then((h) => live && setHashes(new Map(h)));
+    return () => { live = false; };
+  }, [files]);
+  const reviews = useQuery({ queryKey: ["pull-reviews", repo, pr], queryFn: () => api.pullReviews(repo, pr) });
+  const reviewed = useMemo(() => new Set((reviews.data ?? []).filter((v) => v.patch_hash === hashes.get(v.path)).map((v) => v.path)), [reviews.data, hashes]);
+  const mark = useMutation({
+    mutationFn: ({ path, on }: { path: string; on: boolean }) => (on ? api.markPullReview(repo, pr, path, hashes.get(path)!) : api.unmarkPullReview(repo, pr, path)),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["pull-reviews", repo, pr] }),
+  });
+  // Reviewed files fold unless the user opens them.
+  const [folded, setFolded] = useState(new Map<string, boolean>());
+  const isFolded = (path: string) => folded.get(path) ?? reviewed.has(path);
+  const toggleReview = (path: string) => {
+    if (!hashes.has(path)) return;
+    const on = !reviewed.has(path);
+    setFolded((m) => { const n = new Map(m); n.delete(path); return n; });
+    mark.mutate({ path, on });
+  };
+  const review: Review = { reviewed, toggle: toggleReview };
+  const agent = useQuery({ queryKey: ["pull-agent", repo, pr], queryFn: () => api.pullAgent(repo, pr) });
+  const ask = useMutation({
+    mutationFn: ({ f, p }: { f: File; p: Pick }) => {
+      const lines = f.lines.slice(p.start, p.end + 1).filter((l) => l.kind !== "hunk");
+      const nums = lines.map(number);
+      return api.askPullAgent(repo, pr, { path: f.path, start: Math.min(...nums), end: Math.max(...nums), snippet: lines.map((l) => l.text).join("\n"), question: body.trim() });
+    },
+    onSuccess: () => { setPick(undefined); setBody(""); },
+  });
   const comment = useMutation({
     mutationFn: (a: Parameters<typeof api.githubAct>[3]) => api.githubAct(repo, "pulls", pr, a),
     onSuccess: () => {
@@ -225,6 +267,10 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
                         <Textarea aria-label="Comentario de revisión" autoFocus onFocus={(e) => keepAboveKeyboard(e.currentTarget.parentElement!)} value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder={placeholder} className="p-2" />
                         <div className="mt-2 flex gap-2">
                           <Button disabled={comment.isPending || !body.trim()} onClick={() => publish(f, p)}>Publicar en GitHub</Button>
+                          {p.start >= 0 && (
+                            <Button disabled={ask.isPending || !body.trim() || !agent.data?.available} onClick={() => ask.mutate({ f, p })}
+                              title={agent.data?.available ? "Consulta privada al hilo donde se implementó la PR; no se publica en GitHub" : "Esta PR no tiene un item de Dory con hilo de implementación"}>Preguntar al agente</Button>
+                          )}
                           <Button variant="ghost" onClick={() => setPick(undefined)}>Cancelar</Button>
                         </div>
                       </div>
@@ -280,29 +326,44 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
             <Input aria-label="Buscar fichero o texto" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero o texto…" className="min-w-0 flex-1 py-1" />
             {tools}
           </div>
-          <div className="min-h-0 flex-1 overflow-auto overscroll-contain px-2 pb-2">{loading ? treeSkeleton : <Tree dir={treeRoot} jump={jump} active={active} />}</div>
+          {!loading && <div className="shrink-0 px-3 pb-1 text-xs text-slate-500 dark:text-muted">{files.filter((f) => reviewed.has(f.path)).length}/{files.length} revisados</div>}
+          <div className="min-h-0 flex-1 overflow-auto overscroll-contain px-2 pb-2">{loading ? treeSkeleton : <Tree dir={treeRoot} jump={jump} active={active} review={review} />}</div>
       </aside>
       ) : (
       <aside className="flex gap-1.5 md:flex-col">{tools}</aside>
       )}
       <div className={`min-w-0 space-y-3 overflow-auto overscroll-contain ${full ? "" : "md:h-[80vh]"}`}>
-        <ErrorText error={diff.error ?? comment.error} />
+        <ErrorText error={diff.error ?? comment.error ?? ask.error ?? mark.error} />
+        {ask.data && (
+          <div role="status" className="flex items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm dark:border-border dark:bg-raised">
+            <span>Consulta enviada al hilo de implementación. {ask.data.url && <ThreadLink url={ask.data.url} environmentId={ask.data.t3_environment_id} threadId={ask.data.thread_id} className="font-medium text-blue-700 underline dark:text-accent-text">Abrir hilo</ThreadLink>}</span>
+            <button type="button" onClick={() => ask.reset()} aria-label="Cerrar aviso" className="text-slate-500">×</button>
+          </div>
+        )}
         {loading && filesSkeleton}
         {shown.map((f) => (
           <section key={f.path} className={panel}>
             <div id={anchor(f.path)} className="sticky top-0 z-10 flex scroll-mt-0 items-center justify-between gap-2 rounded-t-lg border-b border-slate-200 bg-slate-50 px-3 py-1.5 dark:border-border dark:bg-raised">
-              <span className="min-w-0 truncate font-mono text-xs font-semibold" title={f.path}>{f.path}</span>
+              <span className="flex min-w-0 items-center gap-1.5">
+                <button type="button" onClick={() => setFolded((m) => new Map(m).set(f.path, !isFolded(f.path)))} aria-label={isFolded(f.path) ? "Desplegar fichero" : "Plegar fichero"} aria-expanded={!isFolded(f.path)} className="shrink-0 rounded text-slate-400 hover:text-blue-600">
+                  {isFolded(f.path) ? <CaretRight aria-hidden="true" className="size-3.5" /> : <CaretDown aria-hidden="true" className="size-3.5" />}
+                </button>
+                <span className="min-w-0 truncate font-mono text-xs font-semibold" title={f.path}>{f.path}</span>
+              </span>
               <span className="flex shrink-0 items-center gap-2 font-mono text-xs">
                 {hits.get(f.path)! > 0 && <span className="rounded bg-amber-100 px-1.5 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">{hits.get(f.path)} coincidencia{hits.get(f.path) === 1 ? "" : "s"}</span>}
                 <span className="text-green-700 dark:text-green-400">+{f.added}</span>
                 <span className="text-red-700 dark:text-red-400">−{f.removed}</span>
+                <label className="flex cursor-pointer items-center gap-1 font-sans text-slate-500 dark:text-muted">
+                  <input type="checkbox" checked={reviewed.has(f.path)} onChange={() => toggleReview(f.path)} />Revisado
+                </label>
                 <button type="button" title="Comentar el fichero" aria-label="Comentar el fichero" onClick={() => { setPick({ file: f.path, start: -1, end: -1 }); setOpen(true); }} className="rounded p-0.5 text-slate-400 hover:bg-slate-200 hover:text-blue-600 dark:hover:bg-border dark:hover:text-accent-text">
                   <ChatCircle aria-hidden="true" className="size-4" />
                 </button>
               </span>
             </div>
             {pick?.file === f.path && pick.start < 0 && <div className="px-3">{form(f, pick, `Comentario sobre ${f.path}…`)}</div>}
-            {split ? (
+            {isFolded(f.path) ? null : split ? (
               <div className="overflow-x-auto font-mono text-xs leading-5">
                 {splitRows(f.lines).map((r, k) => {
                   if (r.hunk !== undefined) return <div key={k} className={`whitespace-pre py-0 pl-3 ${color.hunk}`}>{f.lines[r.hunk].text}</div>;
