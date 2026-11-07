@@ -1,6 +1,6 @@
 import { DefineIssueDialog } from "./define-issue";
 import { ArrowClockwise, MagnifyingGlass } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { api, type GithubIssue, type GithubPull } from "../api/client";
@@ -291,23 +291,23 @@ export function Github() {
       <ErrorText error={data.error ?? (state !== "open" ? closed.error : null)} />
       <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-2 shadow-sm dark:border-border dark:bg-surface">
         <div className="flex flex-wrap items-center gap-2">
-          <div role="tablist" className="flex rounded-lg bg-slate-100 p-1 dark:bg-raised">
+          <Segmented role="tablist" active={tab}>
             {tabs.map(([id, label, n, icon]) => (
               <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-                className={`flex min-h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors ${tab === id ? "bg-white text-slate-900 shadow-sm dark:bg-canvas dark:text-white" : "text-slate-500 hover:text-slate-800 dark:text-muted dark:hover:text-text"}`}>
+                className={`flex min-h-9 items-center gap-1.5 relative z-10 rounded-md px-3 text-sm font-medium transition-colors ${tab === id ? "text-slate-900 dark:text-white" : "text-slate-500 hover:text-slate-800 dark:text-muted dark:hover:text-text"}`}>
                 <Icon i={icon} className="size-3.5" />{label}
                 <span className={`rounded-full px-1.5 text-xs ${tab === id ? "bg-slate-100 dark:bg-raised" : "bg-slate-200 dark:bg-hover"}`}>{n}</span>
               </button>
             ))}
-          </div>
-          <div role="radiogroup" aria-label="Estado" className="flex rounded-lg bg-slate-100 p-1 dark:bg-raised">
+          </Segmented>
+          <Segmented role="radiogroup" aria-label="Estado" active={state}>
             {states.map(([id, label]) => (
               <button key={id} type="button" role="radio" aria-checked={state === id} onClick={() => setState(id)}
-                className={`min-h-9 rounded-md px-3 text-sm font-medium transition-colors ${state === id ? "bg-white text-slate-900 shadow-sm dark:bg-canvas dark:text-white" : "text-slate-500 hover:text-slate-800 dark:text-muted dark:hover:text-text"}`}>
+                className={`relative z-10 min-h-9 rounded-md px-3 text-sm font-medium transition-colors ${state === id ? "text-slate-900 dark:text-white" : "text-slate-500 hover:text-slate-800 dark:text-muted dark:hover:text-text"}`}>
                 {label}
               </button>
             ))}
-          </div>
+          </Segmented>
           <label className="relative min-w-48 flex-1">
             <MagnifyingGlass aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Buscar por título, repo, autor o etiqueta…" aria-label="Buscar"
@@ -355,6 +355,28 @@ export function Github() {
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+// Segmented is a pill group whose white background slides to the selected option.
+function Segmented({ active, children, ...rest }: { active: string; children: React.ReactNode; role: string; "aria-label"?: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [pill, setPill] = useState<{ left: number; width: number } | null>(null);
+  useLayoutEffect(() => {
+    const place = () => {
+      const el = box.current?.querySelector<HTMLElement>("[aria-selected=true],[aria-checked=true]");
+      setPill(el ? { left: el.offsetLeft, width: el.offsetWidth } : null);
+    };
+    place();
+    const ro = new ResizeObserver(place);
+    if (box.current) ro.observe(box.current);
+    return () => ro.disconnect();
+  }, [active]);
+  return (
+    <div ref={box} {...rest} className="relative flex rounded-lg bg-slate-100 p-1 dark:bg-raised">
+      {pill && <span aria-hidden="true" style={{ left: pill.left, width: pill.width }} className="absolute inset-y-1 rounded-md bg-white shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none dark:bg-canvas" />}
+      {children}
     </div>
   );
 }

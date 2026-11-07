@@ -2,6 +2,8 @@ package t3
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,10 +45,13 @@ type UsageWindow struct {
 
 // ProviderLimits has no windows when the provider did not report any.
 type ProviderLimits struct {
-	Provider  string        `json:"provider"`
-	Name      string        `json:"name"`
-	CheckedAt *string       `json:"checked_at"`
-	Windows   []UsageWindow `json:"windows"`
+	Provider string `json:"provider"`
+	Name     string `json:"name"`
+	// AccountKey is the same in every instance signed in to the same account of this
+	// provider, so a view can show shared limits once. Empty when T3 does not say.
+	AccountKey string        `json:"account_key"`
+	CheckedAt  *string       `json:"checked_at"`
+	Windows    []UsageWindow `json:"windows"`
 }
 
 // ModelUsage adds up one week of a model. CostSource keeps what kind of number
@@ -77,9 +82,14 @@ type wireConfig struct {
 		InstanceID  string `json:"instanceId"`
 		DisplayName string `json:"displayName"`
 		Enabled     bool   `json:"enabled"`
+		Auth        struct {
+			Email       string `json:"email"`
+			WorkspaceID string `json:"workspaceId"`
+		} `json:"auth"`
 		UsageLimits *struct {
-			CheckedAt string `json:"checkedAt"`
-			Windows   []struct {
+			CheckedAt   string `json:"checkedAt"`
+			Fingerprint string `json:"credentialFingerprint"`
+			Windows     []struct {
 				Kind              string  `json:"kind"`
 				Label             string  `json:"label"`
 				UsedPercent       float64 `json:"usedPercent"`
@@ -299,6 +309,11 @@ func limits(cfg wireConfig) []ProviderLimits {
 			continue
 		}
 		item := ProviderLimits{Provider: p.InstanceID, Name: p.DisplayName, Windows: []UsageWindow{}}
+		fingerprint := ""
+		if p.UsageLimits != nil {
+			fingerprint = p.UsageLimits.Fingerprint
+		}
+		item.AccountKey = accountKey(p.InstanceID, p.Auth.Email, p.Auth.WorkspaceID, fingerprint)
 		if p.UsageLimits != nil {
 			item.CheckedAt = &p.UsageLimits.CheckedAt
 			for _, w := range p.UsageLimits.Windows {
@@ -308,6 +323,20 @@ func limits(cfg wireConfig) []ProviderLimits {
 		out = append(out, item)
 	}
 	return out
+}
+
+// accountKey hashes what identifies the signed-in account, so the email never
+// reaches the API: the email and workspace, or else the credential fingerprint.
+func accountKey(provider, email, workspace, fingerprint string) string {
+	id := fingerprint
+	if email != "" {
+		id = email + "/" + workspace
+	}
+	if id == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(provider + "\x00" + id))
+	return hex.EncodeToString(sum[:8])
 }
 
 // models keeps cost sources apart so an estimate never adds into a reported cost.
