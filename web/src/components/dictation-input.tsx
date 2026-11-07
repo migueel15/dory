@@ -70,11 +70,16 @@ export function useDictation() {
 
   const start = async () => {
     setError(null); setPartial("");
+    if (!window.isSecureContext || !navigator.mediaDevices) {
+      setError(new Error(`El navegador solo permite el micrófono en HTTPS o localhost; esta página es ${location.origin}.`));
+      return;
+    }
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
-    } catch {
-      setError(new Error("No hay permiso para usar el micrófono."));
+    } catch (e) {
+      const name = e instanceof DOMException ? e.name : "";
+      setError(new Error(name === "NotFoundError" ? "No se encuentra ningún micrófono." : `No hay permiso para usar el micrófono (${name || String(e)}).`));
       return;
     }
     try {
