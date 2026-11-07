@@ -47,9 +47,21 @@ export function ThreadView() {
   const view = useQuery({ queryKey: key, queryFn: () => api.t3View(threadId) });
   useThreadLive(threadId, key);
   const [tab, setTab] = useState<"chat" | "changes">("chat");
+  // stopping is the run the user just stopped: the view shows it stopped
+  // until T3 confirms, and goes back if T3 keeps it running.
+  const [stopping, setStopping] = useState("");
+  const running = view.data?.active_run_id ?? "";
+  useEffect(() => {
+    if (!stopping) return;
+    if (running !== stopping) { setStopping(""); return; }
+    const t = setTimeout(() => setStopping(""), 15_000);
+    return () => clearTimeout(t);
+  }, [stopping, running]);
   if (view.isPending) return <Notice loading />;
   if (view.error) return <ErrorText error={view.error} />;
-  const v = view.data;
+  const v: T3ThreadView = stopping && view.data.active_run_id === stopping
+    ? { ...view.data, active_run_id: "", active_status: "", interrupted: true }
+    : view.data;
   return (
     <div className="flex h-[calc(100dvh-4rem-1px)] sm:h-[calc(100dvh-3rem-2px)] min-h-0 flex-col gap-3">
       <ContextBar v={v} />
@@ -59,7 +71,7 @@ export function ThreadView() {
         ))}
       </div>
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-2">
-        <div className={`min-h-0 flex-col ${tab === "chat" ? "flex" : "hidden lg:flex"}`}><Chat v={v} queryKey={key} /></div>
+        <div className={`min-h-0 flex-col ${tab === "chat" ? "flex" : "hidden lg:flex"}`}><Chat v={v} queryKey={key} onStop={setStopping} /></div>
         <div className={`min-h-0 overflow-auto ${tab === "changes" ? "block" : "hidden lg:block"}`}><Changes v={v} queryKey={key} /></div>
       </div>
     </div>
@@ -86,7 +98,7 @@ function ContextBar({ v }: { v: T3ThreadView }) {
   );
 }
 
-function Chat({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
+function Chat({ v, queryKey, onStop }: { v: T3ThreadView; queryKey: unknown[]; onStop: (run: string) => void }) {
   const qc = useQueryClient();
   const end = useRef<HTMLDivElement>(null);
   const last = v.messages.at(-1);
@@ -122,7 +134,7 @@ function Chat({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
             <PendingRequest key={v.pending.id} threadId={v.id} pending={v.pending} onDone={() => qc.invalidateQueries({ queryKey })} />
           </div>
         )}
-        <Composer v={v} queryKey={queryKey} />
+        <Composer v={v} queryKey={queryKey} onStop={onStop} />
       </div>
     </section>
   );
@@ -370,7 +382,7 @@ function ModelPicker({ models, selected, effort, effortsOf, onChange }: { models
 
 type Draft = { key: string; name: string; preview?: string; done?: T3Attachment; error?: string };
 
-function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
+function Composer({ v, queryKey, onStop }: { v: T3ThreadView; queryKey: unknown[]; onStop: (run: string) => void }) {
   const qc = useQueryClient();
   const catalog = useQuery({ queryKey: ["t3-catalog", v.instance_id], queryFn: () => api.t3Catalog(v.instance_id), enabled: !!v.instance_id, staleTime: 60_000 });
   const [text, setText] = useState("");
@@ -421,7 +433,13 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const busy = !!v.active_run_id;
   const models: MenuOption[] = (catalog.data?.providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `${p.instance_id}|${m.slug}`, label: m.name, group: p.name, icon: <ProviderIcon driver={p.driver || p.name} model={`${m.slug} ${m.name}`} /> })));
   if (!models.some((m) => m.value === selected)) models.unshift({ value: selected, label: v.model || "Modelo del hilo", icon: <ProviderIcon driver={v.provider_id} model={v.model} /> });
-  const stop = useMutation({ mutationFn: () => api.t3Interrupt(v.id), onSuccess: () => qc.invalidateQueries({ queryKey }) });
+  // Optimistic: the thread shows stopped at once; an error brings the run back.
+  const stop = useMutation({
+    mutationFn: () => api.t3Interrupt(v.id),
+    onMutate: () => onStop(v.active_run_id),
+    onError: () => onStop(""),
+    onSettled: () => qc.invalidateQueries({ queryKey }),
+  });
   const held = !busy && v.queue.some((r) => r.held);
   // Continue picks up where the stopped turn left off: the held queue first, else a nudge.
   const resume = useMutation({
