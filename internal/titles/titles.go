@@ -4,12 +4,15 @@ package titles
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 
+	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/service"
 	"github.com/migueel15/dory/internal/t3"
 )
@@ -75,7 +78,7 @@ func Prompt(item service.Item) string {
 }
 
 // Generate runs in the background: it starts the thread and waits until the title
-// is no longer pending. On a failure or a timeout the provisional title stays as the user's.
+// is no longer pending. On a failure or a timeout the provisional title stays, marked as fallback.
 func (g *Generator) Generate(item service.Item, cfg Config) {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
 	defer cancel()
@@ -106,7 +109,7 @@ func (g *Generator) Generate(item service.Item, cfg Config) {
 	}
 }
 
-// giveUp hands a still-pending title to the user, keeping the provisional text.
+// giveUp marks a still-pending title as fallback, keeping the provisional text.
 func (g *Generator) giveUp(id string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -114,13 +117,13 @@ func (g *Generator) giveUp(id string) {
 	if err != nil || cur.TitleSource != service.TitlePending {
 		return
 	}
-	cur.TitleSource = service.TitleUser
+	cur.TitleSource = service.TitleFallback
 	if _, err = g.svc.Items().Put(ctx, actor, cur); err != nil {
 		log.Printf("titles: item %s: %v", id, err)
 	}
 }
 
-// Recover hands to the user every title left pending by a previous process.
+// Recover marks as fallback every title left pending by a previous process.
 func (g *Generator) Recover(ctx context.Context) {
 	pending, err := g.svc.Items().List(ctx, service.Filter{Fields: map[string]any{"title_source": service.TitlePending}, Limit: 1000})
 	if err != nil {
@@ -130,6 +133,35 @@ func (g *Generator) Recover(ctx context.Context) {
 	for _, item := range pending {
 		g.giveUp(item.ID)
 	}
+}
+
+// Errors of Regenerate.
+var (
+	ErrNotFallback = errors.New("only a fallback title can be regenerated")
+	ErrOff         = errors.New("title generation is not configured")
+)
+
+// Regenerate retries the generation of a fallback title from the item description.
+// The item goes back to pending and the generation runs in the background.
+func (g *Generator) Regenerate(ctx context.Context, by, id string) (service.Item, error) {
+	item, err := g.svc.Items().Get(ctx, id)
+	if err != nil {
+		return item, err
+	}
+	if item.TitleSource != service.TitleFallback {
+		return item, ErrNotFallback
+	}
+	cfg := g.config(ctx)
+	if cfg.Model == "" {
+		return item, ErrOff
+	}
+	item.TitleSource = service.TitlePending
+	out, err := g.svc.Items().Put(ctx, by, item)
+	if err != nil {
+		return out, err
+	}
+	go g.Generate(out, cfg)
+	return out, nil
 }
 
 // Wrap makes item creation start the generation for pending titles. When the
@@ -249,4 +281,35 @@ func pick(cat t3.Catalog, cfg Config) (t3.LaunchInput, bool) {
 		}
 	}
 	return in, false
+}
+
+// Mount serves POST /api/items/{id}/title/regenerate.
+func (g *Generator) Mount(mux *http.ServeMux) {
+	mux.HandleFunc("POST /api/items/{id}/title/regenerate", func(w http.ResponseWriter, r *http.Request) {
+		item, err := g.Regenerate(r.Context(), auth.Actor(r.Context()), r.PathValue("id"))
+		status, code := http.StatusOK, ""
+		switch {
+		case err == nil:
+		case errors.Is(err, service.ErrNotFound):
+			status, code = http.StatusNotFound, "not_found"
+		case errors.Is(err, ErrNotFallback):
+			status, code = http.StatusConflict, "conflict"
+		case errors.Is(err, ErrOff):
+			status, code = http.StatusServiceUnavailable, "unavailable"
+		default:
+			log.Printf("titles: regenerate %s: %v", r.PathValue("id"), err)
+			status, code = http.StatusInternalServerError, "internal"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		if code == "" {
+			_ = json.NewEncoder(w).Encode(item)
+			return
+		}
+		msg := err.Error()
+		if code == "internal" {
+			msg = "internal error"
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": code, "message": msg}})
+	})
 }

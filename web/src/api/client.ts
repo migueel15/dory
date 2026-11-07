@@ -97,6 +97,7 @@ export const api = {
   saveTitleSettings: (body: TitleSettings) => req<TitleSettings>("PUT", "/settings/titles", body),
   t3Catalog: (id: string) => req<T3Catalog>("GET", `/t3/instances/${id}/catalog`),
   item: (id: string) => req<Item>("GET", `/items/${id}`),
+  regenerateTitle: (id: string) => req<Item>("POST", `/items/${id}/title/regenerate`),
   refinement: (id: string) => req<ItemRefinement>("GET", `/items/${id}/refinement`),
   refine: (id: string, body: RefineInput) => req<{ thread_id: string }>("POST", `/items/${id}/refine`, body),
   plans: (id: string) => req<ItemPlan[]>("GET", `/items/${id}/plans`),

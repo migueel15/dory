@@ -884,6 +884,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/items/{id}/title/regenerate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Retry the AI title of an item whose title_source is fallback. The item goes back to pending while the title is generated in the background. */
+        post: operations["regenerateItemTitle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/items/{id}/refine": {
         parameters: {
             query?: never;
@@ -1620,11 +1637,11 @@ export interface components {
             /** @default manual */
             source: string;
             /**
-             * @description Who wrote the title: pending while an agent generates it, ai once it did, user otherwise. Only the pending to ai change is accepted from an agent; editing the title makes it user.
+             * @description Who wrote the title: pending while an agent generates it, ai once it did, user otherwise, fallback when the generation failed and the provisional title stayed. Only the pending to ai change is accepted from an agent; editing the title makes it user.
              * @default user
              * @enum {string}
              */
-            title_source: "pending" | "ai" | "user";
+            title_source: "pending" | "ai" | "user" | "fallback";
         };
         ItemInput: {
             /** Format: uuid */
@@ -1657,10 +1674,10 @@ export interface components {
             /** @default manual */
             source: string;
             /**
-             * @description Who wrote the title: pending while an agent generates it, ai once it did, user otherwise. Only the pending to ai change is accepted from an agent; editing the title makes it user.
+             * @description Who wrote the title: pending while an agent generates it, ai once it did, user otherwise, fallback when the generation failed and the provisional title stayed. Only the pending to ai change is accepted from an agent; editing the title makes it user.
              * @enum {string}
              */
-            title_source?: "pending" | "ai" | "user";
+            title_source?: "pending" | "ai" | "user" | "fallback";
         };
         Memory: {
             /** Format: uuid */
@@ -4347,6 +4364,37 @@ export interface operations {
             };
             400: components["responses"]["Error400"];
             404: components["responses"]["Error404"];
+        };
+    };
+    regenerateItemTitle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Generation launched; the item is pending */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Item"];
+                };
+            };
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+            /** @description Title generation is not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     refineItem: {
