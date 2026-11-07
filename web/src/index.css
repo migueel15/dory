@@ -77,3 +77,14 @@ body { @apply bg-slate-50 text-slate-900 dark:bg-canvas dark:text-text; }
 @keyframes skel-bar { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
 .skel-bar { animation: skel-bar 1.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .skel-bar { animation: none; } }
+
+/* Thin scrollbar with no track, also on hover (thread chat). */
+.thin-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184 / 0.6) transparent;
+}
+.thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; background: transparent; }
+.thin-scroll::-webkit-scrollbar-track,
+.thin-scroll::-webkit-scrollbar-track:hover,
+.thin-scroll::-webkit-scrollbar-corner { background: transparent; }
+.thin-scroll::-webkit-scrollbar-thumb { background: rgb(148 163 184 / 0.6); border-radius: 9999px; }
