@@ -1,6 +1,6 @@
 import { ThreadStatus } from "../components/thread-status";
 import { ChatCircle, FolderSimple, GitPullRequest, Plus, Prohibit } from "@phosphor-icons/react";
-import { ThreadLink, threadHref } from "../components/thread-link";
+import { ThreadLink } from "../components/thread-link";
 import { LaunchDialog } from "./launch";
 import { IdeaCapture, IdeaModal } from "../components/capture";
 import { ContextMenu, type ContextAction } from "../components/context-menu";
@@ -436,7 +436,6 @@ function ItemActions({ item, children }: { item: Item; children: React.ReactNode
     ...(item.status === "ready" ? [{ label: "Enviar a implementar", run: () => setLaunch("implementation") }] : []),
     { label: "Mover a estado…", children: STATUSES.filter((s) => s !== item.status).map((s) => ({ label: STATUS_INFO[s].label, run: () => (s === "blocked" ? setBlocking(true) : change.mutate({ status: s })) })) },
     ...(thread ? [{ label: "Abrir último hilo", run: () => navigate({ to: "/threads/$threadId", params: { threadId: thread.id } }) }] : []),
-    ...(thread ? [{ label: "Abrir último hilo en T3", content: <a role="menuitem" className={linkClass} href={threadHref(thread.url, thread.t3_environment_id, thread.id)} target="_blank" rel="noreferrer">Abrir último hilo en T3</a> }] : []),
     ...(pull ? [{ label: "Abrir última PR", content: <Link role="menuitem" className={linkClass} to="/github/$owner/$repo/$kind/$number" params={{ owner: pull[1], repo: pull[2], kind: "pulls", number: pull[3] }}>Abrir última PR</Link> }] : []),
     { label: "Archivar", run: () => confirmArchive({ title: "¿Archivar el item?", text: `«${item.title}» saldrá de los tableros. Se borrará del todo a los 14 días.`, ok: "Archivar", danger: true, run: () => archive.mutate() }) },
   ];

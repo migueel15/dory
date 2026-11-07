@@ -147,7 +147,7 @@ export function Attention() {
                   <div className="break-words font-medium">{t.title}</div>
                   <div className={meta}>{[envName(t.status_.environment_id), t.model, t.effort, ago(t.updated_at)].filter(Boolean).join(" · ")}</div>
                 </div>
-                <ThreadLink onClick={(e) => e.stopPropagation()} url={t.url} environmentId={t.t3_environment_id} threadId={t.id} wrapClassName="inline-flex shrink-0 items-center gap-1" className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 dark:border-border dark:hover:bg-raised">Abrir hilo</ThreadLink>
+                <ThreadLink onClick={(e) => e.stopPropagation()} url={t.url} environmentId={t.t3_environment_id} threadId={t.id} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 dark:border-border dark:hover:bg-raised">Abrir hilo</ThreadLink>
               </div>
               {item ? <ItemLine item={item} projectName={projectName(item.project_id)} /> : <p className={meta}>Hilo sin item de Dory asociado.</p>}
               <div onClick={(e) => e.stopPropagation()}><ThreadReply id={t.id} /></div>

@@ -1,16 +1,13 @@
 import type { AnchorHTMLAttributes, ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowSquareOut } from "@phosphor-icons/react";
+import t3Logo from "../assets/t3.png";
 
 type Props = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href" | "target"> & {
   /** Web URL of the thread in T3 Code; also the fallback when the app is missing. */
   url: string;
   environmentId?: string;
   threadId?: string;
-  /** Show the small "open in T3" icon next to the link (default true). */
-  external?: boolean;
-  /** Classes of the wrapper that holds the link and the icon. */
-  wrapClassName?: string;
   children: ReactNode;
 };
 
@@ -23,28 +20,18 @@ export function threadHref(url: string, environmentId?: string, threadId?: strin
   return `intent://${path}#Intent;scheme=t3code;S.browser_fallback_url=${encodeURIComponent(url)};end`;
 }
 
-const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
-
-/** Opens T3 Code on the thread: the native app on Android, the web elsewhere. */
+/** Opens T3 Code on the thread (native app on Android, the web elsewhere), with the T3 logo. */
 export function OpenInT3({ url, environmentId, threadId, className = "" }: { url: string; environmentId?: string; threadId?: string; className?: string }) {
   return (
-    <a href={threadHref(url, environmentId, threadId)} target="_blank" rel="noreferrer" title="Abrir en T3 Code" aria-label="Abrir en T3 Code"
-      onClick={stop} onPointerDown={stop}
-      className={`grid size-6 shrink-0 place-items-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-raised dark:hover:text-white ${className}`}>
-      <ArrowSquareOut aria-hidden="true" className="size-3.5" />
+    <a href={threadHref(url, environmentId, threadId)} target="_blank" rel="noreferrer" title="Abrir en T3 Code"
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 shadow-sm hover:bg-slate-50 hover:text-slate-900 dark:border-border dark:bg-surface dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white ${className}`}>
+      <img src={t3Logo} alt="" className="size-4 rounded" />Abrir en T3<ArrowSquareOut aria-hidden="true" className="size-3" />
     </a>
   );
 }
 
-/** Link to a thread: opens its view in Dory, with a secondary icon that opens T3 Code. */
-export function ThreadLink({ url, environmentId, threadId, external = true, wrapClassName, children, ...rest }: Props) {
+/** Link to a thread: opens its view in Dory, where a button opens T3 Code. */
+export function ThreadLink({ url, environmentId: _env, threadId, children, ...rest }: Props) {
   if (!threadId) return <a {...rest} href={url} target="_blank" rel="noreferrer">{children}</a>;
-  const link = <Link {...(rest as object)} to="/threads/$threadId" params={{ threadId }}>{children}</Link>;
-  if (!external) return link;
-  return (
-    <span className={wrapClassName ?? "inline-flex min-w-0 max-w-full items-center gap-0.5 align-middle"}>
-      {link}
-      <OpenInT3 url={url} environmentId={environmentId} threadId={threadId} />
-    </span>
-  );
+  return <Link {...(rest as object)} to="/threads/$threadId" params={{ threadId }}>{children}</Link>;
 }
