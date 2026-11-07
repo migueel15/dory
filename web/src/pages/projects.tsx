@@ -29,6 +29,32 @@ const OPEN: { status: string; label: string; tone: Tone; icon: typeof Lightning 
   { status: "ready", label: "Listos", tone: "indigo", icon: CheckCircle },
 ];
 
+const chip = "inline-flex items-center gap-1 rounded-md border border-slate-200 px-1.5 py-0.5 text-[11px] text-slate-600 dark:border-border dark:text-text-secondary";
+
+// MachineChips shows two machines and folds the rest into a "+N" chip that lists them on hover or tap.
+function MachineChips({ names, max = 2 }: { names: string[]; max?: number }) {
+  const [open, setOpen] = useState(false);
+  const rest = names.slice(max);
+  return (
+    <>
+      {names.slice(0, max).map((m) => <span key={m} className={chip}><Desktop weight="duotone" aria-hidden="true" className="size-3.5" />{m}</span>)}
+      {rest.length > 0 && (
+        <span className="relative inline-flex" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+          <button type="button" aria-label={`${rest.length} máquinas más`} aria-expanded={open}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(!open); }}
+            className={`${chip} font-medium hover:bg-slate-100 dark:hover:bg-raised`}>+{rest.length}</button>
+          {open && (
+            <span role="tooltip" className="notif-in absolute bottom-full left-0 z-30 mb-1.5 w-48 rounded-lg border border-slate-200 bg-white p-2 shadow-lg dark:border-border dark:bg-surface">
+              <span className="mb-1 block text-[11px] font-semibold text-slate-500 dark:text-muted">También en</span>
+              {rest.map((m) => <span key={m} className="flex items-center gap-1.5 py-0.5 text-xs"><Desktop weight="duotone" aria-hidden="true" className="size-3.5 text-slate-400" />{m}</span>)}
+            </span>
+          )}
+        </span>
+      )}
+    </>
+  );
+}
+
 function ProjectList() {
   const [creating, setCreating] = useState(false);
   const active = useProject();
@@ -84,7 +110,7 @@ function ProjectList() {
                 </div>
                 <div className="mt-auto space-y-2">
                   <div className="flex flex-wrap items-center gap-1.5" title="Máquinas cuyo T3 Code tiene este repositorio">
-                    {machinesOf(p.id).map((m) => <span key={m} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-1.5 py-0.5 text-[11px] text-slate-600 dark:border-border dark:text-text-secondary"><Desktop weight="duotone" aria-hidden="true" className="size-3.5" />{m}</span>)}
+                    <MachineChips names={machinesOf(p.id)} />
                     {machinesOf(p.id).length === 0 && <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 dark:text-muted"><Desktop aria-hidden="true" className="size-3.5" />En ninguna máquina disponible</span>}
                   </div>
                   <div className="space-y-1">
