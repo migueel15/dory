@@ -4,6 +4,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -36,6 +37,19 @@ func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *
 	})
 	mux.HandleFunc("GET /api/t3/usage", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, monitor.Usage())
+	})
+	mux.HandleFunc("GET /api/t3/usage/history", func(w http.ResponseWriter, r *http.Request) {
+		days, err := strconv.Atoi(r.URL.Query().Get("days"))
+		if err != nil || days < 1 || days > t3.MaxHistoryDays {
+			writeError(w, http.StatusBadRequest, "invalid_argument", fmt.Sprintf("days must be between 1 and %d", t3.MaxHistoryDays))
+			return
+		}
+		history, err := monitor.UsageHistory(r.Context(), days)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal", err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, history)
 	})
 	mux.HandleFunc("POST /api/t3/usage/refresh", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, monitor.RefreshUsage(r.Context()))

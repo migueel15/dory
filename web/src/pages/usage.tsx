@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { UsageHistory } from "./usage-history";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type T3InstanceUsage } from "../api/client";
 import { Button, Card, ErrorText } from "../components/ui";
@@ -73,55 +74,6 @@ function LimitRow({ w }: { w: T3InstanceUsage["providers"][number]["windows"][nu
   );
 }
 
-// Token series: validated categorical slots 1-3 (light / dark).
-const SERIES = [
-  { key: "input_tokens", label: "Entrada", cls: "bg-[#2a78d6] dark:bg-[#3987e5]" },
-  { key: "cached_tokens", label: "Caché", cls: "bg-[#eb6834] dark:bg-[#d95926]" },
-  { key: "output_tokens", label: "Salida", cls: "bg-[#1baf7a] dark:bg-[#199e70]" },
-] as const;
-const compact = (n: number) => n.toLocaleString("es-ES", { notation: "compact", maximumFractionDigits: 1 });
-
-// UsageChart compares the last 7 days of tokens per instance and model as stacked bars.
-function UsageChart({ rows }: { rows: { key: string; label: string; m: T3InstanceUsage["models"][number] }[] }) {
-  const [hover, setHover] = useState<string>();
-  const total = (m: T3InstanceUsage["models"][number]) => m.input_tokens + m.cached_tokens + m.output_tokens;
-  const sorted = [...rows].sort((a, b) => total(b.m) - total(a.m)).slice(0, 10);
-  const max = Math.max(1, ...sorted.map((r) => total(r.m)));
-  if (!sorted.length) return null;
-  return (
-    <Card className="space-y-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-semibold">Tokens de los últimos 7 días</h2>
-        <div className="flex flex-wrap gap-3 text-xs text-slate-600 dark:text-text-secondary">
-          {SERIES.map((s) => <span key={s.key} className="flex items-center gap-1.5"><span className={`size-2.5 rounded-sm ${s.cls}`} />{s.label}</span>)}
-        </div>
-      </div>
-      <div className="space-y-1.5" role="list">
-        {sorted.map((r) => {
-          const t = total(r.m);
-          return (
-            <div key={r.key} role="listitem" onMouseEnter={() => setHover(r.key)} onMouseLeave={() => setHover(undefined)}
-              className="relative grid grid-cols-[minmax(0,12rem)_1fr_auto] items-center gap-3 rounded px-1 py-0.5 text-xs hover:bg-slate-100 dark:hover:bg-raised">
-              <span className="truncate text-slate-600 dark:text-text-secondary" title={r.label}>{r.label}</span>
-              <div className="flex h-3 gap-0.5" style={{ width: `${(t / max) * 100}%` }}>
-                {SERIES.map((s) => r.m[s.key] > 0 && <div key={s.key} className={`h-full last:rounded-r ${s.cls}`} style={{ width: `${(r.m[s.key] / t) * 100}%` }} />)}
-              </div>
-              <span className="tabular-nums text-slate-700 dark:text-text">{compact(t)}</span>
-              {hover === r.key && (
-                <div className="pointer-events-none absolute left-1/3 top-full z-20 mt-1 w-56 rounded-lg border border-slate-200 bg-white p-2 shadow-lg dark:border-border dark:bg-surface">
-                  <div className="mb-1 truncate font-medium">{r.label}</div>
-                  {SERIES.map((s) => <div key={s.key} className="flex items-center justify-between gap-2"><span className="flex items-center gap-1.5"><span className={`size-2 rounded-sm ${s.cls}`} />{s.label}</span><span className="tabular-nums">{tokens(r.m[s.key])}</span></div>)}
-                  <div className="mt-1 flex justify-between border-t border-slate-200 pt-1 dark:border-border"><span>Coste</span><span>{cost(r.m.cost_usd, r.m.cost_source)}</span></div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </Card>
-  );
-}
-
 // Usage shows one compact card per instance, always in the same order (by name).
 export function Usage() {
   const usage = useQuery({ queryKey: ["t3-usage"], queryFn: api.t3Usage, refetchInterval: 30_000 });
@@ -174,7 +126,7 @@ export function Usage() {
           );
         })}
       </div>
-      <UsageChart rows={sorted.flatMap((u) => u.models.map((m) => ({ key: `${u.instance_id}/${m.provider}/${m.model}/${m.cost_source}`, label: `${envName(u.environment_id) || "Instancia"} · ${m.model}`, m })))} />
+      <UsageHistory envName={envName} />
     </div>
   );
 }

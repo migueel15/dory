@@ -92,6 +92,7 @@ type wireConfig struct {
 
 type wireUsage struct {
 	Buckets []struct {
+		Day      string `json:"day"`
 		Provider string `json:"provider"`
 		Model    string `json:"model"`
 		Totals   struct {
@@ -100,9 +101,67 @@ type wireUsage struct {
 			Creation int64 `json:"cacheCreationTokens"`
 			Output   int64 `json:"outputTokens"`
 		} `json:"totals"`
-		CostUSD    float64 `json:"costUsd"`
-		CostSource string  `json:"costSource"`
+		CostUSD         float64 `json:"costUsd"`
+		CacheSavingsUSD float64 `json:"cacheSavingsUsd"`
+		CostSource      string  `json:"costSource"`
+		Sessions        int64   `json:"sessions"`
 	} `json:"buckets"`
+}
+
+// MaxHistoryDays bounds a history read: T3 scans transcripts for every day asked.
+const MaxHistoryDays = 90
+
+// DayUsage is one day of one model as T3 buckets it, in UTC days.
+type DayUsage struct {
+	Day              string  `json:"day"`
+	Provider         string  `json:"provider"`
+	Model            string  `json:"model"`
+	UncachedTokens   int64   `json:"uncached_tokens"`
+	CachedTokens     int64   `json:"cached_tokens"`
+	CacheWriteTokens int64   `json:"cache_write_tokens"`
+	OutputTokens     int64   `json:"output_tokens"`
+	CostUSD          float64 `json:"cost_usd"`
+	CacheSavingsUSD  float64 `json:"cache_savings_usd"`
+	CostSource       string  `json:"cost_source"`
+	Sessions         int64   `json:"sessions"`
+}
+
+// InstanceHistory is the daily consumption of one instance. Error is empty,
+// unavailable or missing_scope. It is read on demand and never stored.
+type InstanceHistory struct {
+	InstanceID    string     `json:"instance_id"`
+	EnvironmentID string     `json:"environment_id"`
+	Error         string     `json:"error"`
+	Days          []DayUsage `json:"days"`
+}
+
+// UsageHistory reads the daily usage buckets of the last days, today included.
+func (c Client) UsageHistory(ctx context.Context, now time.Time, days int) ([]DayUsage, error) {
+	ctx, cancel := context.WithTimeout(ctx, usageTimeout)
+	defer cancel()
+	ws, err := c.dial(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer ws.CloseNow()
+	ws.SetReadLimit(-1)
+	var usage wireUsage
+	day := now.UTC()
+	if err := call(ctx, ws, "1", "server.getUsageSummary", map[string]any{
+		"sinceDay": day.AddDate(0, 0, 1-days).Format(time.DateOnly),
+		"untilDay": day.Format(time.DateOnly),
+		"timeZone": "UTC",
+	}, &usage); err != nil {
+		return nil, err
+	}
+	out := make([]DayUsage, 0, len(usage.Buckets))
+	for _, b := range usage.Buckets {
+		out = append(out, DayUsage{Day: b.Day, Provider: b.Provider, Model: b.Model, UncachedTokens: b.Totals.Uncached, CachedTokens: b.Totals.Cached, CacheWriteTokens: b.Totals.Creation, OutputTokens: b.Totals.Output, CostUSD: b.CostUSD, CacheSavingsUSD: b.CacheSavingsUSD, CostSource: b.CostSource, Sessions: b.Sessions})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Day+out[i].Provider+out[i].Model < out[j].Day+out[j].Provider+out[j].Model
+	})
+	return out, nil
 }
 
 // Usage reads plan limits and consumption over one short-lived connection.

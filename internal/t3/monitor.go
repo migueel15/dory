@@ -309,6 +309,37 @@ func (m *Monitor) RefreshUsage(ctx context.Context) []InstanceUsage {
 	return m.Usage()
 }
 
+// UsageHistory reads the daily usage of every instance over the last days.
+func (m *Monitor) UsageHistory(ctx context.Context, days int) ([]InstanceHistory, error) {
+	days = max(1, min(days, MaxHistoryDays))
+	instances, err := m.svc.T3Instances().List(ctx, service.Filter{Limit: 100})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]InstanceHistory, len(instances))
+	var wg sync.WaitGroup
+	for i, in := range instances {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c := Client{BaseURL: in.BaseUrl, Token: os.Getenv(in.TokenEnv), HTTP: m.client}
+			h := InstanceHistory{InstanceID: in.ID, EnvironmentID: in.EnvironmentID, Days: []DayUsage{}}
+			d, err := c.UsageHistory(ctx, time.Now(), days)
+			switch {
+			case err == nil:
+				h.Days = d
+			case errors.Is(err, errMissingScope):
+				h.Error = UsageMissingScope
+			default:
+				h.Error = UsageUnavailable
+			}
+			out[i] = h
+		}()
+	}
+	wg.Wait()
+	return out, nil
+}
+
 // Usage returns the latest usage read of every instance.
 func (m *Monitor) Usage() []InstanceUsage {
 	m.mu.RLock()
