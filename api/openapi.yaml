@@ -1098,6 +1098,24 @@ paths:
       responses:
         "204":
           description: "Sent"
+  "/t3/threads/{id}/history":
+    get:
+      operationId: "getT3ThreadHistory"
+      summary: "Read an older page of a thread's conversation; start from history_cursor of /view, then each page's next_cursor"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+        - {name: "cursor", in: "query", required: true, schema: {type: "string"}}
+      responses:
+        "200":
+          description: "Older messages, oldest first"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  messages: {type: "array", items: {type: "object"}}
+                  next_cursor: {type: "string"}
+                  has_more: {type: "boolean"}
   "/t3/threads/{id}/attachments":
     post:
       operationId: "uploadT3Attachment"

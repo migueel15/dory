@@ -101,7 +101,7 @@ func (m *Manager) Observe(ctx context.Context, instance string, threads []t3.Thr
 				if project != "" {
 					heading += " · " + project
 				}
-				if _, err = tx.Exec(ctx, "SELECT emit_notification($1,$2,$3,$4)", heading, t.Title, t.URL, kinds); err != nil {
+				if _, err = tx.Exec(ctx, "SELECT emit_notification($1,$2,$3,$4)", heading, t.Title, "/threads/"+url.PathEscape(t.ID), kinds); err != nil {
 					return err
 				}
 			}

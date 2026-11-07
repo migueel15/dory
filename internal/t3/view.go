@@ -4,13 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"sort"
 	"strings"
 )
 
 // ViewMessage is one entry of the thread view: a user or assistant message,
 // the model's reasoning (role "reasoning"), a tool it ran (role "tool", with
-// Title, Detail and Status) or the point where the user stopped a turn (role "interrupt").
+// Title, Detail and Status), a proposed plan in markdown (role "plan") or the
+// point where the user stopped a turn (role "interrupt").
 type ViewMessage struct {
 	ID        string `json:"id"`
 	Role      string `json:"role"`
@@ -36,6 +38,7 @@ type wireTurnItem struct {
 	Ordinal   int             `json:"ordinal"`
 	StartedAt string          `json:"startedAt"`
 	RunID     string          `json:"runId"`
+	Markdown  *string         `json:"markdown"`
 }
 
 // hiddenItems are turn items the chat does not show as steps.
@@ -149,8 +152,17 @@ func str(p *string) string {
 
 // ThreadView reads a thread with its whole conversation, queue and settings.
 func (c Client) ThreadView(ctx context.Context, threadID string) (ThreadView, error) {
+	var raw json.RawMessage
+	if err := c.call(ctx, "orchestration.getThreadProjection", map[string]any{"threadId": threadID}, &raw); err != nil {
+		return ThreadView{}, err
+	}
 	var p wireViewProjection
-	if err := c.call(ctx, "orchestration.getThreadProjection", map[string]any{"threadId": threadID}, &p); err != nil {
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return ThreadView{}, err
+	}
+	// The view's own TurnItems shadows the embedded projection's, which the
+	// pending request needs (questions and options), so decode it on its own.
+	if err := json.Unmarshal(raw, &p.wireProjection); err != nil {
 		return ThreadView{}, err
 	}
 	return p.view(threadID), nil
@@ -229,31 +241,55 @@ func (p wireViewProjection) view(threadID string) ThreadView {
 			msgs[m.ID] = ViewMessage{ID: m.ID, Role: m.Role, Text: m.Text, Streaming: m.Streaming, CreatedAt: m.CreatedAt}
 		}
 	}
-	// Turn items give the order of messages, reasoning and tools; messages
-	// without an item yet (or threads without items) follow in their own order.
-	items := append([]wireTurnItem(nil), p.TurnItems...)
-	sort.SliceStable(items, func(i, j int) bool { return items[i].Ordinal < items[j].Ordinal })
 	runStatus := map[string]string{}
 	for _, r := range p.Runs {
 		runStatus[r.ID] = r.Status
 	}
 	shown := map[string]bool{}
+	v.Messages = append(v.Messages, timeline(p.TurnItems, msgs, runStatus, shown, false)...)
+	for _, m := range p.FullMessages {
+		if mm, ok := msgs[m.ID]; ok && !shown[m.ID] {
+			v.Messages = append(v.Messages, mm)
+		}
+	}
+	v.Pending = p.context(0).Pending
+	return v
+}
+
+// timeline turns turn items into view entries in order: messages, reasoning,
+// tools, plans and stops. Messages come from msgs; with fromItems, a message
+// missing there is rebuilt from the item's own text (older history pages).
+func timeline(in []wireTurnItem, msgs map[string]ViewMessage, runStatus map[string]string, shown map[string]bool, fromItems bool) []ViewMessage {
+	out := []ViewMessage{}
+	items := append([]wireTurnItem(nil), in...)
+	sort.SliceStable(items, func(i, j int) bool { return items[i].Ordinal < items[j].Ordinal })
 	for _, it := range items {
 		// Steps left open by a run that already ended did not keep running.
 		if st := runStatus[it.RunID]; it.RunID != "" && st != "" && !activeStatuses[st] && st != "queued" && (it.Streaming || it.Status == "running" || it.Status == "inProgress") {
 			it.Streaming, it.Status = false, st
 		}
+		// Older pages hold only finished turns.
+		if fromItems && (it.Streaming || it.Status == "running" || it.Status == "inProgress") {
+			it.Streaming, it.Status = false, "completed"
+		}
 		switch {
 		case it.MessageID != nil:
-			if m, ok := msgs[*it.MessageID]; ok && !shown[m.ID] {
-				shown[m.ID] = true
-				v.Messages = append(v.Messages, m)
+			m, ok := msgs[*it.MessageID]
+			if !ok && fromItems && (it.Type == "user_message" || it.Type == "assistant_message") {
+				m, ok = ViewMessage{ID: *it.MessageID, Role: strings.TrimSuffix(it.Type, "_message"), Text: str(it.Text), CreatedAt: it.StartedAt}, true
 			}
+			if ok && !shown[m.ID] {
+				shown[m.ID] = true
+				out = append(out, m)
+			}
+		case it.Type == "proposed_plan":
+			// A plan the model proposed shows as its own card, not as a step.
+			out = append(out, ViewMessage{ID: it.ID, Role: "plan", Text: str(it.Markdown), Streaming: it.Streaming, CreatedAt: it.StartedAt, Status: it.Status})
 		case it.Type == "run_interrupt_result":
 			// A stopped turn shows as a divider, not as a step.
-			v.Messages = append(v.Messages, ViewMessage{ID: it.ID, Role: "interrupt", Text: "Parado por el usuario", CreatedAt: it.StartedAt})
+			out = append(out, ViewMessage{ID: it.ID, Role: "interrupt", Text: "Parado por el usuario", CreatedAt: it.StartedAt})
 		case it.Type == "reasoning":
-			v.Messages = append(v.Messages, ViewMessage{ID: it.ID, Role: "reasoning", Text: str(it.Text), Streaming: it.Streaming, CreatedAt: it.StartedAt, Status: it.Status})
+			out = append(out, ViewMessage{ID: it.ID, Role: "reasoning", Text: str(it.Text), Streaming: it.Streaming, CreatedAt: it.StartedAt, Status: it.Status})
 		case !hiddenItems[it.Type]:
 			title := str(it.Title)
 			if title == "" {
@@ -262,16 +298,57 @@ func (p wireViewProjection) view(threadID string) ThreadView {
 			if title == "" {
 				title = strings.ReplaceAll(it.Type, "_", " ")
 			}
-			v.Messages = append(v.Messages, ViewMessage{ID: it.ID, Role: "tool", Title: title, Detail: toolDetail(it.Input), CreatedAt: it.StartedAt, Status: it.Status})
+			out = append(out, ViewMessage{ID: it.ID, Role: "tool", Title: title, Detail: toolDetail(it.Input), CreatedAt: it.StartedAt, Status: it.Status})
 		}
 	}
-	for _, m := range p.FullMessages {
-		if mm, ok := msgs[m.ID]; ok && !shown[m.ID] {
-			v.Messages = append(v.Messages, mm)
-		}
+	return out
+}
+
+// HistoryPage is an older stretch of a thread, oldest first.
+type HistoryPage struct {
+	Messages   []ViewMessage `json:"messages"`
+	NextCursor string        `json:"next_cursor"`
+	HasMore    bool          `json:"has_more"`
+}
+
+// HistoryCursor returns where the thread's older history starts, or "" when
+// the view already holds all of it.
+func (c Client) HistoryCursor(ctx context.Context, threadID string) (string, error) {
+	var b struct {
+		HistoryCursor  *string `json:"historyCursor"`
+		HasMoreHistory bool    `json:"hasMoreHistory"`
 	}
-	v.Pending = p.context(0).Pending
-	return v
+	if err := c.get(ctx, "/api/orchestration/threads/"+url.PathEscape(threadID)+"/bounded", true, &b); err != nil {
+		return "", err
+	}
+	if !b.HasMoreHistory || b.HistoryCursor == nil {
+		return "", nil
+	}
+	return *b.HistoryCursor, nil
+}
+
+// History reads one older page of a thread from T3's paged history.
+func (c Client) History(ctx context.Context, threadID, cursor string) (HistoryPage, error) {
+	var h struct {
+		Items []struct {
+			Item wireTurnItem `json:"item"`
+		} `json:"items"`
+		NextCursor     *string `json:"nextCursor"`
+		HasMoreHistory bool    `json:"hasMoreHistory"`
+	}
+	path := "/api/orchestration/threads/" + url.PathEscape(threadID) + "/history?cursor=" + url.QueryEscape(cursor)
+	if err := c.get(ctx, path, true, &h); err != nil {
+		return HistoryPage{}, err
+	}
+	items := make([]wireTurnItem, 0, len(h.Items))
+	for _, it := range h.Items {
+		items = append(items, it.Item)
+	}
+	p := HistoryPage{Messages: timeline(items, map[string]ViewMessage{}, map[string]string{}, map[string]bool{}, true), HasMore: h.HasMoreHistory}
+	if h.NextCursor != nil && h.HasMoreHistory {
+		p.NextCursor = *h.NextCursor
+	}
+	return p, nil
 }
 
 // Send modes of a message in the thread view.

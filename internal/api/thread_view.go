@@ -16,6 +16,8 @@ type threadViewOut struct {
 	t3.ThreadView
 	InstanceID string               `json:"instance_id"`
 	Items      []service.ItemThread `json:"items"`
+	// HistoryCursor loads older messages with /history; empty when none.
+	HistoryCursor string `json:"history_cursor"`
 }
 
 // maxAttachmentBytes is T3's own limit for a file attachment.
@@ -66,6 +68,10 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 			return
 		}
 		out := threadViewOut{ThreadView: v, Items: links}
+		// T3 sends only the latest turns; older ones come page by page.
+		if cursor, err := c.HistoryCursor(r.Context(), id); err == nil {
+			out.HistoryCursor = cursor
+		}
 		if inst, ok := monitor.Locate(id); ok {
 			out.InstanceID = inst
 		} else if len(links) > 0 {
@@ -126,6 +132,25 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 			return
 		}
 		writeJSON(w, http.StatusOK, a)
+	})
+	mux.HandleFunc("GET /api/t3/threads/{id}/history", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		cursor := r.URL.Query().Get("cursor")
+		if cursor == "" {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "cursor is required")
+			return
+		}
+		c, err := threadClient(r.Context(), svc, monitor, id)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		page, err := c.History(r.Context(), id, cursor)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, page)
 	})
 	mux.HandleFunc("PATCH /api/t3/threads/{id}/queue/{run_id}", func(w http.ResponseWriter, r *http.Request) {
 		var b struct {

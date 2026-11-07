@@ -84,7 +84,8 @@ func TestThreadViewInterleavesReasoningAndTools(t *testing.T) {
 			{"id":"i3","type":"command_execution","input":"ls -la","ordinal":3,"status":"completed"},
 			{"id":"i5","type":"checkpoint","ordinal":5},
 			{"id":"i6","type":"run_interrupt_request","ordinal":6},
-			{"id":"i7","type":"run_interrupt_result","status":"interrupted","ordinal":7}]}}`, nil)
+			{"id":"i7","type":"run_interrupt_result","status":"interrupted","ordinal":7},
+			{"id":"i8","type":"proposed_plan","markdown":"# Plan","ordinal":8}]}}`, nil)
 	v, err := c.ThreadView(context.Background(), "th")
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +94,7 @@ func TestThreadViewInterleavesReasoningAndTools(t *testing.T) {
 	for _, m := range v.Messages {
 		got = append(got, m.Role+":"+m.Text+m.Detail)
 	}
-	want := []string{"user:hola", "reasoning:pienso", "tool:ls -la", "assistant:listo", "interrupt:Parado por el usuario"}
+	want := []string{"user:hola", "reasoning:pienso", "tool:ls -la", "assistant:listo", "interrupt:Parado por el usuario", "plan:# Plan"}
 	if len(got) != len(want) {
 		t.Fatalf("messages %v", got)
 	}
@@ -104,5 +105,19 @@ func TestThreadViewInterleavesReasoningAndTools(t *testing.T) {
 	}
 	if !v.Messages[1].Streaming || v.Messages[2].Title != "command execution" {
 		t.Errorf("steps %+v", v.Messages[1:3])
+	}
+}
+
+func TestThreadViewKeepsPendingQuestions(t *testing.T) {
+	c := rpcServer(t, `{"_tag":"Success","value":{"thread":{},"runs":[],"messages":[],
+		"runtimeRequests":[{"id":"r1","kind":"user_input","status":"pending"}],
+		"turnItems":[{"id":"i1","type":"user_input_request","requestId":"r1","ordinal":1,
+			"questions":[{"id":"q","header":"H","question":"¿Color?","multiSelect":true,"options":[{"label":"Rojo","description":"d"}]}]}]}}`, nil)
+	v, err := c.ThreadView(context.Background(), "th")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Pending == nil || len(v.Pending.Questions) != 1 || !v.Pending.Questions[0].Multi || len(v.Pending.Questions[0].Options) != 1 {
+		t.Fatalf("pending %+v", v.Pending)
 	}
 }
