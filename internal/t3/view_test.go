@@ -82,7 +82,9 @@ func TestThreadViewInterleavesReasoningAndTools(t *testing.T) {
 			{"id":"i1","type":"user_message","messageId":"m1","ordinal":1},
 			{"id":"i2","type":"reasoning","text":"pienso","streaming":true,"ordinal":2,"status":"running"},
 			{"id":"i3","type":"command_execution","input":"ls -la","ordinal":3,"status":"completed"},
-			{"id":"i5","type":"checkpoint","ordinal":5}]}}`, nil)
+			{"id":"i5","type":"checkpoint","ordinal":5},
+			{"id":"i6","type":"run_interrupt_request","ordinal":6},
+			{"id":"i7","type":"run_interrupt_result","status":"interrupted","ordinal":7}]}}`, nil)
 	v, err := c.ThreadView(context.Background(), "th")
 	if err != nil {
 		t.Fatal(err)
@@ -91,7 +93,7 @@ func TestThreadViewInterleavesReasoningAndTools(t *testing.T) {
 	for _, m := range v.Messages {
 		got = append(got, m.Role+":"+m.Text+m.Detail)
 	}
-	want := []string{"user:hola", "reasoning:pienso", "tool:ls -la", "assistant:listo"}
+	want := []string{"user:hola", "reasoning:pienso", "tool:ls -la", "assistant:listo", "interrupt:Parado por el usuario"}
 	if len(got) != len(want) {
 		t.Fatalf("messages %v", got)
 	}

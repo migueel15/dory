@@ -19,7 +19,7 @@ export type T3InstanceHistory = S["T3InstanceHistory"];
 export type T3DayUsage = S["T3DayUsage"];
 export type T3ThreadContext = S["T3ThreadContext"];
 // Reasoning and tool entries are steps of the model between messages.
-export type T3ViewMessage = { id: string; role: "user" | "assistant" | "system" | "reasoning" | "tool"; text: string; streaming: boolean; created_at: string; title?: string; detail?: string; status?: string };
+export type T3ViewMessage = { id: string; role: "user" | "assistant" | "system" | "reasoning" | "tool" | "interrupt"; text: string; streaming: boolean; created_at: string; title?: string; detail?: string; status?: string };
 export type T3QueuedRun = { run_id: string; text: string; position: number; held: boolean };
 export type T3ThreadView = {
   id: string; title: string; provider_id: string; model: string; effort: string; effort_option: string;

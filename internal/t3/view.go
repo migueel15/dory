@@ -9,8 +9,8 @@ import (
 )
 
 // ViewMessage is one entry of the thread view: a user or assistant message,
-// the model's reasoning (role "reasoning") or a tool it ran (role "tool", with
-// Title, Detail and Status).
+// the model's reasoning (role "reasoning"), a tool it ran (role "tool", with
+// Title, Detail and Status) or the point where the user stopped a turn (role "interrupt").
 type ViewMessage struct {
 	ID        string `json:"id"`
 	Role      string `json:"role"`
@@ -35,10 +35,11 @@ type wireTurnItem struct {
 	MessageID *string         `json:"messageId"`
 	Ordinal   int             `json:"ordinal"`
 	StartedAt string          `json:"startedAt"`
+	RunID     string          `json:"runId"`
 }
 
 // hiddenItems are turn items the chat does not show as steps.
-var hiddenItems = map[string]bool{"checkpoint": true, "user_input_request": true, "user_message": true, "assistant_message": true}
+var hiddenItems = map[string]bool{"checkpoint": true, "user_input_request": true, "user_message": true, "assistant_message": true, "run_interrupt_request": true}
 
 // toolDetail summarizes a tool input: a command as is, anything else as compact JSON.
 func toolDetail(raw json.RawMessage) string {
@@ -232,14 +233,25 @@ func (p wireViewProjection) view(threadID string) ThreadView {
 	// without an item yet (or threads without items) follow in their own order.
 	items := append([]wireTurnItem(nil), p.TurnItems...)
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Ordinal < items[j].Ordinal })
+	runStatus := map[string]string{}
+	for _, r := range p.Runs {
+		runStatus[r.ID] = r.Status
+	}
 	shown := map[string]bool{}
 	for _, it := range items {
+		// Steps left open by a run that already ended did not keep running.
+		if st := runStatus[it.RunID]; it.RunID != "" && st != "" && !activeStatuses[st] && st != "queued" && (it.Streaming || it.Status == "running" || it.Status == "inProgress") {
+			it.Streaming, it.Status = false, st
+		}
 		switch {
 		case it.MessageID != nil:
 			if m, ok := msgs[*it.MessageID]; ok && !shown[m.ID] {
 				shown[m.ID] = true
 				v.Messages = append(v.Messages, m)
 			}
+		case it.Type == "run_interrupt_result":
+			// A stopped turn shows as a divider, not as a step.
+			v.Messages = append(v.Messages, ViewMessage{ID: it.ID, Role: "interrupt", Text: "Parado por el usuario", CreatedAt: it.StartedAt})
 		case it.Type == "reasoning":
 			v.Messages = append(v.Messages, ViewMessage{ID: it.ID, Role: "reasoning", Text: str(it.Text), Streaming: it.Streaming, CreatedAt: it.StartedAt, Status: it.Status})
 		case !hiddenItems[it.Type]:
