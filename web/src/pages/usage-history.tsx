@@ -81,7 +81,7 @@ export function UsageHistory({ envName }: { envName: (id: string) => string }) {
       </div>
       <ErrorText error={history.error} />
       {failed.length > 0 && <p className="text-sm text-amber-700 dark:text-amber-400">Sin datos de {failed.map((h) => envName(h.environment_id) || "una instancia").join(", ")}{failed.some((h) => h.error === "missing_scope") ? " (al token le falta el permiso diagnostics:read)" : ""}.</p>}
-      {history.isPending ? <p className="text-sm text-slate-500 dark:text-muted">Cargando consumo…</p> : (
+      {history.isPending ? <UsageSkeleton /> : (
         <>
           <div className="grid gap-6 lg:grid-cols-[18rem_1fr]">
             <div className="space-y-4">
@@ -171,5 +171,43 @@ export function UsageHistory({ envName }: { envName: (id: string) => string }) {
         </>
       )}
     </Card>
+  );
+}
+
+// UsageSkeleton holds the final layout while T3 scans, with bars that rise and fall in gray.
+function UsageSkeleton() {
+  const bar = "rounded bg-slate-200 motion-safe:animate-pulse dark:bg-raised";
+  return (
+    <div role="status" aria-label="Cargando consumo" className="space-y-5">
+      <div className="grid gap-6 lg:grid-cols-[18rem_1fr]">
+        <div className="space-y-4">
+          <div className="space-y-2"><div className={`h-8 w-36 ${bar}`} /><div className={`h-3 w-44 ${bar}`} /></div>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="space-y-1.5">
+              <div className="flex items-center gap-2"><div className={`size-2.5 ${bar}`} /><div className={`h-3.5 flex-1 ${bar}`} style={{ maxWidth: `${60 - i * 12}%` }} /><div className={`h-3.5 w-14 ${bar}`} /></div>
+              <div className={`ml-4.5 h-3 w-32 ${bar}`} />
+            </div>
+          ))}
+        </div>
+        <div className="space-y-2">
+          <div className={`h-3.5 w-24 ${bar}`} />
+          <div className="flex h-48 items-end gap-px border-b border-slate-100 pl-14 dark:border-border/60">
+            {Array.from({ length: 30 }, (_, i) => (
+              <div key={i} className="skel-bar flex-1 origin-bottom rounded-t-sm bg-slate-200 dark:bg-raised"
+                style={{ height: `${30 + ((i * 37) % 60)}%`, animationDelay: `${(i % 10) * 0.12}s` }} />
+            ))}
+          </div>
+          <div className="flex justify-between pl-14">{[0, 1, 2].map((i) => <div key={i} className={`h-2.5 w-10 ${bar}`} />)}</div>
+        </div>
+      </div>
+      <div className="space-y-2">
+        <div className={`h-3.5 w-16 ${bar}`} />
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">{[0, 1, 2, 3, 4].map((i) => <div key={i} className="space-y-1.5"><div className={`h-3 w-20 ${bar}`} /><div className={`h-5 w-14 ${bar}`} /></div>)}</div>
+      </div>
+      <div className="space-y-2">
+        <div className={`h-3.5 w-20 ${bar}`} />
+        {[0, 1, 2, 3].map((i) => <div key={i} className="flex items-center gap-3 border-b border-slate-100 py-2 dark:border-border/60"><div className={`h-3 w-4 ${bar}`} /><div className={`h-3.5 flex-1 ${bar}`} style={{ maxWidth: `${45 - i * 6}%` }} /><div className={`ml-auto h-3.5 w-14 ${bar}`} /><div className={`h-3.5 w-10 ${bar}`} /><div className={`h-3.5 w-12 ${bar}`} /></div>)}
+      </div>
+    </div>
   );
 }
