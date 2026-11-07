@@ -1309,6 +1309,8 @@ export interface components {
         T3ProviderLimits: {
             provider: string;
             name: string;
+            /** @description Same in every instance signed in to the same account of this provider; empty when unknown */
+            account_key: string;
             /** Format: date-time */
             checked_at: string | null;
             windows: components["schemas"]["T3UsageWindow"][];

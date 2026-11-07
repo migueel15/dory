@@ -7,7 +7,8 @@ import { ApiError, api } from "./api/client";
 import { useLiveUpdates } from "./api/live";
 import { Button, Input, Label, errMsg } from "./components/ui";
 import { Environments, Memories, memorySearch } from "./pages/crud";
-import { CommandPalette } from "./components/commands";
+import { CommandPalette, CommandsButton } from "./components/commands";
+import { UsageQuick } from "./components/usage-quick";
 import { ProjectSwitcher } from "./components/project-switcher";
 import { GithubView } from "./pages/github-detail";
 import { Github } from "./pages/github";
@@ -146,14 +147,15 @@ function Layout() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex sm:h-screen sm:bg-white sm:dark:bg-surface">
       <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col bg-white dark:bg-surface sm:flex">
-        <Link to="/" className="flex items-center gap-2 px-4 py-3 font-bold">Dory<DevBadge /></Link>
+        <div className="flex items-center pr-2"><Link to="/" className="flex items-center gap-2 px-4 py-3 font-bold">Dory<DevBadge /></Link><CommandsButton /></div>
         <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4">{links}</nav>
         <div className="shrink-0 px-2 pb-2"><ProjectSwitcher /></div>
         <div className="shrink-0 space-y-2 border-t border-slate-200 p-3 dark:border-border">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 [&>*]:flex [&>*]:flex-1 [&>*]:items-center [&>*]:justify-center">
             {desktop && <Notifications />}
             <ThemeToggle />
             <SettingsLink />
+            <UsageQuick />
           </div>
           <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 py-1 pl-3 pr-1 dark:border-border">
             <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
@@ -204,10 +206,11 @@ function Layout() {
           }}>{links}</nav>
         </div>
         <div className="shrink-0 space-y-3 border-t border-slate-200 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-border">
-          {/* Theme and settings live here on phones so the top bar keeps room for the project. */}
-          <div className="flex items-center gap-1">
+          {/* Theme, settings and usage live here on phones so the top bar keeps room for the project. */}
+          <div className="flex items-center gap-1 [&>*]:flex [&>*]:flex-1 [&>*]:items-center [&>*]:justify-center">
             <ThemeToggle />
             <SettingsLink />
+            <UsageQuick />
           </div>
           <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 py-1 pl-3 pr-1 dark:border-border">
             <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>

@@ -1,5 +1,5 @@
 import { ThreadStatus } from "../components/thread-status";
-import { ChatCircle, GitPullRequest, Plus, Prohibit } from "@phosphor-icons/react";
+import { ChatCircle, FolderSimple, GitPullRequest, Plus, Prohibit } from "@phosphor-icons/react";
 import { ThreadLink } from "../components/thread-link";
 import { LaunchDialog } from "./launch";
 import { IdeaCapture, IdeaModal } from "../components/capture";
@@ -218,6 +218,16 @@ export function Inbox() {
   const [batch, setBatch] = useState(false);
   const project = useProject();
   const items = useQuery({ queryKey: ["items", "inbox"], queryFn: () => api.items.list({ status: "inbox" }), refetchInterval: pendingPoll, select: (l) => (project ? l.filter((i) => i.project_id === project) : l) });
+  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
+  const projectName = (id: string | null) => projects.data?.find((p) => p.id === id)?.name;
+  // Without a global project filter, ideas are grouped by project, alphabetically, with unassigned ones last.
+  const groups: [string | null, Item[]][] = [];
+  for (const i of items.data ?? []) {
+    const id = project ? project : i.project_id;
+    const g = groups.find(([k]) => k === id);
+    if (g) g[1].push(i); else groups.push([id, [i]]);
+  }
+  if (!project) groups.sort(([a], [b]) => (a === null ? 1 : b === null ? -1 : (projectName(a) ?? "").localeCompare(projectName(b) ?? "")));
   return (
     <div className="space-y-3">
       <PageHeader title="Inbox">
@@ -226,15 +236,25 @@ export function Inbox() {
       {batch && items.data && <LaunchDialog items={items.data} role="refine" onClose={() => setBatch(false)} />}
       <IdeaCapture />
       <ErrorText error={items.error} />
-      <div className="space-y-2">
-        {items.data?.map((i) => (
-          <ItemActions key={i.id} item={i}><Card className="cursor-pointer hover:bg-slate-50 dark:hover:bg-raised">
-            <div onClick={() => setEditing(i)}>
-              <div className="flex flex-wrap items-center gap-2"><ItemTitle item={i} className="font-medium" />{i.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div>
-              {i.progress && <p className="text-xs text-slate-500 dark:text-muted">{i.progress}</p>}
-              {i.body_md && <p className="line-clamp-2 text-sm text-slate-600 dark:text-text-secondary">{i.body_md.replace(/[#*`>\[\]]/g, "")}</p>}
-            </div>
-          </Card></ItemActions>
+      <div className="space-y-4">
+        {groups.map(([id, list]) => (
+          <section key={id ?? "none"} className="space-y-2">
+            {!project && (
+              <h2 className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-text-secondary">
+                <FolderSimple weight="duotone" aria-hidden="true" className="size-4 shrink-0" />{projectName(id) ?? "Sin proyecto"}
+                <span className="rounded-full bg-slate-100 px-2 text-xs font-medium text-slate-600 dark:bg-raised dark:text-muted">{list.length}</span>
+              </h2>
+            )}
+            {list.map((i) => (
+              <ItemActions key={i.id} item={i}><Card className="cursor-pointer hover:bg-slate-50 dark:hover:bg-raised">
+                <div onClick={() => setEditing(i)}>
+                  <div className="flex flex-wrap items-center gap-2"><ItemTitle item={i} className="font-medium" />{i.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div>
+                  {i.progress && <p className="text-xs text-slate-500 dark:text-muted">{i.progress}</p>}
+                  {i.body_md && <p className="line-clamp-2 text-sm text-slate-600 dark:text-text-secondary">{i.body_md.replace(/[#*`>\[\]]/g, "")}</p>}
+                </div>
+              </Card></ItemActions>
+            ))}
+          </section>
         ))}
         {items.isPending && <Notice loading />}
         {items.data?.length === 0 && <Notice>Inbox vacío. Captura una idea arriba.</Notice>}

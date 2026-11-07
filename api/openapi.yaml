@@ -3197,12 +3197,15 @@ components:
           nullable: true
     T3ProviderLimits:
       type: "object"
-      required: ["provider", "name", "checked_at", "windows"]
+      required: ["provider", "name", "account_key", "checked_at", "windows"]
       properties:
         provider:
           type: "string"
         name:
           type: "string"
+        account_key:
+          type: "string"
+          description: "Same in every instance signed in to the same account of this provider; empty when unknown"
         checked_at:
           type: "string"
           format: "date-time"
