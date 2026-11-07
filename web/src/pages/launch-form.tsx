@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { Input, Label, Select } from "../components/ui";
 import { saveEffort, savedEffort } from "../effort";
@@ -14,6 +14,8 @@ export function ProviderIcon({ driver }: { driver: string }) {
 
 const stateLabel: Record<string, string> = { available: "disponible", disconnected: "desconectado", auth_failed: "sin acceso", incompatible: "incompatible" };
 const stateDot = (s: string) => (s === "available" ? "bg-green-500" : s === "disconnected" ? "bg-slate-400" : "bg-red-500");
+// repoKey reduces a remote or web URL to host/owner/name, as the backend does.
+const repoKey = (raw: string) => raw.trim().toLowerCase().replace(/^(https?|ssh|git):\/\//, "").replace(/^[^@/:]+@/, "").replace(":", "/").replace(/\/+$/, "").replace(/\.git$/, "");
 const repoOf = (remote: string) => remote.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/)?.[1] ?? "";
 
 export type LaunchChoice = { instance_id: string; project_id: string; provider: string; model: string; effort_option?: string; effort?: string; worktree?: boolean; base_branch?: string };
@@ -25,21 +27,31 @@ export function useLaunchForm({ doryProject, repo: repoPathIn, worktree: worktre
   const t3 = useT3();
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
   const envName = (id: string) => envs.data?.find((e) => e.id === id)?.name ?? "";
-  const available = t3.data?.filter((s) => s.state === "available") ?? [];
-  // infra-admin is the default machine: the server that runs the agents.
-  const fallback = available.find((s) => /infra/i.test(envName(s.environment_id))) ?? available[0];
-  const [instance, setInstance] = useState("");
-  const instanceId = instance || fallback?.instance_id || "";
-  const catalog = useQuery({ queryKey: ["t3-catalog", instanceId], queryFn: () => api.t3Catalog(instanceId), enabled: !!instanceId });
-
   const repos = useQuery({ queryKey: ["repositories", doryProject], queryFn: () => api.repositories.list({ project_id: doryProject }), enabled: !!doryProject && !repoPathIn });
   const all = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list(), enabled: !!repoPathIn });
   const repo = repoPathIn ? all.data?.find((r) => repoOf(r.remote_url).toLowerCase() === repoPathIn.toLowerCase()) : repos.data?.[0];
   const repoPath = repoPathIn || (repo ? repoOf(repo.remote_url) : "");
-  const repoName = repoPath.split("/")[1]?.toLowerCase() ?? "";
-  const matched = repoName ? catalog.data?.projects.find((p) => p.root.toLowerCase().replace(/\/+$/, "").split("/").pop() === repoName || p.title.toLowerCase() === repoName) : undefined;
+  // The repository the work is about; a machine qualifies only if one of its T3 projects has it.
+  const wanted = new Set([...(repoPathIn ? [`github.com/${repoPathIn.toLowerCase()}`] : []), ...(repoPathIn ? [] : (repos.data ?? []).map((r) => repoKey(r.remote_url)))]);
+  if (repo) wanted.add(repoKey(repo.remote_url));
+  const restricted = wanted.size > 0;
+
+  const statuses = t3.data ?? [];
+  const catalogs = useQueries({ queries: statuses.map((s) => ({ queryKey: ["t3-catalog", s.instance_id], queryFn: () => api.t3Catalog(s.instance_id), enabled: s.state === "available", staleTime: 60_000 })) });
+  const catalogOf = (id: string) => catalogs[statuses.findIndex((s) => s.instance_id === id)]?.data;
+  const projectsFor = (id: string) => (catalogOf(id)?.projects ?? []).filter((p) => !restricted || (p.repo && wanted.has(repoKey(p.repo))));
+  const eligible = (id: string) => !restricted || projectsFor(id).length > 0;
+  const available = statuses.filter((s) => s.state === "available" && eligible(s.instance_id));
+  // infra-admin is the default machine: the server that runs the agents.
+  const fallback = available.find((s) => /infra/i.test(envName(s.environment_id))) ?? available[0];
+  const [instance, setInstance] = useState("");
+  const instanceId = (instance && eligible(instance) ? instance : "") || fallback?.instance_id || "";
+  const catalog = { data: catalogOf(instanceId), error: catalogs[statuses.findIndex((s) => s.instance_id === instanceId)]?.error ?? null };
+  const checking = restricted && catalogs.some((c) => c.isPending && c.fetchStatus !== "idle");
+
+  const choices = projectsFor(instanceId);
   const [project, setProject] = useState("");
-  const projectId = project || matched?.id || "";
+  const projectId = (project && choices.some((p) => p.id === project) ? project : "") || (restricted ? choices[0]?.id : "") || "";
 
   const [choice, setChoice] = useState("");
   const first = catalog.data?.providers[0];
@@ -65,15 +77,15 @@ export function useLaunchForm({ doryProject, repo: repoPathIn, worktree: worktre
   const fields: ReactNode = (
     <>
       <Label text="Máquina">
-        <Select value={instanceId} onChange={(v) => { setInstance(v); setProject(""); setChoice(""); setEffort(""); }} options={(t3.data ?? []).map((s) => ({
+        <Select value={instanceId} onChange={(v) => { setInstance(v); setProject(""); setChoice(""); setEffort(""); }} placeholder={checking ? "Buscando máquinas con el repositorio…" : restricted ? "Ninguna máquina tiene este repositorio" : "—"} options={statuses.map((s) => ({
           value: s.instance_id,
-          label: `${envName(s.environment_id) || s.base_url}${s.state === "available" ? "" : ` (${stateLabel[s.state] ?? s.state})`}`,
-          disabled: s.state !== "available",
+          label: `${envName(s.environment_id) || s.base_url}${s.state !== "available" ? ` (${stateLabel[s.state] ?? s.state})` : !eligible(s.instance_id) ? " (sin este repositorio)" : ""}`,
+          disabled: s.state !== "available" || !eligible(s.instance_id),
           icon: <span title={stateLabel[s.state] ?? s.state} className={`size-2 shrink-0 rounded-full ${stateDot(s.state)}`} />,
         }))} />
       </Label>
       <Label text="Proyecto de T3">
-        <Select value={projectId} onChange={setProject} placeholder="Elige el proyecto del repositorio" options={(catalog.data?.projects ?? []).map((p) => ({ value: p.id, label: p.title }))} />
+        <Select value={projectId} onChange={setProject} placeholder="Elige el proyecto del repositorio" options={choices.map((p) => ({ value: p.id, label: p.title }))} />
       </Label>
       <Label text="Modelo">
         <Select value={selected} onChange={(v) => { setChoice(v); setEffort(""); }} options={(catalog.data?.providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `${p.instance_id}|${m.slug}`, label: m.name, group: p.name, icon: <ProviderIcon driver={p.driver || p.name} /> })))} />

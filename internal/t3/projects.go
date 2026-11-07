@@ -15,9 +15,11 @@ import (
 // projectSyncInterval paces the discovery of T3 projects that have no Dory project yet.
 const projectSyncInterval = 2 * time.Minute
 
-// repoKey reduces a remote or web URL to host/owner/name, so the https, ssh and
+func repoKey(raw string) string { return RepoKey(raw) }
+
+// RepoKey reduces a remote or web URL to host/owner/name, so the https, ssh and
 // .git spellings of one repository compare equal.
-func repoKey(raw string) string {
+func RepoKey(raw string) string {
 	s := strings.ToLower(strings.TrimSpace(raw))
 	for _, p := range []string{"https://", "http://", "ssh://", "git://"} {
 		s = strings.TrimPrefix(s, p)
