@@ -436,6 +436,7 @@ function ItemActions({ item, children }: { item: Item; children: React.ReactNode
     ...(item.status === "ready" ? [{ label: "Enviar a implementar", run: () => setLaunch("implementation") }] : []),
     { label: "Mover a estado…", children: STATUSES.filter((s) => s !== item.status).map((s) => ({ label: STATUS_INFO[s].label, run: () => (s === "blocked" ? setBlocking(true) : change.mutate({ status: s })) })) },
     ...(thread ? [{ label: "Abrir último hilo", content: <ThreadLink role="menuitem" className={linkClass} url={thread.url} environmentId={thread.t3_environment_id} threadId={thread.id}>Abrir último hilo</ThreadLink> }] : []),
+    ...(thread ? [{ label: "Abrir hilo en Dory", run: () => navigate({ to: "/threads/$threadId", params: { threadId: thread.id } }) }] : []),
     ...(pull ? [{ label: "Abrir última PR", content: <Link role="menuitem" className={linkClass} to="/github/$owner/$repo/$kind/$number" params={{ owner: pull[1], repo: pull[2], kind: "pulls", number: pull[3] }}>Abrir última PR</Link> }] : []),
     { label: "Archivar", run: () => confirmArchive({ title: "¿Archivar el item?", text: `«${item.title}» saldrá de los tableros. Se borrará del todo a los 14 días.`, ok: "Archivar", danger: true, run: () => archive.mutate() }) },
   ];

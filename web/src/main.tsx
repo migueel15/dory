@@ -1,5 +1,6 @@
+import { ThreadOpen, ThreadView } from "./pages/thread";
 import { StrictMode, useEffect, useRef, useState } from "react";
-import { Brain, ChartBar, FolderSimple, Gear, GithubLogo, HardDrives, House, Kanban, List, Moon, Robot, SignOut, Sun, Tray, BellRinging, X } from "@phosphor-icons/react";
+import { Brain, ChartBar, ChatsCircle, FolderSimple, Gear, GithubLogo, HardDrives, House, Kanban, List, Moon, Robot, SignOut, Sun, Tray, BellRinging, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
@@ -89,7 +90,7 @@ function Layout() {
   const logout = useMutation({ mutationFn: api.logout, onSuccess: () => qc.clear() });
   useLiveUpdates(!!me.data);
   // The project board needs the full width.
-  const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") || l.pathname.startsWith("/items/") || l.pathname === "/tasks" });
+  const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") || l.pathname.startsWith("/items/") || l.pathname.startsWith("/threads/") || l.pathname === "/tasks" });
   const attention = useAttentionCount(!!me.data);
 
   const path = useLocation({ select: (l) => l.pathname });
@@ -137,6 +138,7 @@ function Layout() {
       <Link to="/tasks" className={link}><Kanban weight="duotone" className={ico} aria-hidden="true" />Tareas</Link>
       <Link to="/attention" className={link}><BellRinging weight="duotone" className={ico} aria-hidden="true" />Atención{attention > 0 && <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-white">{attention}</span>}</Link>
       <Link to="/jobs" className={link}><Robot weight="duotone" className={ico} aria-hidden="true" />Trabajos</Link>
+      <Link to="/threads" className={link}><ChatsCircle weight="duotone" className={ico} aria-hidden="true" />Hilos</Link>
       <Link to="/usage" className={link}><ChartBar weight="duotone" className={ico} aria-hidden="true" />Uso</Link>
       {group("Sistema")}
       <Link to="/github" className={link}><GithubLogo weight="duotone" className={ico} aria-hidden="true" />GitHub</Link>
@@ -235,6 +237,8 @@ const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/github", component: Github }),
   createRoute({ getParentRoute: () => root, path: "/github/$owner/$repo/$kind/$number", component: GithubView }),
   createRoute({ getParentRoute: () => root, path: "/tasks", component: Tasks }),
+  createRoute({ getParentRoute: () => root, path: "/threads", component: ThreadOpen }),
+  createRoute({ getParentRoute: () => root, path: "/threads/$threadId", component: ThreadView }),
   createRoute({ getParentRoute: () => root, path: "/projects", component: Projects }),
   createRoute({ getParentRoute: () => root, path: "/projects/$id", component: ProjectDetail }),
   createRoute({ getParentRoute: () => root, path: "/items/$id/define", component: Define }),

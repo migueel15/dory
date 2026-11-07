@@ -1050,6 +1050,115 @@ paths:
           description: "Delivered"
         "409":
           description: "The request is no longer open"
+  "/t3/threads/{id}/view":
+    get:
+      operationId: "getT3ThreadView"
+      summary: "Whole conversation, native queue, settings, pull requests and linked items of a thread"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+      responses:
+        "200":
+          description: "Thread view"
+          content:
+            application/json:
+              schema: {type: "object", additionalProperties: true}
+  "/t3/threads/{id}/diff":
+    get:
+      operationId: "getT3ThreadDiff"
+      summary: "Every change the thread made in its worktree, from T3 checkpoints"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+      responses:
+        "200":
+          description: "Unified diff, empty when no turn changed files"
+          content:
+            application/json:
+              schema: {type: "object", required: ["diff"], properties: {diff: {type: "string"}}}
+  "/t3/threads/{id}/send":
+    post:
+      operationId: "sendT3ThreadTurn"
+      summary: "Send a message: start it, queue it after the active turn (mode auto) or inject it into the active turn (mode steer); model fields are optional"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              required: ["text"]
+              properties:
+                text: {type: "string"}
+                mode: {type: "string", enum: ["auto", "steer"]}
+                provider_id: {type: "string"}
+                model: {type: "string"}
+                effort_option: {type: "string"}
+                effort: {type: "string"}
+      responses:
+        "204":
+          description: "Sent"
+  "/t3/threads/{id}/queue/{run_id}":
+    patch:
+      operationId: "editT3QueuedMessage"
+      summary: "Replace the text of a queued message"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+        - {name: "run_id", in: "path", required: true, schema: {type: "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: "object", required: ["text"], properties: {text: {type: "string"}}}
+      responses:
+        "204": {description: "Edited"}
+    delete:
+      operationId: "cancelT3QueuedMessage"
+      summary: "Remove a message from the queue"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+        - {name: "run_id", in: "path", required: true, schema: {type: "string"}}
+      responses:
+        "204": {description: "Removed"}
+  "/t3/threads/{id}/queue/{run_id}/reorder":
+    post:
+      operationId: "reorderT3QueuedMessage"
+      summary: "Move a queued message before another one, or last with an empty before_run_id"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+        - {name: "run_id", in: "path", required: true, schema: {type: "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: "object", properties: {before_run_id: {type: "string"}}}
+      responses:
+        "204": {description: "Moved"}
+  "/t3/threads/{id}/queue/{run_id}/steer":
+    post:
+      operationId: "steerT3QueuedMessage"
+      summary: "Inject a queued message into the active turn"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+        - {name: "run_id", in: "path", required: true, schema: {type: "string"}}
+      responses:
+        "204": {description: "Steered"}
+  "/t3/threads/{id}/settings":
+    patch:
+      operationId: "setT3ThreadSettings"
+      summary: "Change the interaction mode (default or plan) or the access level of a thread"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                interaction_mode: {type: "string", enum: ["default", "plan"]}
+                runtime_mode: {type: "string", enum: ["approval-required", "auto-accept-edits", "auto", "full-access"]}
+      responses:
+        "204": {description: "Changed"}
   "/version":
     get:
       operationId: "getVersion"

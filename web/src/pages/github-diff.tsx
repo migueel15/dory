@@ -87,7 +87,7 @@ function tree(files: File[]): Dir {
   return squash(root);
 }
 
-type Review = { reviewed: Set<string>; toggle: (path: string) => void };
+type Review = { reviewed: Set<string>; toggle?: (path: string) => void };
 
 function Tree({ dir, jump, active, review, depth = 0 }: { dir: Dir; jump: (path: string) => void; active?: string; review: Review; depth?: number }) {
   return (
@@ -107,7 +107,7 @@ function Tree({ dir, jump, active, review, depth = 0 }: { dir: Dir; jump: (path:
       ))}
       {dir.files.map((f) => (
         <li key={f.path} className="flex items-center gap-1">
-          <input type="checkbox" aria-label={`Revisado: ${f.path}`} title="Revisado" checked={review.reviewed.has(f.path)} onChange={() => review.toggle(f.path)} className="ml-1 shrink-0" />
+          {review.toggle && <input type="checkbox" aria-label={`Revisado: ${f.path}`} title="Revisado" checked={review.reviewed.has(f.path)} onChange={() => review.toggle!(f.path)} className="ml-1 shrink-0" />}
           <button type="button" title={f.path} onClick={() => jump(f.path)} className={`flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5 text-left text-xs hover:bg-slate-100 dark:hover:bg-raised ${review.reviewed.has(f.path) ? "text-slate-400" : ""} ${active === f.path ? "bg-blue-50 font-medium text-blue-700 dark:bg-raised dark:text-accent-text" : ""}`}>
             <FileIcon aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
             <span className="min-w-0 flex-1 truncate">{f.path.split("/").pop()}</span>
@@ -149,10 +149,17 @@ function markText(text: string, q: string) {
   return text.split(new RegExp(`(${escRe(q)})`, "gi")).map((part, i) => (i % 2 ? <mark key={i} className={markClass}>{part}</mark> : part));
 }
 
-export function Diff({ repo, pr }: { repo: string; pr: number }) {
+// Suggestion is a selected range sent to a chat instead of GitHub.
+export type Suggestion = { path: string; start: number; end: number; snippet: string; question: string; steer: boolean };
+
+// Diff shows a pull request diff, or the given diff text when onSuggest sends
+// selections to a chat; GitHub reviews and comments only apply to the first.
+export function Diff({ repo = "", pr = 0, text, onSuggest }: { repo?: string; pr?: number; text?: string; onSuggest?: (s: Suggestion) => Promise<void> }) {
   const qc = useQueryClient();
-  const diff = useQuery({ queryKey: ["github-diff", repo, pr], queryFn: () => api.githubDiff(repo, pr) });
-  const files = useMemo(() => parseDiff(diff.data?.diff ?? ""), [diff.data]);
+  const gh = !onSuggest && !!repo && !!pr;
+  const diff = useQuery({ queryKey: ["github-diff", repo, pr], queryFn: () => api.githubDiff(repo, pr), enabled: text === undefined });
+  const source = text ?? diff.data?.diff ?? "";
+  const files = useMemo(() => parseDiff(source), [source]);
   const [filter, setFilter] = useState("");
   const [pick, setPick] = useState<Pick>();
   const [body, setBody] = useState("");
@@ -205,7 +212,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
     Promise.all(files.map(async (f) => [f.path, await patchHash(f)] as const)).then((h) => live && setHashes(new Map(h)));
     return () => { live = false; };
   }, [files]);
-  const reviews = useQuery({ queryKey: ["pull-reviews", repo, pr], queryFn: () => api.pullReviews(repo, pr) });
+  const reviews = useQuery({ queryKey: ["pull-reviews", repo, pr], queryFn: () => api.pullReviews(repo, pr), enabled: gh });
   const reviewed = useMemo(() => new Set((reviews.data ?? []).filter((v) => v.patch_hash === hashes.get(v.path)).map((v) => v.path)), [reviews.data, hashes]);
   const mark = useMutation({
     mutationFn: ({ path, on }: { path: string; on: boolean }) => (on ? api.markPullReview(repo, pr, path, hashes.get(path)!) : api.unmarkPullReview(repo, pr, path)),
@@ -220,13 +227,21 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
     setFolded((m) => { const n = new Map(m); n.delete(path); return n; });
     mark.mutate({ path, on });
   };
-  const review: Review = { reviewed, toggle: toggleReview };
-  const agent = useQuery({ queryKey: ["pull-agent", repo, pr], queryFn: () => api.pullAgent(repo, pr) });
+  const review: Review = { reviewed, toggle: gh ? toggleReview : undefined };
+  const agent = useQuery({ queryKey: ["pull-agent", repo, pr], queryFn: () => api.pullAgent(repo, pr), enabled: gh });
   const ask = useMutation({
     mutationFn: ({ f, p }: { f: File; p: Pick }) => {
       const lines = f.lines.slice(p.start, p.end + 1).filter((l) => l.kind !== "hunk");
       const nums = lines.map(number);
       return api.askPullAgent(repo, pr, { path: f.path, start: Math.min(...nums), end: Math.max(...nums), snippet: lines.map((l) => l.text).join("\n"), question: body.trim() });
+    },
+    onSuccess: () => { setPick(undefined); setBody(""); },
+  });
+  const suggest = useMutation({
+    mutationFn: ({ f, p, steer }: { f: File; p: Pick; steer: boolean }) => {
+      const lines = f.lines.slice(p.start, p.end + 1).filter((l) => l.kind !== "hunk");
+      const nums = lines.map(number);
+      return onSuggest!({ path: f.path, start: Math.min(...nums), end: Math.max(...nums), snippet: lines.map((l) => l.text).join("\n"), question: body.trim(), steer });
     },
     onSuccess: () => { setPick(undefined); setBody(""); },
   });
@@ -266,11 +281,18 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
     <div className="my-2 whitespace-normal font-sans">
                         <Textarea aria-label="Comentario de revisión" autoFocus onFocus={(e) => keepAboveKeyboard(e.currentTarget.parentElement!)} value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder={placeholder} className="p-2" />
                         <div className="mt-2 flex gap-2">
+                          {onSuggest ? (
+                            <>
+                              <Button disabled={suggest.isPending || !body.trim() || p.start < 0} onClick={() => suggest.mutate({ f, p, steer: false })} title="Envía la sugerencia al hilo; si está trabajando, se encola">Sugerir al chat</Button>
+                              <Button variant="ghost" disabled={suggest.isPending || !body.trim() || p.start < 0} onClick={() => suggest.mutate({ f, p, steer: true })} title="Inyecta la sugerencia en el turno en curso">Steer</Button>
+                            </>
+                          ) : <>
                           <Button disabled={comment.isPending || !body.trim()} onClick={() => publish(f, p)}>Publicar en GitHub</Button>
                           {p.start >= 0 && (
                             <Button disabled={ask.isPending || !body.trim() || !agent.data?.available} onClick={() => ask.mutate({ f, p })}
                               title={agent.data?.available ? "Consulta privada al hilo donde se implementó la PR; no se publica en GitHub" : "Esta PR no tiene un item de Dory con hilo de implementación"}>Preguntar al agente</Button>
                           )}
+                          </>}
                           <Button variant="ghost" onClick={() => setPick(undefined)}>Cancelar</Button>
                         </div>
                       </div>
@@ -282,7 +304,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
   const treeRoot = useMemo(() => tree(shown), [filter, files]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // While the diff loads, the real layout renders with placeholder bars in place of files and code.
-  const loading = diff.isPending;
+  const loading = text === undefined && diff.isPending;
   const bar = "rounded bg-slate-200 motion-safe:animate-pulse dark:bg-raised";
   const widths = [72, 55, 88, 40, 64, 80, 35, 70, 50, 60];
   const treeSkeleton = (
@@ -326,14 +348,14 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
             <Input aria-label="Buscar fichero o texto" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero o texto…" className="min-w-0 flex-1 py-1" />
             {tools}
           </div>
-          {!loading && <div className="shrink-0 px-3 pb-1 text-xs text-slate-500 dark:text-muted">{files.filter((f) => reviewed.has(f.path)).length}/{files.length} revisados</div>}
+          {!loading && gh && <div className="shrink-0 px-3 pb-1 text-xs text-slate-500 dark:text-muted">{files.filter((f) => reviewed.has(f.path)).length}/{files.length} revisados</div>}
           <div className="min-h-0 flex-1 overflow-auto overscroll-contain px-2 pb-2">{loading ? treeSkeleton : <Tree dir={treeRoot} jump={jump} active={active} review={review} />}</div>
       </aside>
       ) : (
       <aside className="flex gap-1.5 md:flex-col">{tools}</aside>
       )}
       <div className={`min-w-0 space-y-3 overflow-auto overscroll-contain ${full ? "" : "md:h-[80vh]"}`}>
-        <ErrorText error={diff.error ?? comment.error ?? ask.error ?? mark.error} />
+        <ErrorText error={diff.error ?? comment.error ?? ask.error ?? mark.error ?? suggest.error} />
         {ask.data && (
           <div role="status" className="flex items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm dark:border-border dark:bg-raised">
             <span>Consulta enviada al hilo de implementación. {ask.data.url && <ThreadLink url={ask.data.url} environmentId={ask.data.t3_environment_id} threadId={ask.data.thread_id} className="font-medium text-blue-700 underline dark:text-accent-text">Abrir hilo</ThreadLink>}</span>
@@ -354,12 +376,12 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
                 {hits.get(f.path)! > 0 && <span className="rounded bg-amber-100 px-1.5 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">{hits.get(f.path)} coincidencia{hits.get(f.path) === 1 ? "" : "s"}</span>}
                 <span className="text-green-700 dark:text-green-400">+{f.added}</span>
                 <span className="text-red-700 dark:text-red-400">−{f.removed}</span>
-                <label className="flex cursor-pointer items-center gap-1 font-sans text-slate-500 dark:text-muted">
+                {gh && <label className="flex cursor-pointer items-center gap-1 font-sans text-slate-500 dark:text-muted">
                   <input type="checkbox" checked={reviewed.has(f.path)} onChange={() => toggleReview(f.path)} />Revisado
-                </label>
-                <button type="button" title="Comentar el fichero" aria-label="Comentar el fichero" onClick={() => { setPick({ file: f.path, start: -1, end: -1 }); setOpen(true); }} className="rounded p-0.5 text-slate-400 hover:bg-slate-200 hover:text-blue-600 dark:hover:bg-border dark:hover:text-accent-text">
+                </label>}
+                {gh && <button type="button" title="Comentar el fichero" aria-label="Comentar el fichero" onClick={() => { setPick({ file: f.path, start: -1, end: -1 }); setOpen(true); }} className="rounded p-0.5 text-slate-400 hover:bg-slate-200 hover:text-blue-600 dark:hover:bg-border dark:hover:text-accent-text">
                   <ChatCircle aria-hidden="true" className="size-4" />
-                </button>
+                </button>}
               </span>
             </div>
             {pick?.file === f.path && pick.start < 0 && <div className="px-3">{form(f, pick, `Comentario sobre ${f.path}…`)}</div>}

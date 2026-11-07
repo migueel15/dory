@@ -1,0 +1,75 @@
+package t3
+
+import (
+	"context"
+	"testing"
+)
+
+func TestThreadViewNormalizesQueueAndActiveRun(t *testing.T) {
+	c := rpcServer(t, `{"_tag":"Success","value":{
+		"thread":{"title":"T","modelSelection":{"instanceId":"claude","model":"opus","options":[{"id":"effort","value":"high"}]},
+			"interactionMode":"plan","runtimeMode":"full-access","branch":"dory/x","worktreePath":"/w",
+			"linkedPullRequest":{"repository":"o/r","number":7,"url":"https://github.com/o/r/pull/7"},
+			"pullRequests":[{"pullRequest":{"repository":"o/r","number":7,"url":"https://github.com/o/r/pull/7"}}]},
+		"runs":[{"id":"r1","status":"running","userMessageId":"m1"},
+			{"id":"q2","status":"queued","queuePosition":2,"userMessageId":"m3"},
+			{"id":"q1","status":"queued","queuePosition":1,"userMessageId":"m2"}],
+		"messages":[{"id":"m1","role":"user","text":"hola"},{"id":"a1","role":"assistant","text":"ok","streaming":true},
+			{"id":"m2","role":"user","text":"luego"},{"id":"m3","role":"user","text":"después"}],
+		"runtimeRequests":[],"turnItems":[]}}`, nil)
+	v, err := c.ThreadView(context.Background(), "th")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.ActiveRunID != "r1" || v.Effort != "high" || v.EffortOption != "effort" || v.Branch != "dory/x" || v.InteractionMode != "plan" {
+		t.Errorf("view %+v", v)
+	}
+	if len(v.PullRequests) != 1 || v.PullRequests[0].Number != 7 {
+		t.Errorf("prs %+v", v.PullRequests)
+	}
+	if len(v.Queue) != 2 || v.Queue[0].RunID != "q1" || v.Queue[0].Text != "luego" {
+		t.Errorf("queue %+v", v.Queue)
+	}
+	if len(v.Messages) != 2 || !v.Messages[1].Streaming {
+		t.Errorf("messages %+v", v.Messages)
+	}
+}
+
+func TestSendQueuesWithModelAndQueueCommands(t *testing.T) {
+	var seen map[string]any
+	c := rpcServer(t, `{"_tag":"Success","value":{"sequence":1}}`, &seen)
+	err := c.Send(context.Background(), "th", SendInput{Text: "hola", Mode: SendAuto, ProviderID: "codex", Model: "gpt", EffortOption: "reasoningEffort", Effort: "low"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := seen["payload"].(map[string]any)
+	sel := p["modelSelection"].(map[string]any)
+	if p["dispatchMode"].(map[string]any)["type"] != "queue_after_active" || sel["model"] != "gpt" || sel["instanceId"] != "codex" {
+		t.Errorf("sent %+v", p)
+	}
+	if err := c.ReorderQueued(context.Background(), "th", "q2", ""); err != nil {
+		t.Fatal(err)
+	}
+	p = seen["payload"].(map[string]any)
+	if p["type"] != "queued-run.reorder" || p["beforeRunId"] != nil {
+		t.Errorf("reorder %+v", p)
+	}
+	if err := c.SteerQueued(context.Background(), "th", "q1", "r1"); err != nil {
+		t.Fatal(err)
+	}
+	p = seen["payload"].(map[string]any)
+	if p["type"] != "queued-message.promote-to-steer" || p["queuedRunId"] != "q1" || p["targetRunId"] != "r1" {
+		t.Errorf("steer %+v", p)
+	}
+	if c.SetRuntimeMode(context.Background(), "th", "root") == nil {
+		t.Error("invalid runtime mode accepted")
+	}
+}
+
+func TestThreadDiffWithoutCheckpointsIsEmpty(t *testing.T) {
+	c := rpcServer(t, `{"_tag":"Success","value":{"checkpoints":[{"appRunOrdinal":null,"status":"ready"},{"appRunOrdinal":3,"status":"missing"}]}}`, nil)
+	d, err := c.ThreadDiff(context.Background(), "th")
+	if err != nil || d != "" {
+		t.Errorf("diff %q err %v", d, err)
+	}
+}
