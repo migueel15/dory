@@ -93,7 +93,7 @@ function Chat({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const working = !!v.active_run_id && !last?.streaming;
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-1 py-3">
+      <div className="min-h-0 flex-1 overflow-y-auto py-3"><div className="mx-auto w-full max-w-3xl space-y-4 px-3 sm:px-6">
         {v.messages.length === 0 && <p className="py-10 text-center text-sm text-slate-500 dark:text-muted">Sin mensajes todavía. Escribe abajo para empezar.</p>}
         {v.messages.map((m) => m.role === "user" ? (
           <div key={m.id} className="flex justify-end">
@@ -107,8 +107,8 @@ function Chat({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
         ))}
         {working && <Dots />}
         <div ref={end} />
-      </div>
-      <div className="space-y-2 pt-2">
+      </div></div>
+      <div className="mx-auto w-full max-w-3xl space-y-2 px-3 pt-2 sm:px-6">
         {v.pending && (
           <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3 shadow-sm dark:border-amber-500/40 dark:bg-amber-500/10">
             <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300"><Question weight="fill" className="size-4" />El agente te pregunta</p>
