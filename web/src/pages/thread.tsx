@@ -50,7 +50,7 @@ export function ThreadView() {
   if (view.error) return <ErrorText error={view.error} />;
   const v = view.data;
   return (
-    <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col gap-3">
+    <div className="flex h-[calc(100dvh-4rem)] sm:h-[calc(100dvh-2rem)] min-h-0 flex-col gap-3">
       <ContextBar v={v} />
       <div className="flex gap-1 lg:hidden" role="tablist">
         {(["chat", "changes"] as const).map((t) => (
