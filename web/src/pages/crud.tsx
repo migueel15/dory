@@ -2,9 +2,9 @@ import { ThreadLink } from "../components/thread-link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { api, type Environment, type Feature, type Memory, type Project, type T3InstanceUsage, type T3Status } from "../api/client";
-import { Limit, Models } from "./usage";
-import { Badge, Button, Card, ErrorText, Arrow, Input, Label, Md, Modal, pill, Select, StatusPill, Textarea, csv, opts } from "../components/ui";
+import { api, type Environment, type Feature, type Memory, type Project, type T3Status } from "../api/client";
+import { AppleLogo, Desktop, FolderSimple, LinuxLogo, Robot, Warning, WindowsLogo } from "@phosphor-icons/react";
+import { Badge, Button, Card, ErrorText, Arrow, Input, Label, Md, Modal, PageHeader, pill, Select, StatusPill, Textarea, csv, opts, type Tone } from "../components/ui";
 import { useProject } from "../project";
 
 // Hook compartido: guardar/archivar e invalidar la lista.
@@ -79,82 +79,104 @@ async function openT3(status: T3Status) {
   }
 }
 
-function InstanceStatus({ status }: { status?: T3Status }) {
-  if (!status) return <div className="text-xs text-slate-500 dark:text-muted">T3 Code sin configurar</div>;
-  return (
-    <div className="space-y-1 text-sm" onClick={(e) => e.stopPropagation()}>
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge>{stateLabels[status.state]}</Badge>
-        <button className={pill} onClick={() => openT3(status)}>Abrir T3 Code <Arrow /></button>
-        {status.version && <span className="text-xs text-slate-500 dark:text-muted">{status.version}</span>}
-      </div>
-      {status.threads.filter((t) => t.attention || t.status === "running").map((t) => (
-        <div key={t.id} className="flex items-start justify-between gap-2">
-          <ThreadLink className="min-w-0 break-words underline" url={t.url} environmentId={t.t3_environment_id} threadId={t.id}>{t.title}</ThreadLink>
-          <span className={`shrink-0 text-xs ${t.attention ? "text-red-600 dark:text-red-400" : "text-slate-500 dark:text-muted"}`}>{t.attention ? "Te necesita" : t.model}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
+const stateTone: Record<T3Status["state"], Tone> = { available: "green", disconnected: "slate", auth_failed: "red", incompatible: "amber" };
+const since = (iso: string | null) => {
+  if (!iso) return "nunca";
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
+  return m < 1 ? "ahora" : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} d`;
+};
+const osIcon = (os: string) => (/mac|darwin/i.test(os) ? AppleLogo : /win/i.test(os) ? WindowsLogo : /linux|debian|ubuntu|arch|fedora/i.test(os) ? LinuxLogo : Desktop);
 
-function Machine({ env, status, usage }: { env: Environment; status: T3Status; usage?: T3InstanceUsage }) {
-  const catalog = useQuery({ queryKey: ["t3-catalog", status.instance_id], queryFn: () => api.t3Catalog(status.instance_id), enabled: status.state === "available", staleTime: 60_000 });
-  const muted = "text-sm text-slate-500 dark:text-muted";
+// Machine describes one device: identity, connection, agent activity, providers and projects.
+function Machine({ env, status }: { env: Environment; status: T3Status }) {
+  const up = status.state === "available";
+  const catalog = useQuery({ queryKey: ["t3-catalog", status.instance_id], queryFn: () => api.t3Catalog(status.instance_id), enabled: up, staleTime: 60_000 });
+  const working = status.threads.filter((t) => ["running", "pending", "starting", "working"].includes(t.status));
+  const needing = status.threads.filter((t) => t.attention);
+  const Os = osIcon(env.os);
+  const host = (() => { try { return new URL(status.base_url).host; } catch { return status.base_url; } })();
+  const muted = "text-xs text-slate-500 dark:text-muted";
   return (
-    <Card className="space-y-3">
-      <div className="font-medium">{env.name} <span className="text-xs text-slate-500 dark:text-muted">{env.os}</span></div>
-      <InstanceStatus status={status} />
-      <section className="space-y-2">
-        <h3 className="text-sm font-medium">Uso</h3>
-        {!usage || usage.limits_error ? <p className={muted}>Sin datos de uso.</p> : (
-          <div className="space-y-3">{usage.providers.map((p) => (
-            <div key={p.provider} className="space-y-2">
-              <div className="text-sm">{p.name}</div>
-              {p.windows.length > 0 ? p.windows.map((w) => <Limit key={w.label} w={w} />) : <p className={muted}>Sin datos de plan.</p>}
-            </div>
-          ))}</div>
-        )}
-        {usage && !usage.limits_error && <Models usage={usage} />}
-      </section>
-      <section className="space-y-1">
-        <h3 className="text-sm font-medium">Modelos</h3>
+    <Card className="flex h-full flex-col gap-4">
+      <div className="flex items-start gap-3">
+        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-700 dark:bg-raised dark:text-text"><Os weight="duotone" aria-hidden="true" className="size-6" /></span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-semibold">{env.name}</div>
+          <div className={`truncate ${muted}`}>{env.os || "Sistema desconocido"}</div>
+        </div>
+        <StatusPill tone={stateTone[status.state]}><span className="inline-flex items-center gap-1.5"><span className={`size-1.5 rounded-full ${up ? "bg-emerald-500" : "bg-current"}`} />{stateLabels[status.state]}</span></StatusPill>
+      </div>
+
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        <div className="min-w-0"><dt className={muted}>Dirección</dt><dd className="truncate font-mono text-xs" title={status.base_url}>{host}</dd></div>
+        <div className="min-w-0"><dt className={muted}>T3 Code</dt><dd className="truncate">{status.version || "—"}</dd></div>
+        <div className="min-w-0"><dt className={muted}>Última conexión</dt><dd title={status.last_seen ? new Date(status.last_seen).toLocaleString() : undefined}>{since(status.last_seen)}</dd></div>
+        <div className="min-w-0"><dt className={muted}>Acceso</dt><dd className="truncate" title={env.access}>{env.access || "—"}</dd></div>
+      </dl>
+
+      <div className="grid grid-cols-3 divide-x divide-slate-200 rounded-lg border border-slate-200 text-center dark:divide-border dark:border-border">
+        {[["Hilos", status.threads.length, ""], ["Trabajando", working.length, working.length ? "text-blue-700 dark:text-accent-text" : ""], ["Te necesitan", needing.length, needing.length ? "text-amber-700 dark:text-amber-400" : ""]].map(([k, v, c]) => (
+          <div key={k} className="py-2"><div className={`text-lg font-semibold tabular-nums ${c}`}>{v}</div><div className={muted}>{k}</div></div>
+        ))}
+      </div>
+
+      {needing.length > 0 && (
+        <ul className="space-y-1 text-sm">
+          {needing.map((t) => <li key={t.id} className="flex items-center gap-2"><Warning weight="fill" aria-hidden="true" className="size-4 shrink-0 text-amber-500" /><ThreadLink className="min-w-0 truncate hover:underline" url={t.url} environmentId={t.t3_environment_id} threadId={t.id}>{t.title}</ThreadLink></li>)}
+        </ul>
+      )}
+
+      <section className="space-y-1.5">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-muted">Agentes</h3>
+        {!up && <p className={muted}>La máquina no responde.</p>}
         <ErrorText error={catalog.error} />
         {catalog.data?.providers.map((p) => (
-          <div key={p.instance_id} className="text-sm">
-            <span className="font-medium">{p.name}</span>
-            <div className="mt-1 flex flex-wrap gap-1">{p.models.map((m) => <Badge key={m.slug}>{m.name || m.slug}</Badge>)}</div>
-          </div>
+          <details key={p.instance_id} className="group text-sm">
+            <summary className="flex cursor-pointer list-none items-center gap-2">
+              <Robot weight="duotone" aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
+              <span className="flex-1 font-medium">{p.name}</span>
+              <span className={muted}>{p.models.length} modelos</span>
+              <span aria-hidden="true" className="text-slate-400 transition-transform group-open:rotate-90 motion-reduce:transition-none">›</span>
+            </summary>
+            <div className="mt-1.5 flex flex-wrap gap-1 pl-6">{p.models.map((m) => <Badge key={m.slug}>{m.name || m.slug}</Badge>)}</div>
+          </details>
         ))}
-        {status.state !== "available" && <p className={muted}>La máquina no responde.</p>}
+        {up && catalog.data?.providers.length === 0 && <p className={muted}>Sin agentes configurados.</p>}
       </section>
-      <section className="space-y-1">
-        <h3 className="text-sm font-medium">Proyectos</h3>
+
+      <section className="space-y-1.5">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-muted">Proyectos en T3 {catalog.data && <span className="font-normal normal-case tracking-normal">({catalog.data.projects.length})</span>}</h3>
         {catalog.data?.projects.length === 0 && <p className={muted}>Sin proyectos.</p>}
         <ul className="space-y-1 text-sm">{catalog.data?.projects.map((p) => (
-          <li key={p.id}>{p.title} <span className="break-all text-xs text-slate-500 dark:text-muted">{p.root}</span></li>
+          <li key={p.id} className="flex min-w-0 items-center gap-2"><FolderSimple weight="duotone" aria-hidden="true" className="size-4 shrink-0 text-slate-400" /><span className="shrink-0">{p.title}</span><span className="min-w-0 truncate font-mono text-[11px] text-slate-400 dark:text-muted" title={p.root}>{p.root}</span></li>
         ))}</ul>
       </section>
+
+      {env.notes && <p className="whitespace-pre-wrap rounded-md bg-slate-50 p-2 text-xs text-slate-600 dark:bg-raised dark:text-text-secondary">{env.notes}</p>}
+
+      <div className="mt-auto flex justify-end border-t border-slate-100 pt-3 dark:border-border">
+        <button type="button" className={pill} onClick={() => openT3(status)}>Abrir T3 Code <Arrow /></button>
+      </div>
     </Card>
   );
 }
 
-// Las máquinas las descubre T3 Code; aquí solo se muestran las que tienen instancia.
+// Environments lists the devices T3 Code reports, in name order. Usage lives in Uso.
 export function Environments() {
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
   const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 60_000 });
-  const usage = useQuery({ queryKey: ["t3-usage"], queryFn: api.t3Usage, refetchInterval: 30_000 });
   const machines = (envs.data ?? []).flatMap((env) => {
     const status = t3.data?.find((s) => s.environment_id === env.id);
     return status ? [{ env, status }] : [];
-  });
+  }).sort((a, b) => a.env.name.localeCompare(b.env.name));
+  const online = machines.filter((m) => m.status.state === "available").length;
   return (
     <div className="space-y-3">
-      <h1 className="text-xl font-bold">Entornos</h1>
+      <PageHeader title="Entornos" subtitle={machines.length ? `${online} de ${machines.length} disponibles` : undefined} />
       <ErrorText error={envs.error ?? t3.error} />
       {envs.data && t3.data && machines.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">T3 Code no ha detectado ninguna máquina.</p>}
-      <div className="grid gap-3 md:grid-cols-2">
-        {machines.map(({ env, status }) => <Machine key={env.id} env={env} status={status} usage={usage.data?.find((u) => u.instance_id === status.instance_id)} />)}
+      <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+        {machines.map(({ env, status }) => <Machine key={env.id} env={env} status={status} />)}
       </div>
     </div>
   );
