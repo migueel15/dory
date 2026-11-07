@@ -193,7 +193,6 @@ function Layout() {
         <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-border">
           <div>
             <h2 id="mobile-navigation-title" className="flex items-center gap-2 font-bold">Dory<DevBadge /></h2>
-            <p className="text-xs text-slate-500 dark:text-muted">Navegación</p>
           </div>
           <button type="button" autoFocus aria-label="Cerrar menú" onClick={() => setMenu(false)} className="grid size-11 place-items-center rounded-lg hover:bg-slate-100 dark:hover:bg-raised">
             <X className="size-5" aria-hidden="true" />
