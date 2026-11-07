@@ -15,7 +15,7 @@ export function ProviderIcon({ driver }: { driver: string }) {
 const stateLabel: Record<string, string> = { available: "disponible", disconnected: "desconectado", auth_failed: "sin acceso", incompatible: "incompatible" };
 const stateDot = (s: string) => (s === "available" ? "bg-green-500" : s === "disconnected" ? "bg-slate-400" : "bg-red-500");
 // repoKey reduces a remote or web URL to host/owner/name, as the backend does.
-const repoKey = (raw: string) => raw.trim().toLowerCase().replace(/^(https?|ssh|git):\/\//, "").replace(/^[^@/:]+@/, "").replace(":", "/").replace(/\/+$/, "").replace(/\.git$/, "");
+export const repoKey = (raw: string) => raw.trim().toLowerCase().replace(/^(https?|ssh|git):\/\//, "").replace(/^[^@/:]+@/, "").replace(":", "/").replace(/\/+$/, "").replace(/\.git$/, "");
 const repoOf = (remote: string) => remote.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/)?.[1] ?? "";
 
 export type LaunchChoice = { instance_id: string; project_id: string; provider: string; model: string; effort_option?: string; effort?: string; worktree?: boolean; base_branch?: string };

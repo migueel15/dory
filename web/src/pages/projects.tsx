@@ -1,12 +1,14 @@
 import { useEffect, useId, useState } from "react";
-import { CheckCircle, Clock, Flask, GitBranch, GithubLogo, Info, Lightning, PencilSimple, Prohibit, Tray } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
+import { CheckCircle, Clock, Desktop, Flask, GitBranch, GithubLogo, Info, Lightning, PencilSimple, Prohibit, Tray } from "@phosphor-icons/react";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { api } from "../api/client";
 import { Badge, Button, Card, ErrorText, Md, PageHeader, Notice, StatusPill, type Tone } from "../components/ui";
 import { Features, ProjectForm } from "./crud";
 import { Board } from "./items";
 import { setProject, useProject } from "../project";
+import { useT3 } from "./attention";
+import { repoKey } from "./launch-form";
 
 // Projects always lists every project; the selected one is marked as the active filter.
 export function Projects() {
@@ -33,6 +35,16 @@ function ProjectList() {
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const items = useQuery({ queryKey: ["items", "all"], queryFn: () => api.items.list() });
   const repos = useQuery({ queryKey: ["repositories", "all"], queryFn: () => api.repositories.list() });
+  // Where each project lives: machines whose T3 Code has a project with one of its repositories.
+  const t3 = useT3();
+  const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
+  const up = (t3.data ?? []).filter((s) => s.state === "available");
+  const catalogs = useQueries({ queries: up.map((s) => ({ queryKey: ["t3-catalog", s.instance_id], queryFn: () => api.t3Catalog(s.instance_id), staleTime: 60_000 })) });
+  const machinesOf = (projectId: string) => {
+    const keys = new Set((repos.data ?? []).filter((r) => r.project_id === projectId).map((r) => repoKey(r.remote_url)));
+    return up.filter((s, i) => catalogs[i]?.data?.projects.some((p) => p.repo && keys.has(repoKey(p.repo))))
+      .map((s) => envs.data?.find((e) => e.id === s.environment_id)?.name || s.base_url);
+  };
   return (
     <div className="space-y-3">
       <PageHeader title="Proyectos" subtitle={projects.data ? `${projects.data.length}` : undefined}>
@@ -71,6 +83,10 @@ function ProjectList() {
                   {OPEN.every(({ status }) => count(status) === 0) && inbox === 0 && <span className="text-xs text-slate-400 dark:text-muted">Sin trabajo abierto</span>}
                 </div>
                 <div className="mt-auto space-y-2">
+                  <div className="flex flex-wrap items-center gap-1.5" title="Máquinas cuyo T3 Code tiene este repositorio">
+                    {machinesOf(p.id).map((m) => <span key={m} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-1.5 py-0.5 text-[11px] text-slate-600 dark:border-border dark:text-text-secondary"><Desktop weight="duotone" aria-hidden="true" className="size-3.5" />{m}</span>)}
+                    {machinesOf(p.id).length === 0 && <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 dark:text-muted"><Desktop aria-hidden="true" className="size-3.5" />En ninguna máquina disponible</span>}
+                  </div>
                   <div className="space-y-1">
                     <div className="flex justify-between text-xs text-slate-500 dark:text-muted"><span>Completado</span><span className="tabular-nums">{done}/{total}</span></div>
                     <div className="h-1.5 overflow-hidden rounded bg-slate-200 dark:bg-hover"><div className="h-full rounded bg-emerald-600" style={{ width: `${total ? (done / total) * 100 : 0}%` }} /></div>
