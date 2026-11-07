@@ -9,6 +9,7 @@ import (
 	"github.com/migueel15/dory/internal/api"
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/config"
+	"github.com/migueel15/dory/internal/dictation"
 	"github.com/migueel15/dory/internal/github"
 	"github.com/migueel15/dory/internal/mcp"
 	"github.com/migueel15/dory/internal/notifications"
@@ -85,7 +86,7 @@ func run() error {
 		titleSettings.Mount(mux)
 		titleGen := titles.New(svc, monitor, titleSettings)
 		titleGen.Recover(ctx)
-		api.Register(mux, titleGen.Wrap(svc), monitor, github.New(svc, os.Getenv("DORY_GITHUB_TOKEN")))
+		api.Register(mux, titleGen.Wrap(svc), monitor, github.New(svc, os.Getenv("DORY_GITHUB_TOKEN")), dictationManager())
 		auth.Register(mux, svc, cfg)
 		mux.Handle("/mcp", mcp.Handler(titleGen.Wrap(svc), monitor.Locate))
 		mux.Handle("/", web.Handler())
@@ -113,4 +114,14 @@ func run() error {
 		}
 		return fmt.Errorf("unknown command %q", os.Args[1])
 	}
+}
+
+// dictationManager uses the local whisper-server at DORY_WHISPER_URL; without
+// it the dictation API answers 503.
+func dictationManager() *dictation.Manager {
+	url := os.Getenv("DORY_WHISPER_URL")
+	if url == "" {
+		return dictation.New(nil)
+	}
+	return dictation.New(dictation.Whisper{URL: url, Language: "es"})
 }

@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/migueel15/dory/internal/auth"
+	"github.com/migueel15/dory/internal/dictation"
 	"github.com/migueel15/dory/internal/github"
 	"github.com/migueel15/dory/internal/service"
 	"github.com/migueel15/dory/internal/t3"
@@ -19,7 +20,7 @@ import (
 func actor(r *http.Request) string { return auth.Actor(r.Context()) }
 
 // Register mounts /api routes; auth owns /api/auth/* on the same mux.
-func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *github.Client) {
+func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *github.Client, dict *dictation.Manager) {
 	mountResource(mux, "projects", svc.Projects(), func(v *service.Project) *service.Record { return &v.Record })
 	mountResource(mux, "repositories", svc.Repositories(), func(v *service.Repository) *service.Record { return &v.Record })
 	mountReadOnly(mux, "environments", svc.Environments(), func(v *service.Environment) *service.Record { return &v.Record })
@@ -67,6 +68,7 @@ func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *
 	mountThreads(mux, svc, monitor)
 	mountLaunch(mux, svc, monitor)
 	mountDefine(mux, svc, monitor, gh)
+	mountDictation(mux, svc, monitor, dict)
 	mux.HandleFunc("GET /api/github/open", func(w http.ResponseWriter, r *http.Request) {
 		overview, err := gh.Open(r.Context(), r.URL.Query().Get("refresh") == "true")
 		if err != nil {

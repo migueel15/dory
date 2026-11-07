@@ -865,10 +865,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/dictation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a dictation session (in memory, expires after 30 min) */
+        post: operations["createDictation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dictation/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Partial text and pending batches */
+        get: operations["getDictation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dictation/{id}/chunks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue a self-contained WAV batch (16 kHz mono); seq starts at 0 */
+        post: operations["addDictationChunk"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dictation/{id}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** insert waits for the last batch and returns the text; send returns at once and the backend delivers the text to target */
+        post: operations["finishDictation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        DictationState: {
+            id: string;
+            text: string;
+            pending: number;
+            /** @enum {string} */
+            status: "recording" | "finishing" | "done" | "failed";
+            error?: string;
+        };
         ItemRefinement: {
             thread: {
                 thread_id: string;
@@ -4140,6 +4216,137 @@ export interface operations {
                 };
             };
             404: components["responses"]["Error404"];
+        };
+    };
+    createDictation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DictationState"];
+                };
+            };
+            /** @description Dictation engine not configured (DORY_WHISPER_URL) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getDictation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DictationState"];
+                };
+            };
+            404: components["responses"]["Error404"];
+        };
+    };
+    addDictationChunk: {
+        parameters: {
+            query: {
+                seq: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "audio/wav": string;
+            };
+        };
+        responses: {
+            /** @description Batch queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DictationState"];
+                };
+            };
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
+        };
+    };
+    finishDictation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    mode: "insert" | "send";
+                    target?: {
+                        /** @enum {string} */
+                        kind: "capture" | "define";
+                        /** @description capture: project of the new inbox item */
+                        project_id?: string;
+                        /** @description define: item whose definition thread receives the text */
+                        item_id?: string;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description insert: final text */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DictationState"];
+                };
+            };
+            /** @description send: delivery scheduled */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DictationState"];
+                };
+            };
+            400: components["responses"]["Error400"];
+            404: components["responses"]["Error404"];
+            409: components["responses"]["Error409"];
         };
     };
 }

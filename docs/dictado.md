@@ -1,0 +1,31 @@
+# Dictado
+
+Dory transcribe el dictado en el servidor con whisper.cpp (ADR-006). Necesita HTTPS (`public_origin`) para que el navegador dé permiso al micrófono.
+
+## Puesta en marcha del motor en infra-admin
+
+```sh
+sudo apt-get install -y cmake
+mkdir -p ~/opt && cd ~/opt
+git clone --depth 1 https://github.com/ggml-org/whisper.cpp && cd whisper.cpp
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=ON
+cmake --build build -j6 --target whisper-server
+sh ./models/download-ggml-model.sh small-q5_1
+sudo cp ~/repos/dory/deploy/whisper-server.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now whisper-server
+```
+
+Añade a `~/.config/dory/dory.env` y reinicia Dory:
+
+```sh
+DORY_WHISPER_URL=http://127.0.0.1:8178
+```
+
+Comprobación: `curl 127.0.0.1:8178/inference -F file=@audio.wav -F language=es -F response_format=json`.
+
+## API
+
+- `POST /api/dictation` crea una sesión.
+- `POST /api/dictation/{id}/chunks?seq=n` sube un lote WAV (16 kHz mono, máx. 2 MiB), en orden desde 0.
+- `GET /api/dictation/{id}` devuelve el texto parcial y los lotes pendientes.
+- `POST /api/dictation/{id}/finish` con `{"mode":"insert"}` espera y devuelve el texto; con `{"mode":"send","target":{"kind":"capture","project_id":"…"}}` o `{"kind":"define","item_id":"…"}` el backend lo entrega al terminar.
