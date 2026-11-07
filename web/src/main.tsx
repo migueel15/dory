@@ -5,8 +5,7 @@ import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient
 import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { ApiError, api } from "./api/client";
 import { useLiveUpdates } from "./api/live";
-import { Button, Input, Label, Select, errMsg } from "./components/ui";
-import { setProject, useProject } from "./project";
+import { Button, Input, Label, errMsg } from "./components/ui";
 import { Environments, Memories, memorySearch } from "./pages/crud";
 import { CommandPalette } from "./components/commands";
 import { ProjectSwitcher } from "./components/project-switcher";
@@ -71,18 +70,6 @@ function ThemeToggle() {
       {dark ? <Sun className="size-5" aria-hidden="true" /> : <Moon className="size-5" aria-hidden="true" />}
     </Button>
   );
-}
-
-// ProjectFilter sets the global project every page filters by. It uses the standard selector,
-// with "Todos los proyectos" to clear it.
-function ProjectFilter({ className }: { className?: string }) {
-  const project = useProject();
-  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
-  // Forget a selection that no longer exists (archived or from another database).
-  const gone = !!project && !!projects.data && !projects.data.some((p) => p.id === project);
-  useEffect(() => { if (gone) setProject(""); }, [gone]);
-  const list = (projects.data ?? []).map((p) => ({ value: p.id, label: p.name }));
-  return <Select className={className} value={gone ? "" : project} onChange={setProject} options={[{ value: "", label: "Todos los proyectos" }, ...list]} />;
 }
 
 function VersionBadge() {
@@ -160,10 +147,8 @@ function Layout() {
     <div className="min-h-screen bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex sm:h-screen sm:bg-white sm:dark:bg-surface">
       <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col bg-white dark:bg-surface sm:flex">
         <Link to="/" className="flex items-center gap-2 px-4 py-3 font-bold">Dory<DevBadge /></Link>
-        {/* Two trial designs of the project switcher; the user keeps one. */}
-        <div className="shrink-0 px-2 pb-2"><ProjectSwitcher variant="card" /></div>
         <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4">{links}</nav>
-        <div className="shrink-0 px-2 pb-2"><ProjectSwitcher variant="row" /></div>
+        <div className="shrink-0 px-2 pb-2"><ProjectSwitcher /></div>
         <div className="shrink-0 space-y-2 border-t border-slate-200 p-3 dark:border-border">
           <div className="flex items-center gap-1">
             {desktop && <Notifications />}
@@ -181,8 +166,10 @@ function Layout() {
       <div className="min-w-0 flex-1 sm:my-2 sm:mr-2 sm:overflow-auto sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">
       <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2 sm:hidden">
         <div className="flex h-12 items-center gap-1">
-          <Link to="/" className="mr-3 flex items-center gap-2 font-bold">Dory<DevBadge /></Link>
-          <div className="ml-auto flex items-center gap-1">
+          <Link to="/" className="mr-1 flex shrink-0 items-center gap-2 font-bold">Dory<DevBadge /></Link>
+          {/* The project is one tap away on phones, without opening the menu. */}
+          <div className="min-w-0 flex-1"><ProjectSwitcher compact /></div>
+          <div className="flex shrink-0 items-center gap-1">
             {!desktop && <Notifications />}
             <ThemeToggle />
             <SettingsLink />
@@ -220,7 +207,6 @@ function Layout() {
           }}>{links}</nav>
         </div>
         <div className="shrink-0 space-y-3 border-t border-slate-200 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-border">
-          <ProjectFilter />
           <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 py-1 pl-3 pr-1 dark:border-border">
             <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
             <Button variant="bare" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => logout.mutate()}><SignOut className="size-5" aria-hidden="true" /></Button>

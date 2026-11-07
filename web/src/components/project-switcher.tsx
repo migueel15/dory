@@ -6,9 +6,9 @@ import { api } from "../api/client";
 import { setProject, useProject } from "../project";
 import { Input } from "./ui";
 
-// ProjectSwitcher picks the global project. "row" looks like a sidebar link,
-// "card" like a workspace block; both open the same searchable menu.
-export function ProjectSwitcher({ variant }: { variant: "row" | "card" }) {
+// ProjectSwitcher picks the global project. It looks like a sidebar link and opens a
+// searchable menu; "compact" fits the phone top bar.
+export function ProjectSwitcher({ compact = false }: { compact?: boolean }) {
   const project = useProject();
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const current = projects.data?.find((p) => p.id === project);
@@ -26,7 +26,9 @@ export function ProjectSwitcher({ variant }: { variant: "row" | "card" }) {
     if (!open || !trigger.current) return;
     const t = trigger.current.getBoundingClientRect();
     // Open below the trigger when there is room, otherwise above it.
-    setPos(t.bottom + 320 < window.innerHeight ? { left: t.left, top: t.bottom + 4, width: Math.max(t.width, 240) } : { left: t.left, bottom: window.innerHeight - t.top + 4, width: Math.max(t.width, 240) });
+    const width = Math.min(Math.max(t.width, 260), window.innerWidth - 16);
+    const left = Math.max(8, Math.min(t.left, window.innerWidth - width - 8));
+    setPos(t.bottom + 320 < window.innerHeight ? { left, top: t.bottom + 4, width } : { left, bottom: window.innerHeight - t.top + 4, width });
   }, [open]);
   useEffect(() => {
     if (!open) { setQuery(""); return; }
@@ -41,21 +43,11 @@ export function ProjectSwitcher({ variant }: { variant: "row" | "card" }) {
   const options = [{ id: "", name: "Todos los proyectos" }, ...(projects.data ?? [])].filter((p) => !q || p.name.toLowerCase().includes(q));
   const pick = (id: string) => { setProject(id); setOpen(false); };
 
-  const button = variant === "row" ? (
+  const button = (
     <button ref={trigger} type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)} title="Cambiar de proyecto"
-      className={`flex w-full items-center rounded px-2 py-1 text-left text-sm font-medium text-slate-800 hover:bg-slate-200 dark:text-text dark:hover:bg-raised ${open ? "bg-slate-200 dark:bg-raised" : ""}`}>
+      className={`flex w-full items-center rounded text-left ${compact ? "min-h-11 px-2" : "px-2 py-1"} text-sm font-medium text-slate-800 hover:bg-slate-200 dark:text-text dark:hover:bg-raised ${open ? "bg-slate-200 dark:bg-raised" : ""}`}>
       {current ? <FolderSimple weight="duotone" aria-hidden="true" className="mr-2.5 size-[18px] shrink-0 opacity-80" /> : <SquaresFour weight="duotone" aria-hidden="true" className="mr-2.5 size-[18px] shrink-0 opacity-80" />}
       <span className="min-w-0 flex-1 truncate">{name}</span>
-      <CaretUpDown aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
-    </button>
-  ) : (
-    <button ref={trigger} type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)} title="Cambiar de proyecto"
-      className={`flex w-full items-center gap-2.5 rounded-lg border border-slate-200 p-2 text-left hover:bg-slate-100 dark:border-border dark:hover:bg-raised ${open ? "bg-slate-100 dark:bg-raised" : ""}`}>
-      <span className="grid size-8 shrink-0 place-items-center rounded-md bg-slate-900 text-sm font-bold text-white dark:bg-accent">{current ? current.name[0]?.toUpperCase() : <SquaresFour weight="bold" aria-hidden="true" className="size-4" />}</span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold">{name}</span>
-        <span className="block text-[11px] text-slate-500 dark:text-muted">{current ? "Proyecto" : "Sin filtro"}</span>
-      </span>
       <CaretUpDown aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
     </button>
   );
@@ -72,7 +64,7 @@ export function ProjectSwitcher({ variant }: { variant: "row" | "card" }) {
           <div role="listbox" className="max-h-72 overflow-auto p-1">
             {options.map((p) => (
               <button key={p.id || "all"} type="button" role="option" aria-selected={p.id === project} onClick={() => pick(p.id)}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised">
+                className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-100 sm:min-h-0 dark:hover:bg-raised">
                 {p.id ? <FolderSimple weight="duotone" aria-hidden="true" className="size-4 shrink-0 text-slate-400" /> : <SquaresFour weight="duotone" aria-hidden="true" className="size-4 shrink-0 text-slate-400" />}
                 <span className={`min-w-0 flex-1 truncate ${p.id === project ? "font-medium text-blue-700 dark:text-accent-text" : ""}`}>{p.name}</span>
                 {p.id === project && <Check weight="bold" aria-hidden="true" className="size-4 shrink-0 text-blue-700 dark:text-accent-text" />}
