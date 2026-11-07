@@ -97,7 +97,7 @@ function Machine({ env, status }: { env: Environment; status: T3Status }) {
   const host = (() => { try { return new URL(status.base_url).host; } catch { return status.base_url; } })();
   const muted = "text-xs text-slate-500 dark:text-muted";
   return (
-    <Card className="flex h-full flex-col gap-4">
+    <Card className="flex h-full min-w-0 flex-col gap-4">
       <div className="flex items-start gap-3">
         <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-700 dark:bg-raised dark:text-text"><Os weight="duotone" aria-hidden="true" className="size-6" /></span>
         <div className="min-w-0 flex-1">
@@ -138,7 +138,7 @@ function Machine({ env, status }: { env: Environment; status: T3Status }) {
               <span className={muted}>{p.models.length} modelos</span>
               <span aria-hidden="true" className="text-slate-400 transition-transform group-open:rotate-90 motion-reduce:transition-none">›</span>
             </summary>
-            <div className="mt-1.5 flex flex-wrap gap-1 pl-6">{p.models.map((m) => <Badge key={m.slug}>{m.name || m.slug}</Badge>)}</div>
+            <div className="mt-1.5 flex min-w-0 flex-wrap gap-1 pl-6">{p.models.map((m) => <span key={m.slug} className="max-w-full truncate"><Badge>{m.name || m.slug}</Badge></span>)}</div>
           </details>
         ))}
         {up && catalog.data?.providers.length === 0 && <p className={muted}>Sin agentes configurados.</p>}
@@ -148,11 +148,11 @@ function Machine({ env, status }: { env: Environment; status: T3Status }) {
         <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-muted">Proyectos en T3 {catalog.data && <span className="font-normal normal-case tracking-normal">({catalog.data.projects.length})</span>}</h3>
         {catalog.data?.projects.length === 0 && <p className={muted}>Sin proyectos.</p>}
         <ul className="space-y-1 text-sm">{catalog.data?.projects.map((p) => (
-          <li key={p.id} className="flex min-w-0 items-center gap-2"><FolderSimple weight="duotone" aria-hidden="true" className="size-4 shrink-0 text-slate-400" /><span className="shrink-0">{p.title}</span><span className="min-w-0 truncate font-mono text-[11px] text-slate-400 dark:text-muted" title={p.root}>{p.root}</span></li>
+          <li key={p.id} className="flex min-w-0 items-center gap-2"><FolderSimple weight="duotone" aria-hidden="true" className="size-4 shrink-0 text-slate-400" /><span className="min-w-0 max-w-[50%] shrink-0 truncate">{p.title}</span><span className="min-w-0 truncate font-mono text-[11px] text-slate-400 dark:text-muted" title={p.root}>{p.root}</span></li>
         ))}</ul>
       </section>
 
-      {env.notes && <p className="whitespace-pre-wrap rounded-md bg-slate-50 p-2 text-xs text-slate-600 dark:bg-raised dark:text-text-secondary">{env.notes}</p>}
+      {env.notes && <p className="whitespace-pre-wrap break-words rounded-md bg-slate-50 p-2 text-xs text-slate-600 dark:bg-raised dark:text-text-secondary">{env.notes}</p>}
 
       <div className="mt-auto flex justify-end border-t border-slate-100 pt-3 dark:border-border">
         {status.instance_id && <button type="button" className={pill} onClick={() => openT3(status)}>Abrir T3 Code <Arrow /></button>}
@@ -177,7 +177,7 @@ export function Environments() {
       <PageHeader title="Entornos" subtitle={t3.data && machines.length ? `${online} de ${machines.length} disponibles` : undefined} />
       <ErrorText error={envs.error ?? t3.error} />
       {envs.data && t3.data && machines.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">T3 Code no ha detectado ninguna máquina.</p>}
-      <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
         {t3.data && machines.map(({ env, status }) => <Machine key={env.id} env={env} status={status} />)}
       </div>
     </div>
