@@ -73,22 +73,24 @@ type PullRequestLink struct {
 
 // ThreadView is the normalized thread the chat view shows.
 type ThreadView struct {
-	ID              string            `json:"id"`
-	Title           string            `json:"title"`
-	ProviderID      string            `json:"provider_id"`
-	Model           string            `json:"model"`
-	Effort          string            `json:"effort"`
-	EffortOption    string            `json:"effort_option"`
-	InteractionMode string            `json:"interaction_mode"`
-	RuntimeMode     string            `json:"runtime_mode"`
-	Branch          string            `json:"branch"`
-	WorktreePath    string            `json:"worktree_path"`
-	ActiveRunID     string            `json:"active_run_id"`
-	ActiveStatus    string            `json:"active_status"`
-	PullRequests    []PullRequestLink `json:"pull_requests"`
-	Messages        []ViewMessage     `json:"messages"`
-	Queue           []QueuedRun       `json:"queue"`
-	Pending         *Pending          `json:"pending"`
+	ID              string `json:"id"`
+	Title           string `json:"title"`
+	ProviderID      string `json:"provider_id"`
+	Model           string `json:"model"`
+	Effort          string `json:"effort"`
+	EffortOption    string `json:"effort_option"`
+	InteractionMode string `json:"interaction_mode"`
+	RuntimeMode     string `json:"runtime_mode"`
+	Branch          string `json:"branch"`
+	WorktreePath    string `json:"worktree_path"`
+	ActiveRunID     string `json:"active_run_id"`
+	ActiveStatus    string `json:"active_status"`
+	// Interrupted is true when the last run was stopped and nothing runs now.
+	Interrupted  bool              `json:"interrupted"`
+	PullRequests []PullRequestLink `json:"pull_requests"`
+	Messages     []ViewMessage     `json:"messages"`
+	Queue        []QueuedRun       `json:"queue"`
+	Pending      *Pending          `json:"pending"`
 }
 
 type wireOption struct {
@@ -210,6 +212,12 @@ func (p wireViewProjection) view(threadID string) ThreadView {
 			queued[r.UserMessageID] = true
 		case activeStatuses[r.Status]:
 			v.ActiveRunID, v.ActiveStatus = r.ID, r.Status
+		}
+	}
+	for i := len(p.Runs) - 1; i >= 0; i-- {
+		if r := p.Runs[i]; r.Status != "queued" {
+			v.Interrupted = v.ActiveRunID == "" && (r.Status == "interrupted" || r.Status == "cancelled")
+			break
 		}
 	}
 	sort.SliceStable(v.Queue, func(i, j int) bool { return v.Queue[i].Position < v.Queue[j].Position })

@@ -398,8 +398,12 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const models: MenuOption[] = (catalog.data?.providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `${p.instance_id}|${m.slug}`, label: m.name, group: p.name, icon: <ProviderIcon driver={p.driver || p.name} model={`${m.slug} ${m.name}`} /> })));
   if (!models.some((m) => m.value === selected)) models.unshift({ value: selected, label: v.model || "Modelo del hilo", icon: <ProviderIcon driver={v.provider_id} model={v.model} /> });
   const stop = useMutation({ mutationFn: () => api.t3Interrupt(v.id), onSuccess: () => qc.invalidateQueries({ queryKey }) });
-  const resume = useMutation({ mutationFn: () => api.t3QueueResume(v.id), onSuccess: () => qc.invalidateQueries({ queryKey }) });
   const held = !busy && v.queue.some((r) => r.held);
+  // Continue picks up where the stopped turn left off: the held queue first, else a nudge.
+  const resume = useMutation({
+    mutationFn: () => held ? api.t3QueueResume(v.id) : api.t3Dispatch(v.id, { text: "Continúa por donde lo dejaste.", mode: "auto" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey }),
+  });
   const canSend = !!text.trim() && !send.isPending;
   const submit = () => { if (canSend) send.mutate(); };
 
@@ -424,10 +428,10 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
             </button>
           )}
         </div>
-        {held && (
-          <button type="button" onClick={() => resume.mutate()} disabled={resume.isPending} title="Reanuda la cola: sale el siguiente mensaje"
+        {(held || (v.interrupted && !busy)) && (
+          <button type="button" onClick={() => resume.mutate()} disabled={resume.isPending} title={held ? "Reanuda la cola: sale el siguiente mensaje" : "Sigue el turno parado por donde iba"}
             className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-slate-100 px-3 text-xs font-medium text-slate-700 hover:bg-slate-200 dark:bg-raised dark:text-text-secondary dark:hover:text-white">
-            <Play weight="fill" className="size-3" />Continuar cola
+            <Play weight="fill" className="size-3" />Continuar
           </button>
         )}
         {busy && !text.trim() ? (

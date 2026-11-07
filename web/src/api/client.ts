@@ -24,7 +24,7 @@ export type T3QueuedRun = { run_id: string; text: string; position: number; held
 export type T3ThreadView = {
   id: string; title: string; provider_id: string; model: string; effort: string; effort_option: string;
   interaction_mode: string; runtime_mode: string; branch: string; worktree_path: string;
-  active_run_id: string; active_status: string; instance_id: string;
+  active_run_id: string; active_status: string; instance_id: string; interrupted: boolean;
   pull_requests: { repository: string; number: number; url: string }[];
   messages: T3ViewMessage[]; queue: T3QueuedRun[]; pending: T3ThreadContext["pending"];
   items: { item_id: string; role: string }[];
