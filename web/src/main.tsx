@@ -152,8 +152,8 @@ function Layout() {
       <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col bg-white dark:bg-surface sm:flex">
         <Link to="/" className="flex items-center gap-2 px-4 py-3 font-bold">Dory<DevBadge /></Link>
         <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4">{links}</nav>
+        <div className="shrink-0 px-3 pb-3"><ProjectFilter /></div>
         <div className="shrink-0 space-y-2 border-t border-slate-200 p-3 dark:border-border">
-          <ProjectFilter />
           <div className="flex items-center gap-1">
             {desktop && <Notifications />}
             <ThemeToggle />
