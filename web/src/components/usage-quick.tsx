@@ -1,7 +1,8 @@
 import { expectedRemaining, paceTitle } from "../lib/usage-pace";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { Gauge } from "@phosphor-icons/react";
+import { ArrowClockwise, Gauge } from "@phosphor-icons/react";
+import { Arrow } from "./ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { api, type T3InstanceUsage } from "../api/client";
@@ -67,7 +68,6 @@ export function UsageQuick() {
       {open && createPortal(
         <div ref={panel} role="dialog" aria-label="Límites restantes" style={pos} className="notif-in fixed z-[100] space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-xl dark:border-border dark:bg-surface">
           {usage.isPending && <p className="text-sm text-slate-400">Cargando…</p>}
-          {refresh.isPending && !usage.isPending && <p className="flex items-center gap-1.5 text-[11px] text-slate-400"><span className="size-2.5 animate-spin rounded-full border-2 border-current border-t-transparent" />Actualizando…</p>}
           {usage.data && list.length === 0 && <p className="text-sm text-slate-400">Sin datos de límites.</p>}
           {list.map((p) => (
             <div key={`${p.provider}/${p.account_key}`} className="space-y-1">
@@ -85,7 +85,13 @@ export function UsageQuick() {
               })}
             </div>
           ))}
-          <Link to="/usage" onClick={() => setOpen(false)} className="block border-t border-slate-200 pt-2 text-xs text-slate-500 hover:text-slate-900 dark:border-border dark:text-muted dark:hover:text-text">Ver uso completo →</Link>
+          <div className="flex items-center border-t border-slate-200 pt-2 dark:border-border">
+            <Link to="/usage" onClick={() => setOpen(false)} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-text">Ver uso completo <Arrow /></Link>
+            <button type="button" onClick={() => refresh.mutate()} disabled={refresh.isPending} title="Actualizar" aria-label="Actualizar"
+              className="ml-auto grid size-6 place-items-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-900 disabled:hover:bg-transparent dark:hover:bg-raised dark:hover:text-white">
+              <ArrowClockwise className={`size-3.5 ${refresh.isPending ? "animate-spin" : ""}`} />
+            </button>
+          </div>
         </div>,
         // Inside the phone drawer (a modal dialog in the top layer) the panel must live in it to show above.
         trigger.current?.closest("dialog") ?? document.body,
