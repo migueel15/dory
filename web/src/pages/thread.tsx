@@ -6,6 +6,7 @@ import { api, type T3QueuedRun, type T3ThreadView } from "../api/client";
 import { useThreadLive } from "../api/live";
 import { Button, ErrorText, Input, Md, Notice, PageHeader, Select, StatusPill, Textarea, pill } from "../components/ui";
 import { ProviderIcon } from "./launch-form";
+import { Diff, type Suggestion } from "./github-diff";
 
 // threadIdFrom accepts a T3 thread link or a bare id.
 const threadIdFrom = (raw: string) => raw.trim().replace(/[?#].*$/, "").replace(/\/+$/, "").split("/").pop() ?? "";
@@ -42,17 +43,21 @@ export function ThreadView() {
   const key = ["t3-view", threadId];
   const view = useQuery({ queryKey: key, queryFn: () => api.t3View(threadId) });
   useThreadLive(threadId, key);
+  const [tab, setTab] = useState<"chat" | "changes">("chat");
   if (view.isPending) return <Notice loading />;
   if (view.error) return <ErrorText error={view.error} />;
   const v = view.data;
   return (
     <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col gap-3">
       <ContextBar v={v} />
+      <div className="flex gap-1 lg:hidden" role="tablist">
+        {(["chat", "changes"] as const).map((t) => (
+          <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`${pill} ${tab === t ? "!border-slate-500 !text-slate-900 dark:!text-white" : ""}`}>{t === "chat" ? "Chat" : "Cambios"}</button>
+        ))}
+      </div>
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-2">
-        <Chat v={v} queryKey={key} />
-        <section className="hidden min-h-0 rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500 lg:block dark:border-border dark:text-muted">
-          Los archivos cambiados llegarán en la siguiente entrega.
-        </section>
+        <div className={`min-h-0 flex-col ${tab === "chat" ? "flex" : "hidden lg:flex"}`}><Chat v={v} queryKey={key} /></div>
+        <div className={`min-h-0 overflow-auto ${tab === "changes" ? "block" : "hidden lg:block"}`}><Changes v={v} queryKey={key} /></div>
       </div>
     </div>
   );
@@ -80,7 +85,7 @@ function Chat({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const last = v.messages.at(-1);
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [v.messages.length, last?.text.length]);
   return (
-    <section className="flex min-h-0 flex-col rounded-lg border border-slate-200 dark:border-border">
+    <section className="flex min-h-0 flex-1 flex-col rounded-lg border border-slate-200 dark:border-border">
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
         {v.messages.length === 0 && <p className="text-sm text-slate-500">Sin mensajes todavía.</p>}
         {v.messages.map((m) => (
@@ -182,5 +187,43 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
       </div>
       <ErrorText error={send.error ?? settings.error} />
     </form>
+  );
+}
+
+// prOf reads owner/repo and number from a pull request link.
+const prOf = (url: string) => {
+  const m = url.match(/github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/);
+  return m ? { repo: m[1], number: Number(m[2]) } : undefined;
+};
+
+// Changes shows the thread's own changes or its pull request, and sends a
+// selected range to the chat through the same queue or steer as the composer.
+function Changes({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
+  const qc = useQueryClient();
+  const prs = v.pull_requests.map((p) => ({ ...p, parsed: prOf(p.url) })).filter((p) => p.parsed);
+  const [source, setSource] = useState("thread");
+  const pr = prs.find((p) => p.url === source)?.parsed;
+  const local = useQuery({ queryKey: ["t3-diff", v.id, v.messages.length], queryFn: () => api.t3Diff(v.id), enabled: !pr });
+  const prDiff = useQuery({ queryKey: ["github-diff", pr?.repo, pr?.number], queryFn: () => api.githubDiff(pr!.repo, pr!.number), enabled: !!pr });
+  const text = pr ? prDiff.data?.diff : local.data?.diff;
+  const suggest = async (s: Suggestion) => {
+    const where = s.start === s.end ? `línea ${s.start}` : `líneas ${s.start}–${s.end}`;
+    const body = `Sugerencia sobre \`${s.path}\` (${where}):\n\n\`\`\`diff\n${s.snippet}\n\`\`\`\n\n${s.question}`;
+    await api.t3Dispatch(v.id, { text: body, mode: s.steer ? "steer" : "auto" });
+    qc.invalidateQueries({ queryKey });
+  };
+  return (
+    <section className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Select className="w-64" value={source} onChange={setSource} options={[
+          { value: "thread", label: "Cambios del hilo (worktree)" },
+          ...prs.map((p) => ({ value: p.url, label: `PR #${p.number} · ${p.repository}` })),
+        ]} />
+        {v.worktree_path && <span className="truncate font-mono text-xs text-slate-500 dark:text-muted" title={v.worktree_path}>{v.worktree_path}</span>}
+      </div>
+      <ErrorText error={pr ? prDiff.error : local.error} />
+      {text === undefined ? <Notice loading /> : text === "" ? <p className="text-sm text-slate-500 dark:text-muted">Sin cambios todavía.</p>
+        : <Diff key={source} text={text} onSuggest={suggest} />}
+    </section>
   );
 }

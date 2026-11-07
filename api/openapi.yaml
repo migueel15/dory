@@ -1062,6 +1062,18 @@ paths:
           content:
             application/json:
               schema: {type: "object", additionalProperties: true}
+  "/t3/threads/{id}/diff":
+    get:
+      operationId: "getT3ThreadDiff"
+      summary: "Every change the thread made in its worktree, from T3 checkpoints"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+      responses:
+        "200":
+          description: "Unified diff, empty when no turn changed files"
+          content:
+            application/json:
+              schema: {type: "object", required: ["diff"], properties: {diff: {type: "string"}}}
   "/t3/threads/{id}/send":
     post:
       operationId: "sendT3ThreadTurn"

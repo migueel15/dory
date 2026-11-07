@@ -65,3 +65,11 @@ func TestSendQueuesWithModelAndQueueCommands(t *testing.T) {
 		t.Error("invalid runtime mode accepted")
 	}
 }
+
+func TestThreadDiffWithoutCheckpointsIsEmpty(t *testing.T) {
+	c := rpcServer(t, `{"_tag":"Success","value":{"checkpoints":[{"appRunOrdinal":null,"status":"ready"},{"appRunOrdinal":3,"status":"missing"}]}}`, nil)
+	d, err := c.ThreadDiff(context.Background(), "th")
+	if err != nil || d != "" {
+		t.Errorf("diff %q err %v", d, err)
+	}
+}

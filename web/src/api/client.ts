@@ -103,6 +103,7 @@ export const api = {
   t3Context: (id: string) => req<T3ThreadContext>("GET", `/t3/threads/${id}/context`),
   t3Send: (id: string, text: string) => req<void>("POST", `/t3/threads/${id}/messages`, { text }),
   t3View: (id: string) => req<T3ThreadView>("GET", `/t3/threads/${id}/view`),
+  t3Diff: (id: string) => req<{ diff: string }>("GET", `/t3/threads/${id}/diff`),
   t3Dispatch: (id: string, body: T3SendInput) => req<void>("POST", `/t3/threads/${id}/send`, body),
   t3QueueEdit: (id: string, run: string, text: string) => req<void>("PATCH", `/t3/threads/${id}/queue/${run}`, { text }),
   t3QueueReorder: (id: string, run: string, before: string) => req<void>("POST", `/t3/threads/${id}/queue/${run}/reorder`, { before_run_id: before }),

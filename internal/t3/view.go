@@ -81,6 +81,10 @@ type wireViewProjection struct {
 		QueueHeld     bool   `json:"queueHeld"`
 		UserMessageID string `json:"userMessageId"`
 	} `json:"runs"`
+	Checkpoints []struct {
+		AppRunOrdinal *int   `json:"appRunOrdinal"`
+		Status        string `json:"status"`
+	} `json:"checkpoints"`
 	FullMessages []struct {
 		ID        string `json:"id"`
 		Role      string `json:"role"`
@@ -270,4 +274,27 @@ func (c Client) SetRuntimeMode(ctx context.Context, threadID, mode string) error
 		return errors.New("t3: invalid runtime mode")
 	}
 	return c.Dispatch(ctx, map[string]any{"type": "thread.runtime-mode.set", "threadId": threadID, "runtimeMode": mode})
+}
+
+// ThreadDiff returns every change the thread made in its worktree, from T3's
+// checkpoints up to the latest ready turn. Empty when no turn changed files.
+func (c Client) ThreadDiff(ctx context.Context, threadID string) (string, error) {
+	var p wireViewProjection
+	if err := c.call(ctx, "orchestration.getThreadProjection", map[string]any{"threadId": threadID}, &p); err != nil {
+		return "", err
+	}
+	turns := 0
+	for _, cp := range p.Checkpoints {
+		if cp.Status == "ready" && cp.AppRunOrdinal != nil {
+			turns = max(turns, *cp.AppRunOrdinal)
+		}
+	}
+	if turns == 0 {
+		return "", nil
+	}
+	var out struct {
+		Diff string `json:"diff"`
+	}
+	err := c.call(ctx, "orchestration.getFullThreadDiff", map[string]any{"threadId": threadID, "toTurnCount": turns, "ignoreWhitespace": false}, &out)
+	return out.Diff, err
 }

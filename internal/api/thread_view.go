@@ -69,6 +69,20 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 		writeJSON(w, http.StatusOK, out)
 	})
 
+	mux.HandleFunc("GET /api/t3/threads/{id}/diff", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		c, err := threadClient(r.Context(), svc, monitor, id)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		diff, err := c.ThreadDiff(r.Context(), id)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"diff": diff})
+	})
 	mux.HandleFunc("POST /api/t3/threads/{id}/send", func(w http.ResponseWriter, r *http.Request) {
 		var b struct {
 			Text         string `json:"text"`
