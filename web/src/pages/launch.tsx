@@ -9,7 +9,7 @@ import { useLaunchForm } from "./launch-form";
 export function LaunchDialog({ items, role, onClose, onSuccess }: { items: Item[]; role: "refine" | "implementation"; onClose: () => void; onSuccess?: () => void }) {
   const qc = useQueryClient();
   // Definition never touches code, so only implementation offers a worktree.
-  const form = useLaunchForm({ doryProject: items[0]?.project_id, worktree: role === "implementation" ? true : undefined });
+  const form = useLaunchForm({ section: role, doryProject: items[0]?.project_id, worktree: role === "implementation" ? true : undefined });
   const launch = useMutation({
     mutationFn: async () => {
       for (const item of items) {

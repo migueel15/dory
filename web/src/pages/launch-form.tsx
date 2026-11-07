@@ -3,6 +3,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { Input, Label, Select } from "../components/ui";
 import { saveEffort, savedEffort } from "../effort";
+import { saveModel, savedModel } from "../last-model";
 import { useT3 } from "./attention";
 
 // ProviderIcon marks the company behind a model with its initial and colour.
@@ -23,7 +24,7 @@ export type LaunchChoice = { instance_id: string; project_id: string; provider: 
 // useLaunchForm is the one form every T3 thread launch uses: machine, T3 project,
 // model, reasoning and, when the launch can work in a worktree, its base branch.
 // The repository comes from a Dory project or an owner/repo path.
-export function useLaunchForm({ doryProject, repo: repoPathIn, worktree: worktreeDefault }: { doryProject?: string | null; repo?: string; worktree?: boolean }) {
+export function useLaunchForm({ section, doryProject, repo: repoPathIn, worktree: worktreeDefault }: { section: string; doryProject?: string | null; repo?: string; worktree?: boolean }) {
   const t3 = useT3();
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
   const envName = (id: string) => envs.data?.find((e) => e.id === id)?.name ?? "";
@@ -56,7 +57,11 @@ export function useLaunchForm({ doryProject, repo: repoPathIn, worktree: worktre
 
   const [choice, setChoice] = useState("");
   const first = catalog.data?.providers[0];
-  const selected = choice || (first?.models[0] ? `${first.instance_id}|${first.models[0].slug}` : "");
+  // The last model used in this section, if this machine has it (same slug under another provider counts).
+  const [lastProvider, lastSlug] = savedModel(section).split("|");
+  const last = catalog.data?.providers.find((p) => p.instance_id === lastProvider && p.models.some((m) => m.slug === lastSlug))
+    ?? catalog.data?.providers.find((p) => p.models.some((m) => m.slug === lastSlug));
+  const selected = choice || (last && lastSlug ? `${last.instance_id}|${lastSlug}` : "") || (first?.models[0] ? `${first.instance_id}|${first.models[0].slug}` : "");
   const [providerId, slug] = selected.split("|");
   const provider = catalog.data?.providers.find((p) => p.instance_id === providerId);
   const model = provider?.models.find((m) => m.slug === slug);
@@ -109,6 +114,6 @@ export function useLaunchForm({ doryProject, repo: repoPathIn, worktree: worktre
     fields, value, error: catalog.error,
     ready: !!instanceId && !!projectId && !!model,
     // remember keeps the reasoning used with this model as its next default.
-    remember: () => { if (model?.effort) saveEffort(model.slug, effortValue); },
+    remember: () => { if (model?.effort) saveEffort(model.slug, effortValue); if (selected) saveModel(section, selected); },
   };
 }
