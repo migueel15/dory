@@ -152,7 +152,7 @@ export function Notifications() {
               <>
                 <ul className="divide-y divide-slate-100 dark:divide-border/60">
                   {notices.filter(n => n.bell).map(n => <li key={n.id} className={`group relative flex gap-2.5 px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-raised ${n.read ? "" : "bg-slate-50 dark:bg-raised/50"}`}>
-                    <span aria-label={n.read ? undefined : "No leída"} className={`mt-1.5 size-2 shrink-0 rounded-full ${n.read ? "bg-transparent" : "bg-red-600"}`} />
+                    <span aria-label={n.read ? undefined : "No leída"} className={`mt-1.5 size-2 shrink-0 rounded-full ${n.read ? "bg-transparent" : "bg-slate-400 dark:bg-white"}`} />
                     <a href={n.url} {...external(n.url)} onClick={() => void act(() => read(n))} className="min-w-0 flex-1">
                       <div className={`text-sm ${n.read ? "text-slate-600 dark:text-text-secondary" : "font-semibold"}`}>{n.title}</div>
                       {n.body && <p className="line-clamp-2 break-words text-xs text-slate-500 dark:text-muted">{n.body}</p>}
