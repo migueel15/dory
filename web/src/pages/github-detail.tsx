@@ -330,6 +330,7 @@ export function GithubView() {
     <div className="space-y-3">
       <Link to="/github" className={pill}><Arrow back /> GitHub</Link>
       <ErrorText error={detail.error ?? action.error} />
+      {detail.isPending && <DetailSkeleton />}
       {d && <RefContext.Provider value={{ owner: full.split("/")[0], repo: full.split("/")[1], links: d.links }}>
         <Header d={d} act={act} busy={false} people={people} actions={<>
           {d.pull && <PullActions pull={d.pull} me={d.viewer} act={act} busy={false} diff={showDiff} toggleDiff={() => setShowDiff(!showDiff)} />}
@@ -433,4 +434,29 @@ function useActionQueue(key: unknown[], onDone: (a: GithubAction) => void) {
     return run;
   };
   return { mutateAsync, mutate: (a: GithubAction) => { mutateAsync(a).catch(() => {}); }, isPending: pending > 0, error };
+}
+
+// DetailSkeleton holds the layout of an issue or pull request while GitHub answers:
+// header, actions, description and a few conversation messages.
+function DetailSkeleton() {
+  const bar = "rounded bg-slate-200 motion-safe:animate-pulse dark:bg-raised";
+  return (
+    <div role="status" aria-label="Cargando" className="space-y-3">
+      <Card className="space-y-3">
+        <div className="flex items-start gap-3">
+          <div className={`h-6 w-16 rounded-full ${bar}`} />
+          <div className="min-w-0 flex-1 space-y-2"><div className={`h-5 w-3/4 ${bar}`} /><div className={`h-3 w-1/3 ${bar}`} /></div>
+        </div>
+        <div className="flex flex-wrap gap-2">{[0, 1, 2, 3, 4].map((i) => <div key={i} className={`size-9 rounded-lg ${bar}`} />)}<div className={`ml-auto h-9 w-28 rounded-lg ${bar}`} /></div>
+        <div className="flex items-center gap-2 border-t border-slate-100 pt-3 dark:border-border">{[0, 1, 2].map((i) => <div key={i} className={`size-6 rounded-full ${bar}`} />)}<div className={`h-3 w-24 ${bar}`} /></div>
+        <div className="space-y-2 border-t border-slate-100 pt-3 dark:border-border">{[92, 85, 97, 60, 78].map((w, i) => <div key={i} className={`h-3 ${bar}`} style={{ width: `${w}%` }} />)}</div>
+      </Card>
+      {[0, 1, 2].map((k) => (
+        <Card key={k} className="space-y-2">
+          <div className="flex items-center gap-2"><div className={`size-7 rounded-full ${bar}`} /><div className={`h-3 w-28 ${bar}`} /><div className={`ml-auto h-3 w-16 ${bar}`} /></div>
+          {[88, 70, k === 1 ? 45 : 80].map((w, i) => <div key={i} className={`h-3 ${bar}`} style={{ width: `${w}%`, animationDelay: `${k * 0.15}s` }} />)}
+        </Card>
+      ))}
+    </div>
+  );
 }
