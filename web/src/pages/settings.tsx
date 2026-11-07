@@ -48,7 +48,7 @@ function TitlesSection() {
       <Label text="Modelo">
         <Select value={form.provider && form.model ? `${form.provider}|${form.model}` : ""} placeholder="Elige un modelo" disabled={!catalog.data}
           onChange={(v) => { const [provider, slug] = v.split("|"); set({ provider, model: slug, effort: "" }); }}
-          options={(catalog.data?.providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `${p.instance_id}|${m.slug}`, label: m.name, group: p.name, icon: <ProviderIcon driver={p.driver || p.name} /> })))} />
+          options={(catalog.data?.providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `${p.instance_id}|${m.slug}`, label: m.name, group: p.name, icon: <ProviderIcon driver={p.driver || p.name} model={`${m.slug} ${m.name}`} /> })))} />
       </Label>
       {model?.effort && (
         <Label text="Esfuerzo">

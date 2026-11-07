@@ -1,3 +1,4 @@
+import { ModelLogo } from "../components/model-logo";
 import { useState, type ReactNode } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
@@ -6,12 +7,8 @@ import { saveEffort, savedEffort } from "../effort";
 import { saveModel, savedModel } from "../last-model";
 import { useT3 } from "./attention";
 
-// ProviderIcon marks the company behind a model with its initial and colour.
-export function ProviderIcon({ driver }: { driver: string }) {
-  const d = driver.toLowerCase();
-  const [text, color] = d.includes("claude") ? ["A", "bg-orange-600"] : d.includes("codex") || d.includes("openai") ? ["O", "bg-emerald-700"] : d.includes("gemini") ? ["G", "bg-blue-600 dark:bg-accent"] : [driver.slice(0, 1).toUpperCase() || "?", "bg-slate-500"];
-  return <span className={`grid size-5 shrink-0 place-items-center rounded text-[10px] font-bold text-white ${color}`}>{text}</span>;
-}
+// ProviderIcon marks the company behind a model with its logo.
+export const ProviderIcon = ({ driver, model }: { driver: string; model?: string }) => <ModelLogo driver={driver} model={model} />;
 
 const stateLabel: Record<string, string> = { available: "disponible", disconnected: "desconectado", auth_failed: "sin acceso", incompatible: "incompatible" };
 const stateDot = (s: string) => (s === "available" ? "bg-green-500" : s === "disconnected" ? "bg-slate-400" : "bg-red-500");
@@ -94,7 +91,7 @@ export function useLaunchForm({ section, doryProject, repo: repoPathIn, worktree
         <Select value={projectId} onChange={setProject} placeholder="Elige el proyecto del repositorio" options={choices.map((p) => ({ value: p.id, label: p.title }))} />
       </Label>
       <Label text="Modelo">
-        <Select value={selected} onChange={(v) => { setChoice(v); setEffort(""); }} options={(catalog.data?.providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `${p.instance_id}|${m.slug}`, label: m.name, group: p.name, icon: <ProviderIcon driver={p.driver || p.name} /> })))} />
+        <Select value={selected} onChange={(v) => { setChoice(v); setEffort(""); }} options={(catalog.data?.providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `${p.instance_id}|${m.slug}`, label: m.name, group: p.name, icon: <ProviderIcon driver={p.driver || p.name} model={`${m.slug} ${m.name}`} /> })))} />
       </Label>
       {model?.effort && (
         <Label text="Razonamiento">
