@@ -87,7 +87,9 @@ func (m *Monitor) syncProjects(ctx context.Context) {
 	if len(found) == 0 {
 		return
 	}
-	repos, err := m.svc.Repositories().List(ctx, service.Filter{Limit: 1000})
+	// Archived repositories count too: an archived project must not come back
+	// until the purge deletes it for good.
+	repos, err := m.svc.Repositories().List(ctx, service.Filter{Limit: 1000, IncludeArchived: true})
 	if err != nil {
 		log.Printf("t3: project sync: list repositories: %v", err)
 		return
