@@ -12,6 +12,7 @@ import { DndContext, type DragEndEvent, PointerSensor, TouchSensor, useDraggable
 import { api, itemInput, type Item, type ItemStatus } from "../api/client";
 import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, Notice, PageHeader, Select, Textarea, csv, opts, uuid } from "../components/ui";
 import { useProject } from "../project";
+import { useConfirm } from "../components/github-ui";
 
 const STATUSES: ItemStatus[] = ["inbox", "triaged", "ready", "in_progress", "validating", "blocked", "done", "cancelled"];
 // Closed columns can grow to hundreds of items: show the most recent ones in pages.
@@ -22,6 +23,7 @@ const DEFINABLE: ItemStatus[] = ["inbox", "triaged", "ready"];
 
 export function ItemForm({ item, onClose, initialEdit = false }: { initialEdit?: boolean; item: Item; onClose: () => void }) {
   const qc = useQueryClient();
+  const [confirmArchive, archiveDialog] = useConfirm();
   const [launch, setLaunch] = useState<"implementation" | null>(null);
   const navigate = useNavigate();
   const [title, setTitle] = useState(item.title ?? "");
@@ -92,12 +94,13 @@ export function ItemForm({ item, onClose, initialEdit = false }: { initialEdit?:
       {status === "blocked" && <Label text="Motivo del bloqueo"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Qué lo bloquea y qué lo desbloquea" /></Label>}
       <ErrorText error={save.error ?? archive.error} />
       <div className="flex justify-between">
-        <Button variant="danger" onClick={() => { if (window.confirm(`¿Archivar «${item.title}»?`)) archive.mutate(); }}>Archivar</Button>
+        <Button variant="danger" onClick={() => confirmArchive({ title: "¿Archivar el item?", text: `«${item.title}» saldrá de los tableros. Se borrará del todo a los 14 días.`, ok: "Archivar", danger: true, run: () => archive.mutate() })}>Archivar</Button>
         <div className="flex gap-2">
           <Button variant="ghost" onClick={() => setEditMode(false)}>Cancelar</Button>
           <Button disabled={!title.trim() || (status === "blocked" && !reason.trim()) || save.isPending} onClick={() => save.mutate()}>Guardar</Button>
         </div>
       </div>
+      {archiveDialog}
     </Modal>
   );
 }
@@ -386,6 +389,7 @@ function CardLinks({ item }: { item: Item }) {
 // Shared by kanban cards and inbox list rows; only these surfaces suppress the native menu.
 function ItemActions({ item, children }: { item: Item; children: React.ReactNode }) {
   const qc = useQueryClient();
+  const [confirmArchive, archiveDialog] = useConfirm();
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const [detail, setDetail] = useState<"view" | "edit" | null>(null);
   const [launch, setLaunch] = useState<"implementation" | null>(null);
@@ -411,10 +415,11 @@ function ItemActions({ item, children }: { item: Item; children: React.ReactNode
     { label: "Mover a estado…", children: STATUSES.filter((s) => s !== item.status).map((s) => ({ label: STATUS_INFO[s].label, run: () => (s === "blocked" ? setBlocking(true) : change.mutate({ status: s })) })) },
     ...(thread ? [{ label: "Abrir último hilo", content: <ThreadLink role="menuitem" className={linkClass} url={thread.url} environmentId={thread.t3_environment_id} threadId={thread.id}>Abrir último hilo</ThreadLink> }] : []),
     ...(pull ? [{ label: "Abrir última PR", content: <Link role="menuitem" className={linkClass} to="/github/$owner/$repo/$kind/$number" params={{ owner: pull[1], repo: pull[2], kind: "pulls", number: pull[3] }}>Abrir última PR</Link> }] : []),
-    { label: "Archivar", run: () => { if (window.confirm(`¿Archivar «${item.title}»?`)) archive.mutate(); } },
+    { label: "Archivar", run: () => confirmArchive({ title: "¿Archivar el item?", text: `«${item.title}» saldrá de los tableros. Se borrará del todo a los 14 días.`, ok: "Archivar", danger: true, run: () => archive.mutate() }) },
   ];
   return <div onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setPosition({ x: e.clientX, y: e.clientY }); }}>
     {children}
+    {archiveDialog}
     <ErrorText error={change.error ?? archive.error} />
     {position && <ContextMenu {...position} actions={actions} onClose={close} />}
     {detail && <ItemForm item={item} initialEdit={detail === "edit"} onClose={() => setDetail(null)} />}
