@@ -1,6 +1,6 @@
 import { ThreadLink } from "../components/thread-link";
 import { useState, type ReactNode } from "react";
-import { ArrowSquareOut, CheckCircle, Flask, GitPullRequest, Prohibit, Robot, WarningCircle, type Icon as PhIcon } from "@phosphor-icons/react";
+import { ArrowSquareOut, CheckCircle, Clock, FolderSimple, Flask, GitPullRequest, Prohibit, Robot, WarningCircle, type Icon as PhIcon } from "@phosphor-icons/react";
 import { ItemTitle } from "../components/item-title";
 import { ItemForm } from "./items";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -158,14 +158,20 @@ export function Attention() {
 
       <Section icon={Prohibit} title="Bloqueados" count={stuck.length} tone="text-red-500">
         {stuck.map((i) => (
-          <div key={i.id} onClick={() => setOpen(i)} className="cursor-pointer"><Card className="space-y-2 transition-colors hover:bg-slate-50 dark:hover:bg-raised">
-            <div className="flex items-start gap-2">
-              <span className="min-w-0 flex-1 font-medium"><ItemTitle item={i} /></span>
-              {projectName(i.project_id) && <Badge>{projectName(i.project_id)}</Badge>}
+          <div key={i.id} onClick={() => setOpen(i)} className="cursor-pointer"><Card className="flex gap-3 transition-colors hover:bg-slate-50 dark:hover:bg-raised">
+            <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-red-50 text-red-600 dark:bg-red-950/50 dark:text-red-400"><Prohibit weight="duotone" aria-hidden="true" className="size-5" /></span>
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <div className="flex items-start gap-2">
+                <span className="min-w-0 flex-1 font-medium"><ItemTitle item={i} /></span>
+                <StatusPill tone="red">Bloqueado</StatusPill>
+              </div>
+              <p className="break-words text-sm text-slate-700 dark:text-text">{i.blocked_reason || <span className="italic text-slate-400 dark:text-muted">Sin motivo indicado</span>}</p>
+              <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 ${meta}`}>
+                {projectName(i.project_id) && <span className="inline-flex items-center gap-1"><FolderSimple aria-hidden="true" className="size-3.5" />{projectName(i.project_id)}</span>}
+                <span className="inline-flex items-center gap-1"><Clock aria-hidden="true" className="size-3.5" />Bloqueado {ago(i.updated_at)}</span>
+                {i.progress && <span className="min-w-0 truncate">{i.progress}</span>}
+              </div>
             </div>
-            <div className="rounded-md bg-red-50 p-2 text-sm text-red-800 dark:bg-red-950/40 dark:text-red-300"><span className="font-medium">Motivo: </span>{i.blocked_reason || "sin motivo indicado"}</div>
-            {i.progress && <p className={`line-clamp-2 ${meta}`}>{i.progress}</p>}
-            <div className={meta}>Actualizado {ago(i.updated_at)}</div>
           </Card></div>
         ))}
       </Section>
