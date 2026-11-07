@@ -80,7 +80,7 @@ function ProjectList() {
       <ErrorText error={projects.error ?? items.error ?? repos.error} />
       {projects.isPending && <Notice loading />}
       {projects.data?.length === 0 && <Notice>Aún no hay proyectos. Crea el primero con «Nuevo».</Notice>}
-      <div className="grid auto-rows-fr gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid auto-rows-fr grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {projects.data?.map((p) => {
           const mine = (items.data ?? []).filter((i) => i.project_id === p.id && !i.archived_at);
           const count = (st: string) => mine.filter((i) => i.status === st).length;
@@ -90,8 +90,8 @@ function ProjectList() {
           const last = [p.updated_at, ...mine.map((i) => i.updated_at)].sort().at(-1)!;
           const nRepos = (repos.data ?? []).filter((r) => r.project_id === p.id).length;
           return (
-            <Link key={p.id} to="/tasks" onClick={() => setProject(p.id)} className="group block">
-              <Card className={`flex h-full flex-col gap-3 transition-colors group-hover:border-slate-300 dark:group-hover:border-border-strong ${p.id === active ? "ring-1 ring-slate-900/20 dark:ring-white/20" : ""}`}>
+            <Link key={p.id} to="/tasks" onClick={() => setProject(p.id)} className="group block min-w-0">
+              <Card className={`flex h-full min-w-0 flex-col gap-3 transition-colors group-hover:border-slate-300 dark:group-hover:border-border-strong ${p.id === active ? "ring-1 ring-slate-900/20 dark:ring-white/20" : ""}`}>
                 <div className="flex items-start gap-3">
                   <span className={`grid size-10 shrink-0 place-items-center rounded-lg text-base font-bold text-white ${hue(p.slug)}`}>{p.name[0]?.toUpperCase()}</span>
                   <div className="min-w-0 flex-1">
