@@ -146,15 +146,15 @@ function Message({ author, verb, at, url, body, mine, editType, id, act, busy, o
         <span><span className="font-medium text-slate-700 dark:text-text">{author}</span>{verb && ` ${verb}`} · {url ? <a href={url} target="_blank" rel="noreferrer" className="hover:underline">{when}</a> : when}</span>
         <span className="ml-auto flex gap-0.5 opacity-60 transition-opacity group-hover/msg:opacity-100">
           {body && <Tip text="Responder citando"><button type="button" aria-label="Responder citando" onClick={() => onReply(quote(author, body))} className={small}><Icon i={icons.reply} /></button></Tip>}
-          {mine && id && draft === undefined && <Tip text="Editar"><button type="button" aria-label="Editar" onClick={() => setDraft(body)} className={small}><Icon i={icons.edit} /></button></Tip>}
+          {mine && id && !id.startsWith("pending-") && draft === undefined && <Tip text="Editar"><button type="button" aria-label="Editar" onClick={() => setDraft(body)} className={small}><Icon i={icons.edit} /></button></Tip>}
         </span>
       </div>
-      {draft === undefined ? <RefMd onToggle={mine && id && !busy ? (line) => act({ type: editType, comment_id: id, body: toggleTask(body, line) }) : undefined}>{body}</RefMd> : (
+      {draft === undefined ? <RefMd onToggle={mine && id && !id.startsWith("pending-") && !busy ? (line) => act({ type: editType, comment_id: id, body: toggleTask(body, line) }) : undefined}>{body}</RefMd> : (
         <div className="space-y-2">
           <Textarea aria-label="Editar mensaje" autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setDraft(undefined)} rows={Math.min(14, draft.split("\n").length + 2)} className="p-2 font-mono" />
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setDraft(undefined)}>Cancelar</Button>
-            <Button disabled={busy || !draft.trim()} onClick={() => act({ type: editType, comment_id: id, body: draft }).then(() => setDraft(undefined))}>Guardar</Button>
+            <Button disabled={busy || !draft.trim()} onClick={() => { act({ type: editType, comment_id: id, body: draft }).catch(() => {}); setDraft(undefined); }}>Guardar</Button>
           </div>
         </div>
       )}
@@ -165,7 +165,7 @@ function Message({ author, verb, at, url, body, mine, editType, id, act, busy, o
 function ThreadCard({ t, me, people, links, act, busy }: { t: GithubThread; me: string; people: string[]; links: GithubDetail["links"]; act: ThreadAct; busy: boolean }) {
   const [open, setOpen] = useState(!t.resolved);
   const [reply, setReply] = useState("");
-  const send = () => act({ type: "reply_thread", thread_id: t.id, body: reply }).then(() => setReply(""));
+  const send = () => { act({ type: "reply_thread", thread_id: t.id, body: reply }).catch(() => {}); setReply(""); };
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -318,9 +318,7 @@ export function GithubView() {
     io.observe(el);
     return () => io.disconnect();
   }, [detail.isSuccess]);
-  const action = useActionQueue(key, (a) => {
-    if (a.body && !a.thread_id && !a.type.startsWith("edit_")) discard();
-  });
+  const action = useActionQueue(key, () => {});
   const d = detail.data;
   // People who can be mentioned: the repo's users and everyone in the conversation.
   const people = d ? [...new Set([...d.candidates.map((u) => u.login), (d.pull ?? d.issue)!.author, ...d.timeline.map((e) => e.actor), ...d.threads.flatMap((t) => t.comments.map((c) => c.author))])].filter((p) => /^[\w-]+$/.test(p) && p !== d.viewer).sort() : [];
@@ -340,12 +338,12 @@ export function GithubView() {
         </>} />
         {defining && <DefineIssueDialog resolve={!!d.pull} repo={full} number={n} onClose={() => setDefining(false)} />}
         {showDiff && <Diff repo={full} pr={n} />}
-        <Threads threads={d.threads} me={d.viewer} people={people} links={d.links} act={action.mutateAsync} busy={action.isPending} />
+        <Threads threads={d.threads} me={d.viewer} people={people} links={d.links} act={action.mutateAsync} busy={false} />
         {d.timeline.map((e, i) => (
           <div key={i} className={e.body ? "" : "px-3 text-xs text-slate-500 dark:text-muted"}>
             {e.body ? (
               <Card>
-                <Message author={e.actor} verb={reviewStates[e.state] ?? labels[e.type] ?? e.type} at={e.at} body={e.body} mine={e.actor === d.viewer} editType={e.type === "PullRequestReview" ? "edit_review" : "edit_comment"} id={e.id} act={action.mutateAsync} busy={action.isPending}
+                <Message author={e.actor} verb={reviewStates[e.state] ?? labels[e.type] ?? e.type} at={e.at} body={e.body} mine={e.actor === d.viewer} editType={e.type === "PullRequestReview" ? "edit_review" : "edit_comment"} id={e.id} act={action.mutateAsync} busy={false}
                   onReply={(q) => { setText(q + text); write(); }} />
               </Card>
             ) : <>{e.actor} {reviewStates[e.state] ?? labels[e.type] ?? e.type} {e.detail} · {new Date(e.at).toLocaleString()}</>}
@@ -355,9 +353,9 @@ export function GithubView() {
           <Card className="space-y-2">
             <MentionArea boxRef={box} people={people} links={d.links} id="composer" aria-label="Mensaje" value={text} onValue={setText} onKeyDown={(e) => e.key === "Escape" && box.current?.blur()} rows={4} placeholder="Escribe un mensaje…" className="p-2" />
             <div className="flex flex-wrap gap-2">
-              <Button disabled={action.isPending || !text.trim()} onClick={() => action.mutate({ type: "comment", body: text })}>Comentar</Button>
-              {d.pull && open && <Button variant="ghost" disabled={action.isPending || !text.trim()} onClick={() => action.mutate({ type: "request_changes", body: text })}>Pedir cambios</Button>}
-              {d.pull && open && canApprove(d.pull, d.viewer) && <Button variant="ghost" disabled={action.isPending || !text.trim()} onClick={() => action.mutate({ type: "approve", body: text })}>Aprobar con mensaje</Button>}
+              <Button disabled={!text.trim()} onClick={() => { action.mutate({ type: "comment", body: text }); discard(); }}>Comentar</Button>
+              {d.pull && open && <Button variant="ghost" disabled={!text.trim()} onClick={() => { action.mutate({ type: "request_changes", body: text }); discard(); }}>Pedir cambios</Button>}
+              {d.pull && open && canApprove(d.pull, d.viewer) && <Button variant="ghost" disabled={!text.trim()} onClick={() => { action.mutate({ type: "approve", body: text }); discard(); }}>Aprobar con mensaje</Button>}
               {text && <Button variant="ghost" className="ml-auto" onClick={discard}>Descartar</Button>}
             </div>
           </Card>
@@ -380,19 +378,50 @@ type GithubAction = { type: string; title?: string; body?: string; method?: stri
 
 // State changes show at once and are applied to the cached detail before GitHub answers.
 const logins = (d: GithubDetail, ids: string[] = []) => d.candidates.filter((u) => ids.includes(u.id));
+// event appends what the viewer just wrote to the conversation, until GitHub returns the real one.
+const event = (d: GithubDetail, type: string, body = "", state = ""): GithubDetail =>
+  ({ ...d, timeline: [...d.timeline, { id: `pending-${Date.now()}`, type, actor: d.viewer, at: new Date().toISOString(), body, state, detail: "" }] });
+const review = (d: GithubDetail, a: GithubAction, state: "APPROVED" | "CHANGES_REQUESTED"): GithubDetail => {
+  if (!d.pull) return d;
+  const base = a.body ? event(d, "PullRequestReview", a.body, state) : d;
+  const approved = state === "APPROVED";
+  return { ...base, pull: { ...d.pull,
+    approved_by: approved ? [...new Set([...d.pull.approved_by, d.viewer])] : d.pull.approved_by.filter((l) => l !== d.viewer),
+    changes_by: approved ? d.pull.changes_by.filter((l) => l !== d.viewer) : [...new Set([...d.pull.changes_by, d.viewer])],
+    review_requests: d.pull.review_requests.filter((l) => l !== d.viewer) } };
+};
+const editEvent = (d: GithubDetail, a: GithubAction): GithubDetail => ({ ...d, timeline: d.timeline.map((e) => (e.id === a.comment_id ? { ...e, body: a.body ?? e.body } : e)) });
+const editItem = (d: GithubDetail, a: GithubAction): GithubDetail => ({
+  ...d, body: a.body ?? d.body,
+  ...(d.pull && a.title ? { pull: { ...d.pull, title: a.title } } : {}),
+  ...(d.issue && a.title ? { issue: { ...d.issue, title: a.title } } : {}),
+});
+const thread = (d: GithubDetail, id: string | undefined, f: (t: GithubDetail["threads"][number]) => GithubDetail["threads"][number]): GithubDetail =>
+  ({ ...d, threads: d.threads.map((t) => (t.id === id ? f(t) : t)) });
+
+// Every action shows at once and is applied to the cached detail before GitHub answers.
 const optimistic: Record<string, (d: GithubDetail, a: GithubAction) => GithubDetail> = {
   assign: (d, a) => ({ ...d, assignees: [...d.assignees, ...logins(d, a.user_ids).filter((u) => !d.assignees.some((x) => x.id === u.id))] }),
   unassign: (d, a) => ({ ...d, assignees: d.assignees.filter((u) => !a.user_ids?.includes(u.id)) }),
   request_review: (d, a) => (d.pull ? { ...d, pull: { ...d.pull, review_requests: [...new Set([...d.pull.review_requests, ...logins(d, a.user_ids).map((u) => u.login)])] } } : d),
-  approve: (d) => (d.pull ? { ...d, pull: { ...d.pull, approved_by: [...new Set([...d.pull.approved_by, d.viewer])], changes_by: d.pull.changes_by.filter((l) => l !== d.viewer), review_requests: d.pull.review_requests.filter((l) => l !== d.viewer) } } : d),
-  request_changes: (d) => (d.pull ? { ...d, pull: { ...d.pull, changes_by: [...new Set([...d.pull.changes_by, d.viewer])], approved_by: d.pull.approved_by.filter((l) => l !== d.viewer), review_requests: d.pull.review_requests.filter((l) => l !== d.viewer) } } : d),
+  approve: (d, a) => review(d, a, "APPROVED"),
+  request_changes: (d, a) => review(d, a, "CHANGES_REQUESTED"),
+  comment: (d, a) => event(d, "IssueComment", a.body),
+  edit_comment: editEvent,
+  edit_review: editEvent,
+  edit_issue: editItem,
+  edit_pull: editItem,
+  set_milestone: (d, a) => (d.issue ? { ...d, issue: { ...d.issue, milestone: d.milestones.find((m) => m.id === a.milestone_id)?.title ?? "" } } : d),
+  reply_thread: (d, a) => thread(d, a.thread_id, (t) => ({ ...t, comments: [...t.comments, { id: `pending-${Date.now()}`, author: d.viewer, at: new Date().toISOString(), body: a.body ?? "", url: "" }] })),
+  resolve_thread: (d, a) => thread(d, a.thread_id, (t) => ({ ...t, resolved: true, resolved_by: d.viewer })),
+  unresolve_thread: (d, a) => thread(d, a.thread_id, (t) => ({ ...t, resolved: false, resolved_by: "" })),
   ready: (d) => (d.pull ? { ...d, pull: { ...d.pull, draft: false } } : d),
   draft: (d) => (d.pull ? { ...d, pull: { ...d.pull, draft: true } } : d),
   close_pull: (d) => (d.pull ? { ...d, pull: { ...d.pull, state: "CLOSED" } } : d),
   reopen_pull: (d) => (d.pull ? { ...d, pull: { ...d.pull, state: "OPEN" } } : d),
   merge: (d) => (d.pull ? { ...d, pull: { ...d.pull, state: "MERGED" } } : d),
-  close_issue: (d) => (d.issue ? { ...d, issue: { ...d.issue, state: "CLOSED" } } : d),
-  reopen_issue: (d) => (d.issue ? { ...d, issue: { ...d.issue, state: "OPEN" } } : d),
+  close_issue: (d, a) => (d.issue ? { ...d, issue: { ...d.issue, state: "CLOSED", state_reason: a.method ?? "" } } : d),
+  reopen_issue: (d) => (d.issue ? { ...d, issue: { ...d.issue, state: "OPEN", state_reason: "REOPENED" } } : d),
 };
 
 // useActionQueue sends GitHub actions one after another, in click order. When one fails,
