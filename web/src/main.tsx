@@ -148,8 +148,8 @@ function Layout() {
     </>
   );
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex">
-      <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-slate-200 bg-white dark:border-border dark:bg-surface sm:flex">
+    <div className="min-h-screen bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex sm:h-screen sm:bg-white sm:dark:bg-surface">
+      <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col bg-white dark:bg-surface sm:flex">
         <Link to="/" className="flex items-center gap-2 px-4 py-3 font-bold">Dory<DevBadge /></Link>
         <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4">{links}</nav>
         <div className="shrink-0 space-y-2 border-t border-slate-200 p-3 dark:border-border">
@@ -165,7 +165,8 @@ function Layout() {
           <VersionBadge />
         </div>
       </aside>
-      <div className="min-w-0 flex-1">
+      {/* On desktop the current view is a card framed by the sidebar background. */}
+      <div className="min-w-0 flex-1 sm:my-2 sm:mr-2 sm:overflow-auto sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">
       <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2 sm:hidden">
         <div className="flex h-12 items-center gap-1">
           <Link to="/" className="mr-3 flex items-center gap-2 font-bold">Dory<DevBadge /></Link>
