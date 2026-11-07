@@ -103,9 +103,12 @@ export function Notifications() {
     }
   }
   return <>
-    <Button variant="bare" className="relative" aria-label={`Notificaciones: ${feed.data?.unread ?? 0} sin leer`} onClick={() => setOpen(true)}>
-      <Bell className="size-5" aria-hidden="true" />
-      {!!feed.data?.unread && <span className="absolute -right-0.5 -top-0.5 grid min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-4 text-white">{feed.data.unread > 99 ? "99+" : feed.data.unread}</span>}
+    <Button variant="bare" aria-label={`Notificaciones: ${feed.data?.unread ?? 0} sin leer`} onClick={() => setOpen(true)}>
+      {/* The count is anchored to the bell itself, not to the button padding, so it sits the same on every screen. */}
+      <span className="relative block">
+        <Bell className="size-5" aria-hidden="true" />
+        {!!feed.data?.unread && <span className="absolute -right-1.5 -top-1 grid min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-4 text-white ring-2 ring-white dark:ring-surface">{feed.data.unread > 99 ? "99+" : feed.data.unread}</span>}
+      </span>
     </Button>
     {open && createPortal(
       <div className="fixed inset-0 z-[100]" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
