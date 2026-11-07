@@ -209,7 +209,6 @@ function Queue({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const q = v.queue;
   return (
     <section aria-label="Mensajes en cola" className="space-y-3 border-t border-dashed border-slate-300 pt-3 dark:border-border">
-      <p className="text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">En cola · {q.length}</p>
       {q.map((r, i) => (
         <QueuedRow key={r.run_id} n={i + 1} r={r} canSteer={!!v.active_run_id}
           onUp={i > 0 ? () => act.mutate(() => api.t3QueueReorder(v.id, r.run_id, q[i - 1].run_id)) : undefined}
