@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowRight, CaretDown, Check, X } from "@phosphor-icons/react";
+import { ArrowRight, CaretUpDown, Check, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { createPortal } from "react-dom";
 import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, KeyboardEvent, ReactNode, Ref, TextareaHTMLAttributes } from "react";
 import Markdown, { defaultUrlTransform, type Options } from "react-markdown";
@@ -50,14 +50,19 @@ export const Textarea = ({ bare, className, ...p }: TextareaHTMLAttributes<HTMLT
 
 export type Option = { value: string; label: string; group?: string; icon?: ReactNode; disabled?: boolean };
 
-// Select replaces the native <select>: a button that opens a floating, keyboard-navigable list.
+// Select replaces the native <select>: a button that opens a floating, keyboard-navigable
+// list. Long lists get a search box; groups, icons and disabled options are supported.
 export function Select({ value, onChange, options, disabled, className, placeholder = "—", plain }: { value: string; onChange: (v: string) => void; options: Option[]; disabled?: boolean; className?: string; placeholder?: string; plain?: boolean }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<CSSProperties>({});
   const [hi, setHi] = useState(0);
+  const [query, setQuery] = useState("");
   const box = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const current = options.find((o) => o.value === value);
+  const searchable = options.length > 7;
+  const q = query.trim().toLowerCase();
+  const shown = q ? options.filter((o) => o.label.toLowerCase().includes(q) || o.group?.toLowerCase().includes(q)) : options;
   // The list lives in a portal with fixed position, so modals and cards never clip it.
   useLayoutEffect(() => {
     if (!open) return;
@@ -65,7 +70,9 @@ export function Select({ value, onChange, options, disabled, className, placehol
       if (!box.current || !list.current) return;
       const t = box.current.getBoundingClientRect(), h = list.current.offsetHeight + 6;
       const up = t.bottom + h > window.innerHeight && t.top - h > 0;
-      setPos({ left: t.left, width: t.width, ...(up ? { bottom: window.innerHeight - t.top + 6 } : { top: t.bottom + 6 }) });
+      const width = Math.max(t.width, 208);
+      const left = Math.max(8, Math.min(t.left, window.innerWidth - width - 8));
+      setPos({ left, width, ...(up ? { bottom: window.innerHeight - t.top + 6 } : { top: t.bottom + 6 }) });
     };
     place();
     window.addEventListener("resize", place);
@@ -73,10 +80,10 @@ export function Select({ value, onChange, options, disabled, className, placehol
     return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
   }, [open]);
   useLayoutEffect(() => {
-    if (open) list.current?.querySelector<HTMLElement>("[aria-selected=true]")?.scrollIntoView({ block: "nearest" });
+    if (open) list.current?.querySelector<HTMLElement>("[data-hi=true]")?.scrollIntoView({ block: "nearest" });
   }, [open, hi]);
   useEffect(() => {
-    if (!open) return;
+    if (!open) { setQuery(""); return; }
     const away = (e: MouseEvent) => !box.current?.contains(e.target as Node) && !list.current?.contains(e.target as Node) && setOpen(false);
     document.addEventListener("mousedown", away);
     return () => document.removeEventListener("mousedown", away);
@@ -86,30 +93,41 @@ export function Select({ value, onChange, options, disabled, className, placehol
   const key = (e: KeyboardEvent) => {
     if (!open) { if (["ArrowDown", "ArrowUp", "Enter", " "].includes(e.key)) { e.preventDefault(); show(); } return; }
     if (e.key === "Escape" || e.key === "Tab") { if (e.key === "Escape") e.preventDefault(); setOpen(false); }
-    else if (e.key === "ArrowDown") { e.preventDefault(); setHi((i) => Math.min(options.length - 1, i + 1)); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); setHi((i) => Math.min(shown.length - 1, i + 1)); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setHi((i) => Math.max(0, i - 1)); }
-    else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (options[hi] && !options[hi].disabled) pick(options[hi]); }
+    else if (e.key === "Enter" || (e.key === " " && !searchable)) { e.preventDefault(); if (shown[hi] && !shown[hi].disabled) pick(shown[hi]); }
   };
   return (
     <div ref={box} className={cx("relative", className ?? "w-full")}>
       <button type="button" disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? setOpen(false) : show())} onKeyDown={key}
-        className={cx(plain ? "flex min-h-11 items-center gap-1 rounded px-2 py-1 text-left text-sm hover:bg-slate-200 dark:hover:bg-raised sm:min-h-0" : field, !plain && "flex items-center justify-between gap-2 text-left transition-colors hover:border-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:focus-visible:ring-accent/40 disabled:opacity-50 dark:hover:border-muted", !plain && open && "border-blue-500 dark:border-accent")}>
-        <span className={cx("flex min-w-0 items-center gap-2 truncate", !current && "text-slate-400")}>{current?.icon}{current?.label ?? placeholder}</span>
-        <CaretDown aria-hidden="true" className={cx("size-4 shrink-0 text-slate-400 transition-transform", open && "rotate-180")} />
+        className={cx(
+          plain ? "flex min-h-11 items-center gap-1 rounded-md px-2 py-1 text-left text-sm hover:bg-slate-200 dark:hover:bg-raised sm:min-h-0"
+            : "flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-left text-sm shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50 dark:border-border-strong dark:bg-surface dark:hover:border-muted dark:hover:bg-raised sm:min-h-0",
+          !plain && open && "border-slate-500 bg-slate-50 dark:border-muted dark:bg-raised")}>
+        <span className={cx("flex min-w-0 items-center gap-2 truncate", !current && "text-slate-400 dark:text-muted")}>{current?.icon}{current?.label ?? placeholder}</span>
+        <CaretUpDown aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
       </button>
       {open && createPortal(
-        <div ref={list} role="listbox" style={pos} className="fixed z-50 max-h-72 min-w-48 overflow-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-border dark:bg-surface">
-          {options.length === 0 && <p className="px-2.5 py-2 text-sm text-slate-400">Sin opciones</p>}
-          {options.map((o, i) => (
-            <div key={o.value}>
-              {o.group && o.group !== options[i - 1]?.group && <p className="px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{o.group}</p>}
-              <button type="button" role="option" aria-selected={i === hi} aria-disabled={o.disabled} disabled={o.disabled} onMouseEnter={() => setHi(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(o)}
-                className={cx("flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm", i === hi ? "bg-slate-100 dark:bg-raised" : "", o.value === value ? "font-medium text-blue-700 dark:text-accent-text" : "text-slate-700 dark:text-text", o.disabled && "cursor-not-allowed opacity-50")}>
-                <span className="flex min-w-0 items-center gap-2 truncate">{o.icon}{o.label}</span>
-                {o.value === value && <Check aria-hidden="true" weight="bold" className="size-4 shrink-0" />}
-              </button>
+        <div ref={list} style={pos} className="notif-in fixed z-[100] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-border dark:bg-surface">
+          {searchable && (
+            <div className="relative border-b border-slate-200 p-1.5 dark:border-border">
+              <MagnifyingGlass aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+              <Input bare autoFocus value={query} onChange={(e) => { setQuery(e.target.value); setHi(0); }} onKeyDown={key} placeholder="Buscar…" aria-label="Buscar opción" className="py-1.5 pl-8 pr-2" />
             </div>
-          ))}
+          )}
+          <div role="listbox" className="max-h-72 overflow-auto p-1">
+            {shown.length === 0 && <p className="px-2.5 py-2 text-sm text-slate-400">{q ? "Nada coincide" : "Sin opciones"}</p>}
+            {shown.map((o, i) => (
+              <div key={o.value}>
+                {o.group && o.group !== shown[i - 1]?.group && <p className="px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-muted">{o.group}</p>}
+                <button type="button" role="option" data-hi={i === hi} aria-selected={o.value === value} aria-disabled={o.disabled} disabled={o.disabled} onMouseEnter={() => setHi(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(o)}
+                  className={cx("flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm sm:min-h-0", i === hi ? "bg-slate-100 dark:bg-raised" : "", o.value === value ? "font-medium text-slate-900 dark:text-white" : "text-slate-700 dark:text-text-secondary", o.disabled && "cursor-not-allowed opacity-50")}>
+                  <span className="grid size-4 shrink-0 place-items-center">{o.value === value && <Check aria-hidden="true" weight="bold" className="size-3.5" />}</span>
+                  <span className="flex min-w-0 flex-1 items-center gap-2 truncate">{o.icon}{o.label}</span>
+                </button>
+              </div>
+            ))}
+          </div>
         </div>,
         // Un <dialog> modal vive en la top layer: la lista debe montarse dentro para quedar por encima.
         box.current?.closest("dialog") ?? document.body,
