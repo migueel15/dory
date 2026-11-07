@@ -304,24 +304,24 @@ function Chip({ value, options, onChange, title, icon }: { value: string; option
 }
 
 // ModelPicker joins model and effort in one chip; its panel lists models on
-// the left and the efforts of the highlighted model on the right. Picking a
+// the left and, on the right, the efforts of the model last clicked. Picking a
 // model preselects the effort last used with it.
 function ModelPicker({ models, selected, effort, effortsOf, onChange }: { models: MenuOption[]; selected: string; effort: string; effortsOf: (value: string) => { values: string[]; initial: string } | undefined; onChange: (value: string, effort: string) => void }) {
   const [open, setOpen] = useState(false);
-  const [hover, setHover] = useState(selected);
+  const [focus, setFocus] = useState(selected);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
-    setHover(selected);
+    setFocus(selected);
     const close = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, [open, selected]);
   const current = models.find((m) => m.value === selected);
-  const efforts = effortsOf(hover);
+  const efforts = effortsOf(focus);
   const pickModel = (value: string) => {
     const e = effortsOf(value);
-    setHover(value);
+    setFocus(value);
     onChange(value, e?.initial ?? "");
     if (!e) setOpen(false);
   };
@@ -340,8 +340,8 @@ function ModelPicker({ models, selected, effort, effortsOf, onChange }: { models
             {models.map((o, i) => (
               <li key={o.value}>
                 {o.group && o.group !== models[i - 1]?.group && <p className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{o.group}</p>}
-                <button type="button" onMouseEnter={() => setHover(o.value)} onFocus={() => setHover(o.value)} onClick={() => pickModel(o.value)}
-                  className={`${row} ${o.value === hover ? "bg-slate-100 dark:bg-raised" : ""}`}>
+                <button type="button" onClick={() => pickModel(o.value)}
+                  className={`${row} ${o.value === focus ? "bg-slate-100 dark:bg-raised" : ""}`}>
                   {o.icon}<span className="min-w-0 flex-1 truncate">{o.label}</span>{o.value === selected && <Check className="size-3.5" />}
                 </button>
               </li>
@@ -350,9 +350,9 @@ function ModelPicker({ models, selected, effort, effortsOf, onChange }: { models
           <div className="w-32 shrink-0 overflow-y-auto border-l border-slate-200 p-1 dark:border-border">
             <p className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Esfuerzo</p>
             {efforts ? efforts.values.map((x) => {
-              const active = hover === selected ? x === effort : x === efforts.initial;
+              const active = focus === selected ? x === effort : x === efforts.initial;
               return (
-                <button key={x} type="button" onClick={() => { onChange(hover, x); setOpen(false); }} className={`${row} ${active ? "font-medium" : ""}`}>
+                <button key={x} type="button" onClick={() => { onChange(focus, x); setOpen(false); }} className={`${row} ${active ? "font-medium" : ""}`}>
                   <span className="min-w-0 flex-1 truncate">{x}</span>{active && <Check className="size-3.5" />}
                 </button>
               );
