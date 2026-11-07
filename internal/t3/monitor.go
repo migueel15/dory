@@ -64,16 +64,19 @@ type Monitor struct {
 	watchMu  sync.Mutex
 	watchers map[string]context.CancelFunc
 	live     map[string]bool
+	// syncFailed holds repositories whose project could not be created; only runProjectSync touches it.
+	syncFailed map[string]bool
 }
 
 func NewMonitor(svc service.Service) *Monitor {
-	return &Monitor{svc: svc, client: &http.Client{Timeout: requestTimeout}, byID: map[string]Status{}, usage: map[string]InstanceUsage{}, subs: map[chan struct{}]struct{}{}, watchers: map[string]context.CancelFunc{}, live: map[string]bool{}}
+	return &Monitor{svc: svc, client: &http.Client{Timeout: requestTimeout}, byID: map[string]Status{}, usage: map[string]InstanceUsage{}, subs: map[chan struct{}]struct{}{}, watchers: map[string]context.CancelFunc{}, live: map[string]bool{}, syncFailed: map[string]bool{}}
 }
 
 // Run polls until ctx ends.
 func (m *Monitor) Run(ctx context.Context) {
 	go m.runUsage(ctx)
 	go m.runDiscovery(ctx)
+	go m.runProjectSync(ctx)
 	tick := time.NewTicker(pollInterval)
 	defer tick.Stop()
 	for {

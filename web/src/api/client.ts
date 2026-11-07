@@ -64,7 +64,7 @@ function resource<T extends { id: string }, I>(path: string) {
 
 export type T3Catalog = {
   providers: { instance_id: string; name: string; driver: string; models: T3CatalogModel[] }[];
-  projects: { id: string; title: string; root: string }[];
+  projects: { id: string; title: string; root: string; repo: string }[];
 };
 export type T3CatalogModel = { slug: string; name: string; effort?: { id: string; values: string[]; default: string } };
 export type IssueDefineInput = { instance_id: string; project_id: string; provider: string; model: string; effort_option?: string; effort?: string };
