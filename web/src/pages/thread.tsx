@@ -89,7 +89,7 @@ function Chat({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const qc = useQueryClient();
   const end = useRef<HTMLDivElement>(null);
   const last = v.messages.at(-1);
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [v.messages.length, last?.text.length, !!v.pending]);
+  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [v.messages.length, last?.text.length, !!v.pending, v.queue.length]);
   const working = !!v.active_run_id && !last?.streaming;
   return (
     <section className="flex min-h-0 flex-1 flex-col">
