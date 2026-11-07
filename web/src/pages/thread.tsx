@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { ArrowUp, Brain, CaretDown, CaretRight, Check, Lightning, PencilSimple, Question, Trash, Wrench, X } from "@phosphor-icons/react";
+import { ArrowUp, Brain, CaretDown, CaretRight, Check, Copy, Lightning, PencilSimple, Question, Trash, Wrench, X } from "@phosphor-icons/react";
 import { api, type T3QueuedRun, type T3ThreadView, type T3ViewMessage } from "../api/client";
 import { useThreadLive } from "../api/live";
 import { Button, ErrorText, Input, Md, Notice, PageHeader, Select, StatusPill, pill } from "../components/ui";
@@ -96,13 +96,14 @@ function Chat({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
       <div className="min-h-0 flex-1 overflow-y-auto py-3"><div className="mx-auto w-full max-w-3xl space-y-4 px-3 sm:px-6">
         {v.messages.length === 0 && <p className="py-10 text-center text-sm text-slate-500 dark:text-muted">Sin mensajes todavía. Escribe abajo para empezar.</p>}
         {groups(v.messages).map((m, gi, all) => Array.isArray(m) ? <WorkBlock key={m[0].id} steps={m} live={!!v.active_run_id && gi === all.length - 1} /> : m.role === "user" ? (
-          <div key={m.id} className="flex justify-end">
+          <div key={m.id} className="group flex flex-col items-end">
             <div className="max-w-[85%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-2.5 text-white shadow-sm dark:bg-raised [&_*]:!text-inherit"><Md>{m.text}</Md></div>
+            <MessageMeta m={m} />
           </div>
         ) : (
-          <div key={m.id} className={m.role === "system" ? "text-xs text-slate-500 dark:text-muted" : "max-w-full pr-6"}>
+          <div key={m.id} className={m.role === "system" ? "text-xs text-slate-500 dark:text-muted" : "group max-w-full pr-6"}>
             {m.text ? <Md>{m.text}</Md> : null}
-            {m.streaming && <Dots />}
+            {m.streaming ? <Dots /> : m.role === "assistant" && <MessageMeta m={m} />}
           </div>
         ))}
         {working && <Dots />}
@@ -119,6 +120,27 @@ function Chat({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
         <Composer v={v} queryKey={queryKey} />
       </div>
     </section>
+  );
+}
+
+const fullDate = new Intl.DateTimeFormat("es-ES", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const shortTime = new Intl.DateTimeFormat("es-ES", { hour: "2-digit", minute: "2-digit" });
+
+// MessageMeta shows, on hover, when a message was sent and a button to copy it.
+function MessageMeta({ m }: { m: T3ViewMessage }) {
+  const [copied, setCopied] = useState(false);
+  const at = m.created_at ? new Date(m.created_at) : undefined;
+  const valid = at && !Number.isNaN(at.getTime());
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(m.text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard unavailable */ }
+  };
+  return (
+    <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-400 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+      {valid && <time dateTime={m.created_at} title={fullDate.format(at)} className="cursor-default tabular-nums">{shortTime.format(at)}</time>}
+      <button type="button" onClick={copy} title={copied ? "Copiado" : "Copiar mensaje"} aria-label="Copiar mensaje" className={iconBtn}>
+        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+      </button>
+    </div>
   );
 }
 
