@@ -1142,6 +1142,22 @@ paths:
         - {name: "run_id", in: "path", required: true, schema: {type: "string"}}
       responses:
         "204": {description: "Steered"}
+  "/t3/threads/{id}/interrupt":
+    post:
+      operationId: "interruptT3Thread"
+      summary: "Stop the active turn and hold the queue"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+      responses:
+        "204": {description: "Stopped"}
+  "/t3/threads/{id}/queue/resume":
+    post:
+      operationId: "resumeT3Queue"
+      summary: "Release a held queue so its next message starts"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+      responses:
+        "204": {description: "Resumed"}
   "/t3/threads/{id}/settings":
     patch:
       operationId: "setT3ThreadSettings"

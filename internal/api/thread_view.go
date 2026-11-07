@@ -123,6 +123,19 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 		}
 		return c.SteerQueued(r.Context(), id, r.PathValue("run_id"), v.ActiveRunID)
 	}))
+	mux.HandleFunc("POST /api/t3/threads/{id}/interrupt", act("t3.interrupt", nil, func(r *http.Request, c t3.Client, id string) error {
+		v, err := c.ThreadView(r.Context(), id)
+		if err != nil {
+			return err
+		}
+		if v.ActiveRunID == "" {
+			return nil // already stopped
+		}
+		return c.Interrupt(r.Context(), id, v.ActiveRunID)
+	}))
+	mux.HandleFunc("POST /api/t3/threads/{id}/queue/resume", act("t3.queue.resume", nil, func(r *http.Request, c t3.Client, id string) error {
+		return c.ResumeQueue(r.Context(), id)
+	}))
 	mux.HandleFunc("DELETE /api/t3/threads/{id}/queue/{run_id}", act("t3.queue.cancel", nil, func(r *http.Request, c t3.Client, id string) error {
 		return c.CancelQueued(r.Context(), id, r.PathValue("run_id"))
 	}))

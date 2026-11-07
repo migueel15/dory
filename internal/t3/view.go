@@ -323,6 +323,16 @@ func (c Client) CancelQueued(ctx context.Context, threadID, runID string) error 
 	return c.Dispatch(ctx, map[string]any{"type": "queued-run.cancel", "threadId": threadID, "runId": runID})
 }
 
+// Interrupt stops the active turn and holds the queue, as T3's stop button does.
+func (c Client) Interrupt(ctx context.Context, threadID, runID string) error {
+	return c.Dispatch(ctx, map[string]any{"type": "run.interrupt", "threadId": threadID, "runId": runID, "holdQueue": true})
+}
+
+// ResumeQueue releases a held queue so its next message starts.
+func (c Client) ResumeQueue(ctx context.Context, threadID string) error {
+	return c.Dispatch(ctx, map[string]any{"type": "queue.resume", "threadId": threadID})
+}
+
 // SteerQueued injects a queued message into the active turn.
 func (c Client) SteerQueued(ctx context.Context, threadID, runID, activeRunID string) error {
 	return c.Dispatch(ctx, map[string]any{"type": "queued-message.promote-to-steer", "threadId": threadID, "queuedRunId": runID, "targetRunId": activeRunID})
