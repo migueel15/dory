@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { ArrowDown, ArrowUp, Lightning, PaperPlaneRight, PencilSimple, Trash } from "@phosphor-icons/react";
+import { ArrowDown, ArrowUp, CaretDown, Check, Lightning, PencilSimple, Question, Trash } from "@phosphor-icons/react";
 import { api, type T3QueuedRun, type T3ThreadView } from "../api/client";
 import { useThreadLive } from "../api/live";
-import { Button, ErrorText, Input, Md, Notice, PageHeader, Select, StatusPill, Textarea, pill } from "../components/ui";
+import { Button, ErrorText, Input, Md, Notice, PageHeader, Select, StatusPill, pill } from "../components/ui";
+import { OpenInT3 } from "../components/thread-link";
+import { PendingRequest } from "../components/pending-request";
 import { ProviderIcon } from "./launch-form";
 import { Diff, type Suggestion } from "./github-diff";
 
@@ -64,9 +66,12 @@ export function ThreadView() {
 }
 
 function ContextBar({ v }: { v: T3ThreadView }) {
+  const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 60_000 });
+  const t = t3.data?.flatMap((x) => x.threads).find((x) => x.id === v.id);
   return (
     <header className="flex flex-wrap items-center gap-2">
-      <h1 className="mr-2 min-w-0 truncate text-lg font-semibold">{v.title || v.id}</h1>
+      <h1 className="min-w-0 truncate text-lg font-semibold">{v.title || v.id}</h1>
+      {t?.url && <OpenInT3 url={t.url} environmentId={t.t3_environment_id} threadId={v.id} className="mr-1" />}
       {v.branch && <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs dark:bg-raised">{v.branch}</span>}
       {v.active_run_id ? <StatusPill tone="blue">{statusLabel[v.active_status] ?? v.active_status}</StatusPill> : <StatusPill>en reposo</StatusPill>}
       {v.pull_requests.map((pr) => (
@@ -75,31 +80,53 @@ function ContextBar({ v }: { v: T3ThreadView }) {
       {v.items.map((it) => (
         <Link key={it.item_id} to="/items/$id/define" params={{ id: it.item_id }} className={pill}>Item {it.item_id.slice(0, 8)}</Link>
       ))}
-      {v.pending && <StatusPill tone="amber">Petición pendiente: respóndela en Atención</StatusPill>}
+      {v.pending && <StatusPill tone="amber">Espera tu respuesta</StatusPill>}
     </header>
   );
 }
 
 function Chat({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
+  const qc = useQueryClient();
   const end = useRef<HTMLDivElement>(null);
   const last = v.messages.at(-1);
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [v.messages.length, last?.text.length]);
+  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [v.messages.length, last?.text.length, !!v.pending]);
+  const working = !!v.active_run_id && !last?.streaming;
   return (
-    <section className="flex min-h-0 flex-1 flex-col rounded-lg border border-slate-200 dark:border-border">
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-        {v.messages.length === 0 && <p className="text-sm text-slate-500">Sin mensajes todavía.</p>}
-        {v.messages.map((m) => (
-          <div key={m.id} className={m.role === "user" ? "ml-8 rounded-lg bg-slate-100 p-2 dark:bg-raised" : "mr-4"}>
-            <Md>{m.text || (m.streaming ? "…" : "")}</Md>
+    <section className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-1 py-3">
+        {v.messages.length === 0 && <p className="py-10 text-center text-sm text-slate-500 dark:text-muted">Sin mensajes todavía. Escribe abajo para empezar.</p>}
+        {v.messages.map((m) => m.role === "user" ? (
+          <div key={m.id} className="flex justify-end">
+            <div className="max-w-[85%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-2.5 text-white shadow-sm dark:bg-raised [&_*]:!text-inherit"><Md>{m.text}</Md></div>
+          </div>
+        ) : (
+          <div key={m.id} className={m.role === "system" ? "text-xs text-slate-500 dark:text-muted" : "max-w-full pr-6"}>
+            {m.text ? <Md>{m.text}</Md> : null}
+            {m.streaming && <Dots />}
           </div>
         ))}
+        {working && <Dots />}
         <div ref={end} />
       </div>
-      <Queue v={v} queryKey={queryKey} />
-      <Composer v={v} queryKey={queryKey} />
+      <div className="space-y-2 pt-2">
+        {v.pending && (
+          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3 shadow-sm dark:border-amber-500/40 dark:bg-amber-500/10">
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300"><Question weight="fill" className="size-4" />El agente te pregunta</p>
+            <PendingRequest key={v.pending.id} threadId={v.id} pending={v.pending} onDone={() => qc.invalidateQueries({ queryKey })} />
+          </div>
+        )}
+        <Queue v={v} queryKey={queryKey} />
+        <Composer v={v} queryKey={queryKey} />
+      </div>
     </section>
   );
 }
+
+const Dots = () => (
+  <span className="inline-flex items-center gap-1 py-1" aria-label="Trabajando">
+    {[0, 150, 300].map((d) => <span key={d} className="size-1.5 rounded-full bg-slate-400 motion-safe:animate-bounce" style={{ animationDelay: `${d}ms` }} />)}
+  </span>
+);
 
 function Queue({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const qc = useQueryClient();
@@ -108,7 +135,7 @@ function Queue({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   if (!v.queue.length) return null;
   const q = v.queue;
   return (
-    <div className="space-y-1 border-t border-slate-200 p-2 dark:border-border">
+    <div className="space-y-1 rounded-2xl border border-slate-200 bg-white p-2 dark:border-border dark:bg-surface">
       <p className="text-xs font-medium text-slate-500 dark:text-muted">En cola ({q.length}) · salen al terminar el turno</p>
       {q.map((r, i) => (
         <QueuedRow key={r.run_id} r={r} canSteer={!!v.active_run_id}
@@ -144,6 +171,43 @@ function QueuedRow({ r, canSteer, onUp, onDown, onSteer, onCancel, onEdit }: { r
   );
 }
 
+type MenuOption = { value: string; label: string; group?: string; icon?: React.ReactNode };
+
+// Chip is a compact dropdown for the composer toolbar; the menu opens upwards.
+function Chip({ value, options, onChange, title, icon }: { value: string; options: MenuOption[]; onChange: (v: string) => void; title: string; icon?: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [open]);
+  const current = options.find((o) => o.value === value);
+  return (
+    <div ref={box} className="relative">
+      <button type="button" title={title} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}
+        onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
+        className="inline-flex h-8 max-w-[11rem] items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white">
+        {current?.icon ?? icon}<span className="truncate">{current?.label ?? value}</span><CaretDown className="size-3 shrink-0 opacity-60" />
+      </button>
+      {open && (
+        <ul role="listbox" className="absolute bottom-full left-0 z-20 mb-2 max-h-72 min-w-[12rem] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-border dark:bg-surface">
+          {options.map((o, i) => (
+            <li key={o.value}>
+              {o.group && o.group !== options[i - 1]?.group && <p className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{o.group}</p>}
+              <button type="button" role="option" aria-selected={o.value === value} onClick={() => { onChange(o.value); setOpen(false); }}
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised">
+                {o.icon}<span className="min-w-0 flex-1 truncate">{o.label}</span>{o.value === value && <Check className="size-3.5" />}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const qc = useQueryClient();
   const catalog = useQuery({ queryKey: ["t3-catalog", v.instance_id], queryFn: () => api.t3Catalog(v.instance_id), enabled: !!v.instance_id, staleTime: 60_000 });
@@ -151,11 +215,20 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const [steer, setSteer] = useState(false);
   const [choice, setChoice] = useState("");
   const [effort, setEffort] = useState("");
+  const area = useRef<HTMLTextAreaElement>(null);
   const selected = choice || `${v.provider_id}|${v.model}`;
   const [providerId, slug] = selected.split("|");
   const model = catalog.data?.providers.find((p) => p.instance_id === providerId)?.models.find((m) => m.slug === slug);
   const effortValue = effort || (choice ? model?.effort?.default ?? "" : v.effort);
   const changed = !!choice || !!effort;
+
+  // Grow the textarea with its content, up to about ten lines.
+  useEffect(() => {
+    const el = area.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+  }, [text]);
 
   const send = useMutation({
     mutationFn: () => api.t3Dispatch(v.id, {
@@ -166,26 +239,39 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   });
   const settings = useMutation({ mutationFn: (b: { interaction_mode?: string; runtime_mode?: string }) => api.t3Settings(v.id, b), onSuccess: () => qc.invalidateQueries({ queryKey }) });
   const busy = !!v.active_run_id;
-  const models = (catalog.data?.providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `${p.instance_id}|${m.slug}`, label: m.name, group: p.name, icon: <ProviderIcon driver={p.driver || p.name} /> })));
-  if (!models.some((m) => m.value === selected)) models.unshift({ value: selected, label: v.model || "Modelo del hilo", group: "", icon: <ProviderIcon driver={v.provider_id} /> });
+  const models: MenuOption[] = (catalog.data?.providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `${p.instance_id}|${m.slug}`, label: m.name, group: p.name, icon: <ProviderIcon driver={p.driver || p.name} /> })));
+  if (!models.some((m) => m.value === selected)) models.unshift({ value: selected, label: v.model || "Modelo del hilo", icon: <ProviderIcon driver={v.provider_id} /> });
+  const canSend = !!text.trim() && !send.isPending;
+  const submit = () => { if (canSend) send.mutate(); };
+  const action = busy ? (steer ? "Steer: se inyecta en el turno en curso" : "Se encolará al terminar el turno") : "";
 
   return (
-    <form className="space-y-2 border-t border-slate-200 p-2 dark:border-border" onSubmit={(e) => { e.preventDefault(); if (text.trim()) send.mutate(); }}>
-      <Textarea bare rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder={busy ? "El hilo está trabajando: el mensaje se encola (o márcalo como steer)" : "Escribe al hilo…"}
-        onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && text.trim()) { e.preventDefault(); send.mutate(); } }} />
-      <div className="flex flex-wrap items-center gap-2">
-        <Select className="w-48" value={selected} onChange={(x) => { setChoice(x); setEffort(""); }} options={models} />
-        {model?.effort && <Select className="w-28" value={effortValue} onChange={setEffort} options={model.effort.values.map((x) => ({ value: x, label: x }))} />}
-        <Select className="w-24" value={v.interaction_mode || "default"} onChange={(x) => settings.mutate({ interaction_mode: x })} options={interactionModes} />
-        <Select className="w-40" value={v.runtime_mode} onChange={(x) => settings.mutate({ runtime_mode: x })} options={runtimeModes} />
-        <label className="flex items-center gap-1 text-xs" title="Inyecta el mensaje en el turno en curso para corregir el rumbo">
-          <input type="checkbox" checked={steer} onChange={(e) => setSteer(e.target.checked)} />Steer
-        </label>
-        <Button className="ml-auto" disabled={!text.trim() || send.isPending}>
-          <PaperPlaneRight aria-hidden="true" className="size-4" />{busy ? (steer ? "Steer" : "Encolar") : "Enviar"}
-        </Button>
+    <form onSubmit={(e) => { e.preventDefault(); submit(); }}
+      className="rounded-3xl border border-slate-200 bg-white shadow-md transition-shadow focus-within:border-slate-400 focus-within:shadow-lg dark:border-border-strong dark:bg-surface dark:focus-within:border-muted">
+      <textarea ref={area} rows={1} value={text} onChange={(e) => setText(e.target.value)} aria-label="Mensaje"
+        placeholder={busy ? "El hilo está trabajando: tu mensaje se encolará…" : "Escribe al hilo…"}
+        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }}
+        className="block max-h-60 w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 !outline-none placeholder:text-slate-400" />
+      <div className="flex items-center gap-0.5 px-2 pb-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
+          <Chip title="Modelo" value={selected} options={models} onChange={(x) => { setChoice(x); setEffort(""); }} />
+          {model?.effort && <Chip title="Esfuerzo" value={effortValue} options={model.effort.values.map((x) => ({ value: x, label: x }))} onChange={setEffort} />}
+          <Chip title="Modo" value={v.interaction_mode || "default"} options={interactionModes} onChange={(x) => settings.mutate({ interaction_mode: x })} />
+          <Chip title="Permisos" value={v.runtime_mode} options={runtimeModes} onChange={(x) => settings.mutate({ runtime_mode: x })} />
+          {busy && (
+            <button type="button" aria-pressed={steer} onClick={() => setSteer(!steer)} title="Inyecta el mensaje en el turno en curso para corregir el rumbo"
+              className={`inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-medium transition-colors ${steer ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300" : "text-slate-600 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised"}`}>
+              <Lightning weight={steer ? "fill" : "regular"} className="size-3.5" />Steer
+            </button>
+          )}
+        </div>
+        {action && <span className="hidden truncate px-2 text-xs text-slate-400 sm:inline">{action}</span>}
+        <button type="submit" disabled={!canSend} title={busy ? (steer ? "Steer" : "Encolar") : "Enviar (Enter)"} aria-label="Enviar"
+          className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-900 text-white transition hover:bg-slate-700 disabled:bg-slate-200 disabled:text-slate-400 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 dark:disabled:bg-raised dark:disabled:text-muted">
+          {send.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <ArrowUp weight="bold" className="size-4" />}
+        </button>
       </div>
-      <ErrorText error={send.error ?? settings.error} />
+      {(send.error || settings.error) && <div className="px-4 pb-2"><ErrorText error={send.error ?? settings.error} /></div>}
     </form>
   );
 }

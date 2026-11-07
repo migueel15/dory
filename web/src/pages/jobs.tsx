@@ -65,7 +65,7 @@ export function Jobs() {
               : <span className="min-w-0 flex-1 truncate font-medium">{j.title}</span>}
             <span className="text-xs text-slate-500 dark:text-muted">{[j.model, j.effort].filter(Boolean).join(" · ")}</span>
             <span className="text-xs text-slate-500 dark:text-muted">{new Date(j.created).toLocaleString()}</span>
-            {j.thread?.url && <ThreadLink url={j.thread.url} environmentId={j.thread.t3_environment_id} threadId={j.thread.id} className="text-xs text-blue-600 hover:underline dark:text-accent-text">Abrir en T3</ThreadLink>}
+            {j.thread?.url && <ThreadLink url={j.thread.url} environmentId={j.thread.t3_environment_id} threadId={j.thread.id} className="text-xs text-blue-600 hover:underline dark:text-accent-text">Abrir hilo</ThreadLink>}
           </Card>
         );
       })}

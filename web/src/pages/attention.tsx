@@ -1,6 +1,6 @@
 import { ThreadLink } from "../components/thread-link";
 import { useState, type ReactNode } from "react";
-import { ArrowSquareOut, CheckCircle, Clock, FolderSimple, Flask, GitPullRequest, Prohibit, Robot, WarningCircle, type Icon as PhIcon } from "@phosphor-icons/react";
+import { CheckCircle, Clock, FolderSimple, Flask, GitPullRequest, Prohibit, Robot, WarningCircle, type Icon as PhIcon } from "@phosphor-icons/react";
 import { ItemTitle } from "../components/item-title";
 import { ItemForm } from "./items";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -147,8 +147,7 @@ export function Attention() {
                   <div className="break-words font-medium">{t.title}</div>
                   <div className={meta}>{[envName(t.status_.environment_id), t.model, t.effort, ago(t.updated_at)].filter(Boolean).join(" · ")}</div>
                 </div>
-                <ThreadLink onClick={(e) => e.stopPropagation()} url={t.url} environmentId={t.t3_environment_id} threadId={t.id} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 dark:border-border dark:hover:bg-raised">Abrir en T3 <ArrowSquareOut aria-hidden="true" className="size-3.5" /></ThreadLink>
-                <Link onClick={(e) => e.stopPropagation()} to="/threads/$threadId" params={{ threadId: t.id }} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 dark:border-border dark:hover:bg-raised">Chat</Link>
+                <ThreadLink onClick={(e) => e.stopPropagation()} url={t.url} environmentId={t.t3_environment_id} threadId={t.id} wrapClassName="inline-flex shrink-0 items-center gap-1" className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 dark:border-border dark:hover:bg-raised">Abrir hilo</ThreadLink>
               </div>
               {item ? <ItemLine item={item} projectName={projectName(item.project_id)} /> : <p className={meta}>Hilo sin item de Dory asociado.</p>}
               <div onClick={(e) => e.stopPropagation()}><ThreadReply id={t.id} /></div>

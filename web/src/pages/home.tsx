@@ -107,7 +107,7 @@ export function Home() {
           sources={[{ name: "T3", error: t3.error }, { name: "items bloqueados", error: blocked.error }, { name: "items por validar", error: validating.error }, ...projectSources]}
           pending={(t3.isPending && blocked.isPending) || linked.pending} empty={actions === 0}>
           {needing.slice(0, LIMIT).map((t) => (
-            <li key={`${t.instance_id}:${t.id}`}><ThreadLink url={t.url} environmentId={t.t3_environment_id} threadId={t.id} className={row}>
+            <li key={`${t.instance_id}:${t.id}`}><ThreadLink url={t.url} environmentId={t.t3_environment_id} threadId={t.id} wrapClassName="flex items-start gap-1" className={`${row} min-w-0 flex-1`}>
               <Robot weight="duotone" aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-amber-500" />
               <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{t.title}</span><span className={meta}>Hilo · {envName(t.environment_id, "Entorno")} · {t.model}</span></span>
               <ThreadStatus status={t.status} attention={t.attention} />
@@ -132,7 +132,7 @@ export function Home() {
         <Block icon={Robot} title="Agentes trabajando" count={busy.length} to="/jobs" emptyText="Ningún agente trabajando ahora."
           sources={[{ name: "T3", error: t3.error }, ...projectSources]} pending={t3.isPending || linked.pending} empty={busy.length === 0}>
           {busy.slice(0, LIMIT).map((t) => (
-            <li key={`${t.instance_id}:${t.id}`}><ThreadLink url={t.url} environmentId={t.t3_environment_id} threadId={t.id} className={row}>
+            <li key={`${t.instance_id}:${t.id}`}><ThreadLink url={t.url} environmentId={t.t3_environment_id} threadId={t.id} wrapClassName="flex items-start gap-1" className={`${row} min-w-0 flex-1`}>
               <span className="mt-1.5 size-2 shrink-0 rounded-full bg-blue-500 motion-safe:animate-pulse" />
               <span className="min-w-0 flex-1"><span className="block truncate text-sm">{t.title}</span><span className={meta}>{envName(t.environment_id, "Entorno")} · {t.model}</span></span>
             </ThreadLink></li>
