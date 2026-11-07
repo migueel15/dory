@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { Info } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type T3DayUsage } from "../api/client";
 import { Card, ErrorText, Select } from "../components/ui";
@@ -80,13 +81,21 @@ export function UsageHistory({ envName }: { envName: (id: string) => string }) {
         <Segmented label="Medida" value={metric} onChange={setMetric} options={[{ value: "cost", label: "Coste" }, { value: "tokens", label: "Tokens" }]} />
       </div>
       <ErrorText error={history.error} />
-      {failed.length > 0 && <p className="text-sm text-amber-700 dark:text-amber-400">Sin datos de {failed.map((h) => envName(h.environment_id) || "una instancia").join(", ")}{failed.some((h) => h.error === "missing_scope") ? " (al token le falta el permiso diagnostics:read)" : ""}.</p>}
       {history.isPending ? <UsageSkeleton /> : (
         <>
           <div className="grid gap-6 lg:grid-cols-[18rem_1fr]">
             <div className="space-y-4">
               <div>
-                <div className="text-3xl font-bold tabular-nums">{fmt(total)}</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-3xl font-bold tabular-nums">{fmt(total)}</span>
+                  {failed.length > 0 && (
+                    <InfoTip title="Datos incompletos">
+                      <p>Sin datos de:</p>
+                      <ul className="mt-1 space-y-0.5">{failed.map((h) => <li key={h.instance_id} className="flex items-center gap-1.5"><span className="size-1.5 shrink-0 rounded-full bg-amber-500" />{envName(h.environment_id) || "Instancia"}<span className="text-slate-400 dark:text-muted">· {h.error === "missing_scope" ? "falta el permiso diagnostics:read" : "no responde"}</span></li>)}</ul>
+                      <p className="mt-1.5 text-slate-500 dark:text-muted">El total no incluye su consumo.</p>
+                    </InfoTip>
+                  )}
+                </div>
                 <div className="text-xs text-slate-500 dark:text-muted">Últimos {days} días{metric === "cost" && estimated ? " · parte estimada por precio de modelo" : ""}</div>
               </div>
               <ul className="space-y-2.5">
@@ -209,5 +218,24 @@ function UsageSkeleton() {
         {[0, 1, 2, 3].map((i) => <div key={i} className="flex items-center gap-3 border-b border-slate-100 py-2 dark:border-border/60"><div className={`h-3 w-4 ${bar}`} /><div className={`h-3.5 flex-1 ${bar}`} style={{ maxWidth: `${45 - i * 6}%` }} /><div className={`ml-auto h-3.5 w-14 ${bar}`} /><div className={`h-3.5 w-10 ${bar}`} /><div className={`h-3.5 w-12 ${bar}`} /></div>)}
       </div>
     </div>
+  );
+}
+
+// InfoTip is a yellow info icon that opens a small card on hover, focus or tap.
+function InfoTip({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button type="button" aria-label={title} aria-expanded={open} onClick={() => setOpen(!open)} onFocus={() => setOpen(true)} onBlur={() => setOpen(false)}
+        className="grid size-6 place-items-center rounded-full text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/40">
+        <Info weight="fill" aria-hidden="true" className="size-5" />
+      </button>
+      {open && (
+        <div role="tooltip" className="notif-in absolute left-0 top-full z-30 mt-1.5 w-72 rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-lg dark:border-border dark:bg-surface">
+          <div className="mb-1 text-sm font-semibold">{title}</div>
+          {children}
+        </div>
+      )}
+    </span>
   );
 }
