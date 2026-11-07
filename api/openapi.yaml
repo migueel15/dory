@@ -2301,6 +2301,96 @@ paths:
               schema: {$ref: "#/components/schemas/ItemRefinement"}
         "404":
           $ref: "#/components/responses/Error404"
+  "/dictation":
+    post:
+      operationId: createDictation
+      summary: "Start a dictation session (in memory, expires after 30 min)"
+      responses:
+        "201":
+          description: "Session created"
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DictationState"}
+        "503":
+          description: "Dictation engine not configured (DORY_WHISPER_URL)"
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+  "/dictation/{id}":
+    get:
+      operationId: getDictation
+      summary: "Partial text and pending batches"
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: "Session state"
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DictationState"}
+        "404":
+          $ref: "#/components/responses/Error404"
+  "/dictation/{id}/chunks":
+    post:
+      operationId: addDictationChunk
+      summary: "Queue a self-contained WAV batch (16 kHz mono); seq starts at 0"
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: seq, in: query, required: true, schema: {type: integer, minimum: 0}}
+      requestBody:
+        required: true
+        content:
+          audio/wav:
+            schema: {type: string, format: binary}
+      responses:
+        "202":
+          description: "Batch queued"
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DictationState"}
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+  "/dictation/{id}/finish":
+    post:
+      operationId: finishDictation
+      summary: "insert waits for the last batch and returns the text; send returns at once and the backend delivers the text to target"
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              properties:
+                mode: {type: string, enum: [insert, send]}
+                target:
+                  type: object
+                  required: [kind]
+                  properties:
+                    kind: {type: string, enum: [capture, define]}
+                    project_id: {type: string, description: "capture: project of the new inbox item"}
+                    item_id: {type: string, description: "define: item whose definition thread receives the text"}
+      responses:
+        "200":
+          description: "insert: final text"
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DictationState"}
+        "202":
+          description: "send: delivery scheduled"
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DictationState"}
+        "400":
+          $ref: "#/components/responses/Error400"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
 components:
   responses:
     Error400:
@@ -2348,6 +2438,15 @@ components:
       type: "http"
       scheme: "bearer"
   schemas:
+    DictationState:
+      type: object
+      required: [id, text, pending, status]
+      properties:
+        id: {type: string}
+        text: {type: string}
+        pending: {type: integer}
+        status: {type: string, enum: [recording, finishing, done, failed]}
+        error: {type: string}
     ItemRefinement:
       type: object
       required: [thread, messages, pending, plan]

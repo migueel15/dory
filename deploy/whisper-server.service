@@ -1,0 +1,21 @@
+[Unit]
+Description=whisper-server, transcripción local para el dictado de dory
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=miguel
+# Binario y modelo de whisper.cpp; ver docs/dictado.md.
+ExecStart=/home/miguel/opt/whisper.cpp/build/bin/whisper-server --host 127.0.0.1 --port 8178 -m /home/miguel/opt/whisper.cpp/models/ggml-small-q5_1.bin -l es -t 4
+Restart=on-failure
+RestartSec=5
+# Deja CPU para dory y T3 en la misma máquina.
+Nice=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

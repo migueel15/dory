@@ -7,6 +7,7 @@ import { ItemTitle, pendingPoll } from "../components/item-title";
 import { PendingRequest } from "../components/pending-request";
 import { ThreadLink } from "../components/thread-link";
 import { ThreadStatus } from "../components/thread-status";
+import { DictationInput } from "../components/dictation-input";
 import { Badge, Button, Card, ErrorText, Label, Md, Notice, StatusPill, Textarea } from "../components/ui";
 import { LaunchDialog } from "./launch";
 import { useLaunchForm } from "./launch-form";
@@ -145,6 +146,7 @@ function Chat({ item, data, draft, setDraft, composer, onChange }: { item: Item;
           <Textarea ref={composer} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey} placeholder="Escribe al agente: correcciones, ideas o respuestas (Ctrl+Enter para enviar)" className="min-h-20" />
           <ErrorText error={send.error} />
           <div className="flex justify-end"><Button disabled={!draft.trim() || send.isPending} onClick={submit}>Enviar</Button></div>
+          {data.thread && <DictationInput target={{ kind: "define", item_id: item.id }} onSubmit={(text) => send.mutate({ text })} onSent={() => setTimeout(onChange, 5000)} />}
         </div>
       ) : <p className={muted}>El item ya no está en definición; la conversación queda como referencia.</p>}
     </Card>

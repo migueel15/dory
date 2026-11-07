@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { api } from "../api/client";
 import { Button, ErrorText, Modal, Select, Textarea, uuid } from "./ui";
 import { useProject } from "../project";
+import { DictationInput } from "./dictation-input";
 
 // createIdea saves raw text as an inbox item; the definition agent fills in the rest.
 function createIdea(raw: string, projectId: string) {
@@ -67,6 +68,7 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
         </div>
       </div>
       <ErrorText error={save.error} />
+      <DictationInput target={{ kind: "capture", project_id: project || undefined }} onSubmit={(raw) => save.mutate({ raw, define: false })} onSent={() => setTimeout(() => qc.invalidateQueries({ queryKey: ["items"] }), 5000)} />
     </div>
   );
 }
