@@ -1,6 +1,6 @@
 import { ThreadOpen, ThreadView } from "./pages/thread";
 import { StrictMode, useEffect, useRef, useState } from "react";
-import { Brain, ChartBar, ChatsCircle, FolderSimple, Gear, GithubLogo, HardDrives, House, Kanban, List, Moon, Robot, SignOut, Sun, Tray, BellRinging, X } from "@phosphor-icons/react";
+import { Brain, ChartBar, ChatsCircle, FolderSimple, Gear, GithubLogo, HardDrives, House, IconContext, Kanban, List, Moon, Robot, SignOut, Sun, Tray, BellRinging, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
@@ -59,7 +59,7 @@ function Login() {
 function SettingsLink() {
   return (
     <Link to="/settings" aria-label="Ajustes" title="Ajustes" className="grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-slate-200 sm:min-h-0 sm:min-w-0 sm:px-3 sm:py-1.5 dark:hover:bg-raised [&.active]:bg-slate-200 dark:[&.active]:bg-raised">
-      <Gear className="size-5" aria-hidden="true" />
+      <Gear weight="duotone" className="size-5" aria-hidden="true" />
     </Link>
   );
 }
@@ -69,7 +69,7 @@ function ThemeToggle() {
   const label = dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro";
   return (
     <Button variant="bare" aria-label={label} title={label} onClick={() => setTheme(dark ? "light" : "dark")}>
-      {dark ? <Sun className="size-5" aria-hidden="true" /> : <Moon className="size-5" aria-hidden="true" />}
+      {dark ? <Sun weight="duotone" className="size-5" aria-hidden="true" /> : <Moon weight="duotone" className="size-5" aria-hidden="true" />}
     </Button>
   );
 }
@@ -124,7 +124,7 @@ function Layout() {
   }, [menu, !!me.data]);
   if (me.isPending) return null;
   if (!me.data) return <Login />;
-  const ico = "mr-2.5 size-[18px] shrink-0 opacity-80";
+  const ico = "mr-2.5 size-[18px] shrink-0 text-slate-900 dark:text-accent-text [.active_&]:text-white";
   const link = "flex min-h-11 shrink-0 items-center rounded px-3 text-sm font-medium text-slate-800 dark:text-text sm:min-h-0 sm:px-2 sm:py-1 hover:bg-slate-200 dark:hover:bg-raised [&.active]:bg-slate-900 dark:[&.active]:bg-accent [&.active]:text-white dark:[&.active]:text-white";
   // Group headings share the links' left padding and a rule above, so each section reads as a block.
   const group = (name: string) => <span className="mt-3 mb-1 border-t border-slate-200 px-3 pt-3 text-xs font-semibold uppercase tracking-wider text-slate-400 first:mt-1 first:border-t-0 first:pt-0 dark:border-border dark:text-muted sm:px-2">{name}</span>;
@@ -161,7 +161,7 @@ function Layout() {
           </div>
           <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 py-1 pl-3 pr-1 dark:border-border">
             <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
-            <Button variant="bare" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => logout.mutate()}><SignOut className="size-5" aria-hidden="true" /></Button>
+            <Button variant="bare" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => logout.mutate()}><SignOut weight="regular" className="size-5" aria-hidden="true" /></Button>
           </div>
           <VersionBadge />
         </div>
@@ -177,7 +177,7 @@ function Layout() {
             {!desktop && <Notifications />}
           </div>
           <button type="button" aria-label="Menú" aria-controls="mobile-navigation" aria-expanded={menu} onClick={() => setMenu(!menu)} className="grid size-11 place-items-center rounded hover:bg-slate-200 dark:hover:bg-raised sm:hidden">
-            {menu ? <X className="size-5" aria-hidden="true" /> : <List className="size-5" aria-hidden="true" />}
+            {menu ? <X weight="regular" className="size-5" aria-hidden="true" /> : <List weight="regular" className="size-5" aria-hidden="true" />}
           </button>
         </div>
       </nav>
@@ -199,7 +199,7 @@ function Layout() {
             <h2 id="mobile-navigation-title" className="flex items-center gap-2 font-bold">Dory<DevBadge /></h2>
           </div>
           <button type="button" autoFocus aria-label="Cerrar menú" onClick={() => setMenu(false)} className="grid size-11 place-items-center rounded-lg hover:bg-slate-100 dark:hover:bg-raised">
-            <X className="size-5" aria-hidden="true" />
+            <X weight="regular" className="size-5" aria-hidden="true" />
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4">
@@ -216,7 +216,7 @@ function Layout() {
           </div>
           <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 py-1 pl-3 pr-1 dark:border-border">
             <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
-            <Button variant="bare" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => logout.mutate()}><SignOut className="size-5" aria-hidden="true" /></Button>
+            <Button variant="bare" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => logout.mutate()}><SignOut weight="regular" className="size-5" aria-hidden="true" /></Button>
           </div>
           <VersionBadge />
         </div>
@@ -252,9 +252,12 @@ declare module "@tanstack/react-router" {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    {/* Every icon uses the duotone style (tinted background) unless it sets its own weight. The context replaces Phosphor's defaults as a whole, so it repeats size and color: without them icons with no class lose their 1em size. */}
+    <IconContext.Provider value={{ color: "currentColor", size: "1em", mirrored: false, weight: "duotone" }}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </IconContext.Provider>
   </StrictMode>,
 );
 

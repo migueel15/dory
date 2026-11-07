@@ -21,7 +21,7 @@ export function Button({ variant = "default", className, ...p }: ButtonHTMLAttri
 // pill styles links that act as secondary buttons (navigation, external links).
 export const pill = "inline-flex min-h-11 sm:min-h-0 shrink-0 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 dark:border-border dark:bg-surface dark:text-text-secondary dark:hover:border-border-strong dark:hover:bg-raised dark:hover:text-white";
 export const Arrow = ({ back }: { back?: boolean }) => (
-  <ArrowRight aria-hidden="true" className={cx("size-3.5", back && "rotate-180")} />
+  <ArrowRight weight="regular" aria-hidden="true" className={cx("size-3.5", back && "rotate-180")} />
 );
 
 // keepAboveKeyboard scrolls box, smoothly, until its bottom sits just above the phone keyboard.
@@ -106,7 +106,7 @@ export function Select({ value, onChange, options, disabled, className, placehol
             : "flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-left text-sm shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50 dark:border-border-strong dark:bg-surface dark:hover:border-muted dark:hover:bg-raised sm:min-h-0",
           !plain && open && "border-slate-500 bg-slate-50 dark:border-muted dark:bg-raised")}>
         <span className={cx("flex min-w-0 items-center gap-2 truncate", !current && "text-slate-400 dark:text-muted")}>{current?.icon}{current?.label ?? placeholder}</span>
-        <CaretUpDown aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
+        <CaretUpDown weight="regular" aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
       </button>
       {open && createPortal(
         <div ref={list} style={pos} className="notif-in fixed z-[100] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-border dark:bg-surface">
@@ -166,7 +166,7 @@ const prose = [
   "[&_h1]:border-b [&_h1]:border-slate-200 [&_h1]:pb-1 [&_h1]:text-xl [&_h1]:font-bold dark:[&_h1]:border-border",
   "[&_h2]:border-b [&_h2]:border-slate-200 [&_h2]:pb-1 [&_h2]:text-lg [&_h2]:font-semibold dark:[&_h2]:border-border",
   "[&_h3]:text-base [&_h3]:font-semibold [&_h4]:font-semibold [&_h1,&_h2,&_h3,&_h4]:mt-4 [&_h1,&_h2,&_h3,&_h4]:text-slate-900 dark:[&_h1,&_h2,&_h3,&_h4]:text-white",
-  "[&_a]:text-blue-600 [&_a]:underline-offset-2 hover:[&_a]:underline dark:[&_a]:text-accent-text",
+  "[&_a]:text-accent [&_a]:underline-offset-2 hover:[&_a]:underline dark:[&_a]:text-accent-text",
   "[&_ul]:ml-5 [&_ul]:list-disc [&_ol]:ml-5 [&_ol]:list-decimal [&_li]:my-0.5 [&_li>ul]:mt-1 [&_li>ol]:mt-1",
   "[&_ul.contains-task-list]:ml-0 [&_ul.contains-task-list]:list-none [&_li.task-list-item]:flex [&_li.task-list-item]:flex-wrap [&_li.task-list-item]:items-baseline [&_li.task-list-item]:gap-2 [&_li.task-list-item>ul]:basis-full [&_li.task-list-item>ul]:ml-6",
   "[&_input[type=checkbox]]:size-4 [&_input[type=checkbox]]:translate-y-0.5 [&_input[type=checkbox]]:accent-green-600",
@@ -206,7 +206,7 @@ export function Modal({ title, onClose, children, wide = false }: { title: strin
         <div className="flex items-start justify-between gap-2">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button type="button" aria-label="Cerrar" onClick={onClose} className="-mr-1 grid size-8 shrink-0 place-items-center rounded text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">
-            <X aria-hidden="true" className="size-4" />
+            <X weight="regular" aria-hidden="true" className="size-4" />
           </button>
         </div>
         {children}

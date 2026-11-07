@@ -11,6 +11,16 @@ import { api } from "../api/client";
 
 type Notice = { id: number; title: string; body: string; url: string; bell: boolean; toast: boolean; read: boolean; created_at: string };
 // external opens links outside Dory (T3 Code threads) in a new window, so the app keeps its state.
+// href opens a thread notice in Dory's thread view; older notices still carry
+// the T3 Code link (…/threads/<id>), so it is rewritten.
+const href = (url: string) => {
+  try {
+    const u = new URL(url, location.href);
+    const id = u.origin !== location.origin && /\/threads\//.test(u.pathname) ? u.pathname.replace(/\/+$/, "").split("/").pop() : "";
+    return id ? `/threads/${encodeURIComponent(id)}` : url;
+  } catch { return url; }
+};
+
 const external = (url: string) => {
   try { return new URL(url, location.href).origin !== location.origin ? { target: "_blank", rel: "noreferrer" } : {}; } catch { return {}; }
 };
@@ -106,7 +116,7 @@ export function Notifications() {
     <Button variant="bare" aria-label={`Notificaciones: ${feed.data?.unread ?? 0} sin leer`} onClick={() => setOpen(true)}>
       {/* The count is anchored to the bell itself, not to the button padding, so it sits the same on every screen. */}
       <span className="relative block">
-        <Bell className="size-5" aria-hidden="true" />
+        <Bell weight="duotone" className="size-5" aria-hidden="true" />
         {!!feed.data?.unread && <span className="absolute -top-1.5 left-3 grid min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-4 text-white ring-2 ring-white dark:ring-surface">{feed.data.unread > 99 ? "99+" : feed.data.unread}</span>}
       </span>
     </Button>
@@ -119,9 +129,9 @@ export function Notifications() {
               {settingsOpen ? "Ajustes de avisos" : "Notificaciones"}
               {!settingsOpen && !!feed.data?.unread && <span className="rounded-md bg-red-600 px-1.5 text-[11px] font-bold leading-4 text-white">{feed.data.unread}</span>}
             </h2>
-            <button type="button" title={settingsOpen ? "Volver a la lista" : "Ajustes"} aria-label={settingsOpen ? "Volver a la lista" : "Ajustes"} aria-pressed={settingsOpen} onClick={() => setSettingsOpen(!settingsOpen)} className={iconBtn}>{settingsOpen ? <ArrowLeft aria-hidden="true" className="size-4" /> : <GearSix aria-hidden="true" className="size-4" />}</button>
+            <button type="button" title={settingsOpen ? "Volver a la lista" : "Ajustes"} aria-label={settingsOpen ? "Volver a la lista" : "Ajustes"} aria-pressed={settingsOpen} onClick={() => setSettingsOpen(!settingsOpen)} className={iconBtn}>{settingsOpen ? <ArrowLeft weight="regular" aria-hidden="true" className="size-4" /> : <GearSix aria-hidden="true" className="size-4" />}</button>
             {!settingsOpen && <button type="button" title="Borrar todo el historial" aria-label="Borrar todo el historial" disabled={busy || !notices.length} onClick={() => setConfirmClear(true)} aria-pressed={confirmClear} className={iconBtn}><Trash aria-hidden="true" className="size-4" /></button>}
-            <button type="button" title="Cerrar" aria-label="Cerrar" autoFocus onClick={() => setOpen(false)} className={iconBtn}><X aria-hidden="true" className="size-4" /></button>
+            <button type="button" title="Cerrar" aria-label="Cerrar" autoFocus onClick={() => setOpen(false)} className={iconBtn}><X weight="regular" aria-hidden="true" className="size-4" /></button>
           </div>
           {confirmClear && !settingsOpen && (
             <div role="alertdialog" aria-label="Borrar historial" className="notif-in shrink-0 space-y-2 border-b border-red-200 bg-red-50 px-3 py-2.5 dark:border-red-900 dark:bg-red-950/40">
@@ -153,12 +163,12 @@ export function Notifications() {
                 <ul className="divide-y divide-slate-100 dark:divide-border/60">
                   {notices.filter(n => n.bell).map(n => <li key={n.id} className={`group relative flex gap-2.5 px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-raised ${n.read ? "" : "bg-slate-50 dark:bg-raised/50"}`}>
                     <span aria-label={n.read ? undefined : "No leída"} className={`mt-1.5 size-2 shrink-0 rounded-full ${n.read ? "bg-transparent" : "bg-slate-400 dark:bg-white"}`} />
-                    <a href={n.url} {...external(n.url)} onClick={() => void act(() => read(n))} className="min-w-0 flex-1">
+                    <a href={href(n.url)} {...external(href(n.url))} onClick={() => void act(() => read(n))} className="min-w-0 flex-1">
                       <div className={`text-sm ${n.read ? "text-slate-600 dark:text-text-secondary" : "font-semibold"}`}>{n.title}</div>
                       {n.body && <p className="line-clamp-2 break-words text-xs text-slate-500 dark:text-muted">{n.body}</p>}
                       <time className="mt-0.5 block text-[11px] text-slate-400 dark:text-muted" title={new Date(n.created_at).toLocaleString()}>{ago(n.created_at)}</time>
                     </a>
-                    {!n.read && <button type="button" title="Marcar como leída" aria-label="Marcar como leída" disabled={busy} onClick={() => void act(() => read(n))} className={`${iconBtn} self-start opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100`}><Check aria-hidden="true" className="size-4" /></button>}
+                    {!n.read && <button type="button" title="Marcar como leída" aria-label="Marcar como leída" disabled={busy} onClick={() => void act(() => read(n))} className={`${iconBtn} self-start opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100`}><Check weight="regular" aria-hidden="true" className="size-4" /></button>}
                   </li>)}
                 </ul>
                 {history.hasNextPage && <div className="p-3"><Button variant="ghost" className="w-full" disabled={history.isFetchingNextPage} onClick={() => void history.fetchNextPage()}>Cargar avisos anteriores</Button></div>}
@@ -210,8 +220,8 @@ function ToastStack({ toasts, expanded, setExpanded, onOpen, onClose }: { toasts
             onClickCapture={(e) => { if (stacked && !(e.target as HTMLElement).closest("button")) { e.preventDefault(); e.stopPropagation(); setExpanded(true); } }}
             style={{ transform: `translateY(-${y}px) scale(${expanded ? 1 : 1 - i * 0.05})`, zIndex: 10 - i, opacity: !expanded && i > 2 ? 0 : 1 }}
             className="toast-in absolute inset-x-0 bottom-0 origin-bottom rounded-lg border border-slate-200 bg-white p-3 shadow-lg transition-all duration-300 ease-out motion-reduce:transition-none dark:border-border dark:bg-surface">
-            <a href={n.url} {...external(n.url)} onClick={() => onOpen(n)} className="block pr-6"><span className="block text-sm font-semibold">{n.title}</span>{n.body && <span className={`block break-words text-sm ${stacked && i > 0 ? "line-clamp-1" : ""}`}>{n.body}</span>}</a>
-            <button className="absolute right-1 top-1 px-2" aria-label="Cerrar aviso" onClick={() => onClose(n.id)}><X aria-hidden="true" className="size-4" /></button>
+            <a href={href(n.url)} {...external(href(n.url))} onClick={() => onOpen(n)} className="block pr-6"><span className="block text-sm font-semibold">{n.title}</span>{n.body && <span className={`block break-words text-sm ${stacked && i > 0 ? "line-clamp-1" : ""}`}>{n.body}</span>}</a>
+            <button className="absolute right-1 top-1 px-2" aria-label="Cerrar aviso" onClick={() => onClose(n.id)}><X weight="regular" aria-hidden="true" className="size-4" /></button>
             {stacked && i === 0 && <span className="mt-1 block text-xs text-slate-500 dark:text-muted">+{toasts.length - 1} más · clic para ver</span>}
           </div>
         );

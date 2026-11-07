@@ -96,7 +96,7 @@ function Tree({ dir, jump, active, review, depth = 0 }: { dir: Dir; jump: (path:
         <li key={d.name}>
           <details open className="group">
             <summary title={d.name} className="flex cursor-pointer list-none items-center gap-1 rounded px-1 py-0.5 text-xs font-medium hover:bg-slate-100 dark:hover:bg-raised [&::-webkit-details-marker]:hidden">
-              <CaretRight aria-hidden="true" className="size-3 shrink-0 text-slate-400 transition-transform group-open:rotate-90" />
+              <CaretRight weight="regular" aria-hidden="true" className="size-3 shrink-0 text-slate-400 transition-transform group-open:rotate-90" />
               <Folder aria-hidden="true" className="size-4 shrink-0 text-slate-400 group-open:hidden" />
               <FolderOpen aria-hidden="true" className="hidden size-4 shrink-0 text-slate-400 group-open:block" />
               <span className="truncate">{d.name}</span>
@@ -154,7 +154,8 @@ export type Suggestion = { path: string; start: number; end: number; snippet: st
 
 // Diff shows a pull request diff, or the given diff text when onSuggest sends
 // selections to a chat; GitHub reviews and comments only apply to the first.
-export function Diff({ repo = "", pr = 0, text, onSuggest }: { repo?: string; pr?: number; text?: string; onSuggest?: (s: Suggestion) => Promise<void> }) {
+// fill makes the diff take its container's height instead of 80vh.
+export function Diff({ repo = "", pr = 0, text, onSuggest, fill = false }: { repo?: string; pr?: number; text?: string; onSuggest?: (s: Suggestion) => Promise<void>; fill?: boolean }) {
   const qc = useQueryClient();
   const gh = !onSuggest && !!repo && !!pr;
   const diff = useQuery({ queryKey: ["github-diff", repo, pr], queryFn: () => api.githubDiff(repo, pr), enabled: text === undefined });
@@ -334,16 +335,16 @@ export function Diff({ repo = "", pr = 0, text, onSuggest }: { repo?: string; pr
         {split ? <Rows aria-hidden="true" className="size-4" /> : <Columns aria-hidden="true" className="size-4" />}
       </button>
       <button type="button" onClick={() => setFull((v) => !v)} title={full ? "Salir de pantalla completa (Esc)" : "Pantalla completa"} aria-label={full ? "Salir de pantalla completa" : "Pantalla completa"} className={toolBtn}>
-        {full ? <ArrowsIn aria-hidden="true" className="size-4" /> : <ArrowsOut aria-hidden="true" className="size-4" />}
+        {full ? <ArrowsIn weight="regular" aria-hidden="true" className="size-4" /> : <ArrowsOut weight="regular" aria-hidden="true" className="size-4" />}
       </button>
     </>
   );
 
   return (
-    <div className={full ? "fixed inset-0 z-50 h-dvh overflow-hidden overscroll-none bg-slate-50 p-3 dark:bg-canvas" : ""}>
-    <div className={`grid gap-3 ${panelOpen ? "md:grid-cols-[16rem_1fr]" : "md:grid-cols-[2.25rem_1fr]"} ${full ? "h-full grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1" : ""}`}>
+    <div className={full ? "fixed inset-0 z-50 h-dvh overflow-hidden overscroll-none bg-slate-50 p-3 dark:bg-canvas" : fill ? "h-full min-h-0" : ""}>
+    <div className={`grid gap-3 ${panelOpen ? "md:grid-cols-[16rem_1fr]" : "md:grid-cols-[2.25rem_1fr]"} ${full || fill ? "h-full grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1" : ""}`}>
       {panelOpen ? (
-      <aside className={`${full ? "h-[30vh] md:h-auto" : "h-[30vh] md:h-[80vh]"} ${panel} flex min-h-0 flex-col overflow-hidden`}>
+      <aside className={`${full || fill ? "h-[30vh] md:h-auto" : "h-[30vh] md:h-[80vh]"} ${panel} flex min-h-0 flex-col overflow-hidden`}>
           <div className="flex shrink-0 gap-1.5 p-2">
             <Input aria-label="Buscar fichero o texto" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero o texto…" className="min-w-0 flex-1 py-1" />
             {tools}
@@ -354,7 +355,7 @@ export function Diff({ repo = "", pr = 0, text, onSuggest }: { repo?: string; pr
       ) : (
       <aside className="flex gap-1.5 md:flex-col">{tools}</aside>
       )}
-      <div className={`min-w-0 space-y-3 overflow-auto overscroll-contain ${full ? "" : "md:h-[80vh]"}`}>
+      <div className={`min-w-0 space-y-3 overflow-auto overscroll-contain ${full || fill ? "" : "md:h-[80vh]"}`}>
         <ErrorText error={diff.error ?? comment.error ?? ask.error ?? mark.error ?? suggest.error} />
         {ask.data && (
           <div role="status" className="flex items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm dark:border-border dark:bg-raised">
@@ -368,7 +369,7 @@ export function Diff({ repo = "", pr = 0, text, onSuggest }: { repo?: string; pr
             <div id={anchor(f.path)} className="sticky top-0 z-10 flex scroll-mt-0 items-center justify-between gap-2 rounded-t-lg border-b border-slate-200 bg-slate-50 px-3 py-1.5 dark:border-border dark:bg-raised">
               <span className="flex min-w-0 items-center gap-1.5">
                 <button type="button" onClick={() => setFolded((m) => new Map(m).set(f.path, !isFolded(f.path)))} aria-label={isFolded(f.path) ? "Desplegar fichero" : "Plegar fichero"} aria-expanded={!isFolded(f.path)} className="shrink-0 rounded text-slate-400 hover:text-blue-600">
-                  {isFolded(f.path) ? <CaretRight aria-hidden="true" className="size-3.5" /> : <CaretDown aria-hidden="true" className="size-3.5" />}
+                  {isFolded(f.path) ? <CaretRight weight="regular" aria-hidden="true" className="size-3.5" /> : <CaretDown weight="regular" aria-hidden="true" className="size-3.5" />}
                 </button>
                 <span className="min-w-0 truncate font-mono text-xs font-semibold" title={f.path}>{f.path}</span>
               </span>

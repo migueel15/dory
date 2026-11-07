@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/migueel15/dory/internal/service"
 	"github.com/migueel15/dory/internal/t3"
@@ -14,7 +16,12 @@ type threadViewOut struct {
 	t3.ThreadView
 	InstanceID string               `json:"instance_id"`
 	Items      []service.ItemThread `json:"items"`
+	// HistoryCursor loads older messages with /history; empty when none.
+	HistoryCursor string `json:"history_cursor"`
 }
+
+// maxAttachmentBytes is T3's own limit for a file attachment.
+const maxAttachmentBytes = 50 << 20
 
 // mountThreadView serves the chat view of one thread. Queue and steer are T3's
 // own, so the queue is shared with T3 Code's UI.
@@ -61,6 +68,10 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 			return
 		}
 		out := threadViewOut{ThreadView: v, Items: links}
+		// T3 sends only the latest turns; older ones come page by page.
+		if cursor, err := c.HistoryCursor(r.Context(), id); err == nil {
+			out.HistoryCursor = cursor
+		}
 		if inst, ok := monitor.Locate(id); ok {
 			out.InstanceID = inst
 		} else if len(links) > 0 {
@@ -85,16 +96,61 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 	})
 	mux.HandleFunc("POST /api/t3/threads/{id}/send", func(w http.ResponseWriter, r *http.Request) {
 		var b struct {
-			Text         string `json:"text"`
-			Mode         string `json:"mode"`
-			ProviderID   string `json:"provider_id"`
-			Model        string `json:"model"`
-			EffortOption string `json:"effort_option"`
-			Effort       string `json:"effort"`
+			Text         string          `json:"text"`
+			Mode         string          `json:"mode"`
+			ProviderID   string          `json:"provider_id"`
+			Model        string          `json:"model"`
+			EffortOption string          `json:"effort_option"`
+			Effort       string          `json:"effort"`
+			Attachments  []t3.Attachment `json:"attachments"`
 		}
 		act("t3.send", &b, func(r *http.Request, c t3.Client, id string) error {
-			return c.Send(r.Context(), id, t3.SendInput{Text: b.Text, Mode: b.Mode, ProviderID: b.ProviderID, Model: b.Model, EffortOption: b.EffortOption, Effort: b.Effort})
+			return c.Send(r.Context(), id, t3.SendInput{Text: b.Text, Mode: b.Mode, ProviderID: b.ProviderID, Model: b.Model, EffortOption: b.EffortOption, Effort: b.Effort, Attachments: b.Attachments})
 		})(w, r)
+	})
+	// Attachments go up one at a time as the raw body, with the file name in
+	// ?name= and its type in Content-Type; the reply goes back in /send.
+	mux.HandleFunc("POST /api/t3/threads/{id}/attachments", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxAttachmentBytes))
+		if err != nil {
+			writeError(w, http.StatusRequestEntityTooLarge, "invalid_argument", "attachment too large (max 50 MB)")
+			return
+		}
+		name := strings.TrimSpace(r.URL.Query().Get("name"))
+		if name == "" {
+			name = "adjunto"
+		}
+		c, err := threadClient(r.Context(), svc, monitor, id)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		a, err := c.Upload(r.Context(), name, r.Header.Get("Content-Type"), data)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, a)
+	})
+	mux.HandleFunc("GET /api/t3/threads/{id}/history", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		cursor := r.URL.Query().Get("cursor")
+		if cursor == "" {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "cursor is required")
+			return
+		}
+		c, err := threadClient(r.Context(), svc, monitor, id)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		page, err := c.History(r.Context(), id, cursor)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, page)
 	})
 	mux.HandleFunc("PATCH /api/t3/threads/{id}/queue/{run_id}", func(w http.ResponseWriter, r *http.Request) {
 		var b struct {
@@ -122,6 +178,19 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 			return nil
 		}
 		return c.SteerQueued(r.Context(), id, r.PathValue("run_id"), v.ActiveRunID)
+	}))
+	mux.HandleFunc("POST /api/t3/threads/{id}/interrupt", act("t3.interrupt", nil, func(r *http.Request, c t3.Client, id string) error {
+		v, err := c.ThreadView(r.Context(), id)
+		if err != nil {
+			return err
+		}
+		if v.ActiveRunID == "" {
+			return nil // already stopped
+		}
+		return c.Interrupt(r.Context(), id, v.ActiveRunID)
+	}))
+	mux.HandleFunc("POST /api/t3/threads/{id}/queue/resume", act("t3.queue.resume", nil, func(r *http.Request, c t3.Client, id string) error {
+		return c.ResumeQueue(r.Context(), id)
 	}))
 	mux.HandleFunc("DELETE /api/t3/threads/{id}/queue/{run_id}", act("t3.queue.cancel", nil, func(r *http.Request, c t3.Client, id string) error {
 		return c.CancelQueued(r.Context(), id, r.PathValue("run_id"))

@@ -18,17 +18,20 @@ export type T3InstanceUsage = S["T3InstanceUsage"];
 export type T3InstanceHistory = S["T3InstanceHistory"];
 export type T3DayUsage = S["T3DayUsage"];
 export type T3ThreadContext = S["T3ThreadContext"];
-export type T3ViewMessage = { id: string; role: "user" | "assistant" | "system"; text: string; streaming: boolean; created_at: string };
+// Reasoning and tool entries are steps of the model between messages.
+export type T3ViewMessage = { id: string; role: "user" | "assistant" | "system" | "reasoning" | "tool" | "interrupt" | "plan"; text: string; streaming: boolean; created_at: string; title?: string; detail?: string; status?: string };
 export type T3QueuedRun = { run_id: string; text: string; position: number; held: boolean };
 export type T3ThreadView = {
   id: string; title: string; provider_id: string; model: string; effort: string; effort_option: string;
   interaction_mode: string; runtime_mode: string; branch: string; worktree_path: string;
-  active_run_id: string; active_status: string; instance_id: string;
+  active_run_id: string; active_status: string; instance_id: string; interrupted: boolean;
   pull_requests: { repository: string; number: number; url: string }[];
   messages: T3ViewMessage[]; queue: T3QueuedRun[]; pending: T3ThreadContext["pending"];
   items: { item_id: string; role: string }[];
+  history_cursor: string;
 };
-export type T3SendInput = { text: string; mode: "auto" | "steer"; provider_id?: string; model?: string; effort_option?: string; effort?: string };
+export type T3Attachment = { type: "image" | "file"; id: string; name: string; mime_type: string; size_bytes: number };
+export type T3SendInput = { text: string; mode: "auto" | "steer"; provider_id?: string; model?: string; effort_option?: string; effort?: string; attachments?: T3Attachment[] };
 export type GithubIssue = S["GithubIssue"];
 export type GithubPull = S["GithubPull"];
 export type GithubDetail = S["GithubDetail"];
@@ -103,11 +106,25 @@ export const api = {
   t3Context: (id: string) => req<T3ThreadContext>("GET", `/t3/threads/${id}/context`),
   t3Send: (id: string, text: string) => req<void>("POST", `/t3/threads/${id}/messages`, { text }),
   t3View: (id: string) => req<T3ThreadView>("GET", `/t3/threads/${id}/view`),
+  t3History: (id: string, cursor: string) => req<{ messages: T3ViewMessage[]; next_cursor: string; has_more: boolean }>("GET", `/t3/threads/${id}/history?cursor=${encodeURIComponent(cursor)}`),
   t3Diff: (id: string) => req<{ diff: string }>("GET", `/t3/threads/${id}/diff`),
   t3Dispatch: (id: string, body: T3SendInput) => req<void>("POST", `/t3/threads/${id}/send`, body),
   t3QueueEdit: (id: string, run: string, text: string) => req<void>("PATCH", `/t3/threads/${id}/queue/${run}`, { text }),
   t3QueueReorder: (id: string, run: string, before: string) => req<void>("POST", `/t3/threads/${id}/queue/${run}/reorder`, { before_run_id: before }),
   t3QueueSteer: (id: string, run: string) => req<void>("POST", `/t3/threads/${id}/queue/${run}/steer`),
+  // t3Upload sends one file as the raw body; the result goes in t3Dispatch.
+  t3Upload: async (id: string, file: File): Promise<T3Attachment> => {
+    const res = await fetch(`/api/t3/threads/${id}/attachments?name=${encodeURIComponent(file.name || "adjunto")}`, {
+      method: "POST", credentials: "same-origin", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file,
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => null);
+      throw new ApiError(res.status, e?.error?.message ?? res.statusText);
+    }
+    return res.json();
+  },
+  t3Interrupt: (id: string) => req<void>("POST", `/t3/threads/${id}/interrupt`),
+  t3QueueResume: (id: string) => req<void>("POST", `/t3/threads/${id}/queue/resume`),
   t3QueueCancel: (id: string, run: string) => req<void>("DELETE", `/t3/threads/${id}/queue/${run}`),
   t3Settings: (id: string, body: { interaction_mode?: string; runtime_mode?: string }) => req<void>("PATCH", `/t3/threads/${id}/settings`, body),
   t3Respond: (id: string, requestId: string, body: { decision?: "accept" | "decline"; answers?: Record<string, unknown> }) =>

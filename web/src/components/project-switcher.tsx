@@ -48,7 +48,7 @@ export function ProjectSwitcher({ compact = false }: { compact?: boolean }) {
       className={`flex w-full items-center rounded text-left ${compact ? "min-h-11 px-2" : "px-2 py-1"} text-sm font-medium text-slate-800 hover:bg-slate-200 dark:text-text dark:hover:bg-raised ${open ? "bg-slate-200 dark:bg-raised" : ""}`}>
       {current ? <FolderSimple weight="duotone" aria-hidden="true" className="mr-2.5 size-[18px] shrink-0 opacity-80" /> : <SquaresFour weight="duotone" aria-hidden="true" className="mr-2.5 size-[18px] shrink-0 opacity-80" />}
       <span className="min-w-0 flex-1 truncate">{name}</span>
-      <CaretUpDown aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
+      <CaretUpDown weight="regular" aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
     </button>
   );
 

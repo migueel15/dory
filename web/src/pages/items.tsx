@@ -324,7 +324,7 @@ export function Board({ projectId }: { projectId: string }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">Kanban <span className="hidden text-xs font-normal text-slate-500 dark:text-muted sm:inline">(clic para abrir · arrastra para cambiar de estado)</span></h2>
-        <Button onClick={() => setCreating(true)} aria-label="Nuevo item" title="Nuevo item" className="inline-flex shrink-0 items-center gap-1.5"><Plus aria-hidden="true" className="size-4" /><span className="hidden sm:inline">Nuevo item</span></Button>
+        <Button onClick={() => setCreating(true)} aria-label="Nuevo item" title="Nuevo item" className="inline-flex shrink-0 items-center gap-1.5"><Plus weight="regular" aria-hidden="true" className="size-4" /><span className="hidden sm:inline">Nuevo item</span></Button>
       </div>
       {blocking && <BlockDialog item={blocking} onClose={() => setBlocking(null)} onConfirm={(reason) => { move.mutate({ item: blocking, status: "blocked", reason }); setBlocking(null); }} />}
       <ErrorText error={move.error ?? items.error} />
@@ -435,8 +435,7 @@ function ItemActions({ item, children }: { item: Item; children: React.ReactNode
     ...(DEFINABLE.includes(item.status) ? [{ label: item.status === "ready" ? "Revisar plan" : "Definir", run: () => navigate({ to: "/items/$id/define", params: { id: item.id } }) }] : []),
     ...(item.status === "ready" ? [{ label: "Enviar a implementar", run: () => setLaunch("implementation") }] : []),
     { label: "Mover a estado…", children: STATUSES.filter((s) => s !== item.status).map((s) => ({ label: STATUS_INFO[s].label, run: () => (s === "blocked" ? setBlocking(true) : change.mutate({ status: s })) })) },
-    ...(thread ? [{ label: "Abrir último hilo", content: <ThreadLink role="menuitem" className={linkClass} url={thread.url} environmentId={thread.t3_environment_id} threadId={thread.id}>Abrir último hilo</ThreadLink> }] : []),
-    ...(thread ? [{ label: "Abrir hilo en Dory", run: () => navigate({ to: "/threads/$threadId", params: { threadId: thread.id } }) }] : []),
+    ...(thread ? [{ label: "Abrir último hilo", run: () => navigate({ to: "/threads/$threadId", params: { threadId: thread.id } }) }] : []),
     ...(pull ? [{ label: "Abrir última PR", content: <Link role="menuitem" className={linkClass} to="/github/$owner/$repo/$kind/$number" params={{ owner: pull[1], repo: pull[2], kind: "pulls", number: pull[3] }}>Abrir última PR</Link> }] : []),
     { label: "Archivar", run: () => confirmArchive({ title: "¿Archivar el item?", text: `«${item.title}» saldrá de los tableros. Se borrará del todo a los 14 días.`, ok: "Archivar", danger: true, run: () => archive.mutate() }) },
   ];

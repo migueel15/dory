@@ -1,8 +1,9 @@
 import { expectedRemaining, paceTitle } from "../lib/usage-pace";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { Gauge } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
+import { ArrowClockwise, Gauge } from "@phosphor-icons/react";
+import { Arrow } from "./ui";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { api, type T3InstanceUsage } from "../api/client";
 
@@ -35,6 +36,10 @@ export function UsageQuick() {
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const usage = useQuery({ queryKey: ["t3-usage"], queryFn: api.t3Usage, refetchInterval: open ? 30_000 : false });
+  // Each opening asks the instances for fresh limits; the cached ones show meanwhile.
+  const qc = useQueryClient();
+  const refresh = useMutation({ mutationFn: api.t3UsageRefresh, onSuccess: (data) => qc.setQueryData(["t3-usage"], data) });
+  useEffect(() => { if (open) refresh.mutate(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const list = accounts(usage.data ?? []);
   const worst = Math.max(0, ...list.flatMap((p) => p.windows.map((w) => w.used_percent)));
   const tone = worst >= alertAt ? "text-red-600 dark:text-red-400" : worst >= warnAt ? "text-amber-600 dark:text-amber-400" : "";
@@ -80,7 +85,13 @@ export function UsageQuick() {
               })}
             </div>
           ))}
-          <Link to="/usage" onClick={() => setOpen(false)} className="block border-t border-slate-200 pt-2 text-xs text-slate-500 hover:text-slate-900 dark:border-border dark:text-muted dark:hover:text-text">Ver uso completo →</Link>
+          <div className="flex items-center border-t border-slate-200 pt-2 dark:border-border">
+            <Link to="/usage" onClick={() => setOpen(false)} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-text">Ver uso completo <Arrow /></Link>
+            <button type="button" onClick={() => refresh.mutate()} disabled={refresh.isPending} title="Actualizar" aria-label="Actualizar"
+              className="ml-auto grid size-6 place-items-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-900 disabled:hover:bg-transparent dark:hover:bg-raised dark:hover:text-white">
+              <ArrowClockwise weight="regular" className={`size-3.5 ${refresh.isPending ? "animate-spin" : ""}`} />
+            </button>
+          </div>
         </div>,
         // Inside the phone drawer (a modal dialog in the top layer) the panel must live in it to show above.
         trigger.current?.closest("dialog") ?? document.body,

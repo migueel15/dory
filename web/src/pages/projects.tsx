@@ -119,7 +119,7 @@ function ProjectList() {
                     <div className="h-1.5 overflow-hidden rounded bg-slate-200 dark:bg-hover"><div className="h-full rounded bg-emerald-600" style={{ width: `${total ? (done / total) * 100 : 0}%` }} /></div>
                   </div>
                   <div className="flex items-center gap-3 border-t border-slate-100 pt-2 text-xs text-slate-500 dark:border-border dark:text-muted">
-                    <span className="inline-flex items-center gap-1" title="Repositorios"><GitBranch aria-hidden="true" className="size-3.5" />{nRepos}</span>
+                    <span className="inline-flex items-center gap-1" title="Repositorios"><GitBranch weight="regular" aria-hidden="true" className="size-3.5" />{nRepos}</span>
                     {p.stack.length > 0 && <span className="min-w-0 flex-1 truncate" title={p.stack.join(", ")}>{p.stack.join(" · ")}</span>}
                     <span className="ml-auto shrink-0 inline-flex items-center gap-1" title={new Date(last).toLocaleString()}><Clock aria-hidden="true" className="size-3.5" />{ago(last)}</span>
                   </div>

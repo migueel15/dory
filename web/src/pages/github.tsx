@@ -287,7 +287,7 @@ export function Github() {
         </div>
         <Tip text="Recargar desde GitHub">
           <button type="button" onClick={refresh} disabled={refreshing} aria-label="Recargar" className={pill}>
-            <ArrowClockwise aria-hidden="true" className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            <ArrowClockwise weight="regular" aria-hidden="true" className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
             {refreshing ? "Recargando" : "Recargar"}
           </button>
         </Tip>
