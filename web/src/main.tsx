@@ -9,6 +9,7 @@ import { Button, Input, Label, Select, errMsg } from "./components/ui";
 import { setProject, useProject } from "./project";
 import { Environments, Memories, memorySearch } from "./pages/crud";
 import { CommandPalette } from "./components/commands";
+import { ProjectSwitcher } from "./components/project-switcher";
 import { GithubView } from "./pages/github-detail";
 import { Github } from "./pages/github";
 import { Notifications, NotificationItem } from "./components/notifications";
@@ -159,8 +160,10 @@ function Layout() {
     <div className="min-h-screen bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex sm:h-screen sm:bg-white sm:dark:bg-surface">
       <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col bg-white dark:bg-surface sm:flex">
         <Link to="/" className="flex items-center gap-2 px-4 py-3 font-bold">Dory<DevBadge /></Link>
+        {/* Two trial designs of the project switcher; the user keeps one. */}
+        <div className="shrink-0 px-2 pb-2"><ProjectSwitcher variant="card" /></div>
         <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4">{links}</nav>
-        <div className="shrink-0 px-3 pb-3"><ProjectFilter /></div>
+        <div className="shrink-0 px-2 pb-2"><ProjectSwitcher variant="row" /></div>
         <div className="shrink-0 space-y-2 border-t border-slate-200 p-3 dark:border-border">
           <div className="flex items-center gap-1">
             {desktop && <Notifications />}
