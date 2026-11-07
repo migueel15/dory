@@ -78,7 +78,7 @@ export function ThreadView() {
           <aside ref={aside} className="flex min-h-0 w-full flex-col lg:w-[var(--panel-w)] lg:shrink-0" style={{ "--panel-w": `${width}px` } as React.CSSProperties}>
             <div className="flex min-h-0 flex-1">
               <ResizeHandle panel={aside} width={width} onResize={setWidth} />
-              <div className="min-h-0 min-w-0 flex-1 overflow-auto lg:pl-3"><Changes v={v} queryKey={key} /></div>
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col pb-4 lg:pl-3"><Changes v={v} queryKey={key} /></div>
             </div>
           </aside>
         )}
@@ -574,8 +574,8 @@ function Changes({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
     qc.invalidateQueries({ queryKey });
   };
   return (
-    <section className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
+    <section className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
         <Select className="w-64" value={source} onChange={setSource} options={[
           { value: "thread", label: "Cambios del hilo (worktree)" },
           ...prs.map((p) => ({ value: p.url, label: `PR #${p.number} · ${p.repository}` })),
@@ -584,7 +584,7 @@ function Changes({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
       </div>
       <ErrorText error={pr ? prDiff.error : local.error} />
       {text === undefined ? <Notice loading /> : text === "" ? <p className="text-sm text-slate-500 dark:text-muted">Sin cambios todavía.</p>
-        : <Diff key={source} text={text} onSuggest={suggest} />}
+        : <div className="min-h-0 flex-1"><Diff key={source} text={text} onSuggest={suggest} fill /></div>}
     </section>
   );
 }

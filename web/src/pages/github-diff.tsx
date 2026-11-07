@@ -154,7 +154,8 @@ export type Suggestion = { path: string; start: number; end: number; snippet: st
 
 // Diff shows a pull request diff, or the given diff text when onSuggest sends
 // selections to a chat; GitHub reviews and comments only apply to the first.
-export function Diff({ repo = "", pr = 0, text, onSuggest }: { repo?: string; pr?: number; text?: string; onSuggest?: (s: Suggestion) => Promise<void> }) {
+// fill makes the diff take its container's height instead of 80vh.
+export function Diff({ repo = "", pr = 0, text, onSuggest, fill = false }: { repo?: string; pr?: number; text?: string; onSuggest?: (s: Suggestion) => Promise<void>; fill?: boolean }) {
   const qc = useQueryClient();
   const gh = !onSuggest && !!repo && !!pr;
   const diff = useQuery({ queryKey: ["github-diff", repo, pr], queryFn: () => api.githubDiff(repo, pr), enabled: text === undefined });
@@ -340,10 +341,10 @@ export function Diff({ repo = "", pr = 0, text, onSuggest }: { repo?: string; pr
   );
 
   return (
-    <div className={full ? "fixed inset-0 z-50 h-dvh overflow-hidden overscroll-none bg-slate-50 p-3 dark:bg-canvas" : ""}>
-    <div className={`grid gap-3 ${panelOpen ? "md:grid-cols-[16rem_1fr]" : "md:grid-cols-[2.25rem_1fr]"} ${full ? "h-full grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1" : ""}`}>
+    <div className={full ? "fixed inset-0 z-50 h-dvh overflow-hidden overscroll-none bg-slate-50 p-3 dark:bg-canvas" : fill ? "h-full min-h-0" : ""}>
+    <div className={`grid gap-3 ${panelOpen ? "md:grid-cols-[16rem_1fr]" : "md:grid-cols-[2.25rem_1fr]"} ${full || fill ? "h-full grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1" : ""}`}>
       {panelOpen ? (
-      <aside className={`${full ? "h-[30vh] md:h-auto" : "h-[30vh] md:h-[80vh]"} ${panel} flex min-h-0 flex-col overflow-hidden`}>
+      <aside className={`${full || fill ? "h-[30vh] md:h-auto" : "h-[30vh] md:h-[80vh]"} ${panel} flex min-h-0 flex-col overflow-hidden`}>
           <div className="flex shrink-0 gap-1.5 p-2">
             <Input aria-label="Buscar fichero o texto" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero o texto…" className="min-w-0 flex-1 py-1" />
             {tools}
@@ -354,7 +355,7 @@ export function Diff({ repo = "", pr = 0, text, onSuggest }: { repo?: string; pr
       ) : (
       <aside className="flex gap-1.5 md:flex-col">{tools}</aside>
       )}
-      <div className={`min-w-0 space-y-3 overflow-auto overscroll-contain ${full ? "" : "md:h-[80vh]"}`}>
+      <div className={`min-w-0 space-y-3 overflow-auto overscroll-contain ${full || fill ? "" : "md:h-[80vh]"}`}>
         <ErrorText error={diff.error ?? comment.error ?? ask.error ?? mark.error ?? suggest.error} />
         {ask.data && (
           <div role="status" className="flex items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm dark:border-border dark:bg-raised">
