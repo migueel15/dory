@@ -19,6 +19,9 @@ const actor = "dory-titles"
 // pollEvery is how often a running generation checks whether the title arrived.
 var pollEvery = 2 * time.Second
 
+// settleDelay lets the title thread end its turn before Dory settles it.
+var settleDelay = 5 * time.Second
+
 // Config selects the model and limits the generation. An empty Model turns it off.
 type Config struct {
 	Instance string
@@ -31,9 +34,10 @@ type Config struct {
 
 // Generator starts title threads for pending items.
 type Generator struct {
-	svc    service.Service
-	load   func(ctx context.Context) (Config, error)
-	launch func(ctx context.Context, cfg Config, title, prompt string) error
+	svc  service.Service
+	load func(ctx context.Context) (Config, error)
+	// launch starts the thread and returns how to settle it once the title is done.
+	launch func(ctx context.Context, cfg Config, title, prompt string) (settle func(), err error)
 }
 
 // New builds a Generator that reads the stored settings on every generation and
@@ -45,7 +49,7 @@ func New(svc service.Service, monitor *t3.Monitor, store Store) *Generator {
 			s, err := store.Load(ctx)
 			return s.Config(), err
 		},
-		launch: func(ctx context.Context, cfg Config, title, prompt string) error {
+		launch: func(ctx context.Context, cfg Config, title, prompt string) (func(), error) {
 			return launchOnT3(ctx, monitor, cfg, title, prompt)
 		},
 	}
@@ -61,14 +65,13 @@ func (g *Generator) config(ctx context.Context) Config {
 	return cfg
 }
 
-// Prompt is the fixed instruction: the item id, a single title change, archiving the
-// agent's own thread with the T3 Code tools and the full description.
+// Prompt is the fixed instruction: the item id, a single title change and the full
+// description. Dory settles the thread itself once the title arrives, so the agent
+// must not archive, settle or delete it.
 func Prompt(item service.Item) string {
 	return fmt.Sprintf("Genera un título breve (≤ 80 caracteres, en el idioma del texto) para el item de Dory `%s`. "+
-		"Llama una sola vez a `update_item` con `{title, title_source: \"ai\"}`. "+
-		"Después archiva tu propio hilo con la herramienta de T3 Code que lo permita (por ejemplo `t3_thread_update`; "+
-		"son herramientas diferidas: cárgalas antes con ToolSearch) y termina sin hacer nada más. "+
-		"Si no puedes generar el título, archiva igualmente tu hilo antes de acabar. Descripción:\n%s", item.ID, item.RawText)
+		"Llama una sola vez a `update_item` con `{title, title_source: \"ai\"}` y termina sin hacer nada más. "+
+		"No archives, cierres ni borres este hilo: Dory lo gestiona. Descripción:\n%s", item.ID, item.RawText)
 }
 
 // Generate runs in the background: it starts the thread and waits until the title
@@ -76,10 +79,15 @@ func Prompt(item service.Item) string {
 func (g *Generator) Generate(item service.Item, cfg Config) {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
 	defer cancel()
-	if err := g.launch(ctx, cfg, "Título: "+item.Title, Prompt(item)); err != nil {
+	settle, err := g.launch(ctx, cfg, "Título: "+item.Title, Prompt(item))
+	if err != nil {
 		log.Printf("titles: item %s: %v", item.ID, err)
 		g.giveUp(item.ID)
 		return
+	}
+	// Whatever the outcome, the thread ends settled, never archived or deleted.
+	if settle != nil {
+		defer settle()
 	}
 	tick := time.NewTicker(pollEvery)
 	defer tick.Stop()
@@ -168,7 +176,7 @@ func (r generatingItems) Put(ctx context.Context, by string, in service.Item) (s
 
 // launchOnT3 starts the thread on the chosen instance, or on the first connected
 // one that offers the model when none is chosen.
-func launchOnT3(ctx context.Context, monitor *t3.Monitor, cfg Config, title, prompt string) error {
+func launchOnT3(ctx context.Context, monitor *t3.Monitor, cfg Config, title, prompt string) (func(), error) {
 	var last error = t3.ErrInstanceUnavailable
 	for _, st := range monitor.Statuses() {
 		if st.State != t3.StateAvailable || (cfg.Instance != "" && st.InstanceID != cfg.Instance) {
@@ -190,10 +198,22 @@ func launchOnT3(ctx context.Context, monitor *t3.Monitor, cfg Config, title, pro
 			continue
 		}
 		in.Title, in.Prompt = title, prompt
-		_, err = c.Launch(ctx, in)
-		return err
+		threadID, err := c.Launch(ctx, in)
+		if threadID == "" {
+			return nil, err
+		}
+		settle := func() {
+			// Give the agent a moment to finish its last turn before settling.
+			time.Sleep(settleDelay)
+			sctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := c.SettleThread(sctx, threadID); err != nil {
+				log.Printf("titles: settle thread %s: %v", threadID, err)
+			}
+		}
+		return settle, err
 	}
-	return last
+	return nil, last
 }
 
 // pick chooses provider, model, T3 project and the lowest reasoning effort from a catalog.

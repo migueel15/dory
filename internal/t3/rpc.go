@@ -227,6 +227,11 @@ func (c Client) RespondUserInput(ctx context.Context, threadID, requestID string
 	return c.Dispatch(ctx, map[string]any{"type": "runtime-request.respond", "threadId": threadID, "requestId": requestID, "answers": answers})
 }
 
+// SettleThread marks a thread as settled: it stays in T3 Code, out of the active list.
+func (c Client) SettleThread(ctx context.Context, threadID string) error {
+	return c.Dispatch(ctx, map[string]any{"type": "thread.settle", "threadId": threadID})
+}
+
 // DeleteThread removes a thread.
 func (c Client) DeleteThread(ctx context.Context, threadID string) error {
 	return c.Dispatch(ctx, map[string]any{"type": "thread.delete", "threadId": threadID})
