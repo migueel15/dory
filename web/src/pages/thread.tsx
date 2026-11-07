@@ -404,8 +404,10 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
     mutationFn: () => held ? api.t3QueueResume(v.id) : api.t3Dispatch(v.id, { text: "Continúa por donde lo dejaste.", mode: "auto" }),
     onSuccess: () => qc.invalidateQueries({ queryKey }),
   });
-  const canSend = !!text.trim() && !send.isPending;
-  const submit = () => { if (canSend) send.mutate(); };
+  // Stopped with an empty box: the send button continues where it stopped.
+  const resumable = !busy && (held || v.interrupted) && !text.trim();
+  const canSend = (!!text.trim() || resumable) && !send.isPending && !resume.isPending;
+  const submit = () => { if (!canSend) return; if (resumable) resume.mutate(); else send.mutate(); };
 
   return (
     <form onSubmit={(e) => { e.preventDefault(); submit(); }}
@@ -428,20 +430,14 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
             </button>
           )}
         </div>
-        {(held || (v.interrupted && !busy)) && (
-          <button type="button" onClick={() => resume.mutate()} disabled={resume.isPending} title={held ? "Reanuda la cola: sale el siguiente mensaje" : "Sigue el turno parado por donde iba"}
-            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-slate-100 px-3 text-xs font-medium text-slate-700 hover:bg-slate-200 dark:bg-raised dark:text-text-secondary dark:hover:text-white">
-            <Play weight="fill" className="size-3" />Continuar
-          </button>
-        )}
         {busy && !text.trim() ? (
           <button type="button" onClick={() => stop.mutate()} disabled={stop.isPending} title="Parar el turno en curso" aria-label="Parar"
             className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-900 text-white transition hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200">
             <Stop weight="fill" className="size-3.5" />
           </button>
-        ) : <button type="submit" disabled={!canSend} title={busy ? (steer ? "Steer" : "Encolar") : "Enviar (Enter)"} aria-label="Enviar"
+        ) : <button type="submit" disabled={!canSend} title={resumable ? "Continuar por donde iba" : busy ? (steer ? "Steer" : "Encolar") : "Enviar (Enter)"} aria-label={resumable ? "Continuar" : "Enviar"}
           className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-900 text-white transition hover:bg-slate-700 disabled:bg-slate-200 disabled:text-slate-400 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 dark:disabled:bg-raised dark:disabled:text-muted">
-          {send.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : busy && !steer ? <ListBullets weight="bold" className="size-4" /> : <ArrowUp weight="bold" className="size-4" />}
+          {send.isPending || resume.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : resumable ? <Play weight="fill" className="size-3.5" /> : busy && !steer ? <ListBullets weight="bold" className="size-4" /> : <ArrowUp weight="bold" className="size-4" />}
         </button>}
       </div>
       {(send.error || settings.error || stop.error || resume.error) && <div className="px-4 pb-2"><ErrorText error={send.error ?? settings.error ?? stop.error ?? resume.error} /></div>}
