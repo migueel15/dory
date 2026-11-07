@@ -190,8 +190,8 @@ export function useConfirm(): [(a: Ask) => void, ReactNode] {
     return () => document.removeEventListener("keydown", esc);
   }, [ask]);
   const dialog = ask && (
-    <div role="dialog" aria-modal="true" aria-label={ask.title} onMouseDown={(e) => e.target === e.currentTarget && setAsk(undefined)} className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-border dark:bg-surface">
+    <div role="dialog" aria-modal="true" aria-label={ask.title} onMouseDown={(e) => e.target === e.currentTarget && setAsk(undefined)} className="fixed inset-0 z-50 grid place-items-center p-4">
+      <div className="notif-in w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-border dark:bg-surface">
         <h2 className="text-base font-semibold">{ask.title}</h2>
         <p className="mt-1.5 text-sm text-slate-600 dark:text-text-secondary">{ask.text}</p>
         <div className="mt-5 flex justify-end gap-2">
