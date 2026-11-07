@@ -347,19 +347,26 @@ export const RefContext = createContext<{ owner: string; repo: string; links: Li
 const refLinks = (md: string) =>
   md.split(/(```[\s\S]*?```|`[^`\n]*`)/).map((part, i) => (i % 2 ? part : part.replace(/(^|[^\w&/#[])#(\d+)\b/g, "$1[#$2](dory-ref:$2)"))).join("");
 
-function RefLink({ number }: { number: number }) {
-  const ctx = useContext(RefContext)!;
-  const l = ctx.links.find((x) => x.number === number);
-  const cls = "inline-flex items-center gap-0.5 rounded px-1 font-medium text-blue-700 no-underline hover:bg-blue-50 hover:underline dark:text-accent-text dark:hover:bg-accent-subtle";
-  if (!l) return <Tip text="Abrir en GitHub"><a href={`https://github.com/${ctx.owner}/${ctx.repo}/issues/${number}`} target="_blank" rel="noreferrer" className={cls}>#{number}</a></Tip>;
-  const tip = `${l.pull ? "PR" : "Issue"} #${l.number} · ${l.title} · ${l.state === "OPEN" ? "abierta" : l.state === "MERGED" ? "mergeada" : "cerrada"}`;
+const refCls = "inline-flex items-center gap-0.5 rounded px-1 font-medium text-blue-700 no-underline hover:bg-blue-50 hover:underline dark:text-accent-text dark:hover:bg-accent-subtle";
+
+// PrRefChip is the "#N" chip of a pull request: a state dot and the number,
+// with a tooltip of its kind, title and state. Messages and the stack bar share it.
+export function PrRefChip({ owner, repo, number, title, state, kind = "pulls", className, current }: { owner: string; repo: string; number: number; title: string; state: string; kind?: "pulls" | "issues"; className?: string; current?: boolean }) {
+  const tip = `${kind === "pulls" ? "PR" : "Issue"} #${number} · ${title} · ${state === "OPEN" ? "abierta" : state === "MERGED" ? "mergeada" : "cerrada"}`;
   return (
     <Tip text={tip}>
-      <RouterLink to="/github/$owner/$repo/$kind/$number" params={{ owner: ctx.owner, repo: ctx.repo, kind: l.pull ? "pulls" : "issues", number: String(number) }} className={cls}>
-        <span className={`size-1.5 rounded-full ${l.state === "OPEN" ? "bg-green-500" : l.state === "MERGED" ? "bg-purple-500" : "bg-red-500"}`} />#{number}
+      <RouterLink to="/github/$owner/$repo/$kind/$number" params={{ owner, repo, kind, number: String(number) }} aria-current={current ? "page" : undefined} className={`${refCls} ${className ?? ""}`}>
+        <span className={`size-1.5 rounded-full ${state === "OPEN" ? "bg-green-500" : state === "MERGED" ? "bg-purple-500" : "bg-red-500"}`} />#{number}
       </RouterLink>
     </Tip>
   );
+}
+
+function RefLink({ number }: { number: number }) {
+  const ctx = useContext(RefContext)!;
+  const l = ctx.links.find((x) => x.number === number);
+  if (!l) return <Tip text="Abrir en GitHub"><a href={`https://github.com/${ctx.owner}/${ctx.repo}/issues/${number}`} target="_blank" rel="noreferrer" className={refCls}>#{number}</a></Tip>;
+  return <PrRefChip owner={ctx.owner} repo={ctx.repo} number={number} title={l.title} state={l.state} kind={l.pull ? "pulls" : "issues"} />;
 }
 
 // RefMd renders markdown where "#52" links to that issue or pull request.
