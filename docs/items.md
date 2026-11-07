@@ -8,6 +8,12 @@ Las flechas arriba/abajo y Home/End recorren las acciones. Enter activa la selec
 
 El doble clic y el arrastre del kanban conservan sus manejadores. En móvil se mantiene el botón ✎ y no se añade un gesto de pulsación larga. Fuera de las tarjetas y filas se conserva el menú del navegador.
 
+# Archivado de items e hilos
+
+Al archivar un item desde la web o MCP (`archive_item`), Dory intenta archivar también todos sus hilos asociados en `item_threads` cuyos enlaces no estén archivados. Cada hilo se alcanza mediante su propia instancia T3. El intento ocurre después de confirmar el archivado en la base de datos; un fallo de T3 se registra en el log y no impide archivar el item ni intentar los demás hilos.
+
+Archivar en T3 oculta el hilo y puede detener trabajo que esté en curso. Se usa `thread.archive`, sin asentarlo antes con `thread.settle`. Recuperar el item no recupera sus hilos, y moverlo a `done` no los archiva. Este comportamiento corresponde al archivado individual del item, no al archivado en cascada de un proyecto.
+
 # Vista «Definir»
 
 `/items/{id}/define` convierte una nota en un ticket listo. En escritorio muestra dos columnas; en móvil, las pestañas Chat y Plan.

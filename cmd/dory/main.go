@@ -82,6 +82,13 @@ func run() error {
 		if p, ok := svc.(service.Purger); ok {
 			go service.RunPurge(ctx, p)
 		}
+		svc = service.WithItemThreadArchiving(svc, func(ctx context.Context, instanceID, threadID string) error {
+			client, err := monitor.InstanceClient(ctx, instanceID)
+			if err != nil {
+				return err
+			}
+			return client.ArchiveThread(ctx, threadID)
+		})
 		titleSettings := titles.Store{Pool: pool}
 		titleSettings.Mount(mux)
 		titleGen := titles.New(svc, monitor, titleSettings)

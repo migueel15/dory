@@ -96,3 +96,24 @@ func TestContextFindsExactCommandAndQuestions(t *testing.T) {
 		t.Errorf("questions %+v", p)
 	}
 }
+
+func TestArchiveThreadDispatch(t *testing.T) {
+	for _, fails := range []bool{false, true} {
+		t.Run(map[bool]string{false: "success", true: "failure"}[fails], func(t *testing.T) {
+			exit := `{"_tag":"Success","value":{"sequence":1}}`
+			if fails {
+				exit = `{"_tag":"Failure","cause":[{"_tag":"Die","defect":"offline"}]}`
+			}
+			var seen map[string]any
+			c := rpcServer(t, exit, &seen)
+			err := c.ArchiveThread(context.Background(), "thread")
+			if (err != nil) != fails {
+				t.Fatalf("ArchiveThread error=%v, failure expected=%v", err, fails)
+			}
+			p := seen["payload"].(map[string]any)
+			if seen["tag"] != "orchestration.dispatchCommand" || p["type"] != "thread.archive" || p["threadId"] != "thread" || p["commandId"] == "" {
+				t.Fatalf("unexpected archive command: %+v", seen)
+			}
+		})
+	}
+}
