@@ -97,7 +97,7 @@ function Machine({ env, status }: { env: Environment; status: T3Status }) {
   const host = (() => { try { return new URL(status.base_url).host; } catch { return status.base_url; } })();
   const muted = "text-xs text-slate-500 dark:text-muted";
   return (
-    <section className="flex flex-col gap-4 py-5 first:pt-0 last:pb-0">
+    <Card className="flex h-full flex-col gap-4">
       <div className="flex items-start gap-3">
         <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-700 dark:bg-raised dark:text-text"><Os weight="duotone" aria-hidden="true" className="size-6" /></span>
         <div className="min-w-0 flex-1">
@@ -157,7 +157,7 @@ function Machine({ env, status }: { env: Environment; status: T3Status }) {
       <div className="mt-auto flex justify-end border-t border-slate-100 pt-3 dark:border-border">
         <button type="button" className={pill} onClick={() => openT3(status)}>Abrir T3 Code <Arrow /></button>
       </div>
-    </section>
+    </Card>
   );
 }
 
@@ -175,7 +175,7 @@ export function Environments() {
       <PageHeader title="Entornos" subtitle={machines.length ? `${online} de ${machines.length} disponibles` : undefined} />
       <ErrorText error={envs.error ?? t3.error} />
       {envs.data && t3.data && machines.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">T3 Code no ha detectado ninguna máquina.</p>}
-      <div className="divide-y divide-slate-200 dark:divide-border">
+      <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
         {machines.map(({ env, status }) => <Machine key={env.id} env={env} status={status} />)}
       </div>
     </div>
