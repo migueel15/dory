@@ -47,6 +47,7 @@ export function ThreadView() {
   const view = useQuery({ queryKey: key, queryFn: () => api.t3View(threadId) });
   useThreadLive(threadId, key);
   const [panel, setPanel] = useState<"" | "changes">("");
+  const aside = useRef<HTMLElement>(null);
   const [width, setWidth] = useState(() => { try { return Number(localStorage.getItem("dory.thread-panel-width")) || 560; } catch { return 560; } });
   // stopping is the run the user just stopped: the view shows it stopped
   // until T3 confirms, and goes back if T3 keeps it running.
@@ -74,9 +75,9 @@ export function ThreadView() {
       <div className="relative flex min-h-0 flex-1">
         <div className={`min-h-0 min-w-0 flex-1 flex-col ${panel ? "hidden lg:flex" : "flex"}`}><Chat v={v} queryKey={key} onStop={setStopping} /></div>
         {panel === "changes" && (
-          <aside className="flex min-h-0 w-full flex-col lg:w-[var(--panel-w)] lg:shrink-0" style={{ "--panel-w": `${width}px` } as React.CSSProperties}>
+          <aside ref={aside} className="flex min-h-0 w-full flex-col lg:w-[var(--panel-w)] lg:shrink-0" style={{ "--panel-w": `${width}px` } as React.CSSProperties}>
             <div className="flex min-h-0 flex-1">
-              <ResizeHandle width={width} onResize={setWidth} />
+              <ResizeHandle panel={aside} width={width} onResize={setWidth} />
               <div className="min-h-0 min-w-0 flex-1 overflow-auto lg:pl-3"><Changes v={v} queryKey={key} /></div>
             </div>
           </aside>
@@ -86,14 +87,21 @@ export function ThreadView() {
   );
 }
 
-// ResizeHandle drags the side panel's left edge; the width is kept per browser.
-function ResizeHandle({ width, onResize }: { width: number; onResize: (w: number) => void }) {
+// ResizeHandle drags the side panel's left edge. While dragging it only moves
+// a CSS variable on the panel, once per frame, so React does not re-render the
+// chat and the diff on every pointer move; the width is saved on release.
+function ResizeHandle({ panel, width, onResize }: { panel: React.RefObject<HTMLElement | null>; width: number; onResize: (w: number) => void }) {
   const start = (e: React.PointerEvent) => {
     e.preventDefault();
     const x0 = e.clientX, w0 = width;
-    let last = w0;
-    const move = (ev: PointerEvent) => { last = Math.min(Math.max(320, w0 + x0 - ev.clientX), window.innerWidth - 420); onResize(last); };
+    let last = w0, frame = 0;
+    const move = (ev: PointerEvent) => {
+      last = Math.min(Math.max(320, w0 + x0 - ev.clientX), window.innerWidth - 420);
+      if (!frame) frame = requestAnimationFrame(() => { frame = 0; panel.current?.style.setProperty("--panel-w", `${last}px`); });
+    };
     const up = () => {
+      cancelAnimationFrame(frame);
+      onResize(last);
       window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
       document.body.style.cursor = ""; document.body.style.userSelect = "";
       try { localStorage.setItem("dory.thread-panel-width", String(Math.round(last))); } catch { /* per-browser only */ }
