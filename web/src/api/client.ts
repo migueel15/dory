@@ -29,7 +29,8 @@ export type T3ThreadView = {
   messages: T3ViewMessage[]; queue: T3QueuedRun[]; pending: T3ThreadContext["pending"];
   items: { item_id: string; role: string }[];
 };
-export type T3SendInput = { text: string; mode: "auto" | "steer"; provider_id?: string; model?: string; effort_option?: string; effort?: string };
+export type T3Attachment = { type: "image" | "file"; id: string; name: string; mime_type: string; size_bytes: number };
+export type T3SendInput = { text: string; mode: "auto" | "steer"; provider_id?: string; model?: string; effort_option?: string; effort?: string; attachments?: T3Attachment[] };
 export type GithubIssue = S["GithubIssue"];
 export type GithubPull = S["GithubPull"];
 export type GithubDetail = S["GithubDetail"];
@@ -109,6 +110,17 @@ export const api = {
   t3QueueEdit: (id: string, run: string, text: string) => req<void>("PATCH", `/t3/threads/${id}/queue/${run}`, { text }),
   t3QueueReorder: (id: string, run: string, before: string) => req<void>("POST", `/t3/threads/${id}/queue/${run}/reorder`, { before_run_id: before }),
   t3QueueSteer: (id: string, run: string) => req<void>("POST", `/t3/threads/${id}/queue/${run}/steer`),
+  // t3Upload sends one file as the raw body; the result goes in t3Dispatch.
+  t3Upload: async (id: string, file: File): Promise<T3Attachment> => {
+    const res = await fetch(`/api/t3/threads/${id}/attachments?name=${encodeURIComponent(file.name || "adjunto")}`, {
+      method: "POST", credentials: "same-origin", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file,
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => null);
+      throw new ApiError(res.status, e?.error?.message ?? res.statusText);
+    }
+    return res.json();
+  },
   t3Interrupt: (id: string) => req<void>("POST", `/t3/threads/${id}/interrupt`),
   t3QueueResume: (id: string) => req<void>("POST", `/t3/threads/${id}/queue/resume`),
   t3QueueCancel: (id: string, run: string) => req<void>("DELETE", `/t3/threads/${id}/queue/${run}`),

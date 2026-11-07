@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { ArrowUp, Brain, CaretDown, CaretRight, Check, Copy, Lightning, ListBullets, PencilSimple, Play, Question, Stop, Trash, Wrench, X } from "@phosphor-icons/react";
-import { api, type T3QueuedRun, type T3ThreadView, type T3ViewMessage } from "../api/client";
+import { ArrowUp, Brain, CaretDown, CaretRight, Check, Copy, FileText, Paperclip, Lightning, ListBullets, PencilSimple, Play, Question, Stop, Trash, Wrench, X } from "@phosphor-icons/react";
+import { api, type T3Attachment, type T3QueuedRun, type T3ThreadView, type T3ViewMessage } from "../api/client";
 import { useThreadLive } from "../api/live";
-import { Button, ErrorText, Input, Md, Notice, PageHeader, Select, StatusPill, pill } from "../components/ui";
+import { Button, ErrorText, Input, Md, errMsg, Notice, PageHeader, Select, StatusPill, pill } from "../components/ui";
 import { OpenInT3 } from "../components/thread-link";
 import { PendingRequest } from "../components/pending-request";
 import { ProviderIcon } from "./launch-form";
@@ -368,6 +368,8 @@ function ModelPicker({ models, selected, effort, effortsOf, onChange }: { models
   );
 }
 
+type Draft = { key: string; name: string; preview?: string; done?: T3Attachment; error?: string };
+
 function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const qc = useQueryClient();
   const catalog = useQuery({ queryKey: ["t3-catalog", v.instance_id], queryFn: () => api.t3Catalog(v.instance_id), enabled: !!v.instance_id, staleTime: 60_000 });
@@ -376,6 +378,24 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const [choice, setChoice] = useState("");
   const [effort, setEffort] = useState("");
   const area = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const [files, setFiles] = useState<Draft[]>([]);
+  const uploading = files.some((f) => !f.done && !f.error);
+  const ready = files.flatMap((f) => (f.done ? [f.done] : []));
+  // Each file uploads as soon as it is added; the message carries the results.
+  const addFiles = (list: FileList | File[]) => {
+    for (const file of Array.from(list)) {
+      const key = crypto.randomUUID();
+      const named = file.name ? file : new File([file], `imagen-${new Date().toISOString().slice(11, 19).replace(/:/g, "")}.png`, { type: file.type });
+      const preview = named.type.startsWith("image/") ? URL.createObjectURL(named) : undefined;
+      setFiles((fs) => [...fs, { key, name: named.name, preview }]);
+      api.t3Upload(v.id, named).then(
+        (done) => setFiles((fs) => fs.map((f) => (f.key === key ? { ...f, done } : f))),
+        (e: unknown) => setFiles((fs) => fs.map((f) => (f.key === key ? { ...f, error: errMsg(e) || "No se pudo subir" } : f))),
+      );
+    }
+  };
+  const removeFile = (key: string) => setFiles((fs) => fs.filter((f) => { if (f.key === key && f.preview) URL.revokeObjectURL(f.preview); return f.key !== key; }));
   const selected = choice || `${v.provider_id}|${v.model}`;
   const [providerId, slug] = selected.split("|");
   const model = catalog.data?.providers.find((p) => p.instance_id === providerId)?.models.find((m) => m.slug === slug);
@@ -392,10 +412,10 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
 
   const send = useMutation({
     mutationFn: () => api.t3Dispatch(v.id, {
-      text, mode: steer ? "steer" : "auto",
+      text, mode: steer ? "steer" : "auto", ...(ready.length ? { attachments: ready } : {}),
       ...(changed ? { provider_id: providerId, model: slug, effort_option: model?.effort?.id, effort: model?.effort ? effortValue : undefined } : {}),
     }),
-    onSuccess: () => { if (changed && model?.effort && effortValue) saveEffort(model.slug, effortValue); setText(""); setSteer(false); qc.invalidateQueries({ queryKey }); },
+    onSuccess: () => { if (changed && model?.effort && effortValue) saveEffort(model.slug, effortValue); setText(""); setSteer(false); files.forEach((f) => f.preview && URL.revokeObjectURL(f.preview)); setFiles([]); qc.invalidateQueries({ queryKey }); },
   });
   const settings = useMutation({ mutationFn: (b: { interaction_mode?: string; runtime_mode?: string }) => api.t3Settings(v.id, b), onSuccess: () => qc.invalidateQueries({ queryKey }) });
   const busy = !!v.active_run_id;
@@ -409,19 +429,39 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
     onSuccess: () => qc.invalidateQueries({ queryKey }),
   });
   // Stopped with an empty box: the send button continues where it stopped.
-  const resumable = !busy && (held || v.interrupted) && !text.trim();
-  const canSend = (!!text.trim() || resumable) && !send.isPending && !resume.isPending;
+  const resumable = !busy && (held || v.interrupted) && !text.trim() && !files.length;
+  const canSend = (!!text.trim() || ready.length > 0 || resumable) && !uploading && !send.isPending && !resume.isPending;
   const submit = () => { if (!canSend) return; if (resumable) resume.mutate(); else send.mutate(); };
 
   return (
     <form onSubmit={(e) => { e.preventDefault(); submit(); }}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
+      onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); addFiles(e.dataTransfer.files); } }}
       className="rounded-3xl border border-slate-200 bg-white shadow-md transition-shadow focus-within:border-slate-400 focus-within:shadow-lg dark:border-border-strong dark:bg-surface dark:focus-within:border-muted">
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-2 px-3 pt-3">
+          {files.map((f) => (
+            <div key={f.key} title={f.error ?? f.name} className={`relative flex h-14 max-w-[12rem] items-center gap-2 overflow-hidden rounded-xl border bg-slate-50 pr-7 text-xs dark:bg-raised ${f.error ? "border-red-400" : "border-slate-200 dark:border-border"}`}>
+              {f.preview ? <img src={f.preview} alt="" className="size-14 shrink-0 object-cover" /> : <span className="grid size-14 shrink-0 place-items-center text-slate-400"><FileText className="size-6" /></span>}
+              <span className="min-w-0 truncate">{f.error ? f.error : f.name}</span>
+              {!f.done && !f.error && <span className="absolute inset-0 grid place-items-center bg-white/60 dark:bg-black/40"><span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /></span>}
+              <button type="button" onClick={() => removeFile(f.key)} aria-label={`Quitar ${f.name}`} className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-slate-900/70 text-white hover:bg-slate-900"><X className="size-3" /></button>
+            </div>
+          ))}
+        </div>
+      )}
       <textarea ref={area} rows={1} value={text} onChange={(e) => setText(e.target.value)} aria-label="Mensaje"
+        onPaste={(e) => { const fs = Array.from(e.clipboardData.files); if (fs.length) { e.preventDefault(); addFiles(fs); } }}
         placeholder="Escribe al hilo…"
         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }}
         className="block max-h-60 w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 !outline-none placeholder:text-slate-400" />
       <div className="flex items-center gap-0.5 px-2 pb-2">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
+          <input ref={picker} type="file" multiple hidden onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
+          <button type="button" onClick={() => picker.current?.click()} title="Adjuntar imágenes o ficheros" aria-label="Adjuntar"
+            className="grid size-8 place-items-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white">
+            <Paperclip className="size-4" />
+          </button>
           <ModelPicker models={models} selected={selected} effort={effortValue}
             effortsOf={(value) => { const [pid, sl] = value.split("|"); const m = catalog.data?.providers.find((p) => p.instance_id === pid)?.models.find((x) => x.slug === sl); return m?.effort ? { values: m.effort.values, initial: value === selected ? effortValue : savedEffort(sl, m.effort.values) || m.effort.default } : undefined; }}
             onChange={(value, eff) => { setChoice(value); setEffort(eff); const sl = value.split("|")[1]; if (eff) saveEffort(sl, eff); }} />
