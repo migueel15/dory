@@ -73,3 +73,34 @@ func TestThreadDiffWithoutCheckpointsIsEmpty(t *testing.T) {
 		t.Errorf("diff %q err %v", d, err)
 	}
 }
+
+func TestThreadViewInterleavesReasoningAndTools(t *testing.T) {
+	c := rpcServer(t, `{"_tag":"Success","value":{"thread":{},"runs":[],
+		"messages":[{"id":"m1","role":"user","text":"hola"},{"id":"a1","role":"assistant","text":"listo"}],
+		"turnItems":[
+			{"id":"i4","type":"assistant_message","messageId":"a1","ordinal":4},
+			{"id":"i1","type":"user_message","messageId":"m1","ordinal":1},
+			{"id":"i2","type":"reasoning","text":"pienso","streaming":true,"ordinal":2,"status":"running"},
+			{"id":"i3","type":"command_execution","input":"ls -la","ordinal":3,"status":"completed"},
+			{"id":"i5","type":"checkpoint","ordinal":5}]}}`, nil)
+	v, err := c.ThreadView(context.Background(), "th")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := []string{}
+	for _, m := range v.Messages {
+		got = append(got, m.Role+":"+m.Text+m.Detail)
+	}
+	want := []string{"user:hola", "reasoning:pienso", "tool:ls -la", "assistant:listo"}
+	if len(got) != len(want) {
+		t.Fatalf("messages %v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("messages %v", got)
+		}
+	}
+	if !v.Messages[1].Streaming || v.Messages[2].Title != "command execution" {
+		t.Errorf("steps %+v", v.Messages[1:3])
+	}
+}

@@ -8,13 +8,52 @@ import (
 	"strings"
 )
 
-// ViewMessage is one message of the thread view.
+// ViewMessage is one entry of the thread view: a user or assistant message,
+// the model's reasoning (role "reasoning") or a tool it ran (role "tool", with
+// Title, Detail and Status).
 type ViewMessage struct {
 	ID        string `json:"id"`
 	Role      string `json:"role"`
 	Text      string `json:"text"`
 	Streaming bool   `json:"streaming"`
 	CreatedAt string `json:"created_at"`
+	Title     string `json:"title,omitempty"`
+	Detail    string `json:"detail,omitempty"`
+	Status    string `json:"status,omitempty"`
+}
+
+// wireTurnItem is one step of a turn: messages, reasoning and tool calls.
+type wireTurnItem struct {
+	ID        string          `json:"id"`
+	Type      string          `json:"type"`
+	Status    string          `json:"status"`
+	Streaming bool            `json:"streaming"`
+	Title     *string         `json:"title"`
+	ToolName  *string         `json:"toolName"`
+	Text      *string         `json:"text"`
+	Input     json.RawMessage `json:"input"`
+	MessageID *string         `json:"messageId"`
+	Ordinal   int             `json:"ordinal"`
+	StartedAt string          `json:"startedAt"`
+}
+
+// hiddenItems are turn items the chat does not show as steps.
+var hiddenItems = map[string]bool{"checkpoint": true, "user_input_request": true, "user_message": true, "assistant_message": true}
+
+// toolDetail summarizes a tool input: a command as is, anything else as compact JSON.
+func toolDetail(raw json.RawMessage) string {
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	d := string(raw)
+	if len(d) > 400 {
+		d = d[:400] + "…"
+	}
+	return d
 }
 
 // QueuedRun is a message waiting in T3's native queue for the active turn to end.
@@ -92,6 +131,7 @@ type wireViewProjection struct {
 		Streaming bool   `json:"streaming"`
 		CreatedAt string `json:"createdAt"`
 	} `json:"messages"`
+	TurnItems []wireTurnItem `json:"turnItems"`
 }
 
 // activeStatuses are the run states during which a new message must queue or steer.
@@ -173,10 +213,41 @@ func (p wireViewProjection) view(threadID string) ThreadView {
 		}
 	}
 	sort.SliceStable(v.Queue, func(i, j int) bool { return v.Queue[i].Position < v.Queue[j].Position })
+	msgs := map[string]ViewMessage{}
 	for _, m := range p.FullMessages {
 		// Queued messages show in the queue, not in the conversation.
 		if !queued[m.ID] {
-			v.Messages = append(v.Messages, ViewMessage{ID: m.ID, Role: m.Role, Text: m.Text, Streaming: m.Streaming, CreatedAt: m.CreatedAt})
+			msgs[m.ID] = ViewMessage{ID: m.ID, Role: m.Role, Text: m.Text, Streaming: m.Streaming, CreatedAt: m.CreatedAt}
+		}
+	}
+	// Turn items give the order of messages, reasoning and tools; messages
+	// without an item yet (or threads without items) follow in their own order.
+	items := append([]wireTurnItem(nil), p.TurnItems...)
+	sort.SliceStable(items, func(i, j int) bool { return items[i].Ordinal < items[j].Ordinal })
+	shown := map[string]bool{}
+	for _, it := range items {
+		switch {
+		case it.MessageID != nil:
+			if m, ok := msgs[*it.MessageID]; ok && !shown[m.ID] {
+				shown[m.ID] = true
+				v.Messages = append(v.Messages, m)
+			}
+		case it.Type == "reasoning":
+			v.Messages = append(v.Messages, ViewMessage{ID: it.ID, Role: "reasoning", Text: str(it.Text), Streaming: it.Streaming, CreatedAt: it.StartedAt, Status: it.Status})
+		case !hiddenItems[it.Type]:
+			title := str(it.Title)
+			if title == "" {
+				title = str(it.ToolName)
+			}
+			if title == "" {
+				title = strings.ReplaceAll(it.Type, "_", " ")
+			}
+			v.Messages = append(v.Messages, ViewMessage{ID: it.ID, Role: "tool", Title: title, Detail: toolDetail(it.Input), CreatedAt: it.StartedAt, Status: it.Status})
+		}
+	}
+	for _, m := range p.FullMessages {
+		if mm, ok := msgs[m.ID]; ok && !shown[m.ID] {
+			v.Messages = append(v.Messages, mm)
 		}
 	}
 	v.Pending = p.context(0).Pending

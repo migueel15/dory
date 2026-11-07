@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { ArrowDown, ArrowUp, CaretDown, Check, Lightning, PencilSimple, Question, Trash } from "@phosphor-icons/react";
-import { api, type T3QueuedRun, type T3ThreadView } from "../api/client";
+import { ArrowDown, ArrowUp, Brain, CaretDown, CaretRight, Check, Lightning, PencilSimple, Question, Trash, Wrench, X } from "@phosphor-icons/react";
+import { api, type T3QueuedRun, type T3ThreadView, type T3ViewMessage } from "../api/client";
 import { useThreadLive } from "../api/live";
 import { Button, ErrorText, Input, Md, Notice, PageHeader, Select, StatusPill, pill } from "../components/ui";
 import { OpenInT3 } from "../components/thread-link";
@@ -93,9 +93,9 @@ function Chat({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const working = !!v.active_run_id && !last?.streaming;
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto py-3"><div className="mx-auto w-full max-w-3xl space-y-4 px-3 sm:px-6">
+      <div className="min-h-0 flex-1 overflow-y-auto py-3"><div className="mx-auto w-full max-w-3xl space-y-4 px-3 sm:px-6 [&>.step+.step]:!mt-1.5">
         {v.messages.length === 0 && <p className="py-10 text-center text-sm text-slate-500 dark:text-muted">Sin mensajes todavía. Escribe abajo para empezar.</p>}
-        {v.messages.map((m) => m.role === "user" ? (
+        {v.messages.map((m) => m.role === "reasoning" ? <Reasoning key={m.id} m={m} /> : m.role === "tool" ? <ToolStep key={m.id} m={m} /> : m.role === "user" ? (
           <div key={m.id} className="flex justify-end">
             <div className="max-w-[85%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-2.5 text-white shadow-sm dark:bg-raised [&_*]:!text-inherit"><Md>{m.text}</Md></div>
           </div>
@@ -119,6 +119,35 @@ function Chat({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
         <Composer v={v} queryKey={queryKey} />
       </div>
     </section>
+  );
+}
+
+// Reasoning shows the model's thinking, open while it streams and folded after.
+function Reasoning({ m }: { m: T3ViewMessage }) {
+  const [open, setOpen] = useState<boolean | null>(null);
+  const shown = open ?? m.streaming;
+  if (!m.text && !m.streaming) return null;
+  return (
+    <div className="text-sm">
+      <button type="button" onClick={() => setOpen(!shown)} className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
+        <Brain className={`size-3.5 ${m.streaming ? "motion-safe:animate-pulse" : ""}`} />{m.streaming ? "Pensando…" : "Razonamiento"}
+        {shown ? <CaretDown className="size-3" /> : <CaretRight className="size-3" />}
+      </button>
+      {shown && <div className="mt-1 border-l-2 border-slate-200 pl-3 text-slate-500 dark:border-border dark:text-muted [&_*]:!text-inherit"><Md>{m.text || "…"}</Md></div>}
+    </div>
+  );
+}
+
+// ToolStep is one compact line per tool the model ran.
+function ToolStep({ m }: { m: T3ViewMessage }) {
+  const failed = m.status === "failed" || m.status === "error";
+  const running = !failed && m.status !== "completed" && m.status !== "declined";
+  return (
+    <div className="step flex min-w-0 items-center gap-2 text-xs text-slate-500 dark:text-muted" title={m.detail}>
+      {failed ? <X className="size-3.5 shrink-0 text-red-500" /> : running ? <span className="size-3 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <Wrench className="size-3.5 shrink-0" />}
+      <span className="shrink-0 font-medium text-slate-700 dark:text-text-secondary">{m.title}</span>
+      {m.detail && <code className="min-w-0 truncate font-mono">{m.detail}</code>}
+    </div>
   );
 }
 
