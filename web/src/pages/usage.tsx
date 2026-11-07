@@ -1,3 +1,4 @@
+import { expectedRemaining, paceTitle } from "../lib/usage-pace";
 import { useEffect } from "react";
 import { UsageHistory } from "./usage-history";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -25,14 +26,15 @@ function cost(usd: number, source: string) {
 }
 
 export function Limit({ w }: { w: T3InstanceUsage["providers"][number]["windows"][number] }) {
+  const pace = expectedRemaining(w);
   const tone = w.used_percent >= alertAt ? "bg-red-600" : w.used_percent >= warnAt ? "bg-amber-500" : "bg-emerald-600";
   return (
-    <div className="space-y-1 text-sm">
+    <div className="space-y-1 text-sm" title={(w.resets_at ? `Se reinicia el ${date(w.resets_at)}` : "Sin fecha de reinicio") + paceTitle(pace)}>
       <div className="flex flex-wrap justify-between gap-x-3">
         <span>{w.label}</span>
         <span>Queda {Math.round(100 - w.used_percent)} %</span>
       </div>
-      <div className="h-2 overflow-hidden rounded bg-slate-200 dark:bg-hover"><div className={`h-full ${tone}`} style={{ width: `${Math.max(0, 100 - w.used_percent)}%` }} /></div>
+      <div className="h-2 relative rounded bg-slate-200 dark:bg-hover"><div className={`h-full rounded ${tone}`} style={{ width: `${Math.max(0, 100 - w.used_percent)}%` }} />{pace !== null && <div aria-hidden="true" className="absolute -top-0.5 -bottom-0.5 w-0.5 -translate-x-1/2 bg-slate-900 dark:bg-white" style={{ left: `${pace}%` }} />}</div>
       <p className="text-xs text-slate-500 dark:text-muted">
         {w.resets_at ? `Se reinicia el ${date(w.resets_at)}` : "Sin fecha de reinicio"}
         {w.used_percent >= alertAt ? " · Límite casi agotado" : w.used_percent >= warnAt ? " · Uso alto" : ""}
@@ -63,12 +65,13 @@ export function Models({ usage }: { usage: T3InstanceUsage }) {
 
 // LimitRow is the compact form of Limit: one line with label, bar, remaining and reset.
 function LimitRow({ w }: { w: T3InstanceUsage["providers"][number]["windows"][number] }) {
+  const pace = expectedRemaining(w);
   const tone = w.used_percent >= alertAt ? "bg-red-600" : w.used_percent >= warnAt ? "bg-amber-500" : "bg-emerald-600";
   const left = Math.round(100 - w.used_percent);
   return (
-    <div className="grid grid-cols-[minmax(0,7rem)_1fr_3rem] items-center gap-2 text-xs" title={w.resets_at ? `Se reinicia el ${date(w.resets_at)}` : "Sin fecha de reinicio"}>
+    <div className="grid grid-cols-[minmax(0,7rem)_1fr_3rem] items-center gap-2 text-xs" title={(w.resets_at ? `Se reinicia el ${date(w.resets_at)}` : "Sin fecha de reinicio") + paceTitle(pace)}>
       <span className="truncate text-slate-600 dark:text-text-secondary">{w.label}</span>
-      <div className="h-1.5 overflow-hidden rounded bg-slate-200 dark:bg-hover"><div className={`h-full ${tone}`} style={{ width: `${Math.max(0, 100 - w.used_percent)}%` }} /></div>
+      <div className="h-1.5 relative rounded bg-slate-200 dark:bg-hover"><div className={`h-full rounded ${tone}`} style={{ width: `${Math.max(0, 100 - w.used_percent)}%` }} />{pace !== null && <div aria-hidden="true" className="absolute -top-0.5 -bottom-0.5 w-0.5 -translate-x-1/2 bg-slate-900 dark:bg-white" style={{ left: `${pace}%` }} />}</div>
       <span className={`text-right tabular-nums ${w.used_percent >= alertAt ? "font-semibold text-red-600 dark:text-red-400" : w.used_percent >= warnAt ? "text-amber-700 dark:text-amber-400" : ""}`}>{left} %</span>
     </div>
   );
