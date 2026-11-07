@@ -2,7 +2,7 @@ import { expectedRemaining, paceTitle } from "../lib/usage-pace";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { Gauge } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { api, type T3InstanceUsage } from "../api/client";
 
@@ -35,6 +35,10 @@ export function UsageQuick() {
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const usage = useQuery({ queryKey: ["t3-usage"], queryFn: api.t3Usage, refetchInterval: open ? 30_000 : false });
+  // Each opening asks the instances for fresh limits; the cached ones show meanwhile.
+  const qc = useQueryClient();
+  const refresh = useMutation({ mutationFn: api.t3UsageRefresh, onSuccess: (data) => qc.setQueryData(["t3-usage"], data) });
+  useEffect(() => { if (open) refresh.mutate(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const list = accounts(usage.data ?? []);
   const worst = Math.max(0, ...list.flatMap((p) => p.windows.map((w) => w.used_percent)));
   const tone = worst >= alertAt ? "text-red-600 dark:text-red-400" : worst >= warnAt ? "text-amber-600 dark:text-amber-400" : "";
@@ -63,6 +67,7 @@ export function UsageQuick() {
       {open && createPortal(
         <div ref={panel} role="dialog" aria-label="Límites restantes" style={pos} className="notif-in fixed z-[100] space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-xl dark:border-border dark:bg-surface">
           {usage.isPending && <p className="text-sm text-slate-400">Cargando…</p>}
+          {refresh.isPending && !usage.isPending && <p className="flex items-center gap-1.5 text-[11px] text-slate-400"><span className="size-2.5 animate-spin rounded-full border-2 border-current border-t-transparent" />Actualizando…</p>}
           {usage.data && list.length === 0 && <p className="text-sm text-slate-400">Sin datos de límites.</p>}
           {list.map((p) => (
             <div key={`${p.provider}/${p.account_key}`} className="space-y-1">
