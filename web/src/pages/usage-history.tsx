@@ -9,6 +9,7 @@ const SLOTS = [
   "bg-[#e87ba4] dark:bg-[#d55181]", "bg-[#008300] dark:bg-[#008300]", "bg-[#6250d6] dark:bg-[#9085e9]", "bg-[#e34948] dark:bg-[#e66767]",
 ];
 const RANGES = [7, 30, 90] as const;
+const MAX_DAYS = 90;
 type Metric = "cost" | "tokens";
 
 const usd = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -37,10 +38,14 @@ export function UsageHistory({ envName }: { envName: (id: string) => string }) {
   const [env, setEnv] = useState("");
   const [by, setBy] = useState<"model" | "day">("model");
   const [hover, setHover] = useState<string>();
-  const history = useQuery({ queryKey: ["t3-usage-history", days], queryFn: () => api.t3UsageHistory(days), staleTime: 60_000 });
+  // One read of the longest range feeds every range and both measures, so switching never waits.
+  const history = useQuery({ queryKey: ["t3-usage-history", MAX_DAYS], queryFn: () => api.t3UsageHistory(MAX_DAYS), staleTime: 5 * 60_000, gcTime: 30 * 60_000 });
 
   const instances = history.data ?? [];
-  const rows = instances.filter((h) => !env || h.environment_id === env).flatMap((h) => h.days);
+  // One slot per calendar day of the range, so empty days still show.
+  const today = new Date();
+  const calendar = Array.from({ length: days }, (_, i) => new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - (days - 1 - i))).toISOString().slice(0, 10));
+  const rows = instances.filter((h) => !env || h.environment_id === env).flatMap((h) => h.days).filter((d) => d.day >= calendar[0]);
   const failed = instances.filter((h) => h.error && (!env || h.environment_id === env));
   const value = (d: T3DayUsage) => (metric === "cost" ? d.cost_usd : processed(d));
   const fmt = (n: number) => (metric === "cost" ? usd(n) : short(n));
@@ -54,9 +59,6 @@ export function UsageHistory({ envName }: { envName: (id: string) => string }) {
     .map((p) => { const r = rows.filter((d) => d.provider === p); return { p, value: sum(r, value), tokens: sum(r, processed) }; })
     .sort((a, b) => b.value - a.value);
 
-  // One slot per calendar day of the range, so empty days still show.
-  const today = new Date();
-  const calendar = Array.from({ length: days }, (_, i) => new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - (days - 1 - i))).toISOString().slice(0, 10));
   const perDay = calendar.map((day) => {
     const r = rows.filter((d) => d.day === day);
     return { day, total: sum(r, value), parts: allProviders.map((p) => ({ p, v: sum(r.filter((d) => d.provider === p), value) })).filter((x) => x.v > 0), rows: r };
