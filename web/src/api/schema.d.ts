@@ -449,6 +449,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/t3/usage/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Daily consumption of every T3 Code instance over the last days, read on demand */
+        get: operations["getT3UsageHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/t3/usage/refresh": {
         parameters: {
             query?: never;
@@ -1319,6 +1336,35 @@ export interface components {
             /** @description Empty, unavailable or missing_scope */
             models_error: string;
             models: components["schemas"]["T3ModelUsage"][];
+        };
+        T3DayUsage: {
+            /** Format: date */
+            day: string;
+            provider: string;
+            model: string;
+            /** Format: int64 */
+            uncached_tokens: number;
+            /** Format: int64 */
+            cached_tokens: number;
+            /** Format: int64 */
+            cache_write_tokens: number;
+            /** Format: int64 */
+            output_tokens: number;
+            cost_usd: number;
+            cache_savings_usd: number;
+            /** @description providerReported is real, modelPriced is an estimate, unpriced has no cost */
+            cost_source: string;
+            /** Format: int64 */
+            sessions: number;
+        };
+        T3InstanceHistory: {
+            /** Format: uuid */
+            instance_id: string;
+            /** Format: uuid */
+            environment_id: string;
+            /** @description Empty, unavailable or missing_scope */
+            error: string;
+            days: components["schemas"]["T3DayUsage"][];
         };
         T3Instance: {
             /** Format: uuid */
@@ -2796,6 +2842,29 @@ export interface operations {
                     "application/json": components["schemas"]["T3InstanceUsage"][];
                 };
             };
+        };
+    };
+    getT3UsageHistory: {
+        parameters: {
+            query: {
+                days: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One entry per instance with its daily buckets in UTC days */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["T3InstanceHistory"][];
+                };
+            };
+            400: components["responses"]["Error400"];
         };
     };
     refreshT3Usage: {

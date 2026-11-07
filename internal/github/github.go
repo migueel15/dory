@@ -86,8 +86,20 @@ func (c *Client) repos(ctx context.Context) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Repositories of an archived project stay stored but are no longer followed.
+	projects, err := c.svc.Projects().List(ctx, service.Filter{Limit: 1000})
+	if err != nil {
+		return nil, err
+	}
+	active := make(map[string]bool, len(projects))
+	for _, p := range projects {
+		active[p.ID] = true
+	}
 	out := make(map[string]string, len(repos))
 	for _, r := range repos {
+		if !active[r.ProjectID] {
+			continue
+		}
 		if name, ok := ParseRemote(r.RemoteUrl); ok {
 			out[name] = r.ProjectID
 		}

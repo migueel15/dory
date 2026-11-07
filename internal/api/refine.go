@@ -115,6 +115,9 @@ func mountRefine(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 			writeT3Error(w, err)
 			return
 		}
+		if !sameRepository(w, r, svc, c, item, body.ProjectID) {
+			return
+		}
 		threadID, err := c.Launch(r.Context(), t3.LaunchInput{
 			ProjectID: body.ProjectID, Title: item.Title, Provider: body.Provider, Model: body.Model, EffortOption: body.EffortOption, Effort: body.Effort,
 			Prompt: refineFirstMessage(item, body.Text),

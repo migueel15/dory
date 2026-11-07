@@ -975,6 +975,29 @@ paths:
                 type: "array"
                 items:
                   $ref: "#/components/schemas/T3InstanceUsage"
+  "/t3/usage/history":
+    get:
+      operationId: "getT3UsageHistory"
+      summary: "Daily consumption of every T3 Code instance over the last days, read on demand"
+      parameters:
+        - name: "days"
+          in: "query"
+          required: true
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 90
+      responses:
+        "200":
+          description: "One entry per instance with its daily buckets in UTC days"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/T3InstanceHistory"
+        "400":
+          $ref: "#/components/responses/Error400"
   "/t3/usage/refresh":
     post:
       operationId: "refreshT3Usage"
@@ -3234,6 +3257,56 @@ components:
           type: "array"
           items:
             $ref: "#/components/schemas/T3ModelUsage"
+    T3DayUsage:
+      type: "object"
+      required: ["day", "provider", "model", "uncached_tokens", "cached_tokens", "cache_write_tokens", "output_tokens", "cost_usd", "cache_savings_usd", "cost_source", "sessions"]
+      properties:
+        day:
+          type: "string"
+          format: "date"
+        provider:
+          type: "string"
+        model:
+          type: "string"
+        uncached_tokens:
+          type: "integer"
+          format: "int64"
+        cached_tokens:
+          type: "integer"
+          format: "int64"
+        cache_write_tokens:
+          type: "integer"
+          format: "int64"
+        output_tokens:
+          type: "integer"
+          format: "int64"
+        cost_usd:
+          type: "number"
+        cache_savings_usd:
+          type: "number"
+        cost_source:
+          type: "string"
+          description: "providerReported is real, modelPriced is an estimate, unpriced has no cost"
+        sessions:
+          type: "integer"
+          format: "int64"
+    T3InstanceHistory:
+      type: "object"
+      required: ["instance_id", "environment_id", "error", "days"]
+      properties:
+        instance_id:
+          type: "string"
+          format: "uuid"
+        environment_id:
+          type: "string"
+          format: "uuid"
+        error:
+          type: "string"
+          description: "Empty, unavailable or missing_scope"
+        days:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/T3DayUsage"
     T3Instance:
       type: "object"
       required:

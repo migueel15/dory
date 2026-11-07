@@ -1,14 +1,14 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
-import { List, Moon, Sun, X } from "@phosphor-icons/react";
+import { Brain, ChartBar, FolderSimple, Gear, GithubLogo, HardDrives, House, Kanban, List, Moon, Robot, SignOut, Sun, Tray, BellRinging, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { ApiError, api } from "./api/client";
 import { useLiveUpdates } from "./api/live";
-import { Button, Input, Label, Select, errMsg } from "./components/ui";
-import { setProject, useProject } from "./project";
+import { Button, Input, Label, errMsg } from "./components/ui";
 import { Environments, Memories, memorySearch } from "./pages/crud";
 import { CommandPalette } from "./components/commands";
+import { ProjectSwitcher } from "./components/project-switcher";
 import { GithubView } from "./pages/github-detail";
 import { Github } from "./pages/github";
 import { Notifications, NotificationItem } from "./components/notifications";
@@ -54,6 +54,14 @@ function Login() {
   );
 }
 
+function SettingsLink() {
+  return (
+    <Link to="/settings" aria-label="Ajustes" title="Ajustes" className="grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-slate-200 sm:min-h-0 sm:min-w-0 sm:px-3 sm:py-1.5 dark:hover:bg-raised [&.active]:bg-slate-200 dark:[&.active]:bg-raised">
+      <Gear className="size-5" aria-hidden="true" />
+    </Link>
+  );
+}
+
 function ThemeToggle() {
   const [dark, setTheme] = useTheme();
   const label = dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro";
@@ -61,24 +69,6 @@ function ThemeToggle() {
     <Button variant="bare" aria-label={label} title={label} onClick={() => setTheme(dark ? "light" : "dark")}>
       {dark ? <Sun className="size-5" aria-hidden="true" /> : <Moon className="size-5" aria-hidden="true" />}
     </Button>
-  );
-}
-
-// ProjectFilter sets the global project every page filters by. Unset it reads as a
-// plain "Filtrar por proyecto" label; set it becomes a removable badge.
-function ProjectFilter() {
-  const project = useProject();
-  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
-  // Forget a selection that no longer exists (archived or from another database).
-  const gone = !!project && !!projects.data && !projects.data.some((p) => p.id === project);
-  useEffect(() => { if (gone) setProject(""); }, [gone]);
-  const list = (projects.data ?? []).map((p) => ({ value: p.id, label: p.name }));
-  if (!project || gone) return <Select plain className="w-auto" value="" onChange={setProject} placeholder="Filtrar por proyecto" options={list} />;
-  return (
-    <span className="inline-flex items-center rounded-full bg-blue-50 text-sm text-blue-800 dark:bg-accent-subtle dark:text-accent-text">
-      <Select plain className="w-auto" value={project} onChange={setProject} options={[{ value: "", label: "Todos los proyectos" }, ...list]} />
-      <button type="button" aria-label="Quitar filtro de proyecto" title="Quitar filtro" onClick={() => setProject("")} className="mr-1 grid size-6 place-items-center rounded-full hover:bg-blue-100 dark:hover:bg-accent-border/40"><X aria-hidden="true" className="size-3.5" /></button>
-    </span>
   );
 }
 
@@ -103,6 +93,14 @@ function Layout() {
 
   const path = useLocation({ select: (l) => l.pathname });
   const [menu, setMenu] = useState(false);
+  // Notifications mount once (sidebar on desktop, top bar on phones) so toasts never repeat.
+  const [desktop, setDesktop] = useState(() => window.matchMedia("(min-width: 640px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 640px)");
+    const on = () => setDesktop(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
   const drawer = useRef<HTMLDialogElement>(null);
   useEffect(() => { setMenu(false); }, [path]);
   useEffect(() => {
@@ -124,44 +122,55 @@ function Layout() {
   }, [menu, !!me.data]);
   if (me.isPending) return null;
   if (!me.data) return <Login />;
-  const link = "flex min-h-11 shrink-0 items-center rounded px-3 text-sm sm:min-h-0 sm:px-2 sm:py-1 hover:bg-slate-200 dark:hover:bg-raised [&.active]:bg-slate-900 dark:[&.active]:bg-accent [&.active]:text-white dark:[&.active]:text-white";
-  const group = (name: string) => <span className="mt-4 mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-muted sm:hidden">{name}</span>;
-  const sep = <span className="mx-1 hidden h-5 w-px self-center bg-slate-200 dark:bg-border sm:block" aria-hidden="true" />;
+  const ico = "mr-2.5 size-[18px] shrink-0 opacity-80";
+  const link = "flex min-h-11 shrink-0 items-center rounded px-3 text-sm font-medium text-slate-800 dark:text-text sm:min-h-0 sm:px-2 sm:py-1 hover:bg-slate-200 dark:hover:bg-raised [&.active]:bg-slate-900 dark:[&.active]:bg-accent [&.active]:text-white dark:[&.active]:text-white";
+  // Group headings share the links' left padding and a rule above, so each section reads as a block.
+  const group = (name: string) => <span className="mt-3 mb-1 border-t border-slate-200 px-3 pt-3 text-xs font-semibold uppercase tracking-wider text-slate-400 first:mt-1 first:border-t-0 first:pt-0 dark:border-border dark:text-muted sm:px-2">{name}</span>;
   const links = (
     <>
       {group("Trabajo")}
-      <Link to="/" activeOptions={{ exact: true }} className={link}>Inicio</Link>
-      <Link to="/inbox" className={link}>Inbox</Link>
-      <Link to="/projects" className={link}>Proyectos</Link>
-      {sep}
+      <Link to="/" activeOptions={{ exact: true }} className={link}><House weight="duotone" className={ico} aria-hidden="true" />Inicio</Link>
+      <Link to="/inbox" className={link}><Tray weight="duotone" className={ico} aria-hidden="true" />Inbox</Link>
+      <Link to="/projects" className={link}><FolderSimple weight="duotone" className={ico} aria-hidden="true" />Proyectos</Link>
       {group("Agentes")}
-      <Link to="/tasks" className={link}>Tareas</Link>
-      <Link to="/attention" className={link}>Atención{attention > 0 && <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-white">{attention}</span>}</Link>
-      <Link to="/jobs" className={link}>Trabajos</Link>
-      <Link to="/usage" className={link}>Uso</Link>
-      {sep}
+      <Link to="/tasks" className={link}><Kanban weight="duotone" className={ico} aria-hidden="true" />Tareas</Link>
+      <Link to="/attention" className={link}><BellRinging weight="duotone" className={ico} aria-hidden="true" />Atención{attention > 0 && <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-white">{attention}</span>}</Link>
+      <Link to="/jobs" className={link}><Robot weight="duotone" className={ico} aria-hidden="true" />Trabajos</Link>
+      <Link to="/usage" className={link}><ChartBar weight="duotone" className={ico} aria-hidden="true" />Uso</Link>
       {group("Sistema")}
-      <Link to="/github" className={link}>GitHub</Link>
-      <Link to="/environments" className={link}>Entornos</Link>
-      <Link to="/memories" className={link}>Memorias</Link>
-      <Link to="/settings" className={link}>Ajustes</Link>
+      <Link to="/github" className={link}><GithubLogo weight="duotone" className={ico} aria-hidden="true" />GitHub</Link>
+      <Link to="/environments" className={link}><HardDrives weight="duotone" className={ico} aria-hidden="true" />Entornos</Link>
+      <Link to="/memories" className={link}><Brain weight="duotone" className={ico} aria-hidden="true" />Memorias</Link>
     </>
   );
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text">
-      <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2 sm:static sm:px-4">
-        <div className="flex h-12 items-center gap-1 sm:h-auto sm:py-2">
-          <span className="mr-3 flex items-center gap-2 font-bold">Dory<DevBadge /></span>
-          <div className="hidden items-center gap-1 sm:flex">{links}</div>
-          <div className="ml-auto flex items-center gap-1">
-            <div className="hidden items-center gap-1 sm:flex">
-              <ProjectFilter />
-              <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
-              <VersionBadge />
-            </div>
-            <Notifications />
+    <div className="min-h-screen bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex sm:h-screen sm:bg-white sm:dark:bg-surface">
+      <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col bg-white dark:bg-surface sm:flex">
+        <Link to="/" className="flex items-center gap-2 px-4 py-3 font-bold">Dory<DevBadge /></Link>
+        <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4">{links}</nav>
+        <div className="shrink-0 px-2 pb-2"><ProjectSwitcher /></div>
+        <div className="shrink-0 space-y-2 border-t border-slate-200 p-3 dark:border-border">
+          <div className="flex items-center gap-1">
+            {desktop && <Notifications />}
             <ThemeToggle />
-            <Button variant="ghost" className="hidden sm:inline-flex" onClick={() => logout.mutate()}>Salir</Button>
+            <SettingsLink />
+          </div>
+          <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 py-1 pl-3 pr-1 dark:border-border">
+            <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
+            <Button variant="bare" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => logout.mutate()}><SignOut className="size-5" aria-hidden="true" /></Button>
+          </div>
+          <VersionBadge />
+        </div>
+      </aside>
+      {/* On desktop the current view is a card framed by the sidebar background. */}
+      <div className="min-w-0 flex-1 sm:my-2 sm:mr-2 sm:overflow-auto sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">
+      <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2 sm:hidden">
+        <div className="flex h-12 items-center gap-1">
+          <Link to="/" className="mr-1 flex shrink-0 items-center gap-2 font-bold">Dory<DevBadge /></Link>
+          {/* The project is one tap away on phones, without opening the menu. */}
+          <div className="min-w-0 flex-1"><ProjectSwitcher compact /></div>
+          <div className="flex shrink-0 items-center gap-1">
+            {!desktop && <Notifications />}
           </div>
           <button type="button" aria-label="Menú" aria-controls="mobile-navigation" aria-expanded={menu} onClick={() => setMenu(!menu)} className="grid size-11 place-items-center rounded hover:bg-slate-200 dark:hover:bg-raised sm:hidden">
             {menu ? <X className="size-5" aria-hidden="true" /> : <List className="size-5" aria-hidden="true" />}
@@ -184,7 +193,6 @@ function Layout() {
         <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-border">
           <div>
             <h2 id="mobile-navigation-title" className="flex items-center gap-2 font-bold">Dory<DevBadge /></h2>
-            <p className="text-xs text-slate-500 dark:text-muted">Navegación</p>
           </div>
           <button type="button" autoFocus aria-label="Cerrar menú" onClick={() => setMenu(false)} className="grid size-11 place-items-center rounded-lg hover:bg-slate-100 dark:hover:bg-raised">
             <X className="size-5" aria-hidden="true" />
@@ -196,15 +204,19 @@ function Layout() {
           }}>{links}</nav>
         </div>
         <div className="shrink-0 space-y-3 border-t border-slate-200 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-border">
-          <ProjectFilter />
-          <div className="flex items-center justify-between gap-3">
+          {/* Theme and settings live here on phones so the top bar keeps room for the project. */}
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
+            <SettingsLink />
+          </div>
+          <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 py-1 pl-3 pr-1 dark:border-border">
             <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
-            <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
+            <Button variant="bare" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => logout.mutate()}><SignOut className="size-5" aria-hidden="true" /></Button>
           </div>
           <VersionBadge />
         </div>
       </dialog>
-      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main><CommandPalette />
+      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main></div><CommandPalette />
     </div>
   );
 }

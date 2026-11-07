@@ -13,7 +13,7 @@ import (
 
 func TestPromptCarriesIDAndDescription(t *testing.T) {
 	p := Prompt(service.Item{Record: service.Record{ID: "abc"}, RawText: "arreglar el login\ncon detalle"})
-	for _, want := range []string{"`abc`", "update_item", `title_source: "ai"`, "archiva tu propio hilo", "t3_thread_update", "arreglar el login\ncon detalle"} {
+	for _, want := range []string{"`abc`", "update_item", `title_source: "ai"`, "No archives", "arreglar el login\ncon detalle"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("prompt lacks %q:\n%s", want, p)
 		}
@@ -66,7 +66,9 @@ func newGen(item service.Item, launch func(context.Context, string, string) erro
 	pollEvery = 5 * time.Millisecond
 	cfg := Config{Model: "m", Timeout: timeout}
 	return &Generator{svc: fakeService{items: items}, load: func(context.Context) (Config, error) { return cfg, nil },
-		launch: func(ctx context.Context, _ Config, title, prompt string) error { return launch(ctx, title, prompt) }}, items, cfg
+		launch: func(ctx context.Context, _ Config, title, prompt string) (func(), error) {
+			return nil, launch(ctx, title, prompt)
+		}}, items, cfg
 }
 
 func TestSettingsConfig(t *testing.T) {

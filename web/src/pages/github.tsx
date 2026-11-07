@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { api, type GithubIssue, type GithubPull } from "../api/client";
-import { Card, ErrorText, Select, pill } from "../components/ui";
+import { Card, ErrorText, Input, Select, pill } from "../components/ui";
 import { GithubMark, Icon, Tip, icons } from "../components/github-ui";
 import { type Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { useProject } from "../project";
@@ -154,7 +154,7 @@ const linked = (repo: string, prefix: "PR" | "Issue", refs: { number: number; ti
   return refs.map((r) => (
     <Tip key={r.number} text={r.title}>
       <Link to="/github/$owner/$repo/$kind/$number" params={{ owner, repo: name, kind: prefix === "PR" ? "pulls" : "issues", number: String(r.number) }}
-        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 dark:border-border dark:bg-surface dark:text-text dark:hover:border-accent dark:hover:bg-accent-subtle dark:hover:text-accent-text">
+        className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 dark:border-border dark:bg-surface dark:text-text dark:hover:border-accent dark:hover:bg-accent-subtle dark:hover:text-accent-text">
         <Icon i={prefix === "PR" ? icons.pull : icons.issue} className="size-3" />{prefix} #{r.number}
       </Link>
     </Tip>
@@ -274,12 +274,12 @@ export function Github() {
   return (
     <div className="space-y-4">
       {resolving && <DefineIssueDialog resolve repo={resolving.repo} number={resolving.number} onClose={() => setResolving(null)} />}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold"><GithubMark className="size-6" /> GitHub</h1>
-          <p className="text-xs text-slate-500 dark:text-muted">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <h1 className="text-xl font-bold">GitHub</h1>
+          <span className="truncate text-sm text-slate-500 dark:text-muted">
             {refreshing ? "Actualizando…" : data.data?.fetched_at ? `Actualizado ${ago(data.data.fetched_at)}` : ""}{me && ` · como ${me}`}
-          </p>
+          </span>
         </div>
         <Tip text="Recargar desde GitHub">
           <button type="button" onClick={refresh} disabled={refreshing} aria-label="Recargar" className={pill}>
@@ -310,8 +310,8 @@ export function Github() {
           </div>
           <label className="relative min-w-48 flex-1">
             <MagnifyingGlass aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Buscar por título, repo, autor o etiqueta…" aria-label="Buscar"
-              className="min-h-9 w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-sm outline-none focus:border-blue-500 dark:focus:border-accent focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-accent/20 dark:border-border dark:bg-surface" />
+            <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Buscar por título, repo, autor o etiqueta…" aria-label="Buscar"
+              className="min-h-9 pl-8" />
           </label>
           <Select value={milestone} onChange={setMilestone} options={milestoneOptions} className="min-w-44" />
         </div>
@@ -321,7 +321,7 @@ export function Github() {
             const needsMe = !!f.me && !me;
             return (
               <button key={f.id} type="button" disabled={needsMe} onClick={() => setFilter(on ? "" : f.id)}
-                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40 ${on ? "border-blue-500 bg-blue-50 text-blue-700 dark:border-accent dark:bg-accent-subtle dark:text-accent-text" : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-border dark:text-text-secondary dark:hover:bg-raised"}`}>
+                className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40 ${on ? "border-blue-500 bg-blue-50 text-blue-700 dark:border-accent dark:bg-accent-subtle dark:text-accent-text" : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-border dark:text-text-secondary dark:hover:bg-raised"}`}>
                 {f.label}
               </button>
             );

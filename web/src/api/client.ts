@@ -15,6 +15,8 @@ export type MemoryInput = S["MemoryInput"];
 export type User = S["User"];
 export type T3Status = S["T3Status"];
 export type T3InstanceUsage = S["T3InstanceUsage"];
+export type T3InstanceHistory = S["T3InstanceHistory"];
+export type T3DayUsage = S["T3DayUsage"];
 export type T3ThreadContext = S["T3ThreadContext"];
 export type GithubIssue = S["GithubIssue"];
 export type GithubPull = S["GithubPull"];
@@ -62,7 +64,7 @@ function resource<T extends { id: string }, I>(path: string) {
 
 export type T3Catalog = {
   providers: { instance_id: string; name: string; driver: string; models: T3CatalogModel[] }[];
-  projects: { id: string; title: string; root: string }[];
+  projects: { id: string; title: string; root: string; repo: string }[];
 };
 export type T3CatalogModel = { slug: string; name: string; effort?: { id: string; values: string[]; default: string } };
 export type IssueDefineInput = { instance_id: string; project_id: string; provider: string; model: string; effort_option?: string; effort?: string };
@@ -100,6 +102,7 @@ export const api = {
   t3Status: () => req<T3Status[]>("GET", "/t3/status"),
   t3Usage: () => req<T3InstanceUsage[]>("GET", "/t3/usage"),
   t3UsageRefresh: () => req<T3InstanceUsage[]>("POST", "/t3/usage/refresh"),
+  t3UsageHistory: (days: number) => req<T3InstanceHistory[]>("GET", `/t3/usage/history?days=${days}`),
   login: (username: string, password: string) => req<User>("POST", "/auth/login", { username, password }),
   logout: () => req<void>("POST", "/auth/logout"),
   me: () => req<User>("GET", "/auth/me"),

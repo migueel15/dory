@@ -1,8 +1,10 @@
 import { ThreadLink } from "../components/thread-link";
+import { useState } from "react";
+import { MagnifyingGlass } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { api, type T3Status } from "../api/client";
-import { Badge, Card, ErrorText, Notice, PageHeader, StatusPill, type Tone } from "../components/ui";
+import { Badge, Card, ErrorText, Input, Notice, PageHeader, StatusPill, type Tone } from "../components/ui";
 import { useT3 } from "./attention";
 
 type Thread = T3Status["threads"][number];
@@ -22,6 +24,7 @@ type Job = { key: string; kind: string; title: string; to?: { owner: string; rep
 // Jobs lists the threads Dory launched in the background with their live state.
 export function Jobs() {
   const t3 = useT3();
+  const [query, setQuery] = useState("");
   const issues = useQuery({ queryKey: ["issue-threads"], queryFn: api.issueThreads, refetchInterval: 60_000 });
   const items = useQuery({ queryKey: ["item-threads"], queryFn: () => api.itemThreads.list(), refetchInterval: 60_000 });
   const live = new Map<string, { thread: Thread; host: string }>();
@@ -38,13 +41,21 @@ export function Jobs() {
       return { key: j.id, kind: j.role === "refine" ? "Definir item" : j.role === "triage" ? "Analizar item" : j.role === "review" ? "Revisión" : j.role === "replan" ? "Revisar plan" : "Implementar item", title: l?.thread.title ?? j.thread_id, model: l?.thread.model ?? "", effort: "", created: j.created_at, thread: l?.thread, host: l?.host ?? host(j.instance_id) };
     }),
   ].sort((a, b) => b.created.localeCompare(a.created));
+  // The search matches title, type, state, model and effort.
+  const q = query.trim().toLowerCase();
+  const shown = q ? jobs.filter((j) => [j.title, j.kind, state(j.thread).label, j.model, j.effort].join(" ").toLowerCase().includes(q)) : jobs;
   return (
     <div className="space-y-3">
-      <PageHeader title="Trabajos" subtitle="Hilos lanzados desde Dory y su estado" />
+      <PageHeader title="Trabajos" />
+      <label className="relative block">
+        <MagnifyingGlass aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por título, tipo, estado o modelo…" aria-label="Buscar trabajos" className="pl-8" />
+      </label>
       <ErrorText error={t3.error ?? issues.error ?? items.error} />
       {(t3.isPending || issues.isPending) && <Notice loading />}
       {jobs.length === 0 && issues.isSuccess && <Notice>Aún no se ha lanzado ningún hilo desde Dory.</Notice>}
-      {jobs.map((j) => {
+      {q && jobs.length > 0 && shown.length === 0 && <Notice>Ningún trabajo coincide con «{query.trim()}».</Notice>}
+      {shown.map((j) => {
         const s = state(j.thread);
         return (
           <Card key={j.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3 text-sm">

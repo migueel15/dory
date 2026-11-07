@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { api, type GithubDetail, type GithubPull, type GithubThread } from "../api/client";
-import { Badge, Button, Card, Select, ErrorText, Md, Arrow, pill, toggleTask } from "../components/ui";
+import { Badge, Button, Card, Input, Select, ErrorText, Md, Arrow, pill, toggleTask, Textarea, keepAboveKeyboard } from "../components/ui";
 import { Avatar, PullStatus } from "./github";
 import { Diff } from "./github-diff";
 import { DefineIssueDialog } from "./define-issue";
-import { GithubMark, Icon, IconButton, Menu, MenuItem, RefContext, RefMd, Tip, UserPicker, icons, useConfirm, MentionArea } from "../components/github-ui";
+import { GithubMark, Icon, IconButton, Menu, MenuItem, RefContext, RefMd, Tip, UserPicker, icons, useArm, MentionArea } from "../components/github-ui";
 
 const labels: Record<string, string> = {
   IssueComment: "comentó", PullRequestReview: "revisó", PullRequestCommit: "hizo un commit", ClosedEvent: "cerró", ReopenedEvent: "reabrió", MergedEvent: "mergeó", LabeledEvent: "añadió la etiqueta", AssignedEvent: "asignó", ReadyForReviewEvent: "marcó como lista", ConvertToDraftEvent: "pasó a draft", ReviewRequestedEvent: "pidió revisión", CrossReferencedEvent: "referenció desde",
@@ -79,13 +79,12 @@ const methods = [
 // MergeButton is a split button: the main part merges with the chosen method.
 function MergeButton({ pull, act, busy }: { pull: GithubPull; act: Act; busy: boolean }) {
   const [method, setMethod] = useState(methods[0]);
-  const [confirm, dialog] = useConfirm();
-  const merge = () => confirm({ title: "¿Mergear la PR?", text: `${method.name} de ${pull.repo}#${pull.number} (${pull.head_ref}) en ${pull.base_ref}.`, ok: "Mergear", run: () => act("merge", { method: method.value }) });
-  return (<>{dialog}
+  const [armed, merge] = useArm(() => act("merge", { method: method.value }));
+  return (<>
     <Menu align="right" trigger={(open, toggle) => (
       <div className="inline-flex overflow-hidden rounded-lg bg-green-600 text-white shadow-sm">
         <button type="button" disabled={busy} onClick={merge} className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium hover:bg-green-700 disabled:opacity-50">
-          <Icon i={icons.merge} /> {method.name}
+          <Icon i={icons.merge} /> {method.name}<span aria-hidden={!armed} className={`overflow-hidden whitespace-nowrap transition-all duration-200 ease-out motion-reduce:transition-none ${armed ? "max-w-28 opacity-100" : "max-w-0 opacity-0"}`}>· ¿Confirmar?</span>
         </button>
         <button type="button" aria-label="Elegir método de merge" disabled={busy} onClick={toggle} className={`border-l border-green-500 px-2 hover:bg-green-700 ${open ? "bg-green-700" : ""}`}>
           <Icon i={icons.chevron} />
@@ -103,18 +102,16 @@ function MergeButton({ pull, act, busy }: { pull: GithubPull; act: Act; busy: bo
 }
 
 function PullActions({ pull, me, act, busy, diff, toggleDiff }: { pull: GithubPull; me: string; act: Act; busy: boolean; diff: boolean; toggleDiff: () => void }) {
-  const [confirm, dialog] = useConfirm();
   const view = <IconButton icon={icons.code} tip={diff ? "Ocultar diff" : "Ver diff"} tone={diff ? "active" : "plain"} onClick={toggleDiff} />;
-  if (pull.state !== "OPEN") return <>{dialog}{view}{pull.state === "CLOSED" && <IconButton icon={icons.reopen} tip="Reabrir" disabled={busy} onClick={() => confirm({ title: "¿Reabrir la PR?", text: "Volverá a estar abierta para revisión y merge.", ok: "Reabrir", run: () => act("reopen_pull") })} />}</>;
+  if (pull.state !== "OPEN") return <>{view}{pull.state === "CLOSED" && <IconButton icon={icons.reopen} tip="Reabrir" disabled={busy} confirm onClick={() => act("reopen_pull")} />}</>;
   return (
     <>
-      {dialog}
       {view}
       {pull.draft
-        ? <IconButton icon={icons.ready} tip="Marcar como lista para revisión" disabled={busy} onClick={() => confirm({ title: "¿Marcar como lista?", text: "Saldrá de draft y se avisará a los revisores.", ok: "Marcar como lista", run: () => act("ready") })} />
-        : <IconButton icon={icons.draft} tip="Pasar a draft" disabled={busy} onClick={() => confirm({ title: "¿Pasar a draft?", text: "No se podrá mergear hasta que vuelva a estar lista.", ok: "Pasar a draft", run: () => act("draft") })} />}
+        ? <IconButton icon={icons.ready} tip="Marcar como lista para revisión" disabled={busy} confirm onClick={() => act("ready")} />
+        : <IconButton icon={icons.draft} tip="Pasar a draft" disabled={busy} confirm onClick={() => act("draft")} />}
       {canApprove(pull, me) && <IconButton icon={icons.check} tip="Aprobar" tone="green" disabled={busy} onClick={() => act("approve")} />}
-      <IconButton icon={icons.x} tip="Cerrar sin mergear" tone="red" disabled={busy} onClick={() => confirm({ title: "¿Cerrar la PR sin mergear?", text: "Se cerrará sin integrar los cambios. Podrás reabrirla después.", ok: "Cerrar PR", danger: true, run: () => act("close_pull") })} />
+      <IconButton icon={icons.x} tip="Cerrar sin mergear" tone="red" disabled={busy} confirm onClick={() => act("close_pull")} />
       <span className="ml-auto"><MergeButton pull={pull} act={act} busy={busy} /></span>
     </>
   );
@@ -122,13 +119,11 @@ function PullActions({ pull, me, act, busy, diff, toggleDiff }: { pull: GithubPu
 
 // IssueActions closes an issue as completed or not planned, or reopens it.
 function IssueActions({ open, act, busy }: { open: boolean; act: Act; busy: boolean }) {
-  const [confirm, dialog] = useConfirm();
-  if (!open) return <>{dialog}<IconButton icon={icons.reopen} tip="Reabrir issue" disabled={busy} onClick={() => confirm({ title: "¿Reabrir la issue?", text: "Volverá a estar abierta.", ok: "Reabrir", run: () => act("reopen_issue") })} /></>;
+  if (!open) return <><IconButton icon={icons.reopen} tip="Reabrir issue" disabled={busy} confirm onClick={() => act("reopen_issue")} /></>;
   return (
     <>
-      {dialog}
-      <IconButton icon={icons.ready} tip="Cerrar como completada" tone="green" disabled={busy} onClick={() => confirm({ title: "¿Cerrar como completada?", text: "Se marcará como resuelta. Podrás reabrirla después.", ok: "Cerrar como completada", run: () => act("close_issue", { method: "COMPLETED" }) })} />
-      <IconButton icon={icons.x} tip="Cerrar como no planificada" tone="red" disabled={busy} onClick={() => confirm({ title: "¿Cerrar como no planificada?", text: "Se cerrará sin resolver: no se va a hacer, está duplicada o ya no aplica.", ok: "Cerrar como no planificada", danger: true, run: () => act("close_issue", { method: "NOT_PLANNED" }) })} />
+      <IconButton icon={icons.ready} tip="Cerrar como completada" tone="green" disabled={busy} confirm onClick={() => act("close_issue", { method: "COMPLETED" })} />
+      <IconButton icon={icons.x} tip="Cerrar como no planificada" tone="red" disabled={busy} confirm onClick={() => act("close_issue", { method: "NOT_PLANNED" })} />
     </>
   );
 }
@@ -151,15 +146,15 @@ function Message({ author, verb, at, url, body, mine, editType, id, act, busy, o
         <span><span className="font-medium text-slate-700 dark:text-text">{author}</span>{verb && ` ${verb}`} · {url ? <a href={url} target="_blank" rel="noreferrer" className="hover:underline">{when}</a> : when}</span>
         <span className="ml-auto flex gap-0.5 opacity-60 transition-opacity group-hover/msg:opacity-100">
           {body && <Tip text="Responder citando"><button type="button" aria-label="Responder citando" onClick={() => onReply(quote(author, body))} className={small}><Icon i={icons.reply} /></button></Tip>}
-          {mine && id && draft === undefined && <Tip text="Editar"><button type="button" aria-label="Editar" onClick={() => setDraft(body)} className={small}><Icon i={icons.edit} /></button></Tip>}
+          {mine && id && !id.startsWith("pending-") && draft === undefined && <Tip text="Editar"><button type="button" aria-label="Editar" onClick={() => setDraft(body)} className={small}><Icon i={icons.edit} /></button></Tip>}
         </span>
       </div>
-      {draft === undefined ? <RefMd onToggle={mine && id && !busy ? (line) => act({ type: editType, comment_id: id, body: toggleTask(body, line) }) : undefined}>{body}</RefMd> : (
+      {draft === undefined ? <RefMd onToggle={mine && id && !id.startsWith("pending-") && !busy ? (line) => act({ type: editType, comment_id: id, body: toggleTask(body, line) }) : undefined}>{body}</RefMd> : (
         <div className="space-y-2">
-          <textarea aria-label="Editar mensaje" autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setDraft(undefined)} rows={Math.min(14, draft.split("\n").length + 2)} className="w-full rounded-md border border-slate-300 bg-white p-2 font-mono text-sm dark:border-border-strong dark:bg-surface" />
+          <Textarea aria-label="Editar mensaje" autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setDraft(undefined)} rows={Math.min(14, draft.split("\n").length + 2)} className="p-2 font-mono" />
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setDraft(undefined)}>Cancelar</Button>
-            <Button disabled={busy || !draft.trim()} onClick={() => act({ type: editType, comment_id: id, body: draft }).then(() => setDraft(undefined))}>Guardar</Button>
+            <Button disabled={busy || !draft.trim()} onClick={() => { act({ type: editType, comment_id: id, body: draft }).catch(() => {}); setDraft(undefined); }}>Guardar</Button>
           </div>
         </div>
       )}
@@ -170,7 +165,7 @@ function Message({ author, verb, at, url, body, mine, editType, id, act, busy, o
 function ThreadCard({ t, me, people, links, act, busy }: { t: GithubThread; me: string; people: string[]; links: GithubDetail["links"]; act: ThreadAct; busy: boolean }) {
   const [open, setOpen] = useState(!t.resolved);
   const [reply, setReply] = useState("");
-  const send = () => act({ type: "reply_thread", thread_id: t.id, body: reply }).then(() => setReply(""));
+  const send = () => { act({ type: "reply_thread", thread_id: t.id, body: reply }).catch(() => {}); setReply(""); };
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -192,7 +187,7 @@ function ThreadCard({ t, me, people, links, act, busy }: { t: GithubThread; me: 
             <Message author={c.author} at={c.at} url={c.url} body={c.body} mine={c.author === me} editType="edit_thread_comment" id={c.id} act={act} busy={busy} onReply={(q) => setReply(q + reply)} />
           </div>
         ))}
-        <MentionArea people={people} links={links} aria-label="Responder en el hilo" value={reply} onValue={setReply} rows={2} placeholder="Responder…" className="mt-2 w-full rounded border border-slate-300 bg-white p-2 text-sm dark:border-border dark:bg-surface" />
+        <MentionArea people={people} links={links} aria-label="Responder en el hilo" value={reply} onValue={setReply} rows={2} placeholder="Responder…" className="mt-2 p-2" />
         <div className="flex gap-2">
           <Button disabled={busy || !reply.trim()} onClick={send}>Responder</Button>
           {reply && <Button variant="ghost" onClick={() => setReply("")}>Descartar</Button>}
@@ -222,14 +217,14 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
   const [owner, repo] = e.repo.split("/");
   const [draft, setDraft] = useState<{ title: string; body: string }>();
   const save = () => { if (draft) { act(d.pull ? "edit_pull" : "edit_issue", draft); setDraft(undefined); } };
-  const box = "w-full rounded-md border border-slate-300 bg-white px-2 py-1 dark:border-border-strong dark:bg-surface";
+  const box = "py-1";
   return (
     <Card className="p-0">
       <div className="space-y-2 p-4">
         <div className="flex items-start gap-3">
           <span className={`mt-0.5 shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold text-white ${stateColor[e.state] ?? "bg-slate-500"}`}>{stateName[e.state] ?? e.state}</span>
           {draft
-            ? <input aria-label="Título" autoFocus value={draft.title} onChange={(ev) => setDraft({ ...draft, title: ev.target.value })} onKeyDown={(ev) => ev.key === "Escape" && setDraft(undefined)} className={`${box} min-w-0 flex-1 text-lg font-bold`} />
+            ? <Input aria-label="Título" autoFocus value={draft.title} onChange={(ev) => setDraft({ ...draft, title: ev.target.value })} onKeyDown={(ev) => ev.key === "Escape" && setDraft(undefined)} className={`${box} min-w-0 flex-1 !text-lg font-bold`} />
             : <h1 className="min-w-0 flex-1 break-words text-lg font-bold leading-snug">{e.title}</h1>}
           {(draft ? (
             <span className="flex shrink-0 gap-1">
@@ -273,7 +268,7 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
         </div>
       )}
       {draft
-        ? <div className="border-t border-slate-100 px-4 py-3 dark:border-border"><MentionArea aria-label="Descripción" value={draft.body} onValue={(body) => setDraft({ ...draft, body })} people={people} links={d.links} rows={12} className={`${box} font-mono text-sm`} /></div>
+        ? <div className="border-t border-slate-100 px-4 py-3 dark:border-border"><MentionArea aria-label="Descripción" value={draft.body} onValue={(body) => setDraft({ ...draft, body })} people={people} links={d.links} rows={12} className={`${box} font-mono`} /></div>
         : d.body && <div className="max-h-[60vh] overflow-auto border-t border-slate-100 px-4 py-3 dark:border-border"><RefMd onToggle={busy ? undefined : (line) => act(d.pull ? "edit_pull" : "edit_issue", { title: e.title, body: toggleTask(d.body, line) })}>{d.body}</RefMd></div>}
       <div className="flex flex-wrap items-center gap-2 rounded-b-lg border-t border-slate-100 bg-slate-50 px-4 py-2.5 dark:border-border dark:bg-canvas/40">{actions}</div>
     </Card>
@@ -306,14 +301,11 @@ export function GithubView() {
   const focusBox = () => requestAnimationFrame(() => {
     const el = box.current; if (!el) return;
     el.focus({ preventScroll: true });
-    const vv = window.visualViewport;
-    const show = () => el.scrollIntoView({ block: "center" });
-    if (vv) { vv.addEventListener("resize", show, { once: true }); setTimeout(() => vv.removeEventListener("resize", show), 1000); }
+    keepAboveKeyboard(bottom.current);
   });
   const write = () => { bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }); focusBox(); };
   const [showDiff, setShowDiff] = useState(false);
   const [defining, setDefining] = useState(false);
-  const [confirm, dialog] = useConfirm();
   const key = ["github-detail", full, kind, n];
   const detail = useQuery({ queryKey: key, queryFn: () => api.githubDetail(full, kind, n), refetchInterval: 60_000 });
   // The floating button hides while the composer area is on screen.
@@ -326,14 +318,7 @@ export function GithubView() {
     io.observe(el);
     return () => io.disconnect();
   }, [detail.isSuccess]);
-  const action = useMutation({
-    mutationFn: (a: { type: string; title?: string; body?: string; method?: string; thread_id?: string; user_ids?: string[]; comment_id?: string }) => api.githubAct(full, kind, n, a),
-    onSuccess: (_, a) => {
-      if (a.body && !a.thread_id && !a.type.startsWith("edit_")) discard();
-      qc.invalidateQueries({ queryKey: key });
-      qc.invalidateQueries({ queryKey: ["github"] });
-    },
-  });
+  const action = useActionQueue(key, () => {});
   const d = detail.data;
   // People who can be mentioned: the repo's users and everyone in the conversation.
   const people = d ? [...new Set([...d.candidates.map((u) => u.login), (d.pull ?? d.issue)!.author, ...d.timeline.map((e) => e.actor), ...d.threads.flatMap((t) => t.comments.map((c) => c.author))])].filter((p) => /^[\w-]+$/.test(p) && p !== d.viewer).sort() : [];
@@ -343,22 +328,22 @@ export function GithubView() {
     <div className="space-y-3">
       <Link to="/github" className={pill}><Arrow back /> GitHub</Link>
       <ErrorText error={detail.error ?? action.error} />
-      {dialog}
+      {detail.isPending && <DetailSkeleton />}
       {d && <RefContext.Provider value={{ owner: full.split("/")[0], repo: full.split("/")[1], links: d.links }}>
-        <Header d={d} act={act} busy={action.isPending} people={people} actions={<>
-          {d.pull && <PullActions pull={d.pull} me={d.viewer} act={act} busy={action.isPending} diff={showDiff} toggleDiff={() => setShowDiff(!showDiff)} />}
+        <Header d={d} act={act} busy={false} people={people} actions={<>
+          {d.pull && <PullActions pull={d.pull} me={d.viewer} act={act} busy={false} diff={showDiff} toggleDiff={() => setShowDiff(!showDiff)} />}
           {d.pull?.mergeable === "CONFLICTING" && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Resolver conflictos</Button>}
           {d.issue && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Definir tareas</Button>}
-          {d.issue && <IssueActions open={open} act={act} busy={action.isPending} />}
+          {d.issue && <IssueActions open={open} act={act} busy={false} />}
         </>} />
         {defining && <DefineIssueDialog resolve={!!d.pull} repo={full} number={n} onClose={() => setDefining(false)} />}
         {showDiff && <Diff repo={full} pr={n} />}
-        <Threads threads={d.threads} me={d.viewer} people={people} links={d.links} act={action.mutateAsync} busy={action.isPending} />
+        <Threads threads={d.threads} me={d.viewer} people={people} links={d.links} act={action.mutateAsync} busy={false} />
         {d.timeline.map((e, i) => (
           <div key={i} className={e.body ? "" : "px-3 text-xs text-slate-500 dark:text-muted"}>
             {e.body ? (
               <Card>
-                <Message author={e.actor} verb={reviewStates[e.state] ?? labels[e.type] ?? e.type} at={e.at} body={e.body} mine={e.actor === d.viewer} editType={e.type === "PullRequestReview" ? "edit_review" : "edit_comment"} id={e.id} act={action.mutateAsync} busy={action.isPending}
+                <Message author={e.actor} verb={reviewStates[e.state] ?? labels[e.type] ?? e.type} at={e.at} body={e.body} mine={e.actor === d.viewer} editType={e.type === "PullRequestReview" ? "edit_review" : "edit_comment"} id={e.id} act={action.mutateAsync} busy={false}
                   onReply={(q) => { setText(q + text); write(); }} />
               </Card>
             ) : <>{e.actor} {reviewStates[e.state] ?? labels[e.type] ?? e.type} {e.detail} · {new Date(e.at).toLocaleString()}</>}
@@ -366,11 +351,11 @@ export function GithubView() {
         ))}
         <div ref={bottom}>
           <Card className="space-y-2">
-            <MentionArea boxRef={box} people={people} links={d.links} id="composer" aria-label="Mensaje" value={text} onValue={setText} onKeyDown={(e) => e.key === "Escape" && box.current?.blur()} rows={4} placeholder="Escribe un mensaje…" className="w-full rounded-md border border-slate-300 bg-white p-2 text-sm dark:border-border-strong dark:bg-surface" />
+            <MentionArea boxRef={box} people={people} links={d.links} id="composer" aria-label="Mensaje" value={text} onValue={setText} onKeyDown={(e) => e.key === "Escape" && box.current?.blur()} rows={4} placeholder="Escribe un mensaje…" className="p-2" />
             <div className="flex flex-wrap gap-2">
-              <Button disabled={action.isPending || !text.trim()} onClick={() => action.mutate({ type: "comment", body: text })}>Comentar</Button>
-              {d.pull && open && <Button variant="ghost" disabled={action.isPending || !text.trim()} onClick={() => action.mutate({ type: "request_changes", body: text })}>Pedir cambios</Button>}
-              {d.pull && open && canApprove(d.pull, d.viewer) && <Button variant="ghost" disabled={action.isPending || !text.trim()} onClick={() => action.mutate({ type: "approve", body: text })}>Aprobar con mensaje</Button>}
+              <Button disabled={!text.trim()} onClick={() => { action.mutate({ type: "comment", body: text }); discard(); }}>Comentar</Button>
+              {d.pull && open && <Button variant="ghost" disabled={!text.trim()} onClick={() => { action.mutate({ type: "request_changes", body: text }); discard(); }}>Pedir cambios</Button>}
+              {d.pull && open && canApprove(d.pull, d.viewer) && <Button variant="ghost" disabled={!text.trim()} onClick={() => { action.mutate({ type: "approve", body: text }); discard(); }}>Aprobar con mensaje</Button>}
               {text && <Button variant="ghost" className="ml-auto" onClick={discard}>Descartar</Button>}
             </div>
           </Card>
@@ -385,6 +370,122 @@ export function GithubView() {
           </span>
         )}
       </RefContext.Provider>}
+    </div>
+  );
+}
+
+type GithubAction = { type: string; title?: string; body?: string; method?: string; thread_id?: string; user_ids?: string[]; comment_id?: string; milestone_id?: string };
+
+// State changes show at once and are applied to the cached detail before GitHub answers.
+const logins = (d: GithubDetail, ids: string[] = []) => d.candidates.filter((u) => ids.includes(u.id));
+// event appends what the viewer just wrote to the conversation, until GitHub returns the real one.
+const event = (d: GithubDetail, type: string, body = "", state = ""): GithubDetail =>
+  ({ ...d, timeline: [...d.timeline, { id: `pending-${Date.now()}`, type, actor: d.viewer, at: new Date().toISOString(), body, state, detail: "" }] });
+const review = (d: GithubDetail, a: GithubAction, state: "APPROVED" | "CHANGES_REQUESTED"): GithubDetail => {
+  if (!d.pull) return d;
+  const base = a.body ? event(d, "PullRequestReview", a.body, state) : d;
+  const approved = state === "APPROVED";
+  return { ...base, pull: { ...d.pull,
+    approved_by: approved ? [...new Set([...d.pull.approved_by, d.viewer])] : d.pull.approved_by.filter((l) => l !== d.viewer),
+    changes_by: approved ? d.pull.changes_by.filter((l) => l !== d.viewer) : [...new Set([...d.pull.changes_by, d.viewer])],
+    review_requests: d.pull.review_requests.filter((l) => l !== d.viewer) } };
+};
+const editEvent = (d: GithubDetail, a: GithubAction): GithubDetail => ({ ...d, timeline: d.timeline.map((e) => (e.id === a.comment_id ? { ...e, body: a.body ?? e.body } : e)) });
+const editItem = (d: GithubDetail, a: GithubAction): GithubDetail => ({
+  ...d, body: a.body ?? d.body,
+  ...(d.pull && a.title ? { pull: { ...d.pull, title: a.title } } : {}),
+  ...(d.issue && a.title ? { issue: { ...d.issue, title: a.title } } : {}),
+});
+const thread = (d: GithubDetail, id: string | undefined, f: (t: GithubDetail["threads"][number]) => GithubDetail["threads"][number]): GithubDetail =>
+  ({ ...d, threads: d.threads.map((t) => (t.id === id ? f(t) : t)) });
+
+// Every action shows at once and is applied to the cached detail before GitHub answers.
+const optimistic: Record<string, (d: GithubDetail, a: GithubAction) => GithubDetail> = {
+  assign: (d, a) => ({ ...d, assignees: [...d.assignees, ...logins(d, a.user_ids).filter((u) => !d.assignees.some((x) => x.id === u.id))] }),
+  unassign: (d, a) => ({ ...d, assignees: d.assignees.filter((u) => !a.user_ids?.includes(u.id)) }),
+  request_review: (d, a) => (d.pull ? { ...d, pull: { ...d.pull, review_requests: [...new Set([...d.pull.review_requests, ...logins(d, a.user_ids).map((u) => u.login)])] } } : d),
+  approve: (d, a) => review(d, a, "APPROVED"),
+  request_changes: (d, a) => review(d, a, "CHANGES_REQUESTED"),
+  comment: (d, a) => event(d, "IssueComment", a.body),
+  edit_comment: editEvent,
+  edit_review: editEvent,
+  edit_issue: editItem,
+  edit_pull: editItem,
+  set_milestone: (d, a) => (d.issue ? { ...d, issue: { ...d.issue, milestone: d.milestones.find((m) => m.id === a.milestone_id)?.title ?? "" } } : d),
+  reply_thread: (d, a) => thread(d, a.thread_id, (t) => ({ ...t, comments: [...t.comments, { id: `pending-${Date.now()}`, author: d.viewer, at: new Date().toISOString(), body: a.body ?? "", url: "" }] })),
+  resolve_thread: (d, a) => thread(d, a.thread_id, (t) => ({ ...t, resolved: true, resolved_by: d.viewer })),
+  unresolve_thread: (d, a) => thread(d, a.thread_id, (t) => ({ ...t, resolved: false, resolved_by: "" })),
+  ready: (d) => (d.pull ? { ...d, pull: { ...d.pull, draft: false } } : d),
+  draft: (d) => (d.pull ? { ...d, pull: { ...d.pull, draft: true } } : d),
+  close_pull: (d) => (d.pull ? { ...d, pull: { ...d.pull, state: "CLOSED" } } : d),
+  reopen_pull: (d) => (d.pull ? { ...d, pull: { ...d.pull, state: "OPEN" } } : d),
+  merge: (d) => (d.pull ? { ...d, pull: { ...d.pull, state: "MERGED" } } : d),
+  close_issue: (d, a) => (d.issue ? { ...d, issue: { ...d.issue, state: "CLOSED", state_reason: a.method ?? "" } } : d),
+  reopen_issue: (d) => (d.issue ? { ...d, issue: { ...d.issue, state: "OPEN", state_reason: "REOPENED" } } : d),
+};
+
+// useActionQueue sends GitHub actions one after another, in click order. When one fails,
+// the detail is reloaded from GitHub (undoing the optimistic change) and the queued ones are dropped.
+function useActionQueue(key: unknown[], onDone: (a: GithubAction) => void) {
+  const qc = useQueryClient();
+  const tail = useRef<Promise<unknown>>(Promise.resolve());
+  const epoch = useRef(0);
+  const [pending, setPending] = useState(0);
+  const inflight = useRef(0);
+  const [error, setError] = useState<unknown>(null);
+  const mutateAsync = (a: GithubAction) => {
+    const [, full, kind, n] = key as [string, string, string, number];
+    const mine = epoch.current;
+    setError(null);
+    const patch = optimistic[a.type];
+    if (patch) { qc.cancelQueries({ queryKey: key }); qc.setQueryData<GithubDetail>(key, (d) => (d ? patch(d, a) : d)); }
+    inflight.current++;
+    setPending((p) => p + 1);
+    const run = tail.current.catch(() => {}).then(async () => {
+      if (epoch.current !== mine) throw new Error("Cancelada: falló una acción anterior.");
+      try {
+        await api.githubAct(full, kind, n, a);
+        onDone(a);
+      } catch (e) {
+        epoch.current++;
+        setError(e);
+        throw e;
+      }
+    }).finally(() => {
+      setPending((p) => p - 1);
+      // Reload only once the queue is empty, so a later optimistic change is not overwritten.
+      if (--inflight.current === 0) {
+        qc.invalidateQueries({ queryKey: key });
+        qc.invalidateQueries({ queryKey: ["github"] });
+      } else qc.cancelQueries({ queryKey: key });
+    });
+    tail.current = run;
+    return run;
+  };
+  return { mutateAsync, mutate: (a: GithubAction) => { mutateAsync(a).catch(() => {}); }, isPending: pending > 0, error };
+}
+
+// DetailSkeleton holds the layout of an issue or pull request while GitHub answers:
+// header, actions, description and a few conversation messages.
+function DetailSkeleton() {
+  const bar = "rounded bg-slate-200 motion-safe:animate-pulse dark:bg-raised";
+  return (
+    <div role="status" aria-label="Cargando" className="space-y-3">
+      <Card className="space-y-3">
+        <div className="flex items-start gap-3">
+          <div className={`h-6 w-16 rounded-full ${bar}`} />
+          <div className="min-w-0 flex-1 space-y-2"><div className={`h-5 w-3/4 ${bar}`} /><div className={`h-3 w-1/3 ${bar}`} /></div>
+        </div>
+        <div className="flex flex-wrap gap-2">{[0, 1, 2, 3, 4].map((i) => <div key={i} className={`size-9 rounded-lg ${bar}`} />)}<div className={`ml-auto h-9 w-28 rounded-lg ${bar}`} /></div>
+        <div className="flex items-center gap-2 border-t border-slate-100 pt-3 dark:border-border">{[0, 1, 2].map((i) => <div key={i} className={`size-6 rounded-full ${bar}`} />)}<div className={`h-3 w-24 ${bar}`} /></div>
+        <div className="space-y-2 border-t border-slate-100 pt-3 dark:border-border">{[92, 85, 97, 60, 78].map((w, i) => <div key={i} className={`h-3 ${bar}`} style={{ width: `${w}%` }} />)}</div>
+      </Card>
+      {[0, 1, 2].map((k) => (
+        <Card key={k} className="space-y-2">
+          <div className="flex items-center gap-2"><div className={`size-7 rounded-full ${bar}`} /><div className={`h-3 w-28 ${bar}`} /><div className={`ml-auto h-3 w-16 ${bar}`} /></div>
+          {[88, 70, k === 1 ? 45 : 80].map((w, i) => <div key={i} className={`h-3 ${bar}`} style={{ width: `${w}%`, animationDelay: `${k * 0.15}s` }} />)}
+        </Card>
+      ))}
     </div>
   );
 }

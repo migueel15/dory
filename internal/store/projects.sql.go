@@ -10,7 +10,8 @@ import (
 )
 
 const archiveProject = `-- name: ArchiveProject :one
-UPDATE projects SET archived_at = now(), updated_at = now() WHERE id = CAST($1 AS text)::uuid AND archived_at IS NULL RETURNING (to_jsonb(projects) - 'search_vector')::jsonb AS data
+-- Archiving a project archives its repositories, items and features with it.
+WITH p AS (UPDATE projects SET archived_at = now(), updated_at = now() WHERE id = CAST($1 AS text)::uuid AND archived_at IS NULL RETURNING *), r AS (UPDATE repositories SET archived_at = now(), updated_at = now() WHERE project_id IN (SELECT id FROM p) AND archived_at IS NULL), i AS (UPDATE items SET archived_at = now(), updated_at = now() WHERE project_id IN (SELECT id FROM p) AND archived_at IS NULL), f AS (UPDATE features SET archived_at = now(), updated_at = now() WHERE project_id IN (SELECT id FROM p) AND archived_at IS NULL) SELECT (to_jsonb(p) - 'search_vector')::jsonb AS data FROM p
 `
 
 func (q *Queries) ArchiveProject(ctx context.Context, id string) ([]byte, error) {

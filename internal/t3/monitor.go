@@ -64,16 +64,19 @@ type Monitor struct {
 	watchMu  sync.Mutex
 	watchers map[string]context.CancelFunc
 	live     map[string]bool
+	// syncFailed holds repositories whose project could not be created; only runProjectSync touches it.
+	syncFailed map[string]bool
 }
 
 func NewMonitor(svc service.Service) *Monitor {
-	return &Monitor{svc: svc, client: &http.Client{Timeout: requestTimeout}, byID: map[string]Status{}, usage: map[string]InstanceUsage{}, subs: map[chan struct{}]struct{}{}, watchers: map[string]context.CancelFunc{}, live: map[string]bool{}}
+	return &Monitor{svc: svc, client: &http.Client{Timeout: requestTimeout}, byID: map[string]Status{}, usage: map[string]InstanceUsage{}, subs: map[chan struct{}]struct{}{}, watchers: map[string]context.CancelFunc{}, live: map[string]bool{}, syncFailed: map[string]bool{}}
 }
 
 // Run polls until ctx ends.
 func (m *Monitor) Run(ctx context.Context) {
 	go m.runUsage(ctx)
 	go m.runDiscovery(ctx)
+	go m.runProjectSync(ctx)
 	tick := time.NewTicker(pollInterval)
 	defer tick.Stop()
 	for {
@@ -307,6 +310,37 @@ func (m *Monitor) pollUsage(ctx context.Context, refresh bool) {
 func (m *Monitor) RefreshUsage(ctx context.Context) []InstanceUsage {
 	m.pollUsage(context.WithoutCancel(ctx), true)
 	return m.Usage()
+}
+
+// UsageHistory reads the daily usage of every instance over the last days.
+func (m *Monitor) UsageHistory(ctx context.Context, days int) ([]InstanceHistory, error) {
+	days = max(1, min(days, MaxHistoryDays))
+	instances, err := m.svc.T3Instances().List(ctx, service.Filter{Limit: 100})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]InstanceHistory, len(instances))
+	var wg sync.WaitGroup
+	for i, in := range instances {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c := Client{BaseURL: in.BaseUrl, Token: os.Getenv(in.TokenEnv), HTTP: m.client}
+			h := InstanceHistory{InstanceID: in.ID, EnvironmentID: in.EnvironmentID, Days: []DayUsage{}}
+			d, err := c.UsageHistory(ctx, time.Now(), days)
+			switch {
+			case err == nil:
+				h.Days = d
+			case errors.Is(err, errMissingScope):
+				h.Error = UsageMissingScope
+			default:
+				h.Error = UsageUnavailable
+			}
+			out[i] = h
+		}()
+	}
+	wg.Wait()
+	return out, nil
 }
 
 // Usage returns the latest usage read of every instance.

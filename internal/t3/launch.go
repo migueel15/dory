@@ -76,6 +76,10 @@ type CatalogProject struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
 	Root  string `json:"root"`
+	// Repo is the web URL of the project's repository; empty when T3 knows none.
+	Repo string `json:"repo"`
+	// RepoName is the repository name, used to name a discovered Dory project.
+	RepoName string `json:"-"`
 }
 
 // Catalog is what can be chosen when launching a thread on an instance.
@@ -89,16 +93,37 @@ func (c Client) Catalog(ctx context.Context) (Catalog, error) {
 	out := Catalog{Providers: []CatalogProvider{}, Projects: []CatalogProject{}}
 	var snap struct {
 		Projects []struct {
-			ID            string `json:"id"`
-			Title         string `json:"title"`
-			WorkspaceRoot string `json:"workspaceRoot"`
+			ID                 string `json:"id"`
+			Title              string `json:"title"`
+			WorkspaceRoot      string `json:"workspaceRoot"`
+			RepositoryIdentity *struct {
+				CanonicalKey string `json:"canonicalKey"`
+				WebURL       string `json:"webUrl"`
+				Name         string `json:"name"`
+				Locator      struct {
+					RemoteURL string `json:"remoteUrl"`
+				} `json:"locator"`
+			} `json:"repositoryIdentity"`
 		} `json:"projects"`
 	}
 	if err := c.get(ctx, "/api/orchestration/shell?omitIdleSubagents=true&omitOlderSettled=true", true, &snap); err != nil {
 		return out, err
 	}
 	for _, p := range snap.Projects {
-		out.Projects = append(out.Projects, CatalogProject{ID: p.ID, Title: p.Title, Root: p.WorkspaceRoot})
+		cp := CatalogProject{ID: p.ID, Title: p.Title, Root: p.WorkspaceRoot}
+		if r := p.RepositoryIdentity; r != nil {
+			// T3 may omit webUrl; canonicalKey (host/owner/name) is always there.
+			switch {
+			case r.WebURL != "":
+				cp.Repo = r.WebURL
+			case r.CanonicalKey != "":
+				cp.Repo = "https://" + r.CanonicalKey
+			default:
+				cp.Repo = r.Locator.RemoteURL
+			}
+			cp.RepoName = r.Name
+		}
+		out.Projects = append(out.Projects, cp)
 	}
 	var cfg struct {
 		Providers []struct {

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowsIn, ArrowsOut, CaretRight, ChatCircle, CircleNotch, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowsIn, ArrowsOut, CaretRight, Columns, Rows, SidebarSimple, ChatCircle, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import { Button, ErrorText } from "../components/ui";
+import { Button, ErrorText, Input, Textarea, keepAboveKeyboard } from "../components/ui";
 import { highlight, languageOf, loadLanguage } from "../highlight";
 
 type Side = "LEFT" | "RIGHT";
@@ -37,6 +37,25 @@ function parseDiff(diff: string): File[] {
     }
   }
   return files;
+}
+
+type Row = { hunk?: number; left?: number; right?: number };
+
+// splitRows pairs removed and added lines side by side, like GitHub's split view.
+function splitRows(lines: Line[]): Row[] {
+  const rows: Row[] = [];
+  let dels: number[] = [], adds: number[] = [];
+  const flush = () => {
+    for (let k = 0; k < Math.max(dels.length, adds.length); k++) rows.push({ left: dels[k], right: adds[k] });
+    dels = []; adds = [];
+  };
+  lines.forEach((l, i) => {
+    if (l.kind === "del") { if (adds.length) flush(); dels.push(i); }
+    else if (l.kind === "add") adds.push(i);
+    else { flush(); rows.push(l.kind === "hunk" ? { hunk: i } : { left: i, right: i }); }
+  });
+  flush();
+  return rows;
 }
 
 type Dir = { name: string; dirs: Dir[]; files: File[] };
@@ -103,6 +122,23 @@ const gutter = { add: "bg-green-100 dark:bg-green-900/40", del: "bg-red-100 dark
 const panel = "rounded-lg border border-slate-200 bg-white dark:border-border dark:bg-surface";
 const anchor = (path: string) => `diff-${path}`;
 
+const markClass = "rounded-sm bg-amber-300 text-slate-900 dark:bg-amber-500/70 dark:text-white";
+const escRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escHtml = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+// markHtml wraps the search term inside highlighted code, touching only the text between tags.
+function markHtml(html: string, q: string) {
+  if (!q) return html;
+  const re = new RegExp(`(${escRe(escHtml(q))})`, "gi");
+  return html.split(/(<[^>]+>)/).map((part) => (part.startsWith("<") ? part : part.replace(re, `<mark class="${markClass}">$1</mark>`))).join("");
+}
+
+// markText does the same for plain lines.
+function markText(text: string, q: string) {
+  if (!q) return text;
+  return text.split(new RegExp(`(${escRe(q)})`, "gi")).map((part, i) => (i % 2 ? <mark key={i} className={markClass}>{part}</mark> : part));
+}
+
 export function Diff({ repo, pr }: { repo: string; pr: number }) {
   const qc = useQueryClient();
   const diff = useQuery({ queryKey: ["github-diff", repo, pr], queryFn: () => api.githubDiff(repo, pr) });
@@ -114,12 +150,26 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<string>();
   const [full, setFull] = useState(false);
+  // The last chosen layout is remembered in this browser for every diff.
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [split, setSplitState] = useState(() => { try { return localStorage.getItem("dory.diff-view") === "split"; } catch { return false; } });
+  const setSplit = (f: (v: boolean) => boolean) => setSplitState((v) => {
+    const next = f(v);
+    try { localStorage.setItem("dory.diff-view", next ? "split" : "unified"); } catch { /* storage unavailable */ }
+    return next;
+  });
   const [loaded, setLoaded] = useState(0); // bumps when a language finishes loading
   useEffect(() => {
     if (!full) return;
     const esc = (e: KeyboardEvent) => e.key === "Escape" && setFull(false);
     window.addEventListener("keydown", esc);
-    return () => window.removeEventListener("keydown", esc);
+    // Lock the page behind so only the diff scrolls.
+    const html = document.documentElement, prev = [html.style.overflow, document.body.style.overflow];
+    html.style.overflow = document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", esc);
+      [html.style.overflow, document.body.style.overflow] = prev;
+    };
   }, [full]);
   useEffect(() => {
     const langs = new Set(files.map((f) => languageOf(f.path)).filter((l): l is string => !!l));
@@ -145,13 +195,22 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
       qc.invalidateQueries({ queryKey: ["github-detail", repo, "pulls", pr] });
     },
   });
-  const shown = files.filter((f) => f.path.toLowerCase().includes(filter.toLowerCase()));
+  // The search matches file paths and the text of the changed lines.
+  const q = filter.trim().toLowerCase();
+  const hit = (l: Line) => !!q && l.kind !== "hunk" && l.text.slice(1).toLowerCase().includes(q);
+  const hits = useMemo(() => new Map(files.map((f) => [f.path, q ? f.lines.filter(hit).length : 0])), [files, q]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = files.filter((f) => !q || f.path.toLowerCase().includes(q) || hits.get(f.path)! > 0);
 
+  // On touch screens a drag scrolls; tapping a second line number extends the selection instead.
+  const touch = useRef(false);
   const choose = (file: string, i: number, shift: boolean) => {
     const from = shift && pick?.file === file && pick.start >= 0 ? pick.start : i;
+    setPick({ file, start: Math.min(from, i), end: Math.max(from, i) });
+    // A tap has no drag: the comment box moves when the range changes, and a drag
+    // would keep extending to whatever line slides under the finger.
+    if (touch.current) { setDrag(undefined); setOpen(true); return; }
     setOpen(false);
     setDrag({ file, from });
-    setPick({ file, start: Math.min(from, i), end: Math.max(from, i) });
   };
   const extend = (file: string, i: number) => {
     if (drag?.file === file) setPick({ file, start: Math.min(drag.from, i), end: Math.max(drag.from, i) });
@@ -163,8 +222,8 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
   };
   const form = (f: File, p: Pick, placeholder: string) => (
     <div className="my-2 whitespace-normal font-sans">
-                        <textarea aria-label="Comentario de revisión" autoFocus value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder={placeholder} className="w-full rounded border border-slate-300 bg-white p-2 text-sm dark:border-border dark:bg-surface" />
-                        <div className="flex gap-2">
+                        <Textarea aria-label="Comentario de revisión" autoFocus onFocus={(e) => keepAboveKeyboard(e.currentTarget.parentElement!)} value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder={placeholder} className="p-2" />
+                        <div className="mt-2 flex gap-2">
                           <Button disabled={comment.isPending || !body.trim()} onClick={() => publish(f, p)}>Publicar en GitHub</Button>
                           <Button variant="ghost" onClick={() => setPick(undefined)}>Cancelar</Button>
                         </div>
@@ -172,40 +231,69 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
   );
   const jump = (path: string) => {
     setActive(path);
-    document.getElementById(anchor(path))?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById(anchor(path))?.closest("section")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const treeRoot = useMemo(() => tree(shown), [filter, files]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (diff.isPending) {
-    return (
-      <div className={`${panel} flex items-center justify-center gap-2 p-10 text-sm text-slate-500 dark:text-muted`} role="status">
-        <CircleNotch aria-hidden="true" className="size-5 animate-spin" /> Cargando diff…
+  // While the diff loads, the real layout renders with placeholder bars in place of files and code.
+  const loading = diff.isPending;
+  const bar = "rounded bg-slate-200 motion-safe:animate-pulse dark:bg-raised";
+  const widths = [72, 55, 88, 40, 64, 80, 35, 70, 50, 60];
+  const treeSkeleton = (
+    <div role="status" aria-label="Cargando ficheros" className="space-y-2 px-1 pt-1">
+      {widths.slice(0, 8).map((w, i) => <div key={i} className={`h-3.5 ${bar}`} style={{ width: `${w}%`, marginLeft: i % 3 ? 12 : 0 }} />)}
+    </div>
+  );
+  const filesSkeleton = [0, 1].map((k) => (
+    <section key={k} className={panel} aria-hidden="true">
+      <div className="flex items-center justify-between gap-2 rounded-t-lg border-b border-slate-200 bg-slate-50 px-3 py-2 dark:border-border dark:bg-raised">
+        <div className={`h-3.5 w-56 max-w-[60%] ${bar}`} />
+        <div className={`h-3.5 w-16 ${bar}`} />
       </div>
-    );
-  }
+      <div className="space-y-2 p-3">
+        {widths.map((w, i) => <div key={i} className={`h-3 ${bar}`} style={{ width: `${(w + k * 13) % 90 + 10}%` }} />)}
+      </div>
+    </section>
+  ));
+
+  const toolBtn = "grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-300 bg-white hover:bg-slate-100 dark:border-border dark:bg-surface dark:hover:bg-raised";
+  const tools = (
+    <>
+      <button type="button" onClick={() => setPanelOpen((v) => !v)} title={panelOpen ? "Ocultar panel" : "Mostrar panel"} aria-label={panelOpen ? "Ocultar panel" : "Mostrar panel"} aria-expanded={panelOpen} className={toolBtn}>
+        {panelOpen ? <SidebarSimple aria-hidden="true" weight="fill" className="size-4" /> : <SidebarSimple aria-hidden="true" className="size-4" />}
+      </button>
+      <button type="button" onClick={() => setSplit((v) => !v)} title={split ? "Vista unificada" : "Vista dividida"} aria-label={split ? "Vista unificada" : "Vista dividida"} aria-pressed={split} className={toolBtn}>
+        {split ? <Rows aria-hidden="true" className="size-4" /> : <Columns aria-hidden="true" className="size-4" />}
+      </button>
+      <button type="button" onClick={() => setFull((v) => !v)} title={full ? "Salir de pantalla completa (Esc)" : "Pantalla completa"} aria-label={full ? "Salir de pantalla completa" : "Pantalla completa"} className={toolBtn}>
+        {full ? <ArrowsIn aria-hidden="true" className="size-4" /> : <ArrowsOut aria-hidden="true" className="size-4" />}
+      </button>
+    </>
+  );
 
   return (
-    <div className={full ? "fixed inset-0 z-50 overflow-hidden bg-slate-50 p-3 dark:bg-canvas" : ""}>
-    <div className={`grid gap-3 md:grid-cols-[16rem_1fr] ${full ? "h-full grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1" : ""}`}>
-      <aside className={`${full ? "h-[30vh] md:h-auto" : "h-[30vh] md:h-[80vh]"} overflow-auto`}>
-        <div className={`${panel} min-h-full p-2`}>
-          <input aria-label="Buscar fichero" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero…" className="mb-2 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-border dark:bg-surface" />
-          <Tree dir={treeRoot} jump={jump} active={active} />
-        </div>
+    <div className={full ? "fixed inset-0 z-50 h-dvh overflow-hidden overscroll-none bg-slate-50 p-3 dark:bg-canvas" : ""}>
+    <div className={`grid gap-3 ${panelOpen ? "md:grid-cols-[16rem_1fr]" : "md:grid-cols-[2.25rem_1fr]"} ${full ? "h-full grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1" : ""}`}>
+      {panelOpen ? (
+      <aside className={`${full ? "h-[30vh] md:h-auto" : "h-[30vh] md:h-[80vh]"} ${panel} flex min-h-0 flex-col overflow-hidden`}>
+          <div className="flex shrink-0 gap-1.5 p-2">
+            <Input aria-label="Buscar fichero o texto" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero o texto…" className="min-w-0 flex-1 py-1" />
+            {tools}
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto overscroll-contain px-2 pb-2">{loading ? treeSkeleton : <Tree dir={treeRoot} jump={jump} active={active} />}</div>
       </aside>
+      ) : (
+      <aside className="flex gap-1.5 md:flex-col">{tools}</aside>
+      )}
       <div className={`min-w-0 space-y-3 overflow-auto overscroll-contain ${full ? "" : "md:h-[80vh]"}`}>
-        <div className="flex justify-end">
-          <button type="button" onClick={() => setFull((v) => !v)} title={full ? "Salir de pantalla completa (Esc)" : "Pantalla completa"} aria-label={full ? "Salir de pantalla completa" : "Pantalla completa"} className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-100 dark:border-border dark:bg-surface dark:hover:bg-raised">
-            {full ? <ArrowsIn aria-hidden="true" className="size-4" /> : <ArrowsOut aria-hidden="true" className="size-4" />}
-            {full ? "Salir" : "Pantalla completa"}
-          </button>
-        </div>
         <ErrorText error={diff.error ?? comment.error} />
+        {loading && filesSkeleton}
         {shown.map((f) => (
           <section key={f.path} className={panel}>
             <div id={anchor(f.path)} className="sticky top-0 z-10 flex scroll-mt-0 items-center justify-between gap-2 rounded-t-lg border-b border-slate-200 bg-slate-50 px-3 py-1.5 dark:border-border dark:bg-raised">
               <span className="min-w-0 truncate font-mono text-xs font-semibold" title={f.path}>{f.path}</span>
               <span className="flex shrink-0 items-center gap-2 font-mono text-xs">
+                {hits.get(f.path)! > 0 && <span className="rounded bg-amber-100 px-1.5 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">{hits.get(f.path)} coincidencia{hits.get(f.path) === 1 ? "" : "s"}</span>}
                 <span className="text-green-700 dark:text-green-400">+{f.added}</span>
                 <span className="text-red-700 dark:text-red-400">−{f.removed}</span>
                 <button type="button" title="Comentar el fichero" aria-label="Comentar el fichero" onClick={() => { setPick({ file: f.path, start: -1, end: -1 }); setOpen(true); }} className="rounded p-0.5 text-slate-400 hover:bg-slate-200 hover:text-blue-600 dark:hover:bg-border dark:hover:text-accent-text">
@@ -214,21 +302,52 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
               </span>
             </div>
             {pick?.file === f.path && pick.start < 0 && <div className="px-3">{form(f, pick, `Comentario sobre ${f.path}…`)}</div>}
+            {split ? (
+              <div className="overflow-x-auto font-mono text-xs leading-5">
+                {splitRows(f.lines).map((r, k) => {
+                  if (r.hunk !== undefined) return <div key={k} className={`whitespace-pre py-0 pl-3 ${color.hunk}`}>{f.lines[r.hunk].text}</div>;
+                  const cell = (i: number | undefined, at: "old" | "new") => {
+                    if (i === undefined) return <div className="flex min-w-0 bg-slate-50 dark:bg-raised/50"><span className="w-10 shrink-0 border-r border-slate-200 dark:border-border" /></div>;
+                    const l = f.lines[i];
+                    const picked = pick?.file === f.path && i >= pick.start && i <= pick.end;
+                    const kind = l.kind === "ctx" ? "ctx" : l.kind;
+                    return (
+                      <div onMouseEnter={() => extend(f.path, i)} className={`flex min-w-0 ${picked ? "bg-yellow-100 dark:bg-yellow-900" : color[kind]} ${hit(l) ? "ring-1 ring-inset ring-amber-400/70" : ""}`}>
+                        <button type="button" title="Comentar esta línea (en móvil, toca otra para ampliar el rango)" onPointerDown={(e) => { touch.current = e.pointerType !== "mouse"; }} onMouseDown={(e) => { e.preventDefault(); choose(f.path, i, e.shiftKey || touch.current); }} className={`w-10 shrink-0 touch-manipulation select-none border-r border-slate-200 pr-2 text-right text-slate-400 hover:text-blue-600 dark:border-border dark:hover:text-accent-text ${picked ? "" : gutter[kind]}`}>{l[at] ?? ""}</button>
+                        {html.get(f.path)?.[i] !== undefined
+                          ? <span className="min-w-0 flex-1 whitespace-pre-wrap break-all px-2"><span>{l.text[0]}</span><span dangerouslySetInnerHTML={{ __html: markHtml(html.get(f.path)![i]!, q) }} /></span>
+                          : <span className="min-w-0 flex-1 whitespace-pre-wrap break-all px-2">{l.text ? <>{l.text[0]}{markText(l.text.slice(1), q)}</> : " "}</span>}
+                      </div>
+                    );
+                  };
+                  const ends = open && !drag && pick?.file === f.path && pick.start >= 0 && (r.left === pick.end || r.right === pick.end);
+                  return (
+                    <div key={k}>
+                      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] divide-x divide-slate-200 dark:divide-border">
+                        {cell(r.left, "old")}
+                        {cell(r.right, "new")}
+                      </div>
+                      {ends && <div className="px-3">{form(f, pick!, `Comentario en líneas ${number(f.lines[pick!.start])}–${number(f.lines[pick!.end])}…`)}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
             <pre className="overflow-x-auto font-mono text-xs leading-5">
               {f.lines.map((l, i) => {
                 const picked = pick?.file === f.path && i >= pick.start && i <= pick.end;
                 return (
                   <div key={i}>
-                    <div onMouseEnter={() => l.kind !== "hunk" && extend(f.path, i)} className={`flex ${picked ? "bg-yellow-100 dark:bg-yellow-900" : color[l.kind]}`}>
+                    <div onMouseEnter={() => l.kind !== "hunk" && extend(f.path, i)} className={`flex ${picked ? "bg-yellow-100 dark:bg-yellow-900" : color[l.kind]} ${hit(l) ? "ring-1 ring-inset ring-amber-400/70" : ""}`}>
                       {l.kind === "hunk" ? null : (
-                        <button type="button" title="Comentar esta línea" onMouseDown={(e) => { e.preventDefault(); choose(f.path, i, e.shiftKey); }} onMouseEnter={() => extend(f.path, i)} className={`w-20 shrink-0 select-none border-r border-slate-200 pr-2 text-right text-slate-400 hover:text-blue-600 dark:border-border dark:hover:text-accent-text ${picked ? "" : gutter[l.kind]}`}>
+                        <button type="button" title="Comentar esta línea (en móvil, toca otra para ampliar el rango)" onPointerDown={(e) => { touch.current = e.pointerType !== "mouse"; }} onMouseDown={(e) => { e.preventDefault(); choose(f.path, i, e.shiftKey || touch.current); }} onMouseEnter={() => extend(f.path, i)} className={`w-20 shrink-0 touch-manipulation select-none border-r border-slate-200 pr-2 text-right text-slate-400 hover:text-blue-600 dark:border-border dark:hover:text-accent-text ${picked ? "" : gutter[l.kind]}`}>
                           <span className="inline-block w-8">{l.old ?? ""}</span> <span className="inline-block w-8">{l.new ?? ""}</span>
                         </button>
                       )}
                       {html.get(f.path)?.[i] !== undefined ? (
-                        <span className="min-w-0 flex-1 px-2"><span>{l.text[0]}</span><span dangerouslySetInnerHTML={{ __html: html.get(f.path)![i]! }} /></span>
+                        <span className="min-w-0 flex-1 whitespace-pre-wrap break-all px-2"><span>{l.text[0]}</span><span dangerouslySetInnerHTML={{ __html: markHtml(html.get(f.path)![i]!, q) }} /></span>
                       ) : (
-                        <span className={`min-w-0 flex-1 px-2 ${l.kind === "hunk" ? "pl-3" : ""}`}>{l.text || " "}</span>
+                        <span className={`min-w-0 flex-1 whitespace-pre-wrap break-all px-2 ${l.kind === "hunk" ? "pl-3" : ""}`}>{l.kind === "hunk" || !l.text ? l.text || " " : <>{l.text[0]}{markText(l.text.slice(1), q)}</>}</span>
                       )}
                     </div>
                     {open && !drag && pick?.file === f.path && pick.end === i && (
@@ -238,6 +357,7 @@ export function Diff({ repo, pr }: { repo: string; pr: number }) {
                 );
               })}
             </pre>
+            )}
           </section>
         ))}
       </div>

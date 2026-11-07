@@ -78,6 +78,9 @@ func run() error {
 		notices.Mount(mux)
 		go notices.Run(ctx)
 		go monitor.Run(ctx)
+		if p, ok := svc.(service.Purger); ok {
+			go service.RunPurge(ctx, p)
+		}
 		titleSettings := titles.Store{Pool: pool}
 		titleSettings.Mount(mux)
 		titleGen := titles.New(svc, monitor, titleSettings)

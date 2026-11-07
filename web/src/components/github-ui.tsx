@@ -1,7 +1,7 @@
 import { Link as RouterLink } from "@tanstack/react-router";
 import { ArrowBendUpLeft, ArrowCounterClockwise, CaretDown, ChatCircle, Check, CheckCircle, Clock, Code, Eye, File, Flag, GitBranch, GitMerge, GitPullRequest, GithubLogo, PencilSimple, Plus, RadioButton, User, X, type Icon as PhosphorIcon, type IconWeight } from "@phosphor-icons/react";
 import { createPortal } from "react-dom";
-import { defaultUrlTransform, Md } from "./ui";
+import { defaultUrlTransform, Md, Textarea } from "./ui";
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject, type ReactNode, type Ref, type TextareaHTMLAttributes } from "react";
 
 // Phosphor icons shared by the GitHub views.
@@ -78,11 +78,26 @@ const tones = {
 };
 
 // IconButton is a square button whose meaning lives in its icon and tooltip.
-export function IconButton({ icon, tip, onClick, disabled, tone = "plain" }: { icon: PhosphorIcon; tip: string; onClick: () => void; disabled?: boolean; tone?: keyof typeof tones }) {
+// useArm makes an action need a second click: the first arms it for a few seconds.
+export function useArm(run: () => void, ms = 3000): [boolean, () => void] {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), ms);
+    return () => clearTimeout(t);
+  }, [armed, ms]);
+  return [armed, () => { if (armed) { setArmed(false); run(); } else setArmed(true); }];
+}
+
+// IconButton with confirm asks for a second click instead of opening a dialog.
+export function IconButton({ icon, tip, onClick, disabled, tone = "plain", confirm = false }: { icon: PhosphorIcon; tip: string; onClick: () => void; disabled?: boolean; tone?: keyof typeof tones; confirm?: boolean }) {
+  const [armed, click] = useArm(onClick);
+  const ask = confirm && armed;
   return (
-    <Tip text={tip}>
-      <button type="button" aria-label={tip} disabled={disabled} onClick={onClick} className={`grid size-9 place-items-center rounded-lg border shadow-sm transition-colors disabled:opacity-40 ${tones[tone]}`}>
+    <Tip text={ask ? "Pulsa otra vez para confirmar" : tip}>
+      <button type="button" aria-label={ask ? `Confirmar: ${tip}` : tip} disabled={disabled} onClick={confirm ? click : onClick} className={`flex h-9 min-w-9 items-center justify-center rounded-lg border text-sm font-medium shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none disabled:opacity-40 ${ask ? "px-2.5" : "px-0"} ${tones[tone]}`}>
         <Icon i={icon} />
+        {confirm && <span aria-hidden={!ask} className={`overflow-hidden whitespace-nowrap transition-all duration-200 ease-out motion-reduce:transition-none ${ask ? "ml-1.5 max-w-28 opacity-100" : "ml-0 max-w-0 opacity-0"}`}>¿Confirmar?</span>}
       </button>
     </Tip>
   );
@@ -175,8 +190,8 @@ export function useConfirm(): [(a: Ask) => void, ReactNode] {
     return () => document.removeEventListener("keydown", esc);
   }, [ask]);
   const dialog = ask && (
-    <div role="dialog" aria-modal="true" aria-label={ask.title} onMouseDown={(e) => e.target === e.currentTarget && setAsk(undefined)} className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-border dark:bg-surface">
+    <div role="dialog" aria-modal="true" aria-label={ask.title} onMouseDown={(e) => e.target === e.currentTarget && setAsk(undefined)} className="fixed inset-0 z-50 grid place-items-center p-4">
+      <div className="notif-in w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-border dark:bg-surface">
         <h2 className="text-base font-semibold">{ask.title}</h2>
         <p className="mt-1.5 text-sm text-slate-600 dark:text-text-secondary">{ask.text}</p>
         <div className="mt-5 flex justify-end gap-2">
@@ -294,7 +309,7 @@ export function MentionArea({ value, onValue, people, links = [], boxRef, onKeyD
   };
   return (
     <div className="relative">
-      <textarea
+      <Textarea
         {...rest}
         ref={setRef}
         value={value}

@@ -83,6 +83,9 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 			writeT3Error(w, err)
 			return
 		}
+		if !sameRepository(w, r, svc, c, item, body.ProjectID) {
+			return
+		}
 		threadID, err := c.Launch(r.Context(), t3.LaunchInput{
 			ProjectID: body.ProjectID, Title: item.Title, Provider: body.Provider, Model: body.Model, EffortOption: body.EffortOption, Effort: body.Effort,
 			Prompt: launchPrompt(item, body.Worktree, strings.TrimSpace(body.BaseBranch)),
@@ -108,4 +111,38 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 		audit(r, svc, threadID, map[string]any{"operation": "t3.launch", "item_id": item.ID, "role": body.Role, "model": body.Model, "effort": body.Effort})
 		writeJSON(w, http.StatusCreated, map[string]string{"thread_id": threadID})
 	})
+}
+
+// sameRepository allows working on an item only from a T3 project of the same
+// repository as the item's Dory project. Items without a project, or whose
+// project has no repository yet, are not restricted. It writes the error itself.
+func sameRepository(w http.ResponseWriter, r *http.Request, svc service.Service, c t3.Client, item service.Item, t3Project string) bool {
+	if item.ProjectID == nil || *item.ProjectID == "" {
+		return true
+	}
+	repos, err := svc.Repositories().List(r.Context(), service.Filter{Fields: map[string]any{"project_id": *item.ProjectID}, Limit: 100})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal", err.Error())
+		return false
+	}
+	if len(repos) == 0 {
+		return true
+	}
+	catalog, err := c.Catalog(r.Context())
+	if err != nil {
+		writeT3Error(w, err)
+		return false
+	}
+	for _, p := range catalog.Projects {
+		if p.ID != t3Project || p.Repo == "" {
+			continue
+		}
+		for _, repo := range repos {
+			if t3.RepoKey(repo.RemoteUrl) == t3.RepoKey(p.Repo) {
+				return true
+			}
+		}
+	}
+	writeError(w, http.StatusBadRequest, "invalid_argument", "the T3 project must have the same repository as the item's Dory project")
+	return false
 }

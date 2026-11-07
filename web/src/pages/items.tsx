@@ -1,5 +1,5 @@
 import { ThreadStatus } from "../components/thread-status";
-import { ChatCircle, GitPullRequest, Plus } from "@phosphor-icons/react";
+import { ChatCircle, GitPullRequest, Plus, Prohibit } from "@phosphor-icons/react";
 import { ThreadLink } from "../components/thread-link";
 import { LaunchDialog } from "./launch";
 import { IdeaCapture, IdeaModal } from "../components/capture";
@@ -12,6 +12,7 @@ import { DndContext, type DragEndEvent, PointerSensor, TouchSensor, useDraggable
 import { api, itemInput, type Item, type ItemStatus } from "../api/client";
 import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, Notice, PageHeader, Select, Textarea, csv, opts, uuid } from "../components/ui";
 import { useProject } from "../project";
+import { useConfirm } from "../components/github-ui";
 
 const STATUSES: ItemStatus[] = ["inbox", "triaged", "ready", "in_progress", "validating", "blocked", "done", "cancelled"];
 // Closed columns can grow to hundreds of items: show the most recent ones in pages.
@@ -22,6 +23,7 @@ const DEFINABLE: ItemStatus[] = ["inbox", "triaged", "ready"];
 
 export function ItemForm({ item, onClose, initialEdit = false }: { initialEdit?: boolean; item: Item; onClose: () => void }) {
   const qc = useQueryClient();
+  const [confirmArchive, archiveDialog] = useConfirm();
   const [launch, setLaunch] = useState<"implementation" | null>(null);
   const navigate = useNavigate();
   const [title, setTitle] = useState(item.title ?? "");
@@ -92,12 +94,13 @@ export function ItemForm({ item, onClose, initialEdit = false }: { initialEdit?:
       {status === "blocked" && <Label text="Motivo del bloqueo"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Qué lo bloquea y qué lo desbloquea" /></Label>}
       <ErrorText error={save.error ?? archive.error} />
       <div className="flex justify-between">
-        <Button variant="danger" onClick={() => { if (window.confirm(`¿Archivar «${item.title}»?`)) archive.mutate(); }}>Archivar</Button>
+        <Button variant="danger" onClick={() => confirmArchive({ title: "¿Archivar el item?", text: `«${item.title}» saldrá de los tableros. Se borrará del todo a los 14 días.`, ok: "Archivar", danger: true, run: () => archive.mutate() })}>Archivar</Button>
         <div className="flex gap-2">
           <Button variant="ghost" onClick={() => setEditMode(false)}>Cancelar</Button>
           <Button disabled={!title.trim() || (status === "blocked" && !reason.trim()) || save.isPending} onClick={() => save.mutate()}>Guardar</Button>
         </div>
       </div>
+      {archiveDialog}
     </Modal>
   );
 }
@@ -139,13 +142,10 @@ function refLabel(ref: string) {
   return m ? `${m[2] === "pull" ? "PR" : "Issue"} #${m[3]} · ${m[1]}` : ref;
 }
 
-function Section({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-1.5">
-      <div>
-        <h3 className="text-sm font-semibold">{title}</h3>
-        <p className={muted}>{hint}</p>
-      </div>
+      <h3 className="text-sm font-semibold">{title}</h3>
       {children}
     </section>
   );
@@ -154,7 +154,7 @@ function Section({ title, hint, children }: { title: string; hint: string; child
 function OriginalText({ item }: { item: Item }) {
   if (!item.raw_text || item.raw_text === item.title) return null;
   return (
-    <Section title="Texto original" hint="Texto que se escribió al capturar el ticket.">
+    <Section title="Texto original">
       <blockquote className="border-l-4 border-slate-300 pl-3 text-sm whitespace-pre-wrap break-words dark:border-border">{item.raw_text}</blockquote>
     </Section>
   );
@@ -171,7 +171,6 @@ function ItemView({ item, project, feature }: { item: Item; project?: string; fe
           {item.priority > 0 && <Badge>Prioridad {item.priority}</Badge>}
           {item.tags.map((t) => <Badge key={t}>#{t}</Badge>)}
         </div>
-        <p className={muted}>{info.hint}</p>
       </div>
       {item.status === "blocked" && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/40">
@@ -185,14 +184,17 @@ function ItemView({ item, project, feature }: { item: Item; project?: string; fe
         <div><dt className={muted}>Creado</dt><dd>{date(item.created_at)}</dd></div>
         <div><dt className={muted}>Actualizado</dt><dd>{date(item.updated_at)}</dd></div>
       </dl>
-      <Section title="Progreso" hint="Estado actual en una línea. El agente lo reemplaza al avanzar para que otro pueda retomar.">
+      <Section title="Progreso">
         {item.progress ? <p className="rounded-md border-l-4 border-amber-400 bg-amber-50 px-3 py-2 text-sm dark:bg-amber-950/30">{item.progress}</p> : <p className={muted}>Sin progreso registrado.</p>}
       </Section>
       <OriginalText item={item} />
-      <Section title="Descripción" hint="Objetivo, alcance y cómo probarlo. Es lo que lee el agente para trabajar.">
-        {item.body_md ? <div className="rounded-md border border-slate-200 p-3 dark:border-border"><Md>{item.body_md}</Md></div> : <p className={muted}>Sin descripción.</p>}
-      </Section>
-      <Section title="Referencias" hint="Enlaces estables: pull requests, issues y ramas.">
+      {item.body_md ? (
+        <details className="group space-y-1.5">
+          <summary className="cursor-pointer list-none text-sm font-semibold">Descripción <span aria-hidden="true" className="ml-1 inline-block text-slate-400 transition-transform group-open:rotate-90 motion-reduce:transition-none">›</span></summary>
+          <div className="rounded-md border border-slate-200 p-3 dark:border-border"><Md>{item.body_md}</Md></div>
+        </details>
+      ) : <Section title="Descripción"><p className={muted}>Sin descripción.</p></Section>}
+      <Section title="Referencias">
         {item.refs.length ? (
           <ul className="space-y-1 text-sm">
             {item.refs.map((r) => {
@@ -204,7 +206,7 @@ function ItemView({ item, project, feature }: { item: Item; project?: string; fe
           </ul>
         ) : <p className={muted}>Sin referencias.</p>}
       </Section>
-      <Section title="Agentes" hint="Hilos de T3 Code enlazados a este item.">
+      <Section title="Agentes">
         <div><ThreadBadges itemId={item.id} /></div>
       </Section>
     </div>
@@ -213,15 +215,13 @@ function ItemView({ item, project, feature }: { item: Item; project?: string; fe
 
 export function Inbox() {
   const [editing, setEditing] = useState<Item | null>(null);
-  const [creating, setCreating] = useState(false);
   const [batch, setBatch] = useState(false);
   const project = useProject();
   const items = useQuery({ queryKey: ["items", "inbox"], queryFn: () => api.items.list({ status: "inbox" }), refetchInterval: pendingPoll, select: (l) => (project ? l.filter((i) => i.project_id === project) : l) });
   return (
     <div className="space-y-3">
-      <PageHeader title="Inbox" subtitle="Ideas capturadas pendientes de revisar">
+      <PageHeader title="Inbox">
         {!!items.data?.length && <Button variant="ghost" onClick={() => setBatch(true)}>Definir todo</Button>}
-        <Button onClick={() => setCreating(true)}>Nuevo item</Button>
       </PageHeader>
       {batch && items.data && <LaunchDialog items={items.data} role="refine" onClose={() => setBatch(false)} />}
       <IdeaCapture />
@@ -240,7 +240,6 @@ export function Inbox() {
         {items.data?.length === 0 && <Notice>Inbox vacío. Captura una idea arriba.</Notice>}
       </div>
       {editing && <ItemForm item={editing} onClose={() => setEditing(null)} />}
-      {creating && <IdeaModal onClose={() => setCreating(false)} />}
     </div>
   );
 }
@@ -267,7 +266,9 @@ function Draggable({ item, onOpen }: { item: Item; onOpen: () => void }) {
   const style = transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined;
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes} className={isDragging ? "relative z-10 opacity-80" : ""}>
-      <ItemActions item={item}><Card className={`cursor-grab ${item.status === "blocked" ? "border-l-4 border-l-red-500 dark:border-l-red-500" : ""}`}><div onClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><ItemTitle item={item} className="font-medium" /></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}<CardLinks item={item} />{item.status === "blocked" && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{item.blocked_reason}</p>}</div></Card></ItemActions>
+      <ItemActions item={item}><Card className="cursor-grab"><div onClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><ItemTitle item={item} className="font-medium" />{item.status === "blocked" && <Prohibit weight="duotone" aria-label="Bloqueado" className="mt-0.5 size-4 shrink-0 text-red-500" />}</div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}<CardLinks item={item} />{item.status === "blocked" && (
+        <p className="mt-1.5 line-clamp-3 break-words rounded-md bg-slate-50 px-2 py-1.5 text-xs text-slate-600 dark:bg-raised dark:text-text-secondary"><span className="font-medium text-red-600 dark:text-red-400">Motivo: </span>{item.blocked_reason || "sin indicar"}</p>
+      )}</div></Card></ItemActions>
     </div>
   );
 }
@@ -366,7 +367,7 @@ function CardLinks({ item }: { item: Item }) {
   const pull = [...(item.refs ?? [])].reverse().map((r) => /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)$/.exec(r)).find(Boolean);
   if (!t && !pull) return null;
   const dot = t ? dotFor(t.status, t.attention) : undefined;
-  const chip = "inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-200 px-2 py-0.5 text-xs text-slate-600 no-underline hover:bg-slate-100 dark:border-border dark:text-muted dark:hover:bg-white/5";
+  const chip = "inline-flex max-w-full items-center gap-1.5 rounded-md border border-slate-200 px-2 py-0.5 text-xs text-slate-600 no-underline hover:bg-slate-100 dark:border-border dark:text-muted dark:hover:bg-white/5";
   return (
     <div className="mt-1 flex flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
       {t && dot && (
@@ -390,6 +391,7 @@ function CardLinks({ item }: { item: Item }) {
 // Shared by kanban cards and inbox list rows; only these surfaces suppress the native menu.
 function ItemActions({ item, children }: { item: Item; children: React.ReactNode }) {
   const qc = useQueryClient();
+  const [confirmArchive, archiveDialog] = useConfirm();
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const [detail, setDetail] = useState<"view" | "edit" | null>(null);
   const [launch, setLaunch] = useState<"implementation" | null>(null);
@@ -415,10 +417,11 @@ function ItemActions({ item, children }: { item: Item; children: React.ReactNode
     { label: "Mover a estado…", children: STATUSES.filter((s) => s !== item.status).map((s) => ({ label: STATUS_INFO[s].label, run: () => (s === "blocked" ? setBlocking(true) : change.mutate({ status: s })) })) },
     ...(thread ? [{ label: "Abrir último hilo", content: <ThreadLink role="menuitem" className={linkClass} url={thread.url} environmentId={thread.t3_environment_id} threadId={thread.id}>Abrir último hilo</ThreadLink> }] : []),
     ...(pull ? [{ label: "Abrir última PR", content: <Link role="menuitem" className={linkClass} to="/github/$owner/$repo/$kind/$number" params={{ owner: pull[1], repo: pull[2], kind: "pulls", number: pull[3] }}>Abrir última PR</Link> }] : []),
-    { label: "Archivar", run: () => { if (window.confirm(`¿Archivar «${item.title}»?`)) archive.mutate(); } },
+    { label: "Archivar", run: () => confirmArchive({ title: "¿Archivar el item?", text: `«${item.title}» saldrá de los tableros. Se borrará del todo a los 14 días.`, ok: "Archivar", danger: true, run: () => archive.mutate() }) },
   ];
   return <div onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setPosition({ x: e.clientX, y: e.clientY }); }}>
     {children}
+    {archiveDialog}
     <ErrorText error={change.error ?? archive.error} />
     {position && <ContextMenu {...position} actions={actions} onClose={close} />}
     {detail && <ItemForm item={item} initialEdit={detail === "edit"} onClose={() => setDetail(null)} />}
