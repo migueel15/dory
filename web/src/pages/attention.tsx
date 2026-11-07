@@ -96,14 +96,14 @@ function Section({ icon: Icon, title, count, tone, children }: { icon: PhIcon; t
 }
 
 // ItemLine is the Dory item behind a card: title, project, status, last progress and PR.
-function ItemLine({ item, projectName, onOpen }: { item: Item; projectName?: string; onOpen: () => void }) {
+function ItemLine({ item, projectName }: { item: Item; projectName?: string }) {
   const pr = prOf(item.refs);
   return (
     <div className="space-y-1 rounded-md bg-slate-50 p-2 text-sm dark:bg-raised/60">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <button type="button" onClick={onOpen} className="min-w-0 truncate text-left font-medium hover:underline"><ItemTitle item={item} /></button>
+        <span className="min-w-0 truncate font-medium"><ItemTitle item={item} /></span>
         {projectName && <Badge>{projectName}</Badge>}
-        {pr && <Link to="/github/$owner/$repo/$kind/$number" params={{ owner: pr[1], repo: pr[2], kind: "pulls", number: pr[3] }} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:underline dark:text-muted"><GitPullRequest aria-hidden="true" className="size-3.5" />#{pr[3]}</Link>}
+        {pr && <Link to="/github/$owner/$repo/$kind/$number" params={{ owner: pr[1], repo: pr[2], kind: "pulls", number: pr[3] }} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:underline dark:text-muted"><GitPullRequest aria-hidden="true" className="size-3.5" />#{pr[3]}</Link>}
       </div>
       {item.progress && <p className="line-clamp-2 text-xs text-slate-500 dark:text-muted">{item.progress}</p>}
     </div>
@@ -137,7 +137,7 @@ export function Attention() {
           const item = itemOf(link?.item_id);
           const failed = ["failed", "error", "interrupted"].includes(t.status.toLowerCase());
           return (
-            <Card key={t.id} className={`space-y-3 border-l-4 ${failed ? "border-l-red-500" : "border-l-amber-400"}`}>
+            <div key={t.id} onClick={() => item && setOpen(item)} className={item ? "cursor-pointer" : ""}><Card className={`space-y-3 ${item ? "transition-colors hover:bg-slate-50 dark:hover:bg-raised" : ""}`}>
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -147,26 +147,26 @@ export function Attention() {
                   <div className="break-words font-medium">{t.title}</div>
                   <div className={meta}>{[envName(t.status_.environment_id), t.model, t.effort, ago(t.updated_at)].filter(Boolean).join(" · ")}</div>
                 </div>
-                <ThreadLink url={t.url} environmentId={t.t3_environment_id} threadId={t.id} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 dark:border-border dark:hover:bg-raised">Abrir en T3 <ArrowSquareOut aria-hidden="true" className="size-3.5" /></ThreadLink>
+                <ThreadLink onClick={(e) => e.stopPropagation()} url={t.url} environmentId={t.t3_environment_id} threadId={t.id} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 dark:border-border dark:hover:bg-raised">Abrir en T3 <ArrowSquareOut aria-hidden="true" className="size-3.5" /></ThreadLink>
               </div>
-              {item ? <ItemLine item={item} projectName={projectName(item.project_id)} onOpen={() => setOpen(item)} /> : <p className={meta}>Hilo sin item de Dory asociado.</p>}
-              <ThreadReply id={t.id} />
-            </Card>
+              {item ? <ItemLine item={item} projectName={projectName(item.project_id)} /> : <p className={meta}>Hilo sin item de Dory asociado.</p>}
+              <div onClick={(e) => e.stopPropagation()}><ThreadReply id={t.id} /></div>
+            </Card></div>
           );
         })}
       </Section>
 
       <Section icon={Prohibit} title="Bloqueados" count={stuck.length} tone="text-red-500">
         {stuck.map((i) => (
-          <Card key={i.id} className="space-y-2 border-l-4 border-l-red-500">
+          <div key={i.id} onClick={() => setOpen(i)} className="cursor-pointer"><Card className="space-y-2 transition-colors hover:bg-slate-50 dark:hover:bg-raised">
             <div className="flex items-start gap-2">
-              <button type="button" onClick={() => setOpen(i)} className="min-w-0 flex-1 text-left font-medium hover:underline"><ItemTitle item={i} /></button>
+              <span className="min-w-0 flex-1 font-medium"><ItemTitle item={i} /></span>
               {projectName(i.project_id) && <Badge>{projectName(i.project_id)}</Badge>}
             </div>
             <div className="rounded-md bg-red-50 p-2 text-sm text-red-800 dark:bg-red-950/40 dark:text-red-300"><span className="font-medium">Motivo: </span>{i.blocked_reason || "sin motivo indicado"}</div>
             {i.progress && <p className={`line-clamp-2 ${meta}`}>{i.progress}</p>}
             <div className={meta}>Actualizado {ago(i.updated_at)}</div>
-          </Card>
+          </Card></div>
         ))}
       </Section>
 
@@ -174,18 +174,17 @@ export function Attention() {
         {toValidate.map((i) => {
           const pr = prOf(i.refs);
           return (
-            <Card key={i.id} className="space-y-2 border-l-4 border-l-violet-500">
+            <div key={i.id} onClick={() => setOpen(i)} className="cursor-pointer"><Card className="space-y-2 transition-colors hover:bg-slate-50 dark:hover:bg-raised">
               <div className="flex items-start gap-2">
-                <button type="button" onClick={() => setOpen(i)} className="min-w-0 flex-1 text-left font-medium hover:underline"><ItemTitle item={i} /></button>
+                <span className="min-w-0 flex-1 font-medium"><ItemTitle item={i} /></span>
                 {projectName(i.project_id) && <Badge>{projectName(i.project_id)}</Badge>}
               </div>
               {i.progress && <p className="line-clamp-3 text-sm text-slate-600 dark:text-text-secondary">{i.progress}</p>}
               <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-muted">
                 <span>Terminado {ago(i.updated_at)}</span>
-                {pr && <Link to="/github/$owner/$repo/$kind/$number" params={{ owner: pr[1], repo: pr[2], kind: "pulls", number: pr[3] }} className="inline-flex items-center gap-1 hover:underline"><GitPullRequest aria-hidden="true" className="size-3.5" />PR #{pr[3]}</Link>}
-                <button type="button" onClick={() => setOpen(i)} className="hover:underline">Cómo probarlo →</button>
+                {pr && <Link onClick={(e) => e.stopPropagation()} to="/github/$owner/$repo/$kind/$number" params={{ owner: pr[1], repo: pr[2], kind: "pulls", number: pr[3] }} className="inline-flex items-center gap-1 hover:underline"><GitPullRequest aria-hidden="true" className="size-3.5" />PR #{pr[3]}</Link>}
               </div>
-            </Card>
+            </Card></div>
           );
         })}
       </Section>
