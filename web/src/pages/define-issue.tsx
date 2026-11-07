@@ -7,7 +7,7 @@ import { useLaunchForm } from "./launch-form";
 // Shared dialog for issue definition and pull request conflict resolution.
 export function DefineIssueDialog({ repo, number, onClose, resolve = false }: { repo: string; number: number; onClose: () => void; resolve?: boolean }) {
   const qc = useQueryClient();
-  const form = useLaunchForm({ repo });
+  const form = useLaunchForm({ section: resolve ? "resolve-conflicts" : "issue-define", repo });
   const launch = useMutation({
     mutationFn: () => resolve ? api.resolveConflicts(repo, number, form.value) : api.issueDefine(repo, number, form.value),
     onSuccess: () => {

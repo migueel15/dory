@@ -174,7 +174,7 @@ function Bubble({ role, text, first }: { role: string; text: string; first: bool
 }
 
 function StartForm({ item, draft, setDraft, restart, send, onCancel }: { item: Item; draft: string; setDraft: (s: string) => void; restart: boolean; send: { mutate: (b: RefineInput) => void; isPending: boolean; error: unknown }; onCancel?: () => void }) {
-  const form = useLaunchForm({ doryProject: item.project_id });
+  const form = useLaunchForm({ section: "refine", doryProject: item.project_id });
   return (
     <Card className="space-y-3">
       <div>
