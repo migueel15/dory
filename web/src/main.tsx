@@ -1,5 +1,5 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
-import { List, Moon, Sun, X } from "@phosphor-icons/react";
+import { List, Moon, SignOut, Sun, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
@@ -160,7 +160,7 @@ function Layout() {
           </div>
           <div className="flex items-center justify-between gap-2">
             <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
-            <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
+            <Button variant="bare" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => logout.mutate()}><SignOut className="size-5" aria-hidden="true" /></Button>
           </div>
           <VersionBadge />
         </div>
@@ -209,7 +209,7 @@ function Layout() {
           <ProjectFilter />
           <div className="flex items-center justify-between gap-3">
             <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
-            <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
+            <Button variant="bare" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => logout.mutate()}><SignOut className="size-5" aria-hidden="true" /></Button>
           </div>
           <VersionBadge />
         </div>
