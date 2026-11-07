@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "tsc src/stack.ts src/stack.test.ts --outDir .test --module nodenext --moduleResolution nodenext --target es2022 --strict --skipLibCheck && echo '{\"type\":\"module\"}' > .test/package.json && node --test .test/stack.test.js; rm -rf .test",
     "gen:api": "openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts",
     "build": "tsc --noEmit && vite build && touch dist/.gitkeep",
     "preview": "vite preview"

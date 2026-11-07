@@ -1,6 +1,6 @@
 import { DefineIssueDialog } from "./define-issue";
 import { ArrowClockwise, MagnifyingGlass } from "@phosphor-icons/react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { api, type GithubIssue, type GithubPull } from "../api/client";
@@ -8,6 +8,7 @@ import { Card, ErrorText, Input, Select, pill } from "../components/ui";
 import { GithubMark, Icon, Tip, icons } from "../components/github-ui";
 import { type Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { useProject } from "../project";
+import { buildStacks, groupByStack, pullKey } from "../stack";
 
 const ok = "text-green-700 dark:text-green-400";
 const bad = "text-red-600 dark:text-red-400";
@@ -265,7 +266,9 @@ export function Github() {
     const active = tab === kind ? quick[kind].find((f) => f.id === filter) : undefined;
     return (x: GithubPull | GithubIssue) => matches(x) && inMilestone(x) && (!active || active.test(x as GithubPull & GithubIssue, me));
   };
-  const shownPulls = pulls.filter(keep("pulls"));
+  // Stacks come from every open pull request; a filter may hide some of their members.
+  const stacks = useMemo(() => buildStacks(openPulls), [data.data, project]);
+  const shownPulls = groupByStack(pulls.filter(keep("pulls")), stacks);
   const shownIssues = issues.filter(keep("issues"));
   const loading = state === "closed" ? closed.isPending : data.isPending || (refreshing && openPulls.length + openIssues.length === 0) || (state === "all" && closed.isPending);
   // Counters show the open ones: closed totals are unknown until every page is read.
@@ -331,8 +334,10 @@ export function Github() {
       </div>
       <section className="space-y-2">
         {loading ? [0, 1, 2].map((n) => <Skeleton key={n} />)
-          : tab === "pulls" ? (shownPulls.length === 0 ? <Empty kind="pulls" state={state} filtered={pulls.length > 0} /> : shownPulls.map((p) => (
-            <Row key={p.url} item={p} kind="pulls" meta={<>
+          : tab === "pulls" ? (shownPulls.length === 0 ? <Empty kind="pulls" state={state} filtered={pulls.length > 0} /> : shownPulls.map(({ pull: p, depth, label }) => (
+            <div key={p.url} style={depth ? { marginLeft: `${Math.min(depth, 4) * 1.25}rem` } : undefined} className={depth ? "border-l-2 border-violet-300 pl-2 dark:border-violet-800" : undefined}>
+            <Row item={p} kind="pulls" meta={<>
+              {label && <Tip text="Pull requests encadenadas: la base de cada una es la rama de la anterior"><span className="rounded-full bg-violet-100 px-2 py-0.5 font-medium text-violet-700 dark:bg-violet-950 dark:text-violet-300">{label}</span></Tip>}
               <Meta icon={icons.branch} title={`${p.head_ref} → ${p.base_ref}`}><span className="max-w-40 truncate font-mono">{p.head_ref}</span></Meta>
               <Meta icon={icons.file} title={`${p.changed_files} ficheros cambiados`}>{p.changed_files}</Meta>
               <Tip text="Líneas añadidas y borradas"><span className="font-mono"><span className="text-green-700 dark:text-green-400">+{p.additions}</span> <span className="text-red-600 dark:text-red-400">−{p.deletions}</span></span></Tip>
@@ -341,6 +346,7 @@ export function Github() {
               {p.state === "OPEN" ? <PullStatus pull={p} /> : <ClosedChip item={p} />}{linked(p.repo, "Issue", p.issues)}
               {p.state === "OPEN" && p.mergeable === "CONFLICTING" && <button type="button" className={pill} onClick={(e) => { e.stopPropagation(); setResolving(p); }}>Resolver conflictos</button>}
             </Row>
+            </div>
           )))
           : (shownIssues.length === 0 ? <Empty kind="issues" state={state} filtered={issues.length > 0} /> : shownIssues.map((i) => (
             <Row key={i.url} item={i} kind="issues" meta={i.milestone && <Meta icon={icons.flag} title="Milestone">{i.milestone}</Meta>}>
@@ -379,5 +385,33 @@ function Segmented({ active, children, ...rest }: { active: string; children: Re
       {pill && <span aria-hidden="true" style={{ left: pill.left, width: pill.width }} className="absolute inset-y-1 rounded-md bg-white shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none dark:bg-canvas" />}
       {children}
     </div>
+  );
+}
+
+// StackBar shows the stack a pull request belongs to, from base to top, with
+// arrows to its neighbours. It reads the cached overview, so it appears once that loads.
+export function StackBar({ repo, number }: { repo: string; number: number }) {
+  const data = useGithubOpen();
+  const stacks = useMemo(() => buildStacks(data.data?.pulls ?? []), [data.data]);
+  const stack = stacks.get(`${repo}#${number}`);
+  const navigate = useNavigate();
+  if (!stack) return null;
+  const [owner, name] = repo.split("/");
+  const at = stack.nodes.findIndex((n) => pullKey(n.pull) === `${repo}#${number}`);
+  const go = (i: number) => navigate({ to: "/github/$owner/$repo/$kind/$number", params: { owner, repo: name, kind: "pulls", number: String(stack.nodes[i].pull.number) } });
+  const arrow = "grid size-7 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent dark:text-muted dark:hover:bg-raised";
+  return (
+    <nav aria-label="Stack de pull requests" className="flex flex-wrap items-center gap-1 rounded-xl border border-violet-200 bg-violet-50/60 px-2 py-1.5 text-sm dark:border-violet-900 dark:bg-violet-950/30">
+      <Tip text="Anterior del stack"><button type="button" aria-label="Anterior del stack" disabled={at <= 0} onClick={() => go(at - 1)} className={arrow}>←</button></Tip>
+      <Tip text="Siguiente del stack"><button type="button" aria-label="Siguiente del stack" disabled={at >= stack.nodes.length - 1} onClick={() => go(at + 1)} className={arrow}>→</button></Tip>
+      <span className="mr-1 font-medium text-violet-700 dark:text-violet-300">Stack:</span>
+      {stack.nodes.map(({ pull: p }, i) => (
+        <span key={p.number} className="inline-flex items-center gap-1">
+          {i > 0 && <span aria-hidden="true" className="text-slate-400">→</span>}
+          {i === at ? <strong aria-current="page">#{p.number}</strong>
+            : <Tip text={p.title}><Link to="/github/$owner/$repo/$kind/$number" params={{ owner, repo: name, kind: "pulls", number: String(p.number) }} className="text-blue-700 hover:underline dark:text-accent-text">#{p.number}</Link></Tip>}
+        </span>
+      ))}
+    </nav>
   );
 }

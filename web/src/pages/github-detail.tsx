@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { api, type GithubDetail, type GithubPull, type GithubThread } from "../api/client";
 import { Badge, Button, Card, Input, Select, ErrorText, Md, Arrow, pill, toggleTask, Textarea, keepAboveKeyboard } from "../components/ui";
-import { Avatar, PullStatus } from "./github";
+import { Avatar, PullStatus, StackBar } from "./github";
 import { Diff } from "./github-diff";
 import { DefineIssueDialog } from "./define-issue";
 import { GithubMark, Icon, IconButton, Menu, MenuItem, RefContext, RefMd, Tip, UserPicker, icons, useArm, MentionArea } from "../components/github-ui";
@@ -330,6 +330,7 @@ export function GithubView() {
       <ErrorText error={detail.error ?? action.error} />
       {detail.isPending && <DetailSkeleton />}
       {d && <RefContext.Provider value={{ owner: full.split("/")[0], repo: full.split("/")[1], links: d.links }}>
+        {d.pull?.state === "OPEN" && <StackBar repo={full} number={n} />}
         <Header d={d} act={act} busy={false} people={people} actions={<>
           {d.pull && <PullActions pull={d.pull} me={d.viewer} act={act} busy={false} diff={showDiff} toggleDiff={() => setShowDiff(!showDiff)} />}
           {d.pull?.mergeable === "CONFLICTING" && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Resolver conflictos</Button>}
