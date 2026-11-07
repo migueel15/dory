@@ -17,18 +17,18 @@ import (
 // without implementing anything: implementing stays a click of the user.
 const definePrompt = `Define en Dory las tareas necesarias para resolver esta issue. No cambies el código ni implementes nada.
 
-1. Carga el contexto con las herramientas MCP de Dory (session_start, get_project, recall) y lee la issue completa con sus comentarios (gh issue view %[1]s --comments).
-2. Analiza el repositorio para saber qué hay que cambiar: ficheros, componentes, contratos y riesgos.
-3. Divide el trabajo en items pequeños y revisables (cerca de 400 líneas de código funcional como mucho cada uno), en orden de implementación.
-4. Crea cada item con create_item en el proyecto %[2]s, en estado ready, con:
-   - title claro; body_md con objetivo, alcance (qué ficheros o piezas cambiar y qué hacer en cada uno), dependencias con otros items y cómo probarlo;
+1. Carga el contexto una sola vez para toda la issue con las herramientas MCP de Dory (session_start, get_project, recall), lee la issue completa con sus comentarios (gh issue view %[1]s --comments) y analiza el código: ficheros, componentes, contratos y riesgos. Reutiliza este análisis común en todos los planes, sin repetirlo en cada uno.
+2. Divide el trabajo en items pequeños y revisables (cerca de 400 líneas de código funcional cada uno), en orden de implementación. Cada item debe tener un cambio de código propio y verificable. Prefiere menos items de tamaño razonable a muchos diminutos; máximo orientativo 5-6 items. Si hacen falta más, avisa en el resumen.
+3. Antes de crear, busca con list_items(fields: {refs: ["%[1]s"]}) los items existentes de esta issue. Reutiliza y actualiza los que encajen en el reparto, publicando una nueva versión de su plan en lugar de duplicarlos. Si alguno ya no encaja, no lo borres ni archives: señálalo como sobrante en el resumen.
+4. Crea cada item nuevo con create_item en el proyecto %[2]s, en estado triaged, con:
+   - title claro y body_md breve con objetivo, alcance y cómo probar;
    - refs que incluyan exactamente la URL de la issue: %[1]s
    - feature_id: reutiliza la feature existente del proyecto que corresponda a cada item, o crea una con upsert_feature si es una capacidad nueva. No metas todos los items en la misma feature si tocan capacidades distintas; los bugs y tareas menores no necesitan feature.
-5. Antes de crear, busca con list_items(fields: {refs: ["%[1]s"]}) items ya creados para esta issue y actualízalos en lugar de duplicarlos.
+5. Después de create_item publica su plan v1 con propose_plan (o una nueva versión para un item existente), con las 7 secciones concisas: goal (objetivo), scope (alcance y exclusiones), where (archivos y módulos), design (diseño y orden/dependencias), requirements (requisitos), validation (cómo probar) y risks (riesgos y decisiones menores). propose_plan mantiene el item en triaged; solo el usuario acepta el plan desde Dory. No implementes ni avances el estado.
+6. En open_questions incluye solo dudas específicas del item que cambien el resultado. Las dudas comunes a toda la issue van una sola vez en el resumen del hilo, no repetidas en cada plan. Resuelve las dudas menores con una decisión razonable anotada en risks.
+7. Tras las respuestas del usuario en este mismo hilo, publica nuevas versiones con propose_plan para los items afectados. Si pide corregir el reparto, fusiona o actualiza los items existentes usando la deduplicación por refs, sin crear duplicados ni borrar sobrantes.
 
-Si hay dudas que cambien el resultado, crea solo lo que esté claro y plantea las dudas en este hilo.
-
-Termina con un resumen breve: los items creados, su feature y el orden propuesto.`
+Termina con un resumen breve: items y su feature, orden propuesto, dudas comunes e items sobrantes. Este resumen es el punto de revisión del reparto por el usuario.`
 
 func defineIssuePrompt(issue *github.Issue, body, projectID string) string {
 	head := fmt.Sprintf("Issue %s#%d: %s\nURL: %s\n\nDescripción de la issue:\n%s\n\n", issue.Repo, issue.Number, issue.Title, issue.URL, body)
