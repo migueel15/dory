@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { ArrowUp, Brain, CaretDown, CaretRight, Check, Copy, FileText, Paperclip, Lightning, ListBullets, PencilSimple, Play, Question, Stop, Trash, Wrench, X } from "@phosphor-icons/react";
+import { ArrowUp, Brain, CaretDown, CaretRight, Check, Copy, FileText, GitDiff, SidebarSimple, Paperclip, Lightning, ListBullets, PencilSimple, Play, Question, Stop, Trash, Wrench, X } from "@phosphor-icons/react";
 import { api, type T3Attachment, type T3QueuedRun, type T3ThreadView, type T3ViewMessage } from "../api/client";
 import { useThreadLive } from "../api/live";
 import { Button, ErrorText, Input, Md, errMsg, uuid, Notice, PageHeader, Select, StatusPill, pill } from "../components/ui";
@@ -46,7 +46,8 @@ export function ThreadView() {
   const key = ["t3-view", threadId];
   const view = useQuery({ queryKey: key, queryFn: () => api.t3View(threadId) });
   useThreadLive(threadId, key);
-  const [tab, setTab] = useState<"chat" | "changes">("chat");
+  const [panel, setPanel] = useState<"" | "changes">("");
+  const [width, setWidth] = useState(() => { try { return Number(localStorage.getItem("dory.thread-panel-width")) || 560; } catch { return 560; } });
   // stopping is the run the user just stopped: the view shows it stopped
   // until T3 confirms, and goes back if T3 keeps it running.
   const [stopping, setStopping] = useState("");
@@ -64,21 +65,51 @@ export function ThreadView() {
     : view.data;
   return (
     <div className="flex h-[calc(100dvh-4rem-1px)] sm:h-[calc(100dvh-3rem-2px)] min-h-0 flex-col gap-3">
-      <ContextBar v={v} />
-      <div className="flex gap-1 lg:hidden" role="tablist">
-        {(["chat", "changes"] as const).map((t) => (
-          <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`${pill} ${tab === t ? "!border-slate-500 !text-slate-900 dark:!text-white" : ""}`}>{t === "chat" ? "Chat" : "Cambios"}</button>
-        ))}
-      </div>
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-2">
-        <div className={`min-h-0 flex-col ${tab === "chat" ? "flex" : "hidden lg:flex"}`}><Chat v={v} queryKey={key} onStop={setStopping} /></div>
-        <div className={`min-h-0 overflow-auto ${tab === "changes" ? "block" : "hidden lg:block"}`}><Changes v={v} queryKey={key} /></div>
+      <ContextBar v={v}>
+        <button type="button" aria-pressed={panel === "changes"} onClick={() => setPanel(panel === "changes" ? "" : "changes")} title="Panel de cambios"
+          className={`${pill} ml-auto ${panel === "changes" ? "!border-slate-500 !text-slate-900 dark:!text-white" : ""}`}>
+          <GitDiff className="size-4" />Cambios<SidebarSimple className="size-4 -scale-x-100" />
+        </button>
+      </ContextBar>
+      <div className="relative flex min-h-0 flex-1">
+        <div className={`min-h-0 min-w-0 flex-1 flex-col ${panel ? "hidden lg:flex" : "flex"}`}><Chat v={v} queryKey={key} onStop={setStopping} /></div>
+        {panel === "changes" && (
+          <aside className="flex min-h-0 w-full flex-col lg:w-[var(--panel-w)] lg:shrink-0" style={{ "--panel-w": `${width}px` } as React.CSSProperties}>
+            <div className="flex min-h-0 flex-1">
+              <ResizeHandle width={width} onResize={setWidth} />
+              <div className="min-h-0 min-w-0 flex-1 overflow-auto lg:pl-3"><Changes v={v} queryKey={key} /></div>
+            </div>
+          </aside>
+        )}
       </div>
     </div>
   );
 }
 
-function ContextBar({ v }: { v: T3ThreadView }) {
+// ResizeHandle drags the side panel's left edge; the width is kept per browser.
+function ResizeHandle({ width, onResize }: { width: number; onResize: (w: number) => void }) {
+  const start = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const x0 = e.clientX, w0 = width;
+    let last = w0;
+    const move = (ev: PointerEvent) => { last = Math.min(Math.max(320, w0 + x0 - ev.clientX), window.innerWidth - 420); onResize(last); };
+    const up = () => {
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+      document.body.style.cursor = ""; document.body.style.userSelect = "";
+      try { localStorage.setItem("dory.thread-panel-width", String(Math.round(last))); } catch { /* per-browser only */ }
+    };
+    document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  };
+  return (
+    <div role="separator" aria-orientation="vertical" aria-label="Redimensionar panel" onPointerDown={start}
+      className="group hidden w-2 shrink-0 cursor-col-resize items-stretch justify-center lg:flex">
+      <span className="w-px bg-slate-200 transition-colors group-hover:w-0.5 group-hover:bg-slate-400 dark:bg-border dark:group-hover:bg-muted" />
+    </div>
+  );
+}
+
+function ContextBar({ v, children }: { v: T3ThreadView; children?: React.ReactNode }) {
   const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 60_000 });
   const t = t3.data?.flatMap((x) => x.threads).find((x) => x.id === v.id);
   return (
@@ -94,6 +125,7 @@ function ContextBar({ v }: { v: T3ThreadView }) {
         <Link key={it.item_id} to="/items/$id/define" params={{ id: it.item_id }} className={pill}>Item {it.item_id.slice(0, 8)}</Link>
       ))}
       {v.pending && <StatusPill tone="amber">Espera tu respuesta</StatusPill>}
+      {children}
     </header>
   );
 }
