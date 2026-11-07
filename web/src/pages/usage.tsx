@@ -31,7 +31,7 @@ export function Limit({ w }: { w: T3InstanceUsage["providers"][number]["windows"
         <span>{w.label}</span>
         <span>Queda {Math.round(100 - w.used_percent)} %</span>
       </div>
-      <div className="h-2 overflow-hidden rounded bg-slate-200 dark:bg-hover"><div className={`h-full ${tone}`} style={{ width: `${Math.min(100, w.used_percent)}%` }} /></div>
+      <div className="h-2 overflow-hidden rounded bg-slate-200 dark:bg-hover"><div className={`h-full ${tone}`} style={{ width: `${Math.max(0, 100 - w.used_percent)}%` }} /></div>
       <p className="text-xs text-slate-500 dark:text-muted">
         {w.resets_at ? `Se reinicia el ${date(w.resets_at)}` : "Sin fecha de reinicio"}
         {w.used_percent >= alertAt ? " · Límite casi agotado" : w.used_percent >= warnAt ? " · Uso alto" : ""}
@@ -67,7 +67,7 @@ function LimitRow({ w }: { w: T3InstanceUsage["providers"][number]["windows"][nu
   return (
     <div className="grid grid-cols-[minmax(0,7rem)_1fr_3rem] items-center gap-2 text-xs" title={w.resets_at ? `Se reinicia el ${date(w.resets_at)}` : "Sin fecha de reinicio"}>
       <span className="truncate text-slate-600 dark:text-text-secondary">{w.label}</span>
-      <div className="h-1.5 overflow-hidden rounded bg-slate-200 dark:bg-hover"><div className={`h-full ${tone}`} style={{ width: `${Math.min(100, w.used_percent)}%` }} /></div>
+      <div className="h-1.5 overflow-hidden rounded bg-slate-200 dark:bg-hover"><div className={`h-full ${tone}`} style={{ width: `${Math.max(0, 100 - w.used_percent)}%` }} /></div>
       <span className={`text-right tabular-nums ${w.used_percent >= alertAt ? "font-semibold text-red-600 dark:text-red-400" : w.used_percent >= warnAt ? "text-amber-700 dark:text-amber-400" : ""}`}>{left} %</span>
     </div>
   );
