@@ -6,6 +6,10 @@ import { ItemForm } from "../pages/items";
 import { api } from "../api/client";
 
 type Notice = { id: number; title: string; body: string; url: string; bell: boolean; toast: boolean; read: boolean; created_at: string };
+// external opens links outside Dory (T3 Code threads) in a new window, so the app keeps its state.
+const external = (url: string) => {
+  try { return new URL(url, location.href).origin !== location.origin ? { target: "_blank", rel: "noreferrer" } : {}; } catch { return {}; }
+};
 type Channel = "enabled" | "bell" | "toast" | "push";
 type Settings = Record<string, Partial<Record<Channel, boolean>>>;
 const events = { item_ready: "Item listo", item_blocked: "Item bloqueado", thread_finished: "Hilo finalizado", thread_attention: "Hilo requiere atención" };
@@ -106,7 +110,7 @@ export function Notifications() {
       </div>}
       <ul className="space-y-2 py-3">
         {notices.filter(n => n.bell).map(n => <li key={n.id} className={`rounded border p-3 ${n.read ? "border-slate-200 dark:border-border opacity-70" : "border-sky-300 bg-sky-50 dark:border-sky-700 dark:bg-sky-950/40"}`}>
-          <a href={n.url} onClick={() => void act(() => read(n))} className="block hover:underline">
+          <a href={n.url} {...external(n.url)} onClick={() => void act(() => read(n))} className="block hover:underline">
             <div className="flex items-center gap-2 text-sm font-semibold">{!n.read && <span aria-label="No leída" className="size-2 shrink-0 rounded-full bg-sky-500" />}{n.title}</div>
             {n.body && <p className="line-clamp-2 break-words text-sm text-slate-600 dark:text-muted">{n.body}</p>}
           </a>
@@ -155,7 +159,7 @@ function ToastStack({ toasts, expanded, setExpanded, onOpen, onClose }: { toasts
             onClickCapture={(e) => { if (stacked && !(e.target as HTMLElement).closest("button")) { e.preventDefault(); e.stopPropagation(); setExpanded(true); } }}
             style={{ transform: `translateY(-${y}px) scale(${expanded ? 1 : 1 - i * 0.05})`, zIndex: 10 - i, opacity: !expanded && i > 2 ? 0 : 1 }}
             className="toast-in absolute inset-x-0 bottom-0 origin-bottom rounded-lg border border-slate-200 bg-white p-3 shadow-lg transition-all duration-300 ease-out motion-reduce:transition-none dark:border-border dark:bg-surface">
-            <a href={n.url} onClick={() => onOpen(n)} className="block pr-6"><span className="block text-sm font-semibold">{n.title}</span>{n.body && <span className={`block break-words text-sm ${stacked && i > 0 ? "line-clamp-1" : ""}`}>{n.body}</span>}</a>
+            <a href={n.url} {...external(n.url)} onClick={() => onOpen(n)} className="block pr-6"><span className="block text-sm font-semibold">{n.title}</span>{n.body && <span className={`block break-words text-sm ${stacked && i > 0 ? "line-clamp-1" : ""}`}>{n.body}</span>}</a>
             <button className="absolute right-1 top-1 px-2" aria-label="Cerrar aviso" onClick={() => onClose(n.id)}><X aria-hidden="true" className="size-4" /></button>
             {stacked && i === 0 && <span className="mt-1 block text-xs text-slate-500 dark:text-muted">+{toasts.length - 1} más · clic para ver</span>}
           </div>
