@@ -69,7 +69,8 @@ function ProjectList() {
   const machinesOf = (projectId: string) => {
     const keys = new Set((repos.data ?? []).filter((r) => r.project_id === projectId).map((r) => repoKey(r.remote_url)));
     return up.filter((s, i) => catalogs[i]?.data?.projects.some((p) => p.repo && keys.has(repoKey(p.repo))))
-      .map((s) => envs.data?.find((e) => e.id === s.environment_id)?.name || s.base_url);
+      .map((s) => envs.data?.find((e) => e.id === s.environment_id)?.name || s.base_url)
+      .sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
   };
   return (
     <div className="space-y-3">

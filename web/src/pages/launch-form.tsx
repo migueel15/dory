@@ -36,7 +36,8 @@ export function useLaunchForm({ doryProject, repo: repoPathIn, worktree: worktre
   if (repo) wanted.add(repoKey(repo.remote_url));
   const restricted = wanted.size > 0;
 
-  const statuses = t3.data ?? [];
+  // Machines in name order, so the list never reshuffles between reloads.
+  const statuses = [...(t3.data ?? [])].sort((a, b) => (envName(a.environment_id) || a.base_url).localeCompare(envName(b.environment_id) || b.base_url, "es", { sensitivity: "base" }));
   const catalogs = useQueries({ queries: statuses.map((s) => ({ queryKey: ["t3-catalog", s.instance_id], queryFn: () => api.t3Catalog(s.instance_id), enabled: s.state === "available", staleTime: 60_000 })) });
   const catalogOf = (id: string) => catalogs[statuses.findIndex((s) => s.instance_id === id)]?.data;
   const projectsFor = (id: string) => (catalogOf(id)?.projects ?? []).filter((p) => !restricted || (p.repo && wanted.has(repoKey(p.repo))));
