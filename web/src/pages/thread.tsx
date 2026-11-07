@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { ArrowUp, Brain, CaretDown, CaretRight, Check, Copy, Lightning, PencilSimple, Question, Trash, Wrench, X } from "@phosphor-icons/react";
+import { ArrowUp, Brain, CaretDown, CaretRight, Check, Copy, Lightning, ListBullets, PencilSimple, Play, Question, Stop, Trash, Wrench, X } from "@phosphor-icons/react";
 import { api, type T3QueuedRun, type T3ThreadView, type T3ViewMessage } from "../api/client";
 import { useThreadLive } from "../api/live";
 import { Button, ErrorText, Input, Md, Notice, PageHeader, Select, StatusPill, pill } from "../components/ui";
@@ -397,15 +397,17 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const busy = !!v.active_run_id;
   const models: MenuOption[] = (catalog.data?.providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `${p.instance_id}|${m.slug}`, label: m.name, group: p.name, icon: <ProviderIcon driver={p.driver || p.name} model={`${m.slug} ${m.name}`} /> })));
   if (!models.some((m) => m.value === selected)) models.unshift({ value: selected, label: v.model || "Modelo del hilo", icon: <ProviderIcon driver={v.provider_id} model={v.model} /> });
+  const stop = useMutation({ mutationFn: () => api.t3Interrupt(v.id), onSuccess: () => qc.invalidateQueries({ queryKey }) });
+  const resume = useMutation({ mutationFn: () => api.t3QueueResume(v.id), onSuccess: () => qc.invalidateQueries({ queryKey }) });
+  const held = !busy && v.queue.some((r) => r.held);
   const canSend = !!text.trim() && !send.isPending;
   const submit = () => { if (canSend) send.mutate(); };
-  const action = busy ? (steer ? "Steer: se inyecta en el turno en curso" : "Se encolará al terminar el turno") : "";
 
   return (
     <form onSubmit={(e) => { e.preventDefault(); submit(); }}
       className="rounded-3xl border border-slate-200 bg-white shadow-md transition-shadow focus-within:border-slate-400 focus-within:shadow-lg dark:border-border-strong dark:bg-surface dark:focus-within:border-muted">
       <textarea ref={area} rows={1} value={text} onChange={(e) => setText(e.target.value)} aria-label="Mensaje"
-        placeholder={busy ? "El hilo está trabajando: tu mensaje se encolará…" : "Escribe al hilo…"}
+        placeholder="Escribe al hilo…"
         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }}
         className="block max-h-60 w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 !outline-none placeholder:text-slate-400" />
       <div className="flex items-center gap-0.5 px-2 pb-2">
@@ -422,13 +424,23 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
             </button>
           )}
         </div>
-        {action && <span className="hidden truncate px-2 text-xs text-slate-400 sm:inline">{action}</span>}
-        <button type="submit" disabled={!canSend} title={busy ? (steer ? "Steer" : "Encolar") : "Enviar (Enter)"} aria-label="Enviar"
+        {held && (
+          <button type="button" onClick={() => resume.mutate()} disabled={resume.isPending} title="Reanuda la cola: sale el siguiente mensaje"
+            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-slate-100 px-3 text-xs font-medium text-slate-700 hover:bg-slate-200 dark:bg-raised dark:text-text-secondary dark:hover:text-white">
+            <Play weight="fill" className="size-3" />Continuar cola
+          </button>
+        )}
+        {busy && !text.trim() ? (
+          <button type="button" onClick={() => stop.mutate()} disabled={stop.isPending} title="Parar el turno en curso" aria-label="Parar"
+            className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-900 text-white transition hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200">
+            <Stop weight="fill" className="size-3.5" />
+          </button>
+        ) : <button type="submit" disabled={!canSend} title={busy ? (steer ? "Steer" : "Encolar") : "Enviar (Enter)"} aria-label="Enviar"
           className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-900 text-white transition hover:bg-slate-700 disabled:bg-slate-200 disabled:text-slate-400 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 dark:disabled:bg-raised dark:disabled:text-muted">
-          {send.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <ArrowUp weight="bold" className="size-4" />}
-        </button>
+          {send.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : busy && !steer ? <ListBullets weight="bold" className="size-4" /> : <ArrowUp weight="bold" className="size-4" />}
+        </button>}
       </div>
-      {(send.error || settings.error) && <div className="px-4 pb-2"><ErrorText error={send.error ?? settings.error} /></div>}
+      {(send.error || settings.error || stop.error || resume.error) && <div className="px-4 pb-2"><ErrorText error={send.error ?? settings.error ?? stop.error ?? resume.error} /></div>}
     </form>
   );
 }
