@@ -106,6 +106,7 @@ function Chat({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
           </div>
         ))}
         {working && <Dots />}
+        <Queue v={v} queryKey={queryKey} />
         <div ref={end} />
       </div></div>
       <div className="mx-auto w-full max-w-3xl space-y-2 px-3 pb-4 pt-2 sm:px-6">
@@ -115,7 +116,6 @@ function Chat({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
             <PendingRequest key={v.pending.id} threadId={v.id} pending={v.pending} onDone={() => qc.invalidateQueries({ queryKey })} />
           </div>
         )}
-        <Queue v={v} queryKey={queryKey} />
         <Composer v={v} queryKey={queryKey} />
       </div>
     </section>
@@ -157,6 +157,8 @@ const Dots = () => (
   </span>
 );
 
+// Queue shows the messages waiting for the active turn as outlined bubbles
+// at the end of the conversation, each with its actions underneath.
 function Queue({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const qc = useQueryClient();
   const done = () => qc.invalidateQueries({ queryKey });
@@ -164,8 +166,7 @@ function Queue({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   if (!v.queue.length) return null;
   const q = v.queue;
   return (
-    <div className="space-y-1 rounded-2xl border border-slate-200 bg-white p-2 dark:border-border dark:bg-surface">
-      <p className="text-xs font-medium text-slate-500 dark:text-muted">En cola ({q.length}) · salen al terminar el turno</p>
+    <>
       {q.map((r, i) => (
         <QueuedRow key={r.run_id} r={r} canSteer={!!v.active_run_id}
           onUp={i > 0 ? () => act.mutate(() => api.t3QueueReorder(v.id, r.run_id, q[i - 1].run_id)) : undefined}
@@ -175,27 +176,34 @@ function Queue({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
           onEdit={(text) => act.mutate(() => api.t3QueueEdit(v.id, r.run_id, text))} />
       ))}
       <ErrorText error={act.error} />
-    </div>
+    </>
   );
 }
 
-const iconBtn = "grid size-7 place-items-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 dark:hover:bg-raised dark:hover:text-white";
+const iconBtn = "grid size-7 place-items-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 dark:hover:bg-raised dark:hover:text-white";
 
 function QueuedRow({ r, canSteer, onUp, onDown, onSteer, onCancel, onEdit }: { r: T3QueuedRun; canSteer: boolean; onUp?: () => void; onDown?: () => void; onSteer: () => void; onCancel: () => void; onEdit: (text: string) => void }) {
   const [draft, setDraft] = useState<string | null>(null);
   return (
-    <div className="flex items-start gap-1 rounded-md bg-slate-50 p-1.5 text-sm dark:bg-surface">
-      {draft === null ? <p className="min-w-0 flex-1 whitespace-pre-wrap break-words">{r.text}</p> : (
-        <form className="flex flex-1 gap-1" onSubmit={(e) => { e.preventDefault(); onEdit(draft); setDraft(null); }}>
-          <Input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") setDraft(null); }} />
-          <Button>Guardar</Button>
-        </form>
-      )}
-      <button type="button" className={iconBtn} title="Subir" disabled={!onUp} onClick={onUp}><ArrowUp /></button>
-      <button type="button" className={iconBtn} title="Bajar" disabled={!onDown} onClick={onDown}><ArrowDown /></button>
-      <button type="button" className={iconBtn} title="Editar" onClick={() => setDraft(r.text)}><PencilSimple /></button>
-      <button type="button" className={iconBtn} title="Steer: inyectar en el turno en curso" disabled={!canSteer} onClick={onSteer}><Lightning /></button>
-      <button type="button" className={iconBtn} title="Quitar de la cola" onClick={onCancel}><Trash /></button>
+    <div className="flex flex-col items-end gap-1">
+      <div className="w-fit max-w-[85%] rounded-2xl rounded-br-md border border-dashed border-slate-400 px-4 py-2.5 text-slate-700 dark:border-border-strong dark:text-text-secondary">
+        {draft === null ? <p className="whitespace-pre-wrap break-words text-sm">{r.text}</p> : (
+          <form className="flex gap-1" onSubmit={(e) => { e.preventDefault(); onEdit(draft); setDraft(null); }}>
+            <Input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") setDraft(null); }} />
+            <Button>Guardar</Button>
+          </form>
+        )}
+      </div>
+      <div className="flex items-center gap-0.5">
+        <span className="mr-1 text-[11px] text-slate-400">En cola</span>
+        {(onUp || onDown) && <>
+          <button type="button" className={iconBtn} title="Subir" disabled={!onUp} onClick={onUp}><ArrowUp /></button>
+          <button type="button" className={iconBtn} title="Bajar" disabled={!onDown} onClick={onDown}><ArrowDown /></button>
+        </>}
+        <button type="button" className={iconBtn} title="Mandar ya (steer: inyectar en el turno en curso)" disabled={!canSteer} onClick={onSteer}><Lightning /></button>
+        <button type="button" className={iconBtn} title="Editar" onClick={() => setDraft(r.text)}><PencilSimple /></button>
+        <button type="button" className={iconBtn} title="Eliminar de la cola" onClick={onCancel}><Trash /></button>
+      </div>
     </div>
   );
 }
