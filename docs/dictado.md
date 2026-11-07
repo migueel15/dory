@@ -29,3 +29,12 @@ Comprobación: `curl 127.0.0.1:8178/inference -F file=@audio.wav -F language=es 
 - `POST /api/dictation/{id}/chunks?seq=n` sube un lote WAV (16 kHz mono, máx. 2 MiB), en orden desde 0.
 - `GET /api/dictation/{id}` devuelve el texto parcial y los lotes pendientes.
 - `POST /api/dictation/{id}/finish` con `{"mode":"insert"}` espera y devuelve el texto; con `{"mode":"send","target":{"kind":"capture","project_id":"…"}}` o `{"kind":"define","item_id":"…"}` el backend lo entrega al terminar.
+
+## Troceado
+
+- El cliente mide la energía (RMS) en marcos de 100 ms; por debajo de 0,01 es silencio.
+- Un lote se envía tras ~1 s de silencio si lleva ≥1,5 s de voz; desde 4 s, en el primer marco silencioso; a los 6 s, en el marco más callado, con 0,5 s de solape con el siguiente.
+- Antes de subirlo, cada silencio de más de 0,6 s se acorta a 0,3 s. Un lote sin voz no se sube.
+- El servidor también ignora un WAV sin voz: avanza `seq` pero no lo transcribe.
+- Cada lote se transcribe con `prompt` = últimas 30 palabras del texto de la sesión.
+- El parcial se consulta cada segundo.

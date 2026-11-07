@@ -11,7 +11,7 @@ El usuario quiere dictar en Dory desde el móvil y el escritorio, en español. L
 
 - La transcripción la hace `whisper-server` de whisper.cpp en infra-admin, en `127.0.0.1:8178`, con `language=es`, 4 hilos y `Nice=5` (unit `whisper-server.service`). Dory lo llama por `DORY_WHISPER_URL`; sin ella, la API de dictado responde 503.
 - Modelo `small` q5_1. Medido en infra-admin, `large-v3-turbo` q5_0 tarda más que el audio en lotes de 10 s (factor ≈1,5); `small` va a ≈0,35.
-- El cliente graba a 16 kHz mono y sube lotes WAV autónomos de ~10 s, con 0,5 s de solape, a `/api/dictation/{id}/chunks?seq=n`. Un worker por sesión los transcribe en orden y une el texto quitando las palabras repetidas por el solape.
+- El cliente graba a 16 kHz mono y sube lotes WAV autónomos cortos (se cortan en las pausas, 6 s como máximo, con 0,5 s de solape solo en los cortes forzados y sin silencios largos) a `/api/dictation/{id}/chunks?seq=n`. Un worker por sesión los transcribe en orden y une el texto quitando las palabras repetidas por el solape. Cada lote lleva como `prompt` las últimas 30 palabras ya transcritas; los lotes sin voz se descartan en cliente y servidor. Así la espera al parar tras una pausa baja a ~1–2 s.
 - Las sesiones viven en memoria, son del usuario que las crea y caducan a los 30 min. No se guarda audio.
 - `finish` con `insert` espera al último lote y devuelve el texto. Con `send` responde al momento y el backend entrega el texto al terminar: `capture` crea un item en inbox como la captura web y `define` escribe en el hilo de definición del item.
 

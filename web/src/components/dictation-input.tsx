@@ -7,11 +7,15 @@ type DictationState = components["schemas"]["DictationState"];
 export type DictationTarget = { kind: "capture"; project_id?: string } | { kind: "define"; item_id: string };
 
 const RATE = 16000;
-const MIN_BATCH = 8 * RATE; // look for a silence from 8 s on
-const MAX_BATCH = 12 * RATE; // cut anyway at 12 s
-const OVERLAP = RATE / 2; // 0.5 s repeated at the start of the next batch
 const FRAME = RATE / 10; // 100 ms frames to measure energy
-const SILENCE = 0.01; // RMS below this counts as silence
+const SILENCE = 0.01; // RMS below this counts as silence (same as the server)
+const PAUSE = 10; // 1 s of silence after enough voice sends the batch
+const MIN_VOICE = 15; // 1.5 s of voice before a pause sends it
+const MIN_BATCH = 4 * RATE; // from 4 s, cut at the first silent frame
+const MAX_BATCH = 6 * RATE; // at 6 s, cut at the quietest frame
+const OVERLAP = RATE / 2; // 0.5 s repeated after a forced cut
+const LONG_GAP = 6; // silences over 0.6 s ...
+const KEEP_GAP = 3; // ... are shortened to 0.3 s
 
 async function call<T>(method: string, path: string, body?: BodyInit, json = true): Promise<T> {
   const res = await fetch(`/api/dictation${path}`, { method, credentials: "same-origin", body, headers: body && json ? { "Content-Type": "application/json" } : body ? { "Content-Type": "audio/wav" } : undefined });
@@ -40,20 +44,57 @@ function rms(a: Float32Array, from: number) {
   return Math.sqrt(sum / FRAME);
 }
 
-// cutPoint returns where to end the batch, or 0 to keep recording: the first
-// silent frame after MIN_BATCH, or the quietest frame once MAX_BATCH is reached.
-function cutPoint(a: Float32Array): number {
-  if (a.length < MIN_BATCH + FRAME) return 0;
-  let best = MIN_BATCH, bestRms = Infinity;
-  for (let f = MIN_BATCH; f + FRAME <= Math.min(a.length, MAX_BATCH); f += FRAME) {
-    const r = rms(a, f);
-    if (r < SILENCE) return f + FRAME / 2;
-    if (r < bestRms) { bestRms = r; best = f + FRAME / 2; }
-  }
-  return a.length >= MAX_BATCH ? best : 0;
+function voiced(a: Float32Array) {
+  for (let f = 0; f + FRAME <= a.length; f += FRAME) if (rms(a, f) >= SILENCE) return true;
+  return false;
 }
 
-// useDictation records the microphone and uploads ~10 s batches to the server
+// cutPoint says where to end the batch and whether the next one repeats an
+// overlap; cut 0 keeps recording. A pause after enough voice, then the first
+// silent frame from MIN_BATCH, then the quietest frame at MAX_BATCH.
+function cutPoint(a: Float32Array): { cut: number; overlap: boolean } {
+  let voice = 0, run = 0, best = MIN_BATCH, bestRms = Infinity;
+  for (let f = 0; f + FRAME <= Math.min(a.length, MAX_BATCH); f += FRAME) {
+    const r = rms(a, f);
+    if (r < SILENCE) run++; else { run = 0; voice++; }
+    if (run >= PAUSE && voice >= MIN_VOICE) return { cut: f + FRAME, overlap: false };
+    if (f >= MIN_BATCH) {
+      if (r < SILENCE) return { cut: f + FRAME / 2, overlap: false };
+      if (r < bestRms) { bestRms = r; best = f + FRAME / 2; }
+    }
+  }
+  return { cut: a.length >= MAX_BATCH ? best : 0, overlap: true };
+}
+
+// compact shortens every silence longer than LONG_GAP frames to KEEP_GAP
+// frames, keeping its edges, so there is less audio and less to hallucinate on.
+function compact(a: Float32Array): Float32Array {
+  const parts: Float32Array[] = [];
+  let gap = -1; // start of the current silent run
+  const flush = (end: number) => {
+    if (gap < 0) return;
+    const len = end - gap;
+    if (len > LONG_GAP * FRAME) {
+      const half = (KEEP_GAP * FRAME) / 2;
+      parts.push(a.subarray(gap, gap + half), a.subarray(end - half, end));
+    } else parts.push(a.subarray(gap, end));
+    gap = -1;
+  };
+  let f = 0;
+  for (; f + FRAME <= a.length; f += FRAME) {
+    if (rms(a, f) < SILENCE) { if (gap < 0) gap = f; continue; }
+    flush(f);
+    parts.push(a.subarray(f, f + FRAME));
+  }
+  flush(f);
+  parts.push(a.subarray(f));
+  const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+
+// useDictation records the microphone and uploads short batches (cut on pauses, 6 s at most) to the server
 // while the user speaks; the partial text arrives by polling.
 export function useDictation() {
   const [recording, setRecording] = useState(false);
@@ -62,8 +103,12 @@ export function useDictation() {
   const [error, setError] = useState<unknown>(null);
   const r = useRef<{ id: string; seq: number; buf: Float32Array; uploads: Promise<unknown>; stop: () => void; poll: number } | null>(null);
 
+  // upload sends a batch without its long silences; a batch with no voice is
+  // dropped and does not use a seq.
   const upload = (samples: Float32Array) => {
     const s = r.current!;
+    if (!voiced(samples)) return;
+    samples = compact(samples);
     const seq = s.seq++;
     s.uploads = s.uploads.then(() => call<DictationState>("POST", `/${s.id}/chunks?seq=${seq}`, wav(samples), false)).catch((e) => { setError(e); throw e; });
   };
@@ -97,11 +142,11 @@ export function useDictation() {
         const merged = new Float32Array(s.buf.length + out.length);
         merged.set(s.buf); merged.set(out, s.buf.length);
         s.buf = merged;
-        const cut = cutPoint(s.buf);
-        if (cut) { upload(s.buf.slice(0, cut)); s.buf = s.buf.slice(Math.max(0, cut - OVERLAP)); }
+        const { cut, overlap } = cutPoint(s.buf);
+        if (cut) { upload(s.buf.slice(0, cut)); s.buf = s.buf.slice(overlap ? Math.max(0, cut - OVERLAP) : cut); }
       };
       source.connect(proc); proc.connect(ctx.destination);
-      const poll = window.setInterval(() => { call<DictationState>("GET", `/${id}`).then((st) => setPartial(st.text)).catch(() => {}); }, 2000);
+      const poll = window.setInterval(() => { call<DictationState>("GET", `/${id}`).then((st) => setPartial(st.text)).catch(() => {}); }, 1000);
       r.current = { id, seq: 0, buf: new Float32Array(0), uploads: Promise.resolve(), poll, stop: () => { proc.disconnect(); source.disconnect(); stream.getTracks().forEach((t) => t.stop()); ctx.close(); } };
       setRecording(true);
     } catch (e) {
@@ -118,7 +163,7 @@ export function useDictation() {
     s.stop(); window.clearInterval(s.poll);
     setRecording(false); setBusy(true);
     try {
-      if (s.buf.length > RATE / 3) upload(s.buf);
+      upload(s.buf);
       await s.uploads;
       const st = await call<DictationState>("POST", `/${s.id}/finish`, JSON.stringify(target ? { mode: "send", target } : { mode: "insert" }));
       return target ? "" : st.text;

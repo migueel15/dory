@@ -18,7 +18,7 @@ type Whisper struct {
 	Client   *http.Client
 }
 
-func (w Whisper) Transcribe(ctx context.Context, wav []byte) (string, error) {
+func (w Whisper) Transcribe(ctx context.Context, wav []byte, prompt string) (string, error) {
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	part, err := mw.CreateFormFile("file", "chunk.wav")
@@ -34,6 +34,11 @@ func (w Whisper) Transcribe(ctx context.Context, wav []byte) (string, error) {
 	}
 	for k, v := range map[string]string{"response_format": "json", "language": lang, "temperature": "0"} {
 		if err = mw.WriteField(k, v); err != nil {
+			return "", err
+		}
+	}
+	if prompt != "" {
+		if err = mw.WriteField("prompt", prompt); err != nil {
 			return "", err
 		}
 	}
