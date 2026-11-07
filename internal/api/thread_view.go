@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/migueel15/dory/internal/service"
 	"github.com/migueel15/dory/internal/t3"
@@ -15,6 +17,9 @@ type threadViewOut struct {
 	InstanceID string               `json:"instance_id"`
 	Items      []service.ItemThread `json:"items"`
 }
+
+// maxAttachmentBytes is T3's own limit for a file attachment.
+const maxAttachmentBytes = 50 << 20
 
 // mountThreadView serves the chat view of one thread. Queue and steer are T3's
 // own, so the queue is shared with T3 Code's UI.
@@ -85,16 +90,42 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 	})
 	mux.HandleFunc("POST /api/t3/threads/{id}/send", func(w http.ResponseWriter, r *http.Request) {
 		var b struct {
-			Text         string `json:"text"`
-			Mode         string `json:"mode"`
-			ProviderID   string `json:"provider_id"`
-			Model        string `json:"model"`
-			EffortOption string `json:"effort_option"`
-			Effort       string `json:"effort"`
+			Text         string          `json:"text"`
+			Mode         string          `json:"mode"`
+			ProviderID   string          `json:"provider_id"`
+			Model        string          `json:"model"`
+			EffortOption string          `json:"effort_option"`
+			Effort       string          `json:"effort"`
+			Attachments  []t3.Attachment `json:"attachments"`
 		}
 		act("t3.send", &b, func(r *http.Request, c t3.Client, id string) error {
-			return c.Send(r.Context(), id, t3.SendInput{Text: b.Text, Mode: b.Mode, ProviderID: b.ProviderID, Model: b.Model, EffortOption: b.EffortOption, Effort: b.Effort})
+			return c.Send(r.Context(), id, t3.SendInput{Text: b.Text, Mode: b.Mode, ProviderID: b.ProviderID, Model: b.Model, EffortOption: b.EffortOption, Effort: b.Effort, Attachments: b.Attachments})
 		})(w, r)
+	})
+	// Attachments go up one at a time as the raw body, with the file name in
+	// ?name= and its type in Content-Type; the reply goes back in /send.
+	mux.HandleFunc("POST /api/t3/threads/{id}/attachments", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxAttachmentBytes))
+		if err != nil {
+			writeError(w, http.StatusRequestEntityTooLarge, "invalid_argument", "attachment too large (max 50 MB)")
+			return
+		}
+		name := strings.TrimSpace(r.URL.Query().Get("name"))
+		if name == "" {
+			name = "adjunto"
+		}
+		c, err := threadClient(r.Context(), svc, monitor, id)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		a, err := c.Upload(r.Context(), name, r.Header.Get("Content-Type"), data)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, a)
 	})
 	mux.HandleFunc("PATCH /api/t3/threads/{id}/queue/{run_id}", func(w http.ResponseWriter, r *http.Request) {
 		var b struct {

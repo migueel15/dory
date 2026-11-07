@@ -1094,9 +1094,28 @@ paths:
                 model: {type: "string"}
                 effort_option: {type: "string"}
                 effort: {type: "string"}
+                attachments: {type: "array", items: {$ref: "#/components/schemas/T3Attachment"}}
       responses:
         "204":
           description: "Sent"
+  "/t3/threads/{id}/attachments":
+    post:
+      operationId: "uploadT3Attachment"
+      summary: "Upload one file to the thread's T3 instance (raw body, name in ?name=, type in Content-Type) to send it later with /send"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+        - {name: "name", in: "query", schema: {type: "string"}}
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: "string", format: "binary"}
+      responses:
+        "200":
+          description: "Uploaded"
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/T3Attachment"}
   "/t3/threads/{id}/queue/{run_id}":
     patch:
       operationId: "editT3QueuedMessage"
@@ -2693,6 +2712,15 @@ components:
       type: "http"
       scheme: "bearer"
   schemas:
+    T3Attachment:
+      type: "object"
+      required: ["type", "id", "name", "mime_type", "size_bytes"]
+      properties:
+        type: {type: "string", enum: ["image", "file"]}
+        id: {type: "string"}
+        name: {type: "string"}
+        mime_type: {type: "string"}
+        size_bytes: {type: "integer"}
     DictationState:
       type: object
       required: [id, text, pending, status]

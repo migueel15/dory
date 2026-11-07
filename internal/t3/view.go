@@ -289,13 +289,18 @@ type SendInput struct {
 	Model        string
 	EffortOption string
 	Effort       string
+	Attachments  []Attachment
 }
 
 // Send dispatches a message with T3's native queue or steer. Steering without an
 // active turn starts the message right away.
 func (c Client) Send(ctx context.Context, threadID string, in SendInput) error {
-	if strings.TrimSpace(in.Text) == "" {
+	if strings.TrimSpace(in.Text) == "" && len(in.Attachments) == 0 {
 		return errors.New("t3: empty message")
+	}
+	attachments := []any{}
+	for _, a := range in.Attachments {
+		attachments = append(attachments, a.wire())
 	}
 	mode := map[string]any{"type": "queue_after_active"}
 	if in.Mode == SendSteer {
@@ -309,7 +314,7 @@ func (c Client) Send(ctx context.Context, threadID string, in SendInput) error {
 	}
 	cmd := map[string]any{
 		"type": "message.dispatch", "threadId": threadID, "messageId": newID(), "text": in.Text,
-		"attachments": []any{}, "createdBy": "user", "creationSource": "web", "dispatchMode": mode,
+		"attachments": attachments, "createdBy": "user", "creationSource": "web", "dispatchMode": mode,
 	}
 	if in.Model != "" {
 		sel := map[string]any{"instanceId": in.ProviderID, "model": in.Model}
