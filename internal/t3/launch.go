@@ -97,8 +97,12 @@ func (c Client) Catalog(ctx context.Context) (Catalog, error) {
 			Title              string `json:"title"`
 			WorkspaceRoot      string `json:"workspaceRoot"`
 			RepositoryIdentity *struct {
-				WebURL string `json:"webUrl"`
-				Name   string `json:"name"`
+				CanonicalKey string `json:"canonicalKey"`
+				WebURL       string `json:"webUrl"`
+				Name         string `json:"name"`
+				Locator      struct {
+					RemoteURL string `json:"remoteUrl"`
+				} `json:"locator"`
 			} `json:"repositoryIdentity"`
 		} `json:"projects"`
 	}
@@ -108,7 +112,16 @@ func (c Client) Catalog(ctx context.Context) (Catalog, error) {
 	for _, p := range snap.Projects {
 		cp := CatalogProject{ID: p.ID, Title: p.Title, Root: p.WorkspaceRoot}
 		if r := p.RepositoryIdentity; r != nil {
-			cp.Repo, cp.RepoName = r.WebURL, r.Name
+			// T3 may omit webUrl; canonicalKey (host/owner/name) is always there.
+			switch {
+			case r.WebURL != "":
+				cp.Repo = r.WebURL
+			case r.CanonicalKey != "":
+				cp.Repo = "https://" + r.CanonicalKey
+			default:
+				cp.Repo = r.Locator.RemoteURL
+			}
+			cp.RepoName = r.Name
 		}
 		out.Projects = append(out.Projects, cp)
 	}
