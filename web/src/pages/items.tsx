@@ -1,5 +1,5 @@
 import { ThreadStatus } from "../components/thread-status";
-import { ChatCircle, GitPullRequest, Plus } from "@phosphor-icons/react";
+import { ChatCircle, GitPullRequest, Plus, Prohibit } from "@phosphor-icons/react";
 import { ThreadLink } from "../components/thread-link";
 import { LaunchDialog } from "./launch";
 import { IdeaCapture, IdeaModal } from "../components/capture";
@@ -266,7 +266,9 @@ function Draggable({ item, onOpen }: { item: Item; onOpen: () => void }) {
   const style = transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined;
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes} className={isDragging ? "relative z-10 opacity-80" : ""}>
-      <ItemActions item={item}><Card className={`cursor-grab ${item.status === "blocked" ? "border-l-4 border-l-red-500 dark:border-l-red-500" : ""}`}><div onClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><ItemTitle item={item} className="font-medium" /></div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}<CardLinks item={item} />{item.status === "blocked" && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{item.blocked_reason}</p>}</div></Card></ItemActions>
+      <ItemActions item={item}><Card className="cursor-grab"><div onClick={onOpen} className="text-sm"><div className="flex items-start justify-between gap-2"><ItemTitle item={item} className="font-medium" />{item.status === "blocked" && <Prohibit weight="duotone" aria-label="Bloqueado" className="mt-0.5 size-4 shrink-0 text-red-500" />}</div>{item.priority > 0 && <Badge>P{item.priority}</Badge>}<CardLinks item={item} />{item.status === "blocked" && (
+        <p className="mt-1.5 line-clamp-3 break-words rounded-md bg-slate-50 px-2 py-1.5 text-xs text-slate-600 dark:bg-raised dark:text-text-secondary"><span className="font-medium text-red-600 dark:text-red-400">Motivo: </span>{item.blocked_reason || "sin indicar"}</p>
+      )}</div></Card></ItemActions>
     </div>
   );
 }
