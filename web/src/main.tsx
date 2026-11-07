@@ -1,5 +1,5 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
-import { List, Moon, SignOut, Sun, X } from "@phosphor-icons/react";
+import { Gear, List, Moon, SignOut, Sun, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
@@ -51,6 +51,14 @@ function Login() {
       {login.error && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{login.error instanceof ApiError && login.error.status === 401 ? "Usuario o contraseña incorrectos." : errMsg(login.error)}</p>}
       <Button className="w-full" disabled={login.isPending}>Entrar</Button>
     </form>
+  );
+}
+
+function SettingsLink() {
+  return (
+    <Link to="/settings" aria-label="Ajustes" title="Ajustes" className="grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-slate-200 sm:min-h-0 sm:min-w-0 sm:px-3 sm:py-1.5 dark:hover:bg-raised [&.active]:bg-slate-200 dark:[&.active]:bg-raised">
+      <Gear className="size-5" aria-hidden="true" />
+    </Link>
   );
 }
 
@@ -144,7 +152,6 @@ function Layout() {
       <Link to="/github" className={link}>GitHub</Link>
       <Link to="/environments" className={link}>Entornos</Link>
       <Link to="/memories" className={link}>Memorias</Link>
-      <Link to="/settings" className={link}>Ajustes</Link>
     </>
   );
   return (
@@ -157,6 +164,7 @@ function Layout() {
           <div className="flex items-center gap-1">
             {desktop && <Notifications />}
             <ThemeToggle />
+            <SettingsLink />
           </div>
           <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 py-1 pl-3 pr-1 dark:border-border">
             <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
@@ -173,6 +181,7 @@ function Layout() {
           <div className="ml-auto flex items-center gap-1">
             {!desktop && <Notifications />}
             <ThemeToggle />
+            <SettingsLink />
           </div>
           <button type="button" aria-label="Menú" aria-controls="mobile-navigation" aria-expanded={menu} onClick={() => setMenu(!menu)} className="grid size-11 place-items-center rounded hover:bg-slate-200 dark:hover:bg-raised sm:hidden">
             {menu ? <X className="size-5" aria-hidden="true" /> : <List className="size-5" aria-hidden="true" />}
