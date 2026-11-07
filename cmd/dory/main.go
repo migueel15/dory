@@ -13,6 +13,7 @@ import (
 	"github.com/migueel15/dory/internal/github"
 	"github.com/migueel15/dory/internal/mcp"
 	"github.com/migueel15/dory/internal/notifications"
+	"github.com/migueel15/dory/internal/reviews"
 	"github.com/migueel15/dory/internal/service"
 	"github.com/migueel15/dory/internal/t3"
 	"github.com/migueel15/dory/internal/titles"
@@ -84,6 +85,7 @@ func run() error {
 		}
 		titleSettings := titles.Store{Pool: pool}
 		titleSettings.Mount(mux)
+		reviews.Store{Pool: pool}.Mount(mux)
 		titleGen := titles.New(svc, monitor, titleSettings)
 		titleGen.Recover(ctx)
 		api.Register(mux, titleGen.Wrap(svc), monitor, github.New(svc, os.Getenv("DORY_GITHUB_TOKEN")), dictationManager())
