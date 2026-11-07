@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type T3InstanceUsage } from "../api/client";
-import { Badge, Button, Card, ErrorText } from "../components/ui";
+import { Button, Card, ErrorText } from "../components/ui";
 
 const warnAt = 80;
 const alertAt = 95;
@@ -60,6 +60,20 @@ export function Models({ usage }: { usage: T3InstanceUsage }) {
   );
 }
 
+// LimitRow is the compact form of Limit: one line with label, bar, remaining and reset.
+function LimitRow({ w }: { w: T3InstanceUsage["providers"][number]["windows"][number] }) {
+  const tone = w.used_percent >= alertAt ? "bg-red-600" : w.used_percent >= warnAt ? "bg-amber-500" : "bg-emerald-600";
+  const left = Math.round(100 - w.used_percent);
+  return (
+    <div className="grid grid-cols-[minmax(0,7rem)_1fr_3rem] items-center gap-2 text-xs" title={w.resets_at ? `Se reinicia el ${date(w.resets_at)}` : "Sin fecha de reinicio"}>
+      <span className="truncate text-slate-600 dark:text-text-secondary">{w.label}</span>
+      <div className="h-1.5 overflow-hidden rounded bg-slate-200 dark:bg-hover"><div className={`h-full ${tone}`} style={{ width: `${Math.min(100, w.used_percent)}%` }} /></div>
+      <span className={`text-right tabular-nums ${w.used_percent >= alertAt ? "font-semibold text-red-600 dark:text-red-400" : w.used_percent >= warnAt ? "text-amber-700 dark:text-amber-400" : ""}`}>{left} %</span>
+    </div>
+  );
+}
+
+// Usage shows one compact card per instance, always in the same order (by name).
 export function Usage() {
   const usage = useQuery({ queryKey: ["t3-usage"], queryFn: api.t3Usage, refetchInterval: 30_000 });
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
@@ -68,6 +82,7 @@ export function Usage() {
   const refresh = useMutation({ mutationFn: api.t3UsageRefresh, onSuccess: (data) => qc.setQueryData(["t3-usage"], data) });
   const { mutate } = refresh;
   useEffect(() => { mutate(); }, [mutate]);
+  const sorted = [...(usage.data ?? [])].sort((a, b) => envName(a.environment_id).localeCompare(envName(b.environment_id)) || a.instance_id.localeCompare(b.instance_id));
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -76,24 +91,40 @@ export function Usage() {
       </div>
       <ErrorText error={usage.error ?? envs.error ?? refresh.error} />
       {usage.data?.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">Todavía no hay lecturas de uso.</p>}
-      {usage.data?.map((u) => (
-        <section key={u.instance_id} className="space-y-2">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <h2 className="font-semibold">{envName(u.environment_id)}</h2>
-            <span className="text-xs text-slate-500 dark:text-muted">Leído {age(u.fetched_at)}</span>
-          </div>
-          {u.limits_error && <p className="text-sm text-slate-500 dark:text-muted">Sin datos: la instancia no responde.</p>}
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {u.providers.map((p) => (
-              <Card key={p.provider}>
-                <div className="mb-2 flex flex-wrap items-center gap-2"><span className="font-medium">{p.name}</span>{p.windows.length > 0 && <Badge>{age(p.checked_at)}</Badge>}</div>
-                {p.windows.length > 0 ? <div className="space-y-3">{p.windows.map((w) => <Limit key={w.label} w={w} />)}</div> : <p className="text-sm text-slate-500 dark:text-muted">Sin datos de plan.</p>}
-              </Card>
-            ))}
-          </div>
-          {!u.limits_error && <Card><h3 className="mb-2 text-sm font-medium">Consumo de los últimos 7 días</h3><Models usage={u} /></Card>}
-        </section>
-      ))}
+      <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+        {sorted.map((u) => {
+          const providers = [...u.providers].sort((a, b) => a.name.localeCompare(b.name));
+          const spent = u.models.reduce((t, m) => t + m.cost_usd, 0);
+          const used = u.models.reduce((t, m) => t + m.input_tokens + m.output_tokens, 0);
+          return (
+            <Card key={u.instance_id} className="space-y-3">
+              <div className="flex items-baseline justify-between gap-2">
+                <h2 className="truncate font-semibold">{envName(u.environment_id) || u.instance_id}</h2>
+                <span className="shrink-0 text-xs text-slate-500 dark:text-muted">Leído {age(u.fetched_at)}</span>
+              </div>
+              {u.limits_error ? <p className="text-sm text-slate-500 dark:text-muted">Sin datos: la instancia no responde.</p> : (
+                <div className="space-y-2.5">
+                  {providers.map((p) => (
+                    <div key={p.provider} className="space-y-1">
+                      <div className="text-sm font-medium">{p.name}</div>
+                      {p.windows.length > 0 ? p.windows.map((w) => <LimitRow key={w.label} w={w} />) : <p className="text-xs text-slate-500 dark:text-muted">Sin datos de plan.</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!u.limits_error && (
+                <details className="group border-t border-slate-200 pt-2 dark:border-border">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs text-slate-500 dark:text-muted">
+                    <span>7 días{u.models.length > 0 && ` · ${tokens(used)} tokens · ${spent.toFixed(2)} USD`}</span>
+                    <span aria-hidden="true" className="transition-transform group-open:rotate-90 motion-reduce:transition-none">›</span>
+                  </summary>
+                  <div className="mt-2"><Models usage={u} /></div>
+                </details>
+              )}
+            </Card>
+          );
+        })}
+      </div>
     </div>
   );
 }
