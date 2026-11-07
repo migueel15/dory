@@ -29,8 +29,12 @@ export const icons = {
   pull: GitPullRequest,
 };
 
+// Line-only glyphs have no inner area, so the app-wide duotone tint would
+// only paint a square behind them: they stay regular.
+const lineGlyphs = new Set<PhosphorIcon>([Check, X, Plus, CaretDown, Code, GitMerge, GitBranch, ArrowBendUpLeft, ArrowCounterClockwise]);
+
 export function Icon({ i: Glyph, className = "size-4", weight }: { i: PhosphorIcon; className?: string; weight?: IconWeight }) {
-  return <Glyph className={className} weight={weight} aria-hidden="true" />;
+  return <Glyph className={className} weight={weight ?? (lineGlyphs.has(Glyph) ? "regular" : undefined)} aria-hidden="true" />;
 }
 
 export function GithubMark({ className = "size-5" }: { className?: string }) {

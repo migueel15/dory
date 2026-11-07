@@ -89,7 +89,7 @@ export function UsageQuick() {
             <Link to="/usage" onClick={() => setOpen(false)} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-text">Ver uso completo <Arrow /></Link>
             <button type="button" onClick={() => refresh.mutate()} disabled={refresh.isPending} title="Actualizar" aria-label="Actualizar"
               className="ml-auto grid size-6 place-items-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-900 disabled:hover:bg-transparent dark:hover:bg-raised dark:hover:text-white">
-              <ArrowClockwise className={`size-3.5 ${refresh.isPending ? "animate-spin" : ""}`} />
+              <ArrowClockwise weight="regular" className={`size-3.5 ${refresh.isPending ? "animate-spin" : ""}`} />
             </button>
           </div>
         </div>,

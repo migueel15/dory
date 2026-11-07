@@ -96,7 +96,7 @@ function Tree({ dir, jump, active, review, depth = 0 }: { dir: Dir; jump: (path:
         <li key={d.name}>
           <details open className="group">
             <summary title={d.name} className="flex cursor-pointer list-none items-center gap-1 rounded px-1 py-0.5 text-xs font-medium hover:bg-slate-100 dark:hover:bg-raised [&::-webkit-details-marker]:hidden">
-              <CaretRight aria-hidden="true" className="size-3 shrink-0 text-slate-400 transition-transform group-open:rotate-90" />
+              <CaretRight weight="regular" aria-hidden="true" className="size-3 shrink-0 text-slate-400 transition-transform group-open:rotate-90" />
               <Folder aria-hidden="true" className="size-4 shrink-0 text-slate-400 group-open:hidden" />
               <FolderOpen aria-hidden="true" className="hidden size-4 shrink-0 text-slate-400 group-open:block" />
               <span className="truncate">{d.name}</span>
@@ -335,7 +335,7 @@ export function Diff({ repo = "", pr = 0, text, onSuggest, fill = false }: { rep
         {split ? <Rows aria-hidden="true" className="size-4" /> : <Columns aria-hidden="true" className="size-4" />}
       </button>
       <button type="button" onClick={() => setFull((v) => !v)} title={full ? "Salir de pantalla completa (Esc)" : "Pantalla completa"} aria-label={full ? "Salir de pantalla completa" : "Pantalla completa"} className={toolBtn}>
-        {full ? <ArrowsIn aria-hidden="true" className="size-4" /> : <ArrowsOut aria-hidden="true" className="size-4" />}
+        {full ? <ArrowsIn weight="regular" aria-hidden="true" className="size-4" /> : <ArrowsOut weight="regular" aria-hidden="true" className="size-4" />}
       </button>
     </>
   );
@@ -369,7 +369,7 @@ export function Diff({ repo = "", pr = 0, text, onSuggest, fill = false }: { rep
             <div id={anchor(f.path)} className="sticky top-0 z-10 flex scroll-mt-0 items-center justify-between gap-2 rounded-t-lg border-b border-slate-200 bg-slate-50 px-3 py-1.5 dark:border-border dark:bg-raised">
               <span className="flex min-w-0 items-center gap-1.5">
                 <button type="button" onClick={() => setFolded((m) => new Map(m).set(f.path, !isFolded(f.path)))} aria-label={isFolded(f.path) ? "Desplegar fichero" : "Plegar fichero"} aria-expanded={!isFolded(f.path)} className="shrink-0 rounded text-slate-400 hover:text-blue-600">
-                  {isFolded(f.path) ? <CaretRight aria-hidden="true" className="size-3.5" /> : <CaretDown aria-hidden="true" className="size-3.5" />}
+                  {isFolded(f.path) ? <CaretRight weight="regular" aria-hidden="true" className="size-3.5" /> : <CaretDown weight="regular" aria-hidden="true" className="size-3.5" />}
                 </button>
                 <span className="min-w-0 truncate font-mono text-xs font-semibold" title={f.path}>{f.path}</span>
               </span>

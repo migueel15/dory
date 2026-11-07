@@ -19,7 +19,7 @@ export type T3InstanceHistory = S["T3InstanceHistory"];
 export type T3DayUsage = S["T3DayUsage"];
 export type T3ThreadContext = S["T3ThreadContext"];
 // Reasoning and tool entries are steps of the model between messages.
-export type T3ViewMessage = { id: string; role: "user" | "assistant" | "system" | "reasoning" | "tool" | "interrupt"; text: string; streaming: boolean; created_at: string; title?: string; detail?: string; status?: string };
+export type T3ViewMessage = { id: string; role: "user" | "assistant" | "system" | "reasoning" | "tool" | "interrupt" | "plan"; text: string; streaming: boolean; created_at: string; title?: string; detail?: string; status?: string };
 export type T3QueuedRun = { run_id: string; text: string; position: number; held: boolean };
 export type T3ThreadView = {
   id: string; title: string; provider_id: string; model: string; effort: string; effort_option: string;
@@ -28,6 +28,7 @@ export type T3ThreadView = {
   pull_requests: { repository: string; number: number; url: string }[];
   messages: T3ViewMessage[]; queue: T3QueuedRun[]; pending: T3ThreadContext["pending"];
   items: { item_id: string; role: string }[];
+  history_cursor: string;
 };
 export type T3Attachment = { type: "image" | "file"; id: string; name: string; mime_type: string; size_bytes: number };
 export type T3SendInput = { text: string; mode: "auto" | "steer"; provider_id?: string; model?: string; effort_option?: string; effort?: string; attachments?: T3Attachment[] };
@@ -105,6 +106,7 @@ export const api = {
   t3Context: (id: string) => req<T3ThreadContext>("GET", `/t3/threads/${id}/context`),
   t3Send: (id: string, text: string) => req<void>("POST", `/t3/threads/${id}/messages`, { text }),
   t3View: (id: string) => req<T3ThreadView>("GET", `/t3/threads/${id}/view`),
+  t3History: (id: string, cursor: string) => req<{ messages: T3ViewMessage[]; next_cursor: string; has_more: boolean }>("GET", `/t3/threads/${id}/history?cursor=${encodeURIComponent(cursor)}`),
   t3Diff: (id: string) => req<{ diff: string }>("GET", `/t3/threads/${id}/diff`),
   t3Dispatch: (id: string, body: T3SendInput) => req<void>("POST", `/t3/threads/${id}/send`, body),
   t3QueueEdit: (id: string, run: string, text: string) => req<void>("PATCH", `/t3/threads/${id}/queue/${run}`, { text }),
