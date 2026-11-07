@@ -446,9 +446,9 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
       {files.length > 0 && (
         <div className="flex flex-wrap gap-2 px-3 pt-3">
           {files.map((f) => (
-            <div key={f.key} title={f.error ?? f.name} className={`relative flex h-14 max-w-[12rem] items-center gap-2 overflow-hidden rounded-xl border bg-slate-50 pr-7 text-xs dark:bg-raised ${f.error ? "border-red-400" : "border-slate-200 dark:border-border"}`}>
+            <div key={f.key} title={f.error ?? f.name} className={`relative size-14 shrink-0 overflow-hidden rounded-xl border bg-slate-50 dark:bg-raised ${f.error ? "border-red-400" : "border-slate-200 dark:border-border"}`}>
               {f.preview ? <img src={f.preview} alt="" className="size-14 shrink-0 object-cover" /> : <span className="grid size-14 shrink-0 place-items-center text-slate-400"><FileText className="size-6" /></span>}
-              <span className="min-w-0 truncate">{f.error ? f.error : f.name}</span>
+              {f.error && <span className="absolute inset-x-0 bottom-0 bg-red-500 text-center text-[9px] font-medium text-white">Error</span>}
               {!f.done && !f.error && <span className="absolute inset-0 grid place-items-center bg-white/60 dark:bg-black/40"><span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /></span>}
               <button type="button" onClick={() => removeFile(f.key)} aria-label={`Quitar ${f.name}`} className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-slate-900/70 text-white hover:bg-slate-900"><X className="size-3" /></button>
             </div>
