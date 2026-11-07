@@ -166,9 +166,10 @@ function Queue({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   if (!v.queue.length) return null;
   const q = v.queue;
   return (
-    <>
+    <section aria-label="Mensajes en cola" className="space-y-3 border-t border-dashed border-slate-300 pt-3 dark:border-border">
+      <p className="text-right text-[11px] font-semibold uppercase tracking-wide text-slate-400">En cola · {q.length}</p>
       {q.map((r, i) => (
-        <QueuedRow key={r.run_id} r={r} canSteer={!!v.active_run_id}
+        <QueuedRow key={r.run_id} n={i + 1} r={r} canSteer={!!v.active_run_id}
           onUp={i > 0 ? () => act.mutate(() => api.t3QueueReorder(v.id, r.run_id, q[i - 1].run_id)) : undefined}
           onDown={i < q.length - 1 ? () => act.mutate(() => api.t3QueueReorder(v.id, r.run_id, q[i + 2]?.run_id ?? "")) : undefined}
           onSteer={() => act.mutate(() => api.t3QueueSteer(v.id, r.run_id))}
@@ -176,13 +177,13 @@ function Queue({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
           onEdit={(text) => act.mutate(() => api.t3QueueEdit(v.id, r.run_id, text))} />
       ))}
       <ErrorText error={act.error} />
-    </>
+    </section>
   );
 }
 
 const iconBtn = "grid size-7 place-items-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 dark:hover:bg-raised dark:hover:text-white";
 
-function QueuedRow({ r, canSteer, onUp, onDown, onSteer, onCancel, onEdit }: { r: T3QueuedRun; canSteer: boolean; onUp?: () => void; onDown?: () => void; onSteer: () => void; onCancel: () => void; onEdit: (text: string) => void }) {
+function QueuedRow({ n, r, canSteer, onUp, onDown, onSteer, onCancel, onEdit }: { n: number; r: T3QueuedRun; canSteer: boolean; onUp?: () => void; onDown?: () => void; onSteer: () => void; onCancel: () => void; onEdit: (text: string) => void }) {
   const [draft, setDraft] = useState<string | null>(null);
   return (
     <div className="flex flex-col items-end gap-1">
@@ -195,7 +196,7 @@ function QueuedRow({ r, canSteer, onUp, onDown, onSteer, onCancel, onEdit }: { r
         )}
       </div>
       <div className="flex items-center gap-0.5">
-        <span className="mr-1 text-[11px] text-slate-400">En cola</span>
+        <span className="mr-1 text-[11px] tabular-nums text-slate-400">#{n}</span>
         {(onUp || onDown) && <>
           <button type="button" className={iconBtn} title="Subir" disabled={!onUp} onClick={onUp}><ArrowUp /></button>
           <button type="button" className={iconBtn} title="Bajar" disabled={!onDown} onClick={onDown}><ArrowDown /></button>
