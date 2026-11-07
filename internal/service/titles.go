@@ -10,6 +10,8 @@ const (
 	TitlePending = "pending"
 	TitleAI      = "ai"
 	TitleUser    = "user"
+	// TitleFallback is the provisional title kept after the generation failed or timed out.
+	TitleFallback = "fallback"
 )
 
 // titledItems enforces the title_source rules on every write, whether it
@@ -20,13 +22,13 @@ type titledItems struct{ resource[Item] }
 // current (nil when it is new).
 func ResolveTitleSource(current *Item, in Item) (string, error) {
 	switch in.TitleSource {
-	case "", TitlePending, TitleAI, TitleUser:
+	case "", TitlePending, TitleAI, TitleUser, TitleFallback:
 	default:
-		return "", fmt.Errorf("%w: title_source must be pending, ai or user", ErrInvalid)
+		return "", fmt.Errorf("%w: title_source must be pending, ai, user or fallback", ErrInvalid)
 	}
 	if current == nil {
-		if in.TitleSource == TitleAI {
-			return "", fmt.Errorf("%w: a new item cannot have an AI title yet", ErrInvalid)
+		if in.TitleSource == TitleAI || in.TitleSource == TitleFallback {
+			return "", fmt.Errorf("%w: a new item cannot have an AI or fallback title yet", ErrInvalid)
 		}
 		if in.TitleSource == "" {
 			return TitleUser, nil
@@ -47,9 +49,12 @@ func ResolveTitleSource(current *Item, in Item) (string, error) {
 	if in.Title != current.Title {
 		return TitleUser, nil
 	}
-	// Same title: only the pending -> user hand-off (failure or timeout) changes the source.
-	if current.TitleSource == TitlePending && in.TitleSource == TitleUser {
-		return TitleUser, nil
+	// Same title: only these hand-offs change the source: pending -> fallback or user (failure or
+	// timeout), fallback -> pending (regeneration) and fallback -> user.
+	switch {
+	case current.TitleSource == TitlePending && (in.TitleSource == TitleUser || in.TitleSource == TitleFallback),
+		current.TitleSource == TitleFallback && (in.TitleSource == TitleUser || in.TitleSource == TitlePending):
+		return in.TitleSource, nil
 	}
 	return current.TitleSource, nil
 }

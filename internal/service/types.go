@@ -84,7 +84,7 @@ type Item struct {
 	BlockedReason string   `json:"blocked_reason"`
 	Priority      int32    `json:"priority"`
 	Source        string   `json:"source"`
-	// TitleSource is who wrote the title: pending (being generated), ai or user.
+	// TitleSource is who wrote the title: pending (being generated), ai, user or fallback (the generation failed).
 	TitleSource string `json:"title_source"`
 }
 

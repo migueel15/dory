@@ -84,16 +84,16 @@ func TestSettingsConfig(t *testing.T) {
 	}
 }
 
-func TestGenerateFailureLeavesUserTitle(t *testing.T) {
+func TestGenerateFailureLeavesFallbackTitle(t *testing.T) {
 	item := service.Item{Record: service.Record{ID: "1"}, Title: "borrador", TitleSource: service.TitlePending}
 	g, items, cfg := newGen(item, func(context.Context, string, string) error { return errors.New("t3 caído") }, time.Second)
 	g.Generate(item, cfg)
-	if items.item.TitleSource != service.TitleUser || items.item.Title != "borrador" {
+	if items.item.TitleSource != service.TitleFallback || items.item.Title != "borrador" {
 		t.Fatalf("got %+v", items.item)
 	}
 }
 
-func TestGenerateTimeoutLeavesUserTitle(t *testing.T) {
+func TestGenerateTimeoutLeavesFallbackTitle(t *testing.T) {
 	item := service.Item{Record: service.Record{ID: "1"}, Title: "borrador", TitleSource: service.TitlePending}
 	var prompt string
 	g, items, cfg := newGen(item, func(_ context.Context, _, p string) error { prompt = p; return nil }, 40*time.Millisecond)
@@ -101,7 +101,7 @@ func TestGenerateTimeoutLeavesUserTitle(t *testing.T) {
 	if prompt != Prompt(item) {
 		t.Fatalf("unexpected prompt %q", prompt)
 	}
-	if items.item.TitleSource != service.TitleUser || items.item.Title != "borrador" {
+	if items.item.TitleSource != service.TitleFallback || items.item.Title != "borrador" {
 		t.Fatalf("got %+v", items.item)
 	}
 }
@@ -118,5 +118,47 @@ func TestGenerateStopsWhenTitleArrives(t *testing.T) {
 	g.Generate(item, cfg)
 	if items.item.TitleSource != service.TitleAI || items.item.Title != "Corto" {
 		t.Fatalf("got %+v", items.item)
+	}
+}
+
+func TestRegenerate(t *testing.T) {
+	item := service.Item{Record: service.Record{ID: "1"}, Title: "borrador", RawText: "texto real", TitleSource: service.TitleFallback}
+	var prompt string
+	launched := make(chan struct{})
+	g, items, _ := newGen(item, func(_ context.Context, _, p string) error { prompt = p; close(launched); return nil }, 40*time.Millisecond)
+	out, err := g.Regenerate(context.Background(), "u", "1")
+	if err != nil || out.TitleSource != service.TitlePending {
+		t.Fatalf("got %+v, %v", out, err)
+	}
+	<-launched
+	if !strings.Contains(prompt, "texto real") {
+		t.Fatalf("prompt lacks the description: %q", prompt)
+	}
+	// The generation times out and the item returns to fallback.
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if items.item.TitleSource == service.TitleFallback {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("item did not return to fallback: %+v", items.item)
+}
+
+func TestRegenerateRejectsOtherStates(t *testing.T) {
+	g, _, _ := newGen(service.Item{Record: service.Record{ID: "1"}, TitleSource: service.TitleUser}, nil, time.Second)
+	if _, err := g.Regenerate(context.Background(), "u", "1"); !errors.Is(err, ErrNotFallback) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestRegenerateOff(t *testing.T) {
+	g, items, _ := newGen(service.Item{Record: service.Record{ID: "1"}, TitleSource: service.TitleFallback}, nil, time.Second)
+	g.load = func(context.Context) (Config, error) { return Config{}, nil }
+	if _, err := g.Regenerate(context.Background(), "u", "1"); !errors.Is(err, ErrOff) {
+		t.Fatalf("got %v", err)
+	}
+	if items.item.TitleSource != service.TitleFallback {
+		t.Fatalf("an off generator must not touch the item: %+v", items.item)
 	}
 }

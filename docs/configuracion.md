@@ -48,4 +48,4 @@ Se configura en la web, en **Ajustes → Títulos con IA**. Los ajustes son glob
 | Proyecto de T3 | Proyecto donde se abre el hilo. Vacío usa el primero. |
 | Tiempo máximo | Segundos de espera (0–3600). Por defecto 120. |
 
-El hilo necesita el MCP de Dory para llamar a `update_item`. `title_source` (`pending`, `ai`, `user`) indica quién escribió el título: la IA solo puede pasar `pending` a `ai`; editar el título lo deja en `user` y nunca se sobrescribe.
+El hilo necesita el MCP de Dory para llamar a `update_item`. `title_source` (`pending`, `ai`, `user`, `fallback`) indica quién escribió el título: la IA solo puede pasar `pending` a `ai`; editar el título lo deja en `user` y nunca se sobrescribe. Si la generación falla o caduca, el título provisional queda en `fallback` y la web muestra un botón ↻ «Regenerar título con IA» (`POST /api/items/{id}/title/regenerate`), que devuelve el item a `pending` y repite la generación; solo se admite en `fallback` (409 en otro caso, 503 si la generación está apagada). Los items que fallaron antes de este estado siguen en `user`.

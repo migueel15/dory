@@ -266,7 +266,7 @@ type itemInput struct {
 	BlockedReason string   `json:"blocked_reason,omitempty" jsonschema:"Required when status is blocked: what blocks it and what unblocks it"`
 	Priority      int32    `json:"priority,omitempty"`
 	Source        string   `json:"source,omitempty"`
-	TitleSource   string   `json:"title_source,omitempty" jsonschema:"pending, ai or user; only \"ai\" is meant for agents, and only on an item whose title is pending"`
+	TitleSource   string   `json:"title_source,omitempty" jsonschema:"pending, ai, user or fallback; only \"ai\" is meant for agents, and only on an item whose title is pending"`
 }
 type updateInput struct {
 	ID      string         `json:"id"`

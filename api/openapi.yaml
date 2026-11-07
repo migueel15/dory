@@ -2359,6 +2359,24 @@ paths:
           $ref: "#/components/responses/Error400"
         "404":
           $ref: "#/components/responses/Error404"
+  "/items/{id}/title/regenerate":
+    post:
+      operationId: regenerateItemTitle
+      description: "Retry the AI title of an item whose title_source is fallback. The item goes back to pending while the title is generated in the background."
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: "Generation launched; the item is pending"
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Item"}
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
+        "503":
+          description: "Title generation is not configured"
   "/items/{id}/refine":
     post:
       operationId: refineItem
@@ -3814,11 +3832,12 @@ components:
           default: "manual"
         title_source:
           type: "string"
-          description: "Who wrote the title: pending while an agent generates it, ai once it did, user otherwise. Only the pending to ai change is accepted from an agent; editing the title makes it user."
+          description: "Who wrote the title: pending while an agent generates it, ai once it did, user otherwise, fallback when the generation failed and the provisional title stayed. Only the pending to ai change is accepted from an agent; editing the title makes it user."
           enum:
             - "pending"
             - "ai"
             - "user"
+            - "fallback"
           default: "user"
     ItemInput:
       type: "object"
@@ -3880,11 +3899,12 @@ components:
           default: "manual"
         title_source:
           type: "string"
-          description: "Who wrote the title: pending while an agent generates it, ai once it did, user otherwise. Only the pending to ai change is accepted from an agent; editing the title makes it user."
+          description: "Who wrote the title: pending while an agent generates it, ai once it did, user otherwise, fallback when the generation failed and the provisional title stayed. Only the pending to ai change is accepted from an agent; editing the title makes it user."
           enum:
             - "pending"
             - "ai"
             - "user"
+            - "fallback"
     Memory:
       type: "object"
       required:

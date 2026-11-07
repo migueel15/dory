@@ -95,6 +95,7 @@ func run() error {
 		reviews.Store{Pool: pool}.Mount(mux)
 		titleGen := titles.New(svc, monitor, titleSettings)
 		titleGen.Recover(ctx)
+		titleGen.Mount(mux)
 		api.Register(mux, titleGen.Wrap(svc), monitor, github.New(svc, os.Getenv("DORY_GITHUB_TOKEN")), dictationManager())
 		auth.Register(mux, svc, cfg)
 		mux.Handle("/mcp", mcp.Handler(titleGen.Wrap(svc), monitor.Locate))
