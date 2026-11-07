@@ -172,7 +172,7 @@ export function Home() {
           ))}
         </Block>
 
-        <Block icon={HardDrives} title="Máquinas" count={machines.filter((s) => s.state === "available").length} to="/environments"
+        <Block icon={HardDrives} title="Entornos" count={machines.filter((s) => s.state === "available").length} to="/environments"
           sources={[{ name: "T3", error: t3.error }, { name: "entornos", error: envs.error }]} pending={t3.isPending} empty={machines.length === 0}>
           {machines.map((s) => {
             const up = s.state === "available";
