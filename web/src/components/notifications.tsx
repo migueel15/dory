@@ -107,7 +107,7 @@ export function Notifications() {
       {/* The count is anchored to the bell itself, not to the button padding, so it sits the same on every screen. */}
       <span className="relative block">
         <Bell className="size-5" aria-hidden="true" />
-        {!!feed.data?.unread && <span className="absolute -right-1.5 -top-1 grid min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-4 text-white ring-2 ring-white dark:ring-surface">{feed.data.unread > 99 ? "99+" : feed.data.unread}</span>}
+        {!!feed.data?.unread && <span className="absolute -top-1.5 left-3 grid min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-4 text-white ring-2 ring-white dark:ring-surface">{feed.data.unread > 99 ? "99+" : feed.data.unread}</span>}
       </span>
     </Button>
     {open && createPortal(
