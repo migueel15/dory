@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { ArrowUp, Brain, CaretDown, CaretRight, Check, Copy, FileText, Paperclip, Lightning, ListBullets, PencilSimple, Play, Question, Stop, Trash, Wrench, X } from "@phosphor-icons/react";
 import { api, type T3Attachment, type T3QueuedRun, type T3ThreadView, type T3ViewMessage } from "../api/client";
 import { useThreadLive } from "../api/live";
-import { Button, ErrorText, Input, Md, errMsg, Notice, PageHeader, Select, StatusPill, pill } from "../components/ui";
+import { Button, ErrorText, Input, Md, errMsg, uuid, Notice, PageHeader, Select, StatusPill, pill } from "../components/ui";
 import { OpenInT3 } from "../components/thread-link";
 import { PendingRequest } from "../components/pending-request";
 import { ProviderIcon } from "./launch-form";
@@ -385,7 +385,7 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   // Each file uploads as soon as it is added; the message carries the results.
   const addFiles = (list: FileList | File[]) => {
     for (const file of Array.from(list)) {
-      const key = crypto.randomUUID();
+      const key = uuid(); // crypto.randomUUID needs HTTPS, the dev preview is plain HTTP
       const named = file.name ? file : new File([file], `imagen-${new Date().toISOString().slice(11, 19).replace(/:/g, "")}.png`, { type: file.type });
       const preview = named.type.startsWith("image/") ? URL.createObjectURL(named) : undefined;
       setFiles((fs) => [...fs, { key, name: named.name, preview }]);
@@ -437,6 +437,11 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
     <form onSubmit={(e) => { e.preventDefault(); submit(); }}
       onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
       onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); addFiles(e.dataTransfer.files); } }}
+      onPaste={(e) => {
+        // Screenshots often come only as clipboard items, not in .files.
+        const fs = Array.from(e.clipboardData.items).flatMap((i) => { const f = i.kind === "file" ? i.getAsFile() : null; return f ? [f] : []; });
+        if (fs.length) { e.preventDefault(); addFiles(fs); }
+      }}
       className="rounded-3xl border border-slate-200 bg-white shadow-md transition-shadow focus-within:border-slate-400 focus-within:shadow-lg dark:border-border-strong dark:bg-surface dark:focus-within:border-muted">
       {files.length > 0 && (
         <div className="flex flex-wrap gap-2 px-3 pt-3">
@@ -451,7 +456,6 @@ function Composer({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
         </div>
       )}
       <textarea ref={area} rows={1} value={text} onChange={(e) => setText(e.target.value)} aria-label="Mensaje"
-        onPaste={(e) => { const fs = Array.from(e.clipboardData.files); if (fs.length) { e.preventDefault(); addFiles(fs); } }}
         placeholder="Escribe al hilo…"
         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }}
         className="block max-h-60 w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 !outline-none placeholder:text-slate-400" />
