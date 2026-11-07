@@ -97,6 +97,14 @@ function Layout() {
 
   const path = useLocation({ select: (l) => l.pathname });
   const [menu, setMenu] = useState(false);
+  // Notifications mount once (sidebar on desktop, top bar on phones) so toasts never repeat.
+  const [desktop, setDesktop] = useState(() => window.matchMedia("(min-width: 640px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 640px)");
+    const on = () => setDesktop(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
   const drawer = useRef<HTMLDialogElement>(null);
   useEffect(() => { setMenu(false); }, [path]);
   useEffect(() => {
@@ -145,6 +153,11 @@ function Layout() {
         <Link to="/" className="flex items-center gap-2 px-4 py-3 font-bold">Dory<DevBadge /></Link>
         <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4">{links}</nav>
         <div className="shrink-0 space-y-2 border-t border-slate-200 p-3 dark:border-border">
+          <ProjectFilter />
+          <div className="flex items-center gap-1">
+            {desktop && <Notifications />}
+            <ThemeToggle />
+          </div>
           <div className="flex items-center justify-between gap-2">
             <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
             <Button variant="ghost" onClick={() => logout.mutate()}>Salir</Button>
@@ -153,12 +166,11 @@ function Layout() {
         </div>
       </aside>
       <div className="min-w-0 flex-1">
-      <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2 sm:px-4">
+      <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2 sm:hidden">
         <div className="flex h-12 items-center gap-1">
-          <Link to="/" className="mr-3 flex items-center gap-2 font-bold sm:hidden">Dory<DevBadge /></Link>
+          <Link to="/" className="mr-3 flex items-center gap-2 font-bold">Dory<DevBadge /></Link>
           <div className="ml-auto flex items-center gap-1">
-            <div className="hidden items-center gap-1 sm:flex"><ProjectFilter className="w-52" /></div>
-            <Notifications />
+            {!desktop && <Notifications />}
             <ThemeToggle />
           </div>
           <button type="button" aria-label="Menú" aria-controls="mobile-navigation" aria-expanded={menu} onClick={() => setMenu(!menu)} className="grid size-11 place-items-center rounded hover:bg-slate-200 dark:hover:bg-raised sm:hidden">
