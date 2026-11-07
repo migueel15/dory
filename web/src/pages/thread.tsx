@@ -114,7 +114,7 @@ function Chat({ v, queryKey, onStop }: { v: T3ThreadView; queryKey: unknown[]; o
           </div>
         ) : m.role === "user" ? (
           <div key={m.id} className="group flex flex-col items-end">
-            <div className="max-w-[85%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-2.5 text-white shadow-sm dark:bg-raised [&_*]:!text-inherit"><Md>{m.text}</Md></div>
+            <div className="max-w-[85%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-2.5 text-white shadow-sm dark:bg-raised [&_*]:!text-inherit [&_code]:!bg-white/15 [&_pre]:!border-white/15 [&_pre]:!bg-white/10 [&_pre_code]:!bg-transparent"><Md>{m.text}</Md></div>
             <MessageMeta m={m} />
           </div>
         ) : (
