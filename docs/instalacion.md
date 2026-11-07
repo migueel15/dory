@@ -64,6 +64,14 @@ Si un paso falla, el commit queda en `~/.local/share/dory/failed-commit` y no se
 rm ~/.local/share/dory/failed-commit
 ```
 
+#### Merges seguidos y despliegues simultáneos
+
+`dory-deploy.service` es `Type=oneshot`, así que systemd no solapa ejecuciones del timer. Cada ejecución despliega la punta de `main`; si llegan varios merges seguidos, el ciclo siguiente ve que la punta difiere de `deployed-commit` y la despliega. Los commits intermedios pueden saltarse, pero el resultado final es siempre el último.
+
+Para evitar también despliegues simultáneos lanzados a mano, el script toma un cerrojo con `flock` sobre `~/.local/share/dory/deploy.lock`. Si hay otro despliegue en curso, imprime «despliegue en curso» y sale con 0. El cerrojo depende del proceso, no del fichero: se libera al terminar aunque falle y un `deploy.lock` huérfano no bloquea nada.
+
+Si el último commit falla, queda en `failed-commit` y no se reintenta (ver arriba); el commit desplegado sigue siendo el anterior.
+
 Para pausar los despliegues:
 
 ```sh

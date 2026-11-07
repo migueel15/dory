@@ -6,6 +6,11 @@ set -euo pipefail
 REPO_URL="${DORY_DEPLOY_REPO:-https://github.com/migueel15/dory.git}"
 DATA_DIR="${DORY_DATA_DIR:-$HOME/.local/share/dory}"
 HEALTH_URL="${DORY_DEPLOY_HEALTH_URL:-http://127.0.0.1:8080/}"
+mkdir -p "$DATA_DIR"
+# Un solo despliegue a la vez, también si se lanza a mano.
+exec 9>"$DATA_DIR/deploy.lock"
+flock -n 9 || { echo "despliegue en curso"; exit 0; }
+
 SRC_DIR="$DATA_DIR/src"
 DEPLOYED_FILE="$DATA_DIR/deployed-commit"
 FAILED_FILE="$DATA_DIR/failed-commit"
