@@ -184,6 +184,7 @@ type Quick = { id: string; label: string; me?: true; test: (x: GithubPull & Gith
 const quick: Record<Tab, Quick[]> = {
   pulls: [
     { id: "mine", label: "Mías", me: true, test: (p, me) => p.author === me },
+    { id: "assigned", label: "Asignadas a mí", me: true, test: (p, me) => p.assignees.includes(me) },
     { id: "review", label: "Revisión pedida a mí", me: true, test: (p, me) => p.review_requests.includes(me) },
     { id: "draft", label: "Drafts", test: (p) => p.draft },
     { id: "unassigned", label: "Sin asignar", test: (p) => p.assignees.length === 0 },
