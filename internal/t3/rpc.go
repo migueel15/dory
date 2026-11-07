@@ -232,6 +232,12 @@ func (c Client) SettleThread(ctx context.Context, threadID string) error {
 	return c.Dispatch(ctx, map[string]any{"type": "thread.settle", "threadId": threadID})
 }
 
+// ArchiveThread hides a thread in T3 Code. Unlike settlement, archive does not
+// require an idle thread; T3 handles stopping its runtime if necessary.
+func (c Client) ArchiveThread(ctx context.Context, threadID string) error {
+	return c.Dispatch(ctx, map[string]any{"type": "thread.archive", "threadId": threadID})
+}
+
 // DeleteThread removes a thread.
 func (c Client) DeleteThread(ctx context.Context, threadID string) error {
 	return c.Dispatch(ctx, map[string]any{"type": "thread.delete", "threadId": threadID})

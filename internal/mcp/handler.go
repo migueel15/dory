@@ -816,7 +816,7 @@ func Handler(svc service.Service, locate ThreadLocator) http.Handler {
 		}
 		return in.reply(updateItem(ctx, svc, updateInput{ID: in.ID, Changes: changes}))
 	})
-	add(s, "archive_item", "Soft archive an item by UUID.", func(ctx context.Context, in idInput) (any, error) {
+	add(s, "archive_item", "Soft archive an item by UUID and best-effort archive its linked T3 threads.", func(ctx context.Context, in idInput) (any, error) {
 		err := svc.Items().Archive(ctx, auth.Actor(ctx), in.ID)
 		return map[string]any{"id": in.ID, "archived": err == nil}, err
 	})
