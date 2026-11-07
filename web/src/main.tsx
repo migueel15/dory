@@ -171,8 +171,6 @@ function Layout() {
           <div className="min-w-0 flex-1"><ProjectSwitcher compact /></div>
           <div className="flex shrink-0 items-center gap-1">
             {!desktop && <Notifications />}
-            <ThemeToggle />
-            <SettingsLink />
           </div>
           <button type="button" aria-label="Menú" aria-controls="mobile-navigation" aria-expanded={menu} onClick={() => setMenu(!menu)} className="grid size-11 place-items-center rounded hover:bg-slate-200 dark:hover:bg-raised sm:hidden">
             {menu ? <X className="size-5" aria-hidden="true" /> : <List className="size-5" aria-hidden="true" />}
@@ -207,6 +205,11 @@ function Layout() {
           }}>{links}</nav>
         </div>
         <div className="shrink-0 space-y-3 border-t border-slate-200 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-border">
+          {/* Theme and settings live here on phones so the top bar keeps room for the project. */}
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
+            <SettingsLink />
+          </div>
           <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 py-1 pl-3 pr-1 dark:border-border">
             <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
             <Button variant="bare" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => logout.mutate()}><SignOut className="size-5" aria-hidden="true" /></Button>
