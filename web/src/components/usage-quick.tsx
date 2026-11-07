@@ -1,3 +1,4 @@
+import { expectedRemaining, paceTitle } from "../lib/usage-pace";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { Gauge } from "@phosphor-icons/react";
@@ -67,11 +68,12 @@ export function UsageQuick() {
             <div key={`${p.provider}/${p.account_key}`} className="space-y-1">
               <div className="text-sm font-medium">{p.name}</div>
               {p.windows.map((w) => {
+                const pace = expectedRemaining(w);
                 const bar = w.used_percent >= alertAt ? "bg-red-600" : w.used_percent >= warnAt ? "bg-amber-500" : "bg-emerald-600";
                 return (
-                  <div key={w.label} className="grid grid-cols-[minmax(0,6rem)_1fr_2.5rem] items-center gap-2 text-xs" title={w.resets_at ? `Se reinicia ${time(w.resets_at)}` : "Sin fecha de reinicio"}>
+                  <div key={w.label} className="grid grid-cols-[minmax(0,6rem)_1fr_2.5rem] items-center gap-2 text-xs" title={(w.resets_at ? `Se reinicia ${time(w.resets_at)}` : "Sin fecha de reinicio") + paceTitle(pace)}>
                     <span className="truncate text-slate-600 dark:text-text-secondary">{w.label}</span>
-                    <div className="h-1.5 overflow-hidden rounded bg-slate-200 dark:bg-hover"><div className={`h-full ${bar}`} style={{ width: `${Math.max(0, 100 - w.used_percent)}%` }} /></div>
+                    <div className="h-1.5 relative rounded bg-slate-200 dark:bg-hover"><div className={`h-full rounded ${bar}`} style={{ width: `${Math.max(0, 100 - w.used_percent)}%` }} />{pace !== null && <div aria-hidden="true" className="absolute -top-0.5 -bottom-0.5 w-0.5 -translate-x-1/2 bg-slate-900 dark:bg-white" style={{ left: `${pace}%` }} />}</div>
                     <span className="text-right tabular-nums">{Math.round(100 - w.used_percent)} %</span>
                   </div>
                 );
