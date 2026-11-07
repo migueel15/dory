@@ -1,9 +1,10 @@
 import { ItemTitle, pendingPoll } from "../components/item-title";
 import { ThreadLink } from "../components/thread-link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { ItemForm } from "./items";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { api, type GithubPull, type Repository } from "../api/client";
+import { api, type GithubPull, type Item, type Repository } from "../api/client";
 import { Arrow, Badge, Card, PageHeader, errMsg } from "../components/ui";
 import { BellRinging, Flask, GitPullRequest, HardDrives, Lightning, Prohibit, Robot, Tray, type Icon as PhIcon } from "@phosphor-icons/react";
 import { useProject, useProjectThreads } from "../project";
@@ -49,6 +50,7 @@ const belongsTo = (pull: GithubPull, repos: Repository[]) =>
 
 export function Home() {
   const project = useProject();
+  const [openItem, setOpenItem] = useState<Item | null>(null);
   const t3 = useT3();
   const blocked = useBlocked();
   const validating = useValidating();
@@ -164,11 +166,11 @@ export function Home() {
         <Block icon={Tray} title="Ideas recientes" count={recent.length} to="/inbox" className="lg:col-span-2" emptyText="Inbox vacío."
           sources={[{ name: "ideas", error: ideas.error }]} pending={ideas.isPending} empty={recent.length === 0}>
           {recent.slice(0, LIMIT).map((i) => (
-            <li key={i.id}><Link to="/inbox" className={row}>
+            <li key={i.id}><button type="button" onClick={() => setOpenItem(i)} className={`${row} w-full text-left`}>
               <Tray weight="duotone" aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-slate-400" />
               <span className="min-w-0 flex-1 truncate text-sm"><ItemTitle item={i} /></span>
               <span className={`${meta} shrink-0`}>{new Date(i.created_at).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}</span>
-            </Link></li>
+            </button></li>
           ))}
         </Block>
 
@@ -186,6 +188,7 @@ export function Home() {
           })}
         </Block>
       </div>
+      {openItem && <ItemForm item={openItem} onClose={() => setOpenItem(null)} />}
     </div>
   );
 }
