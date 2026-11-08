@@ -15,6 +15,15 @@ type CatalogProvider struct {
 	// Driver is the provider kind (codex, claudeAgent, ...), used for its icon.
 	Driver string         `json:"driver"`
 	Models []CatalogModel `json:"models"`
+	// Commands (/name) and Skills ($name) the composer offers for this provider.
+	Commands []ComposerEntry `json:"commands"`
+	Skills   []ComposerEntry `json:"skills"`
+}
+
+// ComposerEntry is a slash command or skill the composer can insert.
+type ComposerEntry struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
 }
 
 type CatalogModel struct {
@@ -131,7 +140,20 @@ func (c Client) Catalog(ctx context.Context) (Catalog, error) {
 			Driver      string `json:"driver"`
 			DisplayName string `json:"displayName"`
 			Enabled     bool   `json:"enabled"`
-			Models      []struct {
+			// Slash commands and skills of the provider, as T3 Code's composer lists them.
+			SlashCommands []struct {
+				Name        string `json:"name"`
+				Description string `json:"description"`
+			} `json:"slashCommands"`
+			Skills []struct {
+				Name             string `json:"name"`
+				DisplayName      string `json:"displayName"`
+				Description      string `json:"description"`
+				ShortDescription string `json:"shortDescription"`
+				Enabled          bool   `json:"enabled"`
+				UserInvocable    *bool  `json:"userInvocable"`
+			} `json:"skills"`
+			Models []struct {
 				Slug         string `json:"slug"`
 				Name         string `json:"name"`
 				IsLegacy     bool   `json:"isLegacy"`
@@ -153,7 +175,21 @@ func (c Client) Catalog(ctx context.Context) (Catalog, error) {
 		return out, err
 	}
 	for _, p := range cfg.Providers {
-		provider := CatalogProvider{InstanceID: p.InstanceID, Name: p.DisplayName, Driver: p.Driver, Models: []CatalogModel{}}
+		provider := CatalogProvider{InstanceID: p.InstanceID, Name: p.DisplayName, Driver: p.Driver, Models: []CatalogModel{}, Commands: []ComposerEntry{}, Skills: []ComposerEntry{}}
+		for _, c := range p.SlashCommands {
+			provider.Commands = append(provider.Commands, ComposerEntry{Name: c.Name, Description: c.Description})
+		}
+		for _, sk := range p.Skills {
+			// Agent-only skills (user-invocable: false) are hidden, as in T3 Code.
+			if !sk.Enabled || (sk.UserInvocable != nil && !*sk.UserInvocable) {
+				continue
+			}
+			d := sk.ShortDescription
+			if d == "" {
+				d = sk.Description
+			}
+			provider.Skills = append(provider.Skills, ComposerEntry{Name: sk.Name, Description: d})
+		}
 		for _, m := range p.Models {
 			if !m.IsLegacy {
 				provider.Models = append(provider.Models, CatalogModel{Slug: m.Slug, Name: m.Name, Effort: effortOf(m.Capabilities.OptionDescriptors)})
@@ -186,4 +222,78 @@ func (c Client) Launch(ctx context.Context, in LaunchInput) (string, error) {
 		return "", err
 	}
 	return id, c.SendMessage(ctx, id, in.Prompt)
+}
+
+// wireEntries are the slash commands and skills of a provider or of one of its
+// workspace snapshots, as server.getConfig and server.refreshProviders send them.
+type wireEntries struct {
+	SlashCommands []struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	} `json:"slashCommands"`
+	Skills []struct {
+		Name             string `json:"name"`
+		Description      string `json:"description"`
+		ShortDescription string `json:"shortDescription"`
+		Enabled          bool   `json:"enabled"`
+		UserInvocable    *bool  `json:"userInvocable"`
+	} `json:"skills"`
+}
+
+// add appends the entries not seen yet; agent-only skills stay hidden, as in T3 Code.
+func (w wireEntries) add(commands, skills *[]ComposerEntry, seen map[string]bool) {
+	for _, c := range w.SlashCommands {
+		if !seen["/"+c.Name] {
+			seen["/"+c.Name] = true
+			*commands = append(*commands, ComposerEntry{Name: c.Name, Description: c.Description})
+		}
+	}
+	for _, s := range w.Skills {
+		if !s.Enabled || (s.UserInvocable != nil && !*s.UserInvocable) || seen["$"+s.Name] {
+			continue
+		}
+		seen["$"+s.Name] = true
+		d := s.ShortDescription
+		if d == "" {
+			d = s.Description
+		}
+		*skills = append(*skills, ComposerEntry{Name: s.Name, Description: d})
+	}
+}
+
+// ComposerEntries lists the / commands and $ skills of a provider for a folder:
+// the repository's own ones (T3's workspace snapshot of cwd) first, then the
+// provider's global ones.
+func (c Client) ComposerEntries(ctx context.Context, instanceID, cwd string) (commands, skills []ComposerEntry, err error) {
+	var out struct {
+		Providers []struct {
+			InstanceID string `json:"instanceId"`
+			wireEntries
+			WorkspaceSnapshots []struct {
+				Cwd string `json:"cwd"`
+				wireEntries
+			} `json:"workspaceSnapshots"`
+		} `json:"providers"`
+	}
+	in := map[string]any{"instanceId": instanceID, "workspaceSnapshotsOnDemand": true}
+	if cwd != "" {
+		in["cwd"] = cwd
+	}
+	if err := c.call(ctx, "server.refreshProviders", in, &out); err != nil {
+		return nil, nil, err
+	}
+	commands, skills = []ComposerEntry{}, []ComposerEntry{}
+	seen := map[string]bool{}
+	for _, p := range out.Providers {
+		if p.InstanceID != instanceID {
+			continue
+		}
+		for _, snap := range p.WorkspaceSnapshots {
+			if cwd == "" || snap.Cwd == cwd {
+				snap.wireEntries.add(&commands, &skills, seen)
+			}
+		}
+		p.wireEntries.add(&commands, &skills, seen)
+	}
+	return commands, skills, nil
 }

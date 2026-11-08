@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -87,12 +88,20 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 			writeT3Error(w, err)
 			return
 		}
+		// When an item of the thread names a branch checked out on this machine,
+		// Dory diffs that worktree itself: it also covers worktrees T3 does not know.
+		if links, err := svc.ItemThreads().List(r.Context(), service.Filter{Fields: map[string]any{"thread_id": id}, Limit: 20}); err == nil {
+			if out, ok := gitChanges(r.Context(), svc, links); ok {
+				writeJSON(w, http.StatusOK, out)
+				return
+			}
+		}
 		diff, err := c.ThreadDiff(r.Context(), id)
 		if err != nil {
 			writeT3Error(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"diff": diff})
+		writeJSON(w, http.StatusOK, localChanges{Diff: diff, Source: "t3"})
 	})
 	mux.HandleFunc("POST /api/t3/threads/{id}/send", func(w http.ResponseWriter, r *http.Request) {
 		var b struct {
@@ -103,9 +112,11 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 			EffortOption string          `json:"effort_option"`
 			Effort       string          `json:"effort"`
 			Attachments  []t3.Attachment `json:"attachments"`
+			Skills       []string        `json:"skills"`
+			Mentions     []string        `json:"mentions"`
 		}
 		act("t3.send", &b, func(r *http.Request, c t3.Client, id string) error {
-			return c.Send(r.Context(), id, t3.SendInput{Text: b.Text, Mode: b.Mode, ProviderID: b.ProviderID, Model: b.Model, EffortOption: b.EffortOption, Effort: b.Effort, Attachments: b.Attachments})
+			return c.Send(r.Context(), id, t3.SendInput{Text: b.Text, Mode: b.Mode, ProviderID: b.ProviderID, Model: b.Model, EffortOption: b.EffortOption, Effort: b.Effort, Attachments: b.Attachments, Skills: b.Skills, Mentions: b.Mentions})
 		})(w, r)
 	})
 	// Attachments go up one at a time as the raw body, with the file name in
@@ -132,6 +143,117 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 			return
 		}
 		writeJSON(w, http.StatusOK, a)
+	})
+	// Attachments of a thread's messages, proxied from T3 for previews.
+	mux.HandleFunc("GET /api/t3/threads/{id}/attachments/{aid}", func(w http.ResponseWriter, r *http.Request) {
+		c, err := threadClient(r.Context(), svc, monitor, r.PathValue("id"))
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		q := r.URL.Query()
+		resp, err := c.Open(r.Context(), r.PathValue("aid"), q.Get("name"), q.Get("mime"))
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		defer resp.Body.Close()
+		// Content-Disposition is dropped: Dory always shows the file inline.
+		for _, h := range []string{"Content-Type", "Content-Length"} {
+			if v := resp.Header.Get(h); v != "" {
+				w.Header().Set(h, v)
+			}
+		}
+		w.Header().Set("Cache-Control", "private, max-age=86400")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		// Markup must not run as Dory's origin; images and PDFs keep their viewers.
+		// Rendered pages may run their own scripts (charts), but in an opaque origin.
+		if ct := strings.ToLower(resp.Header.Get("Content-Type")); strings.Contains(ct, "html") || strings.Contains(ct, "svg") || strings.Contains(ct, "xml") {
+			w.Header().Set("Content-Security-Policy", "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox")
+		}
+		// ?fit=1 adds a script that reports the page height, so the chat sizes
+		// the frame to it (a sandboxed frame cannot be measured from outside).
+		if q.Get("fit") == "1" && strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "html") {
+			body, err := io.ReadAll(io.LimitReader(resp.Body, maxAttachmentBytes))
+			if err != nil {
+				writeError(w, http.StatusBadGateway, "unavailable", "could not read the page")
+				return
+			}
+			w.Header().Del("Content-Length")
+			w.Write(withHeightReport(body))
+			return
+		}
+		io.Copy(w, resp.Body)
+	})
+	// Answers a secret request. The value goes straight to T3: it is never
+	// logged, audited or stored by Dory.
+	mux.HandleFunc("POST /api/t3/threads/{id}/secrets/{item}", func(w http.ResponseWriter, r *http.Request) {
+		var b struct {
+			Secret  string `json:"secret"`
+			Decline bool   `json:"decline"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&b); err != nil || (!b.Decline && strings.TrimSpace(b.Secret) == "") {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "secret or decline is required")
+			return
+		}
+		id := r.PathValue("id")
+		c, err := threadClient(r.Context(), svc, monitor, id)
+		if err == nil {
+			err = c.AnswerSecret(r.Context(), id, r.PathValue("item"), b.Secret, b.Decline)
+		}
+		b.Secret = ""
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		monitor.RefreshThread(id)
+		audit(r, svc, id, map[string]any{"operation": "t3.secret", "item": r.PathValue("item"), "declined": b.Decline})
+		w.WriteHeader(http.StatusNoContent)
+	})
+	// Files and folders for @ mentions. The worktree Dory found with git wins over
+	// T3's folder, so threads in hand-made worktrees search the right tree.
+	mux.HandleFunc("GET /api/t3/threads/{id}/entries", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		c, err := threadClient(r.Context(), svc, monitor, id)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		cwd, err := threadFolder(r, svc, c, id)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		entries, err := c.SearchEntries(r.Context(), cwd, r.URL.Query().Get("q"))
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		if entries == nil {
+			entries = []t3.ProjectEntry{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"entries": entries})
+	})
+	// The / commands and $ skills for the composer: the repository's own (T3's
+	// scan of the thread folder) plus the provider's global ones.
+	mux.HandleFunc("GET /api/t3/threads/{id}/composer", func(w http.ResponseWriter, r *http.Request) {
+		id, provider := r.PathValue("id"), r.URL.Query().Get("provider")
+		if provider == "" {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "provider is required")
+			return
+		}
+		c, err := threadClient(r.Context(), svc, monitor, id)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		cwd, _ := threadFolder(r, svc, c, id)
+		commands, skills, err := c.ComposerEntries(r.Context(), provider, cwd)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"commands": commands, "skills": skills})
 	})
 	mux.HandleFunc("GET /api/t3/threads/{id}/history", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
@@ -212,4 +334,33 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 			return nil
 		})(w, r)
 	})
+}
+
+// heightReport posts the document height to the parent on every change.
+const heightReport = `<script>(function(){var last=0;function send(){var d=document.documentElement,b=document.body;` +
+	`var h=Math.ceil(Math.max(d.scrollHeight,b?b.scrollHeight:0));if(h!==last){last=h;parent.postMessage({doryFrameHeight:h},"*")}}` +
+	`addEventListener("load",send);if(window.ResizeObserver){new ResizeObserver(send).observe(document.documentElement)}setTimeout(send,0)})()</script>`
+
+// withHeightReport inserts heightReport before </body>, or at the end.
+func withHeightReport(page []byte) []byte {
+	i := bytes.LastIndex(bytes.ToLower(page), []byte("</body>"))
+	if i < 0 {
+		return append(page, heightReport...)
+	}
+	out := append([]byte{}, page[:i]...)
+	out = append(out, heightReport...)
+	return append(out, page[i:]...)
+}
+
+// threadFolder is where a thread works: the worktree Dory finds with git from
+// its items' branches, else the folder T3 knows (its worktree or project root).
+func threadFolder(r *http.Request, svc service.Service, c t3.Client, id string) (string, error) {
+	if links, err := svc.ItemThreads().List(r.Context(), service.Filter{Fields: map[string]any{"thread_id": id}, Limit: 20}); err == nil {
+		for _, b := range itemBranches(r.Context(), svc, links) {
+			if dir := findWorktree(r.Context(), svc, b); dir != "" {
+				return dir, nil
+			}
+		}
+	}
+	return c.ThreadCwd(r.Context(), id)
 }

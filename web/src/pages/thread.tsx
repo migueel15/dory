@@ -1,34 +1,20 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { ArrowDown, ArrowUp, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, GitDiff, SidebarSimple, Paperclip, Lightning, ListBullets, PencilSimple, Play, Question, Stop, Trash, Wrench, X } from "@phosphor-icons/react";
+import { Link, useParams } from "@tanstack/react-router";
+import { ArrowDown, ArrowRight, ArrowSquareOut, ArrowUp, ArrowsOut, Browser, Cube, LinkSimple, Eye, EyeSlash, Key, Cloud, FolderSimple, GitBranch, GitPullRequest, Info, Kanban, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, GitDiff, SidebarSimple, Paperclip, Lightning, ListBullets, PencilSimple, Play, Question, Stop, Trash, Wrench, X } from "@phosphor-icons/react";
 import { api, type T3Attachment, type T3QueuedRun, type T3ThreadView, type T3ViewMessage } from "../api/client";
 import { useThreadLive } from "../api/live";
-import { Button, ErrorText, Input, Md, errMsg, uuid, Notice, PageHeader, Select, StatusPill, pill } from "../components/ui";
+import { Button, copyText, ErrorText, Input, Md, errMsg, uuid, Notice, Select, StatusPill, pill } from "../components/ui";
 import { OpenInT3 } from "../components/thread-link";
 import { PendingRequest, type QuestionControl } from "../components/pending-request";
 import { ProviderIcon } from "./launch-form";
 import { saveEffort, savedEffort } from "../effort";
 import { Diff, type Suggestion } from "./github-diff";
-
-// threadIdFrom accepts a T3 thread link or a bare id.
-const threadIdFrom = (raw: string) => raw.trim().replace(/[?#].*$/, "").replace(/\/+$/, "").split("/").pop() ?? "";
-
-// ThreadOpen asks for a T3 Code thread link and opens its view.
-export function ThreadOpen() {
-  const navigate = useNavigate();
-  const [value, setValue] = useState("");
-  const id = threadIdFrom(value);
-  return (
-    <div className="mx-auto max-w-xl space-y-4">
-      <PageHeader title="Abrir hilo" subtitle="Pega el enlace o el id de un hilo de T3 Code." />
-      <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (id) navigate({ to: "/threads/$threadId", params: { threadId: id } }); }}>
-        <Input autoFocus value={value} onChange={(e) => setValue(e.target.value)} placeholder="https://…/threads/…" />
-        <Button disabled={!id}>Abrir</Button>
-      </form>
-    </div>
-  );
-}
+import { PdfThumb } from "../components/pdf-thumb";
+import { useComposerSuggest } from "../components/composer-suggest";
+import { paintTokens, tokenRanges, TokenChip, type Token, type Tokens } from "../components/composer-tokens";
+import { defaultUrlTransform } from "react-markdown";
 
 const runtimeModes = [
   { value: "approval-required", label: "Pedir permiso" },
@@ -36,14 +22,14 @@ const runtimeModes = [
   { value: "auto", label: "Automático" },
   { value: "full-access", label: "Acceso total" },
 ];
-const statusLabel: Record<string, string> = { preparing: "preparando", starting: "arrancando", running: "trabajando", waiting: "esperando respuesta" };
 
 // ThreadView shows one T3 Code thread: conversation and composer on the left,
 // changed files on the right.
 export function ThreadView() {
   const { threadId } = useParams({ from: "/threads/$threadId" });
   const key = ["t3-view", threadId];
-  const view = useQuery({ queryKey: key, queryFn: () => api.t3View(threadId) });
+  // Safety net for a stalled live stream: while a turn runs, reload every 15 s.
+  const view = useQuery({ queryKey: key, queryFn: () => api.t3View(threadId), refetchInterval: (q) => q.state.data?.active_run_id ? 15_000 : false });
   useThreadLive(threadId, key);
   const [panel, setPanel] = useState<"" | "changes">("");
   const aside = useRef<HTMLElement>(null);
@@ -68,13 +54,14 @@ export function ThreadView() {
   return (
     <div className="flex h-[calc(100dvh-4rem-1px)] sm:h-[calc(100dvh-3rem-2px)] min-h-0 flex-col gap-3">
       <ContextBar v={v}>
-        <button type="button" aria-pressed={panel === "changes"} onClick={() => setPanel(panel === "changes" ? "" : "changes")} title="Panel de cambios"
-          className={`${pill} ml-auto ${panel === "changes" ? "!border-slate-500 !text-slate-900 dark:!text-white" : ""}`}>
-          <GitDiff className="size-4" />Cambios<SidebarSimple className="size-4 -scale-x-100" />
+        <ThreadDetails v={v} />
+        <button type="button" aria-pressed={panel === "changes"} onClick={() => setPanel(panel === "changes" ? "" : "changes")} title="Panel de cambios" aria-label="Panel de cambios"
+          className={`${pill} !px-2 ${panel === "changes" ? "!border-slate-500 !text-slate-900 dark:!text-white" : ""}`}>
+          <SidebarSimple className="size-4 -scale-x-100" />
         </button>
       </ContextBar>
       <div className="relative flex min-h-0 flex-1">
-        <div className={`min-h-0 min-w-0 flex-1 flex-col ${panel ? "hidden lg:flex" : "flex"}`}><Chat v={v} queryKey={key} onStop={setStopping} /></div>
+        <div className={`min-h-0 min-w-0 flex-1 flex-col ${panel ? "hidden lg:flex" : "flex"}`}><Chat key={v.id} v={v} queryKey={key} onStop={setStopping} /></div>
         {/* Always mounted (its content only once opened): on desktop its width
             slides between 0 and the panel width, with the content pinned right
             so it enters from the right edge and leaves the same way. */}
@@ -129,20 +116,161 @@ function ContextBar({ v, children }: { v: T3ThreadView; children?: React.ReactNo
   const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 60_000 });
   const t = t3.data?.flatMap((x) => x.threads).find((x) => x.id === v.id);
   return (
-    <header className="flex flex-wrap items-center gap-2">
+    <header className="relative flex flex-wrap items-center gap-2">
       <h1 className="min-w-0 truncate text-lg font-semibold">{v.title || v.id}</h1>
       {t?.url && <OpenInT3 url={t.url} environmentId={t.t3_environment_id} threadId={v.id} className="mr-1" />}
-      {v.branch && <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs dark:bg-raised">{v.branch}</span>}
-      {v.active_run_id ? <StatusPill tone="blue">{statusLabel[v.active_status] ?? v.active_status}</StatusPill> : <StatusPill>en reposo</StatusPill>}
-      {v.pull_requests.map((pr) => (
-        <a key={pr.url} href={pr.url} target="_blank" rel="noreferrer" className={pill}>PR #{pr.number} · {pr.repository}</a>
-      ))}
-      {v.items.map((it) => (
-        <Link key={it.item_id} to="/items/$id/define" params={{ id: it.item_id }} className={pill}>Item {it.item_id.slice(0, 8)}</Link>
-      ))}
       {v.pending && <StatusPill tone="amber">Espera tu respuesta</StatusPill>}
       {children}
     </header>
+  );
+}
+
+// repoName turns a repository URL or key into owner/name, lowercase.
+const repoName = (url = "") => url.replace(/\.git$/, "").split("/").slice(-2).join("/").toLowerCase();
+
+// diffStats counts files and added/removed lines in a unified diff.
+const diffStats = (diff = "") => {
+  let files = 0, add = 0, del = 0;
+  for (const l of diff.split("\n")) {
+    if (l.startsWith("diff --git")) files++;
+    else if (l.startsWith("+") && !l.startsWith("+++")) add++;
+    else if (l.startsWith("-") && !l.startsWith("---")) del++;
+  }
+  return { files, add, del };
+};
+
+// ThreadDetails is the header button that drops a card down-left with the
+// thread's references, styled like T3 Code's: environment, branch, pull
+// requests, items and changes.
+function ThreadDetails({ v }: { v: T3ThreadView }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  // Everything loads in the background as the thread opens, so the card is ready
+  // when opened; the chat never waits for it.
+  const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 60_000 });
+  const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list(), staleTime: 5 * 60_000 });
+  const first = v.pull_requests.map((p) => prOf(p.url)).find(Boolean);
+  // Same keys as the PR page and the changes panel, so the fetches are shared.
+  const pull = useQuery({ queryKey: ["github-detail", first?.repo, "pulls", first?.number], queryFn: () => api.githubDetail(first!.repo, "pulls", first!.number), enabled: !!first, staleTime: 30_000 });
+  const diff = useQuery({ queryKey: ["t3-diff", v.id, v.messages.length], queryFn: () => api.t3Diff(v.id), staleTime: 30_000 });
+  const envId = t3.data?.find((x) => x.instance_id === v.instance_id)?.environment_id;
+  const catalog = useQuery({ queryKey: ["t3-catalog", v.instance_id], queryFn: () => api.t3Catalog(v.instance_id), enabled: !!v.instance_id, staleTime: 60_000 });
+  const project = catalog.data?.projects.find((p) => p.id === v.project_id);
+  const env = envs.data?.find((e) => e.id === envId);
+  const pr = pull.data?.pull;
+  // T3 only knows the branch of threads it runs in a worktree; else the PR's head branch fills in.
+  // Dory's own git diff of the worktree wins: it includes uncommitted work. Else the PR's numbers.
+  const git = diff.data?.source === "git" ? diff.data : undefined;
+  const branch = v.branch || git?.branch || pr?.head_ref || "";
+  const worktree = v.worktree_path || git?.worktree || "";
+  const local = diffStats(diff.data?.diff);
+  const changes = git || !pr ? { add: local.add, del: local.del, base: git?.base ?? "", pending: diff.isPending } : { add: pr.additions, del: pr.deletions, base: pr.base_ref, pending: pull.isPending };
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", away);
+    window.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", away); window.removeEventListener("keydown", esc); };
+  }, [open]);
+  const ico = "size-[18px] shrink-0 text-slate-500 dark:text-muted";
+  const rowCls = "flex min-h-9 items-center gap-3 rounded-md px-2 text-sm";
+  return (
+    <div ref={box} className="ml-auto">
+      <button type="button" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)} title="Detalles del hilo" aria-label="Detalles del hilo"
+        className={`${pill} !px-2 ${open ? "!border-slate-500 !text-slate-900 dark:!text-white" : ""}`}>
+        <Info className="size-4" />
+      </button>
+      {open && (
+        <div role="dialog" aria-label="Detalles del hilo" className="notif-in absolute right-0 top-full z-50 mt-1.5 w-80 max-w-[calc(100vw-2rem)] origin-top-right divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl dark:divide-border dark:border-border dark:bg-surface">
+          <div className="pb-1.5">
+            <div className={rowCls}>
+              <Cloud className={ico} />
+              <span className="min-w-0 flex-1 truncate">{env?.name ?? (envId ? envId.slice(0, 8) : "Entorno desconocido")}</span>
+              {worktree && <CopyText text={worktree} hidden icon={<FolderSimple className="size-[18px]" />} title={`Copiar ruta: ${worktree}`} />}
+            </div>
+          </div>
+          <div className="py-1.5">
+            <div className={rowCls} title={project?.root}>
+              <Cube className={ico} />
+              {project ? <span className="min-w-0 flex-1 truncate"><span className="font-medium">{project.title}</span>{project.repo && <span className="text-slate-500 dark:text-muted"> · {repoName(project.repo)}</span>}</span>
+                : <span className="flex-1 text-slate-400 dark:text-muted">{catalog.isPending ? "…" : "Sin proyecto"}</span>}
+            </div>
+            <div className={rowCls}>
+              <GitBranch className={ico} />
+              {branch ? <span className="min-w-0 flex-1 truncate font-medium" title={branch}>{branch}</span> : <span className="flex-1 text-slate-400 dark:text-muted">Sin rama</span>}
+              {branch && <CopyText text={branch} hidden title="Copiar rama" />}
+            </div>
+            {v.pull_requests.map((p, i) => <PullRow key={p.url} link={p} pull={i === 0 ? pr ?? undefined : undefined} onOpen={() => setOpen(false)} />)}
+            {v.items.map((it) => (
+              <Link key={it.item_id} to="/items/$id/define" params={{ id: it.item_id }} onClick={() => setOpen(false)} className={`${rowCls} hover:bg-slate-100 dark:hover:bg-raised`}>
+                <Kanban className={ico} />
+                <span className="flex-1">Item <span className="font-mono text-xs text-slate-500 dark:text-muted">{it.item_id.slice(0, 8)}</span></span>
+                <CaretRight weight="regular" className="size-3.5 text-slate-400" />
+              </Link>
+            ))}
+          </div>
+          <div className="pt-1.5">
+            <div className={rowCls}>
+              <GitDiff className={ico} />
+              <span className="min-w-0 flex-1 truncate"><span className="font-medium">Cambios</span>{changes.base && <span className="text-slate-500 dark:text-muted"> vs {changes.base}</span>}</span>
+              {changes.pending ? <span className="text-xs text-slate-400">…</span> : (
+                <span className="font-mono text-xs tabular-nums"><span className="text-emerald-600 dark:text-emerald-400">+{changes.add}</span> <span className="text-red-600 dark:text-red-400">−{changes.del}</span></span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const prBadge = (p?: { draft: boolean; state: string }) => {
+  if (!p) return null;
+  const s = p.state.toLowerCase();
+  const [label, cls] = s === "merged" ? ["Merged", "bg-violet-600"] : s === "closed" ? ["Closed", "bg-red-600"] : p.draft ? ["Draft", "bg-slate-500"] : ["Ready", "bg-blue-600"];
+  return <span className={`rounded-md px-2 py-0.5 text-xs font-semibold text-white ${cls}`}>{label}</span>;
+};
+
+// PullRow is a pull request in the details card: title, number and state;
+// it opens the PR inside Dory, and the arrow opens it on GitHub.
+function PullRow({ link, pull, onOpen }: { link: { url: string; number: number; repository: string }; pull?: { title: string; draft: boolean; state: string }; onOpen: () => void }) {
+  const p = prOf(link.url);
+  const [owner, repo] = (p?.repo ?? link.repository).split("/");
+  const body = (
+    <>
+      <GitPullRequest className="mt-0.5 size-[18px] shrink-0 text-slate-500 dark:text-muted" />
+      <span className="min-w-0 flex-1">
+        <span className="line-clamp-2 font-medium">{pull?.title ?? link.repository}</span>
+        <span className="mt-1 flex items-center gap-2">
+          <span className="font-mono text-xs text-slate-500 dark:text-muted">#{link.number}</span>
+          <span className="ml-auto">{prBadge(pull)}</span>
+        </span>
+      </span>
+    </>
+  );
+  const cls = "flex min-w-0 flex-1 items-start gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-raised";
+  return (
+    <div className="flex items-start gap-0.5">
+      {p ? <Link to="/github/$owner/$repo/$kind/$number" params={{ owner, repo, kind: "pulls", number: String(p.number) }} onClick={onOpen} className={cls} title="Abrir la PR en Dory">{body}</Link>
+        : <a href={link.url} target="_blank" rel="noreferrer" className={cls}>{body}</a>}
+      <a href={link.url} target="_blank" rel="noreferrer" title="Abrir en GitHub" aria-label="Abrir en GitHub"
+        className="mt-1 grid size-7 shrink-0 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-raised dark:hover:text-white"><ArrowSquareOut className="size-4" /></a>
+    </div>
+  );
+}
+
+// CopyText shows a value with a copy button; hidden shows only the button.
+function CopyText({ text, mono, small, hidden, icon, title = "Copiar" }: { text: string; mono?: boolean; small?: boolean; hidden?: boolean; icon?: React.ReactNode; title?: string }) {
+  const [done, setDone] = useState(false);
+  const copy = () => void copyText(text).then((ok) => { if (ok) { setDone(true); setTimeout(() => setDone(false), 1200); } });
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      {!hidden && <span className={`min-w-0 truncate ${mono ? "font-mono" : ""} ${small ? "text-xs" : "text-[13px]"}`} title={text}>{text}</span>}
+      <button type="button" onClick={copy} title={title} aria-label={title} className="shrink-0 text-slate-400 hover:text-slate-900 dark:hover:text-white">
+        {done ? <Check weight="regular" className="size-3.5" /> : icon ?? <Copy className="size-3.5" />}
+      </button>
+    </span>
   );
 }
 
@@ -181,11 +309,15 @@ function Chat({ v, queryKey, onStop }: { v: T3ThreadView; queryKey: unknown[]; o
     if (el.scrollTop < 300) loadOlder();
   };
   const recent = new Set(v.messages.map((m) => m.id));
+  // Only messages that arrive after opening the thread animate in; the loaded history stays still.
+  const initial = useRef<Set<string> | null>(null);
+  if (!initial.current) initial.current = new Set(recent);
   const seen = new Set<string>();
   // Pages overlap the latest turns: the live copy of an entry wins.
   const all = [...older.filter((m) => !recent.has(m.id) && !seen.has(m.id) && seen.add(m.id)), ...v.messages];
   const last = v.messages.at(-1);
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [v.messages.length, last?.text.length, !!v.pending, v.queue.length]);
+  const pendingSecret = [...all].reverse().find((m) => m.role === "secret" && m.status === "pending");
   const working = !!v.active_run_id && !last?.streaming && (last?.role === "user" || last?.role === "assistant" || !last);
   return (
     <section className="relative flex min-h-0 flex-1 flex-col">
@@ -199,13 +331,20 @@ function Chat({ v, queryKey, onStop }: { v: T3ThreadView; queryKey: unknown[]; o
             </button>
           </div>
         )}
-        {groups(all).map((m, gi, all) => Array.isArray(m) ? <WorkBlock key={m[0].id} steps={m} live={!!v.active_run_id && gi === all.length - 1} /> : m.role === "plan" ? <PlanCard key={m.id} m={m} /> : m.role === "interrupt" ? (
+        {groups(all).map((m, gi, all) => Array.isArray(m) ? <WorkBlock key={m[0].id} steps={m} live={!!v.active_run_id && gi === all.length - 1} /> : m.role === "plan" ? <PlanCard key={m.id} m={m} /> : m.role === "handoff" ? <Handoff key={m.id} m={m} /> : m.role === "secret" ? <SecretLine key={m.id} m={m} /> : m.role === "html" && m.html ? <HtmlRender key={m.id} threadId={v.id} page={m.html} /> : m.role === "interrupt" ? (
           <div key={m.id} role="separator" className="flex items-center gap-3 text-[11px] font-medium uppercase tracking-wide text-slate-400">
             <span className="h-px flex-1 bg-slate-200 dark:bg-border" /><Stop weight="fill" className="size-3" />{m.text}<span className="h-px flex-1 bg-slate-200 dark:bg-border" />
           </div>
         ) : m.role === "user" ? (
-          <div key={m.id} className="group flex flex-col items-end">
-            <div className="max-w-[85%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-2.5 text-white shadow-sm dark:bg-accent [&_*]:!text-inherit [&_code]:!bg-white/15 [&_pre]:!border-white/15 [&_pre]:!bg-white/10 [&_pre_code]:!bg-transparent"><Md>{m.text}</Md></div>
+          <div key={m.id} className={`group flex flex-col items-end ${initial.current?.has(m.id) ? "" : "msg-in"}`}>
+            {!!m.attachments?.length && <SentAttachments threadId={v.id} list={m.attachments} />}
+            {(() => {
+              // Tokens sent from the composer show inline as objects (tok: links the Md renders).
+              const shown = tokenize(m);
+              return <>
+                {shown && <div className="max-w-[85%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-2.5 text-white shadow-sm dark:bg-accent [&_*]:!text-inherit [&_code]:!bg-white/15 [&_pre]:!border-white/15 [&_pre]:!bg-white/10 [&_pre_code]:!bg-transparent"><Md urlTransform={keepToken} components={tokenLinks}>{shown}</Md></div>}
+              </>;
+            })()}
             <MessageMeta m={m} />
           </div>
         ) : (
@@ -228,6 +367,13 @@ function Chat({ v, queryKey, onStop }: { v: T3ThreadView; queryKey: unknown[]; o
         )}
       </div>
       <div className="mx-auto w-full max-w-3xl px-3 pb-4 pt-2 sm:px-6">
+        {!v.pending && pendingSecret && (
+          // A secret request slides out like a question, with its own input.
+          <div className="notif-in mx-3 -mb-6 rounded-t-3xl border border-b-0 border-slate-200 bg-white px-4 pb-9 pt-3 shadow-md dark:border-border-strong dark:bg-surface">
+            <p className="mb-3 flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-muted"><Key className="size-4" />El agente pide un secreto</p>
+            <SecretRequest key={pendingSecret.id} threadId={v.id} m={pendingSecret} onDone={() => qc.invalidateQueries({ queryKey })} />
+          </div>
+        )}
         {v.pending && (
           // The question slides out from behind the composer, sharing its look.
           <div className="notif-in mx-3 -mb-6 max-h-[55dvh] overflow-y-auto rounded-t-3xl border border-b-0 border-slate-200 bg-white px-4 pb-9 pt-3 shadow-md dark:border-border-strong dark:bg-surface">
@@ -250,7 +396,7 @@ function MessageMeta({ m }: { m: T3ViewMessage }) {
   const at = m.created_at ? new Date(m.created_at) : undefined;
   const valid = at && !Number.isNaN(at.getTime());
   const copy = async () => {
-    try { await navigator.clipboard.writeText(m.text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard unavailable */ }
+    if (await copyText(m.text)) { setCopied(true); setTimeout(() => setCopied(false), 1500); }
   };
   return (
     <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-400 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
@@ -283,7 +429,7 @@ function PlanCard({ m }: { m: T3ViewMessage }) {
   const [copied, setCopied] = useState(false);
   const long = m.text.length > 1200;
   const title = m.text.match(/^#\s+(.+)$/m)?.[1];
-  const copy = async () => { try { await navigator.clipboard.writeText(m.text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard unavailable */ } };
+  const copy = async () => { if (await copyText(m.text)) { setCopied(true); setTimeout(() => setCopied(false), 1500); } };
   return (
     <article ref={card} className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-border dark:bg-surface">
       <header className="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2.5 dark:border-border dark:bg-raised">
@@ -410,7 +556,7 @@ const iconBtn = "grid size-7 place-items-center rounded-full text-slate-400 hove
 function QueuedRow({ r, canSteer, onSteer, onCancel, onEdit }: { r: T3QueuedRun; canSteer: boolean; onSteer: () => void; onCancel: () => void; onEdit: (text: string) => void }) {
   const [draft, setDraft] = useState<string | null>(null);
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="msg-in flex flex-col items-end gap-1">
       <div className="w-fit max-w-[85%] rounded-2xl rounded-br-md border border-dashed border-slate-400 px-4 py-2.5 text-slate-700 dark:border-border-strong dark:text-text-secondary">
         {draft === null ? <p className="whitespace-pre-wrap break-words text-sm">{r.text}</p> : (
           <form className="flex gap-1" onSubmit={(e) => { e.preventDefault(); onEdit(draft); setDraft(null); }}>
@@ -526,13 +672,12 @@ function ModelPicker({ models, selected, effort, effortsOf, onChange }: { models
   );
 }
 
-type Draft = { key: string; name: string; preview?: string; done?: T3Attachment; error?: string };
+type Draft = { key: string; name: string; mime: string; preview: string; done?: T3Attachment; error?: string };
 
 function Composer({ v, queryKey, onStop, question }: { v: T3ThreadView; queryKey: unknown[]; onStop: (run: string) => void; question: QuestionControl | null }) {
   const qc = useQueryClient();
   const catalog = useQuery({ queryKey: ["t3-catalog", v.instance_id], queryFn: () => api.t3Catalog(v.instance_id), enabled: !!v.instance_id, staleTime: 60_000 });
   const [text, setText] = useState("");
-  const [steer, setSteer] = useState(false);
   const [choice, setChoice] = useState("");
   const [effort, setEffort] = useState("");
   const area = useRef<HTMLTextAreaElement>(null);
@@ -545,17 +690,84 @@ function Composer({ v, queryKey, onStop, question }: { v: T3ThreadView; queryKey
     for (const file of Array.from(list)) {
       const key = uuid(); // crypto.randomUUID needs HTTPS, the dev preview is plain HTTP
       const named = file.name ? file : new File([file], `imagen-${new Date().toISOString().slice(11, 19).replace(/:/g, "")}.png`, { type: file.type });
-      const preview = named.type.startsWith("image/") ? URL.createObjectURL(named) : undefined;
-      setFiles((fs) => [...fs, { key, name: named.name, preview }]);
+      const preview = URL.createObjectURL(named); // also opens PDFs and text in the preview
+      setFiles((fs) => [...fs, { key, name: named.name, mime: named.type, preview }]);
       api.t3Upload(v.id, named).then(
         (done) => setFiles((fs) => fs.map((f) => (f.key === key ? { ...f, done } : f))),
         (e: unknown) => setFiles((fs) => fs.map((f) => (f.key === key ? { ...f, error: errMsg(e) || "No se pudo subir" } : f))),
       );
     }
   };
-  const removeFile = (key: string) => setFiles((fs) => fs.filter((f) => { if (f.key === key && f.preview) URL.revokeObjectURL(f.preview); return f.key !== key; }));
+  const [viewing, setViewing] = useState<Shown | null>(null);
+  const removeFile = (key: string) => setFiles((fs) => fs.filter((f) => { if (f.key === key) URL.revokeObjectURL(f.preview); return f.key !== key; }));
   const selected = choice || `${v.provider_id}|${v.model}`;
   const [providerId, slug] = selected.split("|");
+  // / commands and $ skills come from the provider that will run the message.
+  const prov = catalog.data?.providers.find((p) => p.instance_id === providerId);
+  // The repository's own commands and skills (T3 scans the thread folder) load in the background;
+  // until then, and if the scan fails, the provider's global ones from the catalog are used.
+  const composer = useQuery({ queryKey: ["t3-composer", v.id, providerId], queryFn: () => api.t3Composer(v.id, providerId), enabled: !!providerId, staleTime: 5 * 60_000, retry: false });
+  const projectRepo = repoName(catalog.data?.projects.find((p) => p.id === v.project_id)?.repo);
+  // Picked /commands, $skills, @files and #PRs live in the text as tokens: the
+  // text holds their characters, tokens their reference (a file's full path).
+  const [tokens, setTokens] = useState<Tokens>({});
+  const addToken = (insert: string, t: Token) => {
+    // Two files with the same name: the second one is written with its path.
+    const key = t.kind === "path" && tokens[insert] && tokens[insert].value !== t.value ? `@${t.value}` : insert;
+    setTokens((ts) => ({ ...ts, [key]: t }));
+    return key;
+  };
+  const ranges = tokenRanges(text, tokens);
+  const present = ranges.map((r) => tokens[r.text]);
+  const mentions = [...new Set(present.filter((t) => t.kind === "path").map((t) => t.value))];
+  const skillsUsed = [...new Set(present.filter((t) => t.kind === "skill").map((t) => t.value))];
+  // T3 gets each @file with its full path; the other tokens go as written.
+  const outgoing = ranges.reduceRight((t, r) => tokens[r.text].kind === "path" ? `${t.slice(0, r.start)}@${tokens[r.text].value}${t.slice(r.end)}` : t, text);
+  const paint = useRef<HTMLDivElement>(null);
+  // A token deletes as a whole: Backspace at its end or inside, Delete at its start or inside.
+  // A selection never splits a token: an edge inside one grows to cover it, and
+  // a caret inside one jumps past it in the direction it was moving (arrows
+  // step over a token in one press), or to the nearest edge on a click.
+  const lastCaret = useRef(0);
+  const snapSelection = () => {
+    const el = area.current;
+    if (!el) return;
+    const { selectionStart: s0, selectionEnd: e0, selectionDirection: dir } = el;
+    let s = s0, en = e0;
+    for (const r of ranges) {
+      if (s0 === e0) {
+        if (s0 > r.start && s0 < r.end) {
+          const prev = lastCaret.current;
+          s = en = prev <= r.start ? r.end : prev >= r.end ? r.start : s0 - r.start < r.end - s0 ? r.start : r.end;
+        }
+      } else {
+        if (s > r.start && s < r.end) s = r.start;
+        if (en > r.start && en < r.end) en = r.end;
+      }
+    }
+    if (s !== s0 || en !== e0) el.setSelectionRange(s, en, dir ?? undefined);
+    lastCaret.current = s === en ? s : dir === "backward" ? s : en;
+  };
+  const deleteToken = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    if ((e.key !== "Backspace" && e.key !== "Delete") || el.selectionStart !== el.selectionEnd) return false;
+    const at = el.selectionStart;
+    // Ctrl/Alt/Cmd delete a word: across the spaces up to a token, the token is the word.
+    const word = e.ctrlKey || e.altKey || e.metaKey;
+    const reach = (r: { start: number; end: number }) => e.key === "Backspace"
+      ? (at > r.start && at <= r.end) || (word && at > r.end && !text.slice(r.end, at).trim())
+      : (at >= r.start && at < r.end) || (word && at < r.start && !text.slice(at, r.start).trim());
+    const hit = ranges.find(reach);
+    if (!hit) return false;
+    e.preventDefault();
+    // A word delete also takes the spaces between the caret and the token.
+    const from = e.key === "Backspace" ? hit.start : Math.min(at, hit.start);
+    const to = e.key === "Backspace" ? Math.max(at, hit.end) : hit.end;
+    setText(text.slice(0, from) + text.slice(to));
+    requestAnimationFrame(() => el.setSelectionRange(from, from));
+    return true;
+  };
+  const suggest = useComposerSuggest({ threadId: v.id, text, setText, area, commands: composer.data?.commands ?? prov?.commands ?? [], skills: composer.data?.skills ?? prov?.skills ?? [], repo: projectRepo, onToken: addToken });
   const model = catalog.data?.providers.find((p) => p.instance_id === providerId)?.models.find((m) => m.slug === slug);
   const effortValue = effort || (choice ? (model?.effort ? savedEffort(model.slug, model.effort.values) || model.effort.default : "") : v.effort);
   const changed = !!choice || !!effort;
@@ -569,11 +781,14 @@ function Composer({ v, queryKey, onStop, question }: { v: T3ThreadView; queryKey
   }, [text]);
 
   const send = useMutation({
-    mutationFn: () => api.t3Dispatch(v.id, {
-      text, mode: steer ? "steer" : "auto", ...(ready.length ? { attachments: ready } : {}),
+    // While a turn runs, Ctrl/Cmd+Enter steers and Enter (or the button) queues.
+    mutationFn: (asSteer?: boolean) => api.t3Dispatch(v.id, {
+      // Inline @labels go out as @full/path (what the agent reads) and as context records.
+      text: outgoing,
+      mode: asSteer ? "steer" : "auto", ...(ready.length ? { attachments: ready } : {}), skills: skillsUsed, mentions,
       ...(changed ? { provider_id: providerId, model: slug, effort_option: model?.effort?.id, effort: model?.effort ? effortValue : undefined } : {}),
     }),
-    onSuccess: () => { if (changed && model?.effort && effortValue) saveEffort(model.slug, effortValue); setText(""); setSteer(false); files.forEach((f) => f.preview && URL.revokeObjectURL(f.preview)); setFiles([]); qc.invalidateQueries({ queryKey }); },
+    onSuccess: () => { if (changed && model?.effort && effortValue) saveEffort(model.slug, effortValue); setText(""); setTokens({}); suggest.reset(); files.forEach((f) => URL.revokeObjectURL(f.preview)); setFiles([]); qc.invalidateQueries({ queryKey }); },
   });
   const settings = useMutation({ mutationFn: (b: { interaction_mode?: string; runtime_mode?: string }) => api.t3Settings(v.id, b), onSuccess: () => qc.invalidateQueries({ queryKey }) });
   const busy = !!v.active_run_id;
@@ -596,11 +811,11 @@ function Composer({ v, queryKey, onStop, question }: { v: T3ThreadView; queryKey
   const resumable = !busy && (held || v.interrupted) && !text.trim() && !files.length;
   const canSend = (!!text.trim() || ready.length > 0 || resumable) && !uploading && !send.isPending && !resume.isPending;
   const canNext = !!question && !question.busy && (!!text.trim() || question.picked);
-  const submit = () => {
+  const submit = (asSteer?: boolean) => {
     // An open question takes the typed text as its free answer, or its checked options.
     if (question) { if (canNext) { question.next(text.trim()); setText(""); } return; }
     if (!canSend) return;
-    if (resumable) resume.mutate(); else send.mutate();
+    if (resumable) resume.mutate(); else send.mutate(busy ? asSteer : undefined);
   };
 
   return (
@@ -612,23 +827,34 @@ function Composer({ v, queryKey, onStop, question }: { v: T3ThreadView; queryKey
         const fs = Array.from(e.clipboardData.items).flatMap((i) => { const f = i.kind === "file" ? i.getAsFile() : null; return f ? [f] : []; });
         if (fs.length) { e.preventDefault(); addFiles(fs); }
       }}
-      className="rounded-3xl border border-slate-200 bg-white shadow-md dark:border-border-strong dark:bg-surface">
+      className="relative rounded-3xl border border-slate-200 bg-white shadow-md dark:border-border-strong dark:bg-surface">
+      {suggest.menu}
       {files.length > 0 && (
         <div className="flex flex-wrap gap-2 px-3 pt-3">
           {files.map((f) => (
-            <div key={f.key} title={f.error ?? f.name} className={`relative size-14 shrink-0 overflow-hidden rounded-xl border bg-slate-50 dark:bg-raised ${f.error ? "border-red-400" : "border-slate-200 dark:border-border"}`}>
-              {f.preview ? <img src={f.preview} alt="" className="size-14 shrink-0 object-cover" /> : <span className="grid size-14 shrink-0 place-items-center text-slate-400"><FileText className="size-6" /></span>}
+            <div key={f.key} title={f.error ?? f.name} className={`group relative size-14 shrink-0 overflow-hidden rounded-xl border bg-slate-50 dark:bg-raised ${f.error ? "border-red-400" : "border-slate-200 dark:border-border"}`}>
+              <button type="button" onClick={() => setViewing({ src: f.preview, name: f.name, mime: f.mime })} aria-label={`Ver ${f.name}`} className="block size-14 cursor-zoom-in">
+                {f.mime.startsWith("image/") ? <img src={f.preview} alt="" className="size-14 shrink-0 object-cover" /> : isPdf(f) ? <PdfThumb src={f.preview} width={56} className="size-14" /> : <span className="grid size-14 shrink-0 place-items-center text-slate-400"><FileText className="size-6" /></span>}
+              </button>
               {f.error && <span className="absolute inset-x-0 bottom-0 bg-red-500 text-center text-[9px] font-medium text-white">Error</span>}
               {!f.done && !f.error && <span className="absolute inset-0 grid place-items-center bg-white/60 dark:bg-black/40"><span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /></span>}
-              <button type="button" onClick={() => removeFile(f.key)} aria-label={`Quitar ${f.name}`} className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-slate-900/70 text-white hover:bg-slate-900"><X weight="regular" className="size-3" /></button>
+              <button type="button" onClick={() => removeFile(f.key)} aria-label={`Quitar ${f.name}`} className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-slate-900/70 text-white transition-opacity hover:bg-slate-900 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"><X weight="regular" className="size-3" /></button>
             </div>
           ))}
         </div>
       )}
-      <textarea ref={area} rows={1} value={text} onChange={(e) => setText(e.target.value)} aria-label="Mensaje"
-        placeholder={question ? "Escribe tu respuesta a la pregunta…" : "Escribe al hilo…"}
-        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }}
-        className="block max-h-60 w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 !outline-none placeholder:text-slate-400" />
+      {viewing && <AttachmentPreview {...viewing} onClose={() => setViewing(null)} />}
+      <div className="relative">
+        {/* Inline @file chips: this layer paints the text under a see-through textarea, glyph for glyph, so the caret stays aligned. */}
+        {ranges.length > 0 && <div ref={paint} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-4 pb-1 pt-3.5 text-[15px] leading-6">
+          {paintTokens(text, tokens)}{"\u200b"}
+        </div>}
+        <textarea ref={area} rows={1} value={text} onChange={(e) => { setText(e.target.value); suggest.track(); }} onSelect={() => { snapSelection(); suggest.track(); }} onClick={suggest.track} aria-label="Mensaje"
+          onScroll={(e) => { if (paint.current) paint.current.scrollTop = e.currentTarget.scrollTop; }}
+          placeholder={question ? "Escribe tu respuesta a la pregunta…" : "Escribe al hilo…"}
+          onKeyDown={(e) => { if (e.nativeEvent.isComposing || suggest.onKeyDown(e) || deleteToken(e)) return; if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(e.ctrlKey || e.metaKey); } }}
+          className={`relative block max-h-60 w-full resize-none break-words bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 !outline-none placeholder:text-slate-400 ${ranges.length ? "text-transparent caret-slate-900 dark:caret-white" : ""}`} />
+      </div>
       <div className="flex items-center gap-0.5 px-2 pb-2">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
           <input ref={picker} type="file" multiple hidden onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
@@ -640,12 +866,6 @@ function Composer({ v, queryKey, onStop, question }: { v: T3ThreadView; queryKey
             effortsOf={(value) => { const [pid, sl] = value.split("|"); const m = catalog.data?.providers.find((p) => p.instance_id === pid)?.models.find((x) => x.slug === sl); return m?.effort ? { values: m.effort.values, initial: value === selected ? effortValue : savedEffort(sl, m.effort.values) || m.effort.default } : undefined; }}
             onChange={(value, eff) => { setChoice(value); setEffort(eff); const sl = value.split("|")[1]; if (eff) saveEffort(sl, eff); }} />
           <Chip title="Permisos" value={v.runtime_mode} options={runtimeModes} onChange={(x) => settings.mutate({ runtime_mode: x })} />
-          {busy && (
-            <button type="button" aria-pressed={steer} onClick={() => setSteer(!steer)} title="Inyecta el mensaje en el turno en curso para corregir el rumbo"
-              className={`inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-medium transition-colors ${steer ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300" : "text-slate-600 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised"}`}>
-              <Lightning weight={steer ? "fill" : "regular"} className="size-3.5" />Steer
-            </button>
-          )}
         </div>
         {question ? (
           <>
@@ -665,10 +885,10 @@ function Composer({ v, queryKey, onStop, question }: { v: T3ThreadView; queryKey
             className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-900 text-white transition hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200">
             <Stop weight="fill" className="size-3.5" />
           </button>
-        ) : <button type="submit" disabled={!canSend} title={resumable ? "Continuar por donde iba" : busy ? (steer ? "Steer" : "Encolar") : "Enviar (Enter)"} aria-label={resumable ? "Continuar" : "Enviar"}
+        ) : <>{busy && <span className="mr-2 hidden items-center gap-1 text-[11px] text-slate-400 dark:text-muted sm:inline-flex" title="Ctrl+Enter inyecta el mensaje en el turno en curso; Enter lo pone en cola"><Lightning className="size-3" aria-hidden="true" /><kbd className="font-sans">Ctrl+Enter</kbd></span>}<button type="submit" disabled={!canSend} title={resumable ? "Continuar por donde iba" : busy ? "Encolar (Enter) · Ctrl+Enter: steer" : "Enviar (Enter)"} aria-label={resumable ? "Continuar" : "Enviar"}
           className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-900 p-0 text-white transition hover:bg-slate-700 disabled:bg-slate-200 disabled:text-slate-400 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 dark:disabled:bg-raised dark:disabled:text-muted">
-          {send.isPending || resume.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : resumable ? <Play weight="fill" className="block size-3.5 translate-x-px" /> : busy && !steer ? <ListBullets weight="bold" className="block size-4" /> : <ArrowUp weight="bold" className="block size-4" />}
-        </button>}
+          {send.isPending || resume.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : resumable ? <Play weight="fill" className="block size-3.5 translate-x-px" /> : busy ? <ListBullets weight="bold" className="block size-4" /> : <ArrowUp weight="bold" className="block size-4" />}
+        </button></>}
       </div>
       {(send.error || settings.error || stop.error || resume.error) && <div className="px-4 pb-2"><ErrorText error={send.error ?? settings.error ?? stop.error ?? resume.error} /></div>}
     </form>
@@ -712,3 +932,185 @@ function Changes({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
     </section>
   );
 }
+
+type Shown = { src: string; name: string; mime: string };
+const isPdf = (f: { mime: string; name: string }) => f.mime === "application/pdf" || /\.pdf$/i.test(f.name);
+
+// AttachmentPreview shows an image, PDF or text full size; anything else offers a download.
+function AttachmentPreview({ src, name, mime, onClose }: Shown & { onClose: () => void }) {
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [onClose]);
+  const inline = mime === "application/pdf" || mime.startsWith("text/") || /\.html?$/i.test(name) || /\.(pdf|txt|md|log|json)$/i.test(name);
+  return createPortal(
+    <div role="dialog" aria-label={name} className="notif-in fixed inset-0 z-[120] flex flex-col bg-black/80 p-3 sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="mb-2 flex items-center gap-2 text-sm text-white">
+        <span className="min-w-0 flex-1 truncate">{name}</span>
+        <a href={src} download={name} className="rounded-md px-2 py-1 hover:bg-white/10">Descargar</a>
+        <button type="button" onClick={onClose} aria-label="Cerrar" className="grid size-8 place-items-center rounded-md hover:bg-white/10"><X weight="regular" className="size-5" /></button>
+      </div>
+      <div className="flex min-h-0 flex-1 items-center justify-center" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+        {mime.startsWith("image/") ? <img src={src} alt={name} className="max-h-full max-w-full rounded-md object-contain shadow-2xl" />
+          : inline ? <iframe src={src} title={name} sandbox={mime === "text/html" ? "allow-scripts allow-popups allow-popups-to-escape-sandbox" : undefined} className="size-full rounded-md bg-white" />
+          : <p className="text-sm text-white/80">No hay vista previa para este tipo de fichero.</p>}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// SentAttachments shows the files sent with a user message; a click opens the preview.
+function SentAttachments({ threadId, list }: { threadId: string; list: T3Attachment[] }) {
+  const [viewing, setViewing] = useState<Shown | null>(null);
+  const url = (a: T3Attachment) => `/api/t3/threads/${encodeURIComponent(threadId)}/attachments/${encodeURIComponent(a.id)}?${new URLSearchParams({ name: a.name, mime: a.mime_type })}`;
+  return (
+    <div className="mb-1 flex max-w-[85%] flex-wrap justify-end gap-1.5">
+      {list.map((a) => {
+        const shown = { src: url(a), name: a.name, mime: a.mime_type };
+        if (isPdf({ mime: a.mime_type, name: a.name })) return (
+          <button key={a.id} type="button" onClick={() => setViewing(shown)} title={a.name} aria-label={`Ver ${a.name}`}
+            className="w-36 cursor-zoom-in overflow-hidden rounded-xl border border-slate-200 bg-white text-left dark:border-border dark:bg-surface">
+            <PdfThumb src={shown.src} width={144} className="h-40 w-36 border-b border-slate-200 dark:border-border" />
+            <span className="flex items-center gap-1.5 px-2 py-1.5 text-xs"><FileText className="size-3.5 shrink-0 text-red-600" /><span className="min-w-0 truncate">{a.name}</span></span>
+          </button>
+        );
+        return a.type === "image" ? (
+          <button key={a.id} type="button" onClick={() => setViewing(shown)} title={a.name} aria-label={`Ver ${a.name}`}
+            className="cursor-zoom-in overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-border dark:bg-raised">
+            <img src={shown.src} alt={a.name} loading="lazy" className="block max-h-48 max-w-[16rem] object-cover" />
+          </button>
+        ) : (
+          <button key={a.id} type="button" onClick={() => setViewing(shown)} title={a.name}
+            className="flex max-w-[16rem] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm hover:bg-slate-50 dark:border-border dark:bg-surface dark:hover:bg-raised">
+            <FileText className="size-5 shrink-0 text-slate-500" /><span className="min-w-0 truncate">{a.name}</span>
+          </button>
+        );
+      })}
+      {viewing && <AttachmentPreview {...viewing} onClose={() => setViewing(null)} />}
+    </div>
+  );
+}
+
+// Handoff marks where the thread passed its context to another model.
+function Handoff({ m }: { m: T3ViewMessage }) {
+  const chip = (model?: string, provider?: string) => (
+    <span className="inline-flex max-w-[12rem] items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2 py-0.5 normal-case tracking-normal text-slate-600 dark:border-border dark:bg-surface dark:text-text-secondary">
+      <ProviderIcon driver={provider ?? ""} model={model} /><span className="truncate font-mono">{model || "—"}</span>
+    </span>
+  );
+  return (
+    <div role="separator" aria-label={`Cambio de modelo: de ${m.from || "otro modelo"} a ${m.to || "otro modelo"}`} title="El hilo pasó su contexto a otro modelo"
+      className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+      <span className="h-px flex-1 bg-slate-200 dark:bg-border" />
+      {m.from && chip(m.from, m.from_provider)}
+      <ArrowRight weight="bold" className="size-3.5 shrink-0" />
+      {chip(m.to, m.to_provider)}
+      <span className="h-px flex-1 bg-slate-200 dark:bg-border" />
+    </div>
+  );
+}
+
+// HtmlRender shows a page the agent rendered with T3's html_render tool, as T3
+// Code does: inline, sandboxed (its scripts run in an opaque origin), with a full view.
+function HtmlRender({ threadId, page }: { threadId: string; page: NonNullable<T3ViewMessage["html"]> }) {
+  const [full, setFull] = useState(false);
+  const name = `${page.title || "Página"}.html`;
+  const src = `/api/t3/threads/${encodeURIComponent(threadId)}/attachments/${encodeURIComponent(page.attachment_id)}?${new URLSearchParams({ name, mime: "text/html" })}`;
+  // The page reports its real height (the proxy adds a script with ?fit=1); the
+  // agent's own height only holds until then. No inner scroll: the frame grows to fit.
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [measured, setMeasured] = useState(0);
+  useEffect(() => {
+    const on = (e: MessageEvent) => {
+      const h = (e.data as { doryFrameHeight?: unknown } | null)?.doryFrameHeight;
+      if (e.source === frame.current?.contentWindow && typeof h === "number" && h > 0) setMeasured(Math.min(4000, Math.ceil(h)));
+    };
+    window.addEventListener("message", on);
+    return () => window.removeEventListener("message", on);
+  }, []);
+  const height = measured || Math.min(1200, Math.max(80, Math.round(page.height || 400)));
+  return (
+    <figure className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-border dark:bg-surface">
+      <figcaption className="flex items-center gap-2 border-b border-slate-200 px-3 py-1.5 text-xs dark:border-border">
+        <Browser className="size-4 text-slate-400" /><span className="min-w-0 flex-1 truncate font-medium">{page.title || "Página"}</span>
+        <button type="button" onClick={() => setFull(true)} title="Ver a pantalla completa" aria-label="Ver a pantalla completa" className={iconBtn}><ArrowsOut className="size-4" /></button>
+        <a href={src} target="_blank" rel="noreferrer" title="Abrir en otra pestaña" aria-label="Abrir en otra pestaña" className={iconBtn}><ArrowSquareOut className="size-4" /></a>
+      </figcaption>
+      <iframe ref={frame} src={`${src}&fit=1`} title={page.title || "Página"} sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" loading="lazy" scrolling="no" style={{ height }} className="block w-full overflow-hidden bg-white" />
+      {full && <AttachmentPreview src={src} name={name} mime="text/html" onClose={() => setFull(false)} />}
+    </figure>
+  );
+}
+
+const secretStates: Record<string, string> = { pending: "pendiente", saved: "guardado", declined: "rechazado", cancelled: "cancelado" };
+
+// SecretLine marks a secret request in the conversation, without its value.
+function SecretLine({ m }: { m: T3ViewMessage }) {
+  const tone = m.status === "saved" ? "text-green-700 dark:text-green-400" : m.status === "pending" ? "text-amber-600 dark:text-amber-400" : "text-slate-400";
+  return (
+    <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-muted" title={m.text}>
+      <Key className={`size-4 shrink-0 ${tone}`} />
+      <span className="min-w-0 truncate">Secreto <span className="font-medium text-slate-700 dark:text-text-secondary">{m.title}</span></span>
+      <span className={tone}>· {secretStates[m.status ?? ""] ?? m.status}</span>
+    </div>
+  );
+}
+
+// SecretRequest answers request_secret: the value goes to T3, which hands the
+// agent a one-use reference; it never enters the chat or Dory's storage.
+function SecretRequest({ threadId, m, onDone }: { threadId: string; m: T3ViewMessage; onDone: () => void }) {
+  const [value, setValue] = useState("");
+  const [shown, setShown] = useState(false);
+  const answer = useMutation({
+    mutationFn: (decline: boolean) => api.t3AnswerSecret(threadId, m.id, decline ? { decline: true } : { secret: value }),
+    onSuccess: () => { setValue(""); onDone(); },
+  });
+  const btn = "inline-flex h-8 items-center rounded-full px-4 text-sm font-medium transition disabled:opacity-50";
+  return (
+    <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (value.trim()) answer.mutate(false); }}>
+      <div>
+        <p className="text-sm font-medium text-slate-900 dark:text-white">{m.title}</p>
+        {m.text && <p className="mt-0.5 text-sm text-slate-500 dark:text-muted">{m.text}</p>}
+      </div>
+      <div className="flex items-center gap-1 rounded-xl border border-slate-300 bg-white pr-1 focus-within:border-slate-500 dark:border-border-strong dark:bg-surface">
+        <input autoFocus type={shown ? "text" : "password"} value={value} onChange={(e) => setValue(e.target.value)} placeholder={m.detail || "Pega el valor"}
+          autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} aria-label={m.title}
+          className="min-h-10 w-full bg-transparent px-3 font-mono text-sm !outline-none placeholder:font-sans placeholder:text-slate-400" />
+        <button type="button" onClick={() => setShown(!shown)} title={shown ? "Ocultar" : "Mostrar"} aria-label={shown ? "Ocultar" : "Mostrar"} className={iconBtn}>
+          {shown ? <EyeSlash className="size-4" /> : <Eye className="size-4" />}
+        </button>
+      </div>
+      {answer.error && <ErrorText error={answer.error} />}
+      <div className="flex justify-end gap-2">
+        <button type="button" disabled={answer.isPending} onClick={() => answer.mutate(true)} className={`${btn} text-slate-600 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised`}>Rechazar</button>
+        <button type="submit" disabled={answer.isPending || !value.trim()} className={`${btn} bg-slate-900 text-white hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200`}>{answer.isPending ? "Enviando…" : "Guardar"}</button>
+      </div>
+    </form>
+  );
+}
+
+
+// tokenize marks the tokens of a sent message as tok:kind:value links: its
+// @files and $skills (from T3's context records), a leading /command and #PRs.
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function tokenize(m: T3ViewMessage): string {
+  const link = (kind: string, value: string) => `[${kind}](tok:${kind}:${encodeURIComponent(value)})`;
+  let t = m.text;
+  for (const p of m.mentions ?? []) t = t.split(`@${p}`).join(link("path", p));
+  for (const k of m.skills ?? []) t = t.replace(new RegExp(`(^|\\s)\\$${escapeRe(k)}(?=\\s|$)`, "g"), (_, pre: string) => pre + link("skill", k));
+  t = t.replace(/^\/([\w:.-]+)(?=\s|$)/, (_, c: string) => link("command", c));
+  t = t.replace(/(^|\s)#(\d+)(?=\s|$|[.,;:])/g, (_, pre: string, n: string) => pre + link("ref", n));
+  return t;
+}
+const keepToken = (url: string) => (url.startsWith("tok:") ? url : defaultUrlTransform(url));
+const tokenLinks = {
+  a: ({ href, children, node: _n, ...rest }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) => {
+    if (!href?.startsWith("tok:")) return <a href={href} {...rest}>{children}</a>;
+    const [, kind, raw] = href.split(":");
+    const value = decodeURIComponent(raw ?? "");
+    const label = kind === "path" ? value.replace(/\/+$/, "").split("/").pop() || value : value;
+    return <TokenChip kind={kind as Token["kind"]} label={label} title={kind === "ref" ? `#${value}` : value} />;
+  },
+};

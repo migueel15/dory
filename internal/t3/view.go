@@ -22,6 +22,37 @@ type ViewMessage struct {
 	Title     string `json:"title,omitempty"`
 	Detail    string `json:"detail,omitempty"`
 	Status    string `json:"status,omitempty"`
+	// From and To are the models of a provider handoff (role "handoff"),
+	// with their provider instances in FromProvider and ToProvider.
+	From         string `json:"from,omitempty"`
+	To           string `json:"to,omitempty"`
+	FromProvider string `json:"from_provider,omitempty"`
+	ToProvider   string `json:"to_provider,omitempty"`
+	// HTML is the page of an html_render call (role "html").
+	HTML *HTMLRender `json:"html,omitempty"`
+	// Mentions are the @paths a user message referenced.
+	Mentions []string `json:"mentions,omitempty"`
+	// Skills are the $skills a user message invoked.
+	Skills []string `json:"skills,omitempty"`
+	// Attachments are the files sent with a user message.
+	Attachments []Attachment `json:"attachments,omitempty"`
+}
+
+// wireAttachment is a chat attachment as T3 stores it on a message.
+type wireAttachment struct {
+	Type      string `json:"type"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	MimeType  string `json:"mimeType"`
+	SizeBytes int    `json:"sizeBytes"`
+}
+
+func attachmentsOf(in []wireAttachment) []Attachment {
+	var out []Attachment
+	for _, a := range in {
+		out = append(out, Attachment{Type: a.Type, ID: a.ID, Name: a.Name, MimeType: a.MimeType, SizeBytes: a.SizeBytes})
+	}
+	return out
 }
 
 // wireTurnItem is one step of a turn: messages, reasoning and tool calls.
@@ -39,6 +70,79 @@ type wireTurnItem struct {
 	StartedAt string          `json:"startedAt"`
 	RunID     string          `json:"runId"`
 	Markdown  *string         `json:"markdown"`
+	// A provider handoff names the models before and after it.
+	FromModelSelections []struct {
+		InstanceID string `json:"instanceId"`
+		Model      string `json:"model"`
+	} `json:"fromModelSelections"`
+	FromProviderInstanceIDs []string        `json:"fromProviderInstanceIds"`
+	ToProviderInstanceID    *string         `json:"toProviderInstanceId"`
+	ToModel                 *string         `json:"toModel"`
+	Output                  json.RawMessage `json:"output"`
+	// A secret request (request_secret) asks the user for one value.
+	Label        *string `json:"label"`
+	Reason       *string `json:"reason"`
+	Placeholder  *string `json:"placeholder"`
+	Delivery     *string `json:"delivery"`
+	SecretStatus *string `json:"secretStatus"`
+}
+
+// HTMLRender is a page the agent showed with T3's html_render tool.
+type HTMLRender struct {
+	AttachmentID string  `json:"attachment_id"`
+	Title        string  `json:"title"`
+	Height       float64 `json:"height"`
+}
+
+// htmlRenderOf finds the page an html_render call stored, wherever the tool
+// result nests it (an object, or JSON inside the text content).
+func htmlRenderOf(it wireTurnItem) *HTMLRender {
+	name := str(it.ToolName)
+	if name == "" {
+		name = str(it.Title)
+	}
+	if !strings.HasSuffix(name, "html_render") || len(it.Output) == 0 {
+		return nil
+	}
+	var walk func(v any, depth int) *HTMLRender
+	walk = func(v any, depth int) *HTMLRender {
+		if depth > 8 {
+			return nil
+		}
+		switch x := v.(type) {
+		case string:
+			var inner any
+			if strings.Contains(x, "htmlRender") && json.Unmarshal([]byte(x), &inner) == nil {
+				return walk(inner, depth+1)
+			}
+		case []any:
+			for _, e := range x {
+				if h := walk(e, depth+1); h != nil {
+					return h
+				}
+			}
+		case map[string]any:
+			if hr, ok := x["htmlRender"].(map[string]any); ok {
+				if id, _ := hr["attachmentId"].(string); id != "" {
+					h := &HTMLRender{AttachmentID: id}
+					h.Title, _ = hr["title"].(string)
+					h.Height, _ = hr["height"].(float64)
+					return h
+				}
+			}
+			for _, e := range x {
+				if h := walk(e, depth+1); h != nil {
+					return h
+				}
+			}
+		}
+		return nil
+	}
+	var v any
+	if json.Unmarshal(it.Output, &v) != nil {
+		return nil
+	}
+	return walk(v, 0)
 }
 
 // hiddenItems are turn items the chat does not show as steps.
@@ -86,9 +190,11 @@ type ThreadView struct {
 	InteractionMode string `json:"interaction_mode"`
 	RuntimeMode     string `json:"runtime_mode"`
 	Branch          string `json:"branch"`
-	WorktreePath    string `json:"worktree_path"`
-	ActiveRunID     string `json:"active_run_id"`
-	ActiveStatus    string `json:"active_status"`
+	// ProjectID is the T3 project the thread belongs to.
+	ProjectID    string `json:"project_id"`
+	WorktreePath string `json:"worktree_path"`
+	ActiveRunID  string `json:"active_run_id"`
+	ActiveStatus string `json:"active_status"`
 	// Interrupted is true when the last run was stopped and nothing runs now.
 	Interrupted  bool              `json:"interrupted"`
 	PullRequests []PullRequestLink `json:"pull_requests"`
@@ -106,6 +212,7 @@ type wireViewProjection struct {
 	wireProjection
 	Thread struct {
 		Title          string `json:"title"`
+		ProjectID      string `json:"projectId"`
 		ModelSelection struct {
 			InstanceID string       `json:"instanceId"`
 			Model      string       `json:"model"`
@@ -131,11 +238,19 @@ type wireViewProjection struct {
 		Status        string `json:"status"`
 	} `json:"checkpoints"`
 	FullMessages []struct {
-		ID        string `json:"id"`
-		Role      string `json:"role"`
-		Text      string `json:"text"`
-		Streaming bool   `json:"streaming"`
-		CreatedAt string `json:"createdAt"`
+		ID          string           `json:"id"`
+		Role        string           `json:"role"`
+		Text        string           `json:"text"`
+		Streaming   bool             `json:"streaming"`
+		CreatedAt   string           `json:"createdAt"`
+		Attachments []wireAttachment `json:"attachments"`
+		Context     *struct {
+			Records []struct {
+				Kind string `json:"kind"`
+				Path string `json:"path"`
+				Name string `json:"name"`
+			} `json:"records"`
+		} `json:"context"`
 	} `json:"messages"`
 	TurnItems []wireTurnItem `json:"turnItems"`
 }
@@ -173,7 +288,7 @@ func (p wireViewProjection) view(threadID string) ThreadView {
 	v := ThreadView{
 		ID: threadID, Title: t.Title, ProviderID: t.ModelSelection.InstanceID, Model: t.ModelSelection.Model,
 		InteractionMode: t.InteractionMode, RuntimeMode: t.RuntimeMode,
-		Branch: str(t.Branch), WorktreePath: str(t.WorktreePath),
+		Branch: str(t.Branch), WorktreePath: str(t.WorktreePath), ProjectID: t.ProjectID,
 		PullRequests: []PullRequestLink{}, Messages: []ViewMessage{}, Queue: []QueuedRun{},
 	}
 	for _, id := range effortOptionIDs {
@@ -238,7 +353,19 @@ func (p wireViewProjection) view(threadID string) ThreadView {
 	for _, m := range p.FullMessages {
 		// Queued messages show in the queue, not in the conversation.
 		if !queued[m.ID] {
-			msgs[m.ID] = ViewMessage{ID: m.ID, Role: m.Role, Text: m.Text, Streaming: m.Streaming, CreatedAt: m.CreatedAt}
+			msgs[m.ID] = ViewMessage{ID: m.ID, Role: m.Role, Text: m.Text, Streaming: m.Streaming, CreatedAt: m.CreatedAt, Attachments: attachmentsOf(m.Attachments)}
+			if m.Context != nil {
+				for _, rec := range m.Context.Records {
+					vm := msgs[m.ID]
+					switch {
+					case rec.Kind == "mention" && rec.Path != "":
+						vm.Mentions = append(vm.Mentions, rec.Path)
+					case rec.Kind == "skill" && rec.Name != "":
+						vm.Skills = append(vm.Skills, rec.Name)
+					}
+					msgs[m.ID] = vm
+				}
+			}
 		}
 	}
 	runStatus := map[string]string{}
@@ -288,6 +415,30 @@ func timeline(in []wireTurnItem, msgs map[string]ViewMessage, runStatus map[stri
 		case it.Type == "run_interrupt_result":
 			// A stopped turn shows as a divider, not as a step.
 			out = append(out, ViewMessage{ID: it.ID, Role: "interrupt", Text: "Parado por el usuario", CreatedAt: it.StartedAt})
+		case it.Type == "secret_request":
+			// The agent asks for a secret: a card that sends it to T3 without the chat
+			// ever holding it. Title is the label, Text the reason, Detail the placeholder.
+			out = append(out, ViewMessage{ID: it.ID, Role: "secret", Title: str(it.Label), Text: str(it.Reason), Detail: str(it.Placeholder), Status: str(it.SecretStatus), CreatedAt: it.StartedAt})
+		case htmlRenderOf(it) != nil:
+			// A page the agent rendered shows inline, like T3 Code does.
+			out = append(out, ViewMessage{ID: it.ID, Role: "html", CreatedAt: it.StartedAt, HTML: htmlRenderOf(it)})
+		case it.Type == "handoff":
+			// The thread changed model: a divider from the old one to the new one.
+			h := ViewMessage{ID: it.ID, Role: "handoff", CreatedAt: it.StartedAt, To: str(it.ToModel), ToProvider: str(it.ToProviderInstanceID)}
+			var from []string
+			for _, m := range it.FromModelSelections {
+				if m.Model != "" && m.Model != h.To {
+					from = append(from, m.Model)
+				}
+				if h.FromProvider == "" {
+					h.FromProvider = m.InstanceID
+				}
+			}
+			if h.FromProvider == "" && len(it.FromProviderInstanceIDs) > 0 {
+				h.FromProvider = it.FromProviderInstanceIDs[0]
+			}
+			h.From = strings.Join(from, ", ")
+			out = append(out, h)
 		case it.Type == "reasoning":
 			out = append(out, ViewMessage{ID: it.ID, Role: "reasoning", Text: str(it.Text), Streaming: it.Streaming, CreatedAt: it.StartedAt, Status: it.Status})
 		case !hiddenItems[it.Type]:
@@ -367,6 +518,32 @@ type SendInput struct {
 	EffortOption string
 	Effort       string
 	Attachments  []Attachment
+	// Skills and Mentions are the $skills and @paths picked in the composer;
+	// they travel as T3 context records, as T3 Code's composer sends them.
+	Skills   []string
+	Mentions []string
+}
+
+// contextRecords builds T3's message context from picked skills and paths.
+func contextRecords(skills, mentions []string) map[string]any {
+	records := []any{}
+	seen := map[string]bool{}
+	for _, name := range skills {
+		if name = strings.TrimSpace(name); name != "" && !seen["s:"+name] {
+			seen["s:"+name] = true
+			records = append(records, map[string]any{"version": 1, "contextId": newID(), "label": name, "kind": "skill", "name": name})
+		}
+	}
+	for _, path := range mentions {
+		if path = strings.TrimSpace(path); path != "" && !seen["m:"+path] {
+			seen["m:"+path] = true
+			records = append(records, map[string]any{"version": 1, "contextId": newID(), "label": path, "kind": "mention", "path": path})
+		}
+	}
+	if len(records) == 0 {
+		return nil
+	}
+	return map[string]any{"version": 1, "records": records}
 }
 
 // Send dispatches a message with T3's native queue or steer. Steering without an
@@ -392,6 +569,9 @@ func (c Client) Send(ctx context.Context, threadID string, in SendInput) error {
 	cmd := map[string]any{
 		"type": "message.dispatch", "threadId": threadID, "messageId": newID(), "text": in.Text,
 		"attachments": attachments, "createdBy": "user", "creationSource": "web", "dispatchMode": mode,
+	}
+	if ctxRecords := contextRecords(in.Skills, in.Mentions); ctxRecords != nil {
+		cmd["context"] = ctxRecords
 	}
 	if in.Model != "" {
 		sel := map[string]any{"instanceId": in.ProviderID, "model": in.Model}
@@ -480,4 +660,58 @@ func (c Client) ThreadDiff(ctx context.Context, threadID string) (string, error)
 	}
 	err := c.call(ctx, "orchestration.getFullThreadDiff", map[string]any{"threadId": threadID, "toTurnCount": turns, "ignoreWhitespace": false}, &out)
 	return out.Diff, err
+}
+
+// AnswerSecret answers a request_secret card: with a value T3 stores it and
+// hands the agent a one-use reference; with decline the agent goes on without it.
+func (c Client) AnswerSecret(ctx context.Context, threadID, itemID, secret string, decline bool) error {
+	answer := map[string]any{"type": "decline"}
+	if !decline {
+		if strings.TrimSpace(secret) == "" {
+			return errors.New("t3: empty secret")
+		}
+		answer = map[string]any{"type": "save", "secret": strings.TrimSpace(secret)}
+	}
+	return c.call(ctx, "secrets.answerRequest", map[string]any{"threadId": threadID, "turnItemId": itemID, "answer": answer}, nil)
+}
+
+// ProjectEntry is a file or folder of the thread's workspace, for @ mentions.
+type ProjectEntry struct {
+	Path string `json:"path"`
+	Kind string `json:"kind"`
+}
+
+// SearchEntries finds files and folders under cwd whose path matches query.
+func (c Client) SearchEntries(ctx context.Context, cwd, query string) ([]ProjectEntry, error) {
+	var out struct {
+		Entries []ProjectEntry `json:"entries"`
+	}
+	err := c.call(ctx, "projects.searchEntries", map[string]any{"cwd": cwd, "query": query, "limit": 30}, &out)
+	return out.Entries, err
+}
+
+// ThreadCwd is the folder a thread works in: its worktree, else its project's root.
+func (c Client) ThreadCwd(ctx context.Context, threadID string) (string, error) {
+	var p struct {
+		Thread struct {
+			WorktreePath *string `json:"worktreePath"`
+			ProjectID    string  `json:"projectId"`
+		} `json:"thread"`
+	}
+	if err := c.call(ctx, "orchestration.getThreadProjection", map[string]any{"threadId": threadID}, &p); err != nil {
+		return "", err
+	}
+	if w := str(p.Thread.WorktreePath); w != "" {
+		return w, nil
+	}
+	cat, err := c.Catalog(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, pr := range cat.Projects {
+		if pr.ID == p.Thread.ProjectID {
+			return pr.Root, nil
+		}
+	}
+	return "", errors.New("t3: thread folder not found")
 }

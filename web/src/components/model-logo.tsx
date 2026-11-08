@@ -6,7 +6,7 @@ const logo = (name: string) => files[`../assets/model-logos/${name}.svg`];
 // Ordered: the first pattern that matches the provider (driver), then the model, wins.
 const rules: [RegExp, string][] = [
   [/opencode/, "opencode"],
-  [/codex/, "codex"],
+  [/codex/, "openai"],
   [/claude|anthropic|opus|sonnet|haiku|fable/, "claude"],
   [/gpt|openai|o[1-9]\b|o[1-9]-/, "openai"],
   [/gemini|gemma|google/, "gemini"],
@@ -25,7 +25,7 @@ const rules: [RegExp, string][] = [
 
 const match = (s: string) => rules.find(([re]) => re.test(s.toLowerCase()))?.[1];
 
-// ModelLogo shows the logo of the provider running a model (Claude, Codex, OpenCode…);
+// ModelLogo shows the logo of the provider running a model (Claude, OpenAI for Codex, OpenCode…);
 // the model only decides when the provider is unknown. Falls back to the initial.
 export function ModelLogo({ driver, model = "" }: { driver: string; model?: string }) {
   const svg = logo(match(driver) ?? match(model) ?? "");

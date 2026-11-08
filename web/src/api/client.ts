@@ -19,11 +19,11 @@ export type T3InstanceHistory = S["T3InstanceHistory"];
 export type T3DayUsage = S["T3DayUsage"];
 export type T3ThreadContext = S["T3ThreadContext"];
 // Reasoning and tool entries are steps of the model between messages.
-export type T3ViewMessage = { id: string; role: "user" | "assistant" | "system" | "reasoning" | "tool" | "interrupt" | "plan"; text: string; streaming: boolean; created_at: string; title?: string; detail?: string; status?: string };
+export type T3ViewMessage = { id: string; role: "user" | "assistant" | "system" | "reasoning" | "tool" | "interrupt" | "plan" | "handoff" | "html" | "secret"; text: string; streaming: boolean; created_at: string; title?: string; detail?: string; status?: string; attachments?: T3Attachment[]; mentions?: string[]; skills?: string[]; from?: string; to?: string; from_provider?: string; to_provider?: string; html?: { attachment_id: string; title: string; height: number } };
 export type T3QueuedRun = { run_id: string; text: string; position: number; held: boolean };
 export type T3ThreadView = {
   id: string; title: string; provider_id: string; model: string; effort: string; effort_option: string;
-  interaction_mode: string; runtime_mode: string; branch: string; worktree_path: string;
+  interaction_mode: string; runtime_mode: string; branch: string; worktree_path: string; project_id: string;
   active_run_id: string; active_status: string; instance_id: string; interrupted: boolean;
   pull_requests: { repository: string; number: number; url: string }[];
   messages: T3ViewMessage[]; queue: T3QueuedRun[]; pending: T3ThreadContext["pending"];
@@ -31,7 +31,7 @@ export type T3ThreadView = {
   history_cursor: string;
 };
 export type T3Attachment = { type: "image" | "file"; id: string; name: string; mime_type: string; size_bytes: number };
-export type T3SendInput = { text: string; mode: "auto" | "steer"; provider_id?: string; model?: string; effort_option?: string; effort?: string; attachments?: T3Attachment[] };
+export type T3SendInput = { text: string; mode: "auto" | "steer"; provider_id?: string; model?: string; effort_option?: string; effort?: string; attachments?: T3Attachment[]; skills?: string[]; mentions?: string[] };
 export type GithubIssue = S["GithubIssue"];
 export type GithubPull = S["GithubPull"];
 export type GithubDetail = S["GithubDetail"];
@@ -80,9 +80,10 @@ function resource<T extends { id: string }, I>(path: string) {
 }
 
 export type T3Catalog = {
-  providers: { instance_id: string; name: string; driver: string; models: T3CatalogModel[] }[];
+  providers: { instance_id: string; name: string; driver: string; models: T3CatalogModel[]; commands?: T3ComposerEntry[]; skills?: T3ComposerEntry[] }[];
   projects: { id: string; title: string; root: string; repo: string }[];
 };
+export type T3ComposerEntry = { name: string; description?: string };
 export type T3CatalogModel = { slug: string; name: string; effort?: { id: string; values: string[]; default: string } };
 export type IssueDefineInput = { instance_id: string; project_id: string; provider: string; model: string; effort_option?: string; effort?: string };
 export type IssueThread = S["IssueThread"];
@@ -107,7 +108,10 @@ export const api = {
   t3Send: (id: string, text: string) => req<void>("POST", `/t3/threads/${id}/messages`, { text }),
   t3View: (id: string) => req<T3ThreadView>("GET", `/t3/threads/${id}/view`),
   t3History: (id: string, cursor: string) => req<{ messages: T3ViewMessage[]; next_cursor: string; has_more: boolean }>("GET", `/t3/threads/${id}/history?cursor=${encodeURIComponent(cursor)}`),
-  t3Diff: (id: string) => req<{ diff: string }>("GET", `/t3/threads/${id}/diff`),
+  t3Diff: (id: string) => req<{ diff: string; source: "t3" | "git"; branch?: string; worktree?: string; base?: string }>("GET", `/t3/threads/${id}/diff`),
+  githubPullRefs: (repo: string, q: string) => req<{ pulls: { number: number; title: string; state: "open" | "draft" | "merged" | "closed" }[] }>("GET", `/github/repos/${repo}/pull-refs?q=${encodeURIComponent(q)}`),
+  t3Composer: (id: string, provider: string) => req<{ commands: T3ComposerEntry[]; skills: T3ComposerEntry[] }>("GET", `/t3/threads/${id}/composer?provider=${encodeURIComponent(provider)}`),
+  t3Entries: (id: string, q: string) => req<{ entries: { path: string; kind: string }[] }>("GET", `/t3/threads/${id}/entries?q=${encodeURIComponent(q)}`),
   t3Dispatch: (id: string, body: T3SendInput) => req<void>("POST", `/t3/threads/${id}/send`, body),
   t3QueueEdit: (id: string, run: string, text: string) => req<void>("PATCH", `/t3/threads/${id}/queue/${run}`, { text }),
   t3QueueReorder: (id: string, run: string, before: string) => req<void>("POST", `/t3/threads/${id}/queue/${run}/reorder`, { before_run_id: before }),
@@ -139,6 +143,8 @@ export const api = {
   plans: (id: string) => req<ItemPlan[]>("GET", `/items/${id}/plans`),
   createPlan: (id: string, body: { sections: PlanSections; open_questions: string[] }) => req<ItemPlan>("POST", `/items/${id}/plans`, body),
   acceptPlan: (id: string) => req<{ item: Item; plan: ItemPlan }>("POST", `/items/${id}/plan/accept`),
+  t3AnswerSecret: (threadId: string, itemId: string, body: { secret: string } | { decline: true }) => req<void>("POST", `/t3/threads/${threadId}/secrets/${encodeURIComponent(itemId)}`, body),
+  t3CreateThread: (body: { instance_id: string; project_id: string; provider: string; model: string; effort_option?: string; effort?: string; text?: string }) => req<{ thread_id: string }>("POST", "/t3/threads", body),
   t3Launch: (itemId: string, body: T3LaunchInput) => req<{ thread_id: string }>("POST", `/items/${itemId}/launch`, body),
   resolveConflicts: (repo: string, number: number, body: IssueDefineInput) => req<{ thread_id: string }>("POST", `/github/repos/${repo}/pulls/${number}/resolve-conflicts`, body),
   issueDefine: (repo: string, number: number, body: IssueDefineInput) => req<{ thread_id: string }>("POST", `/github/repos/${repo}/issues/${number}/define`, body),

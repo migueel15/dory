@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"github.com/jackc/pgx/v5"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -191,6 +191,10 @@ func (m *Manager) Mount(mux *http.ServeMux) {
 		}
 		reply(w, map[string]any{"settings": raw, "public_key": m.public})
 	})
+	events := map[string]bool{"thread_finished": true, "thread_attention": true}
+	for _, s := range []string{"inbox", "triaged", "ready", "in_progress", "validating", "blocked", "done", "cancelled"} {
+		events["item_"+s] = true
+	}
 	mux.HandleFunc("PUT /api/notifications/preferences", func(w http.ResponseWriter, r *http.Request) {
 		var settings map[string]map[string]bool
 		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&settings) != nil {
@@ -198,7 +202,7 @@ func (m *Manager) Mount(mux *http.ServeMux) {
 			return
 		}
 		for k, s := range settings {
-			if k != "item_ready" && k != "item_blocked" && k != "thread_finished" && k != "thread_attention" {
+			if !events[k] {
 				http.Error(w, "invalid event", 400)
 				return
 			}
@@ -273,9 +277,9 @@ func (m *Manager) deliver(ctx context.Context) error {
 		return err
 	}
 	type job struct {
-		id         int64
-		endpoint   string
-		raw        []byte
+		id               int64
+		endpoint         string
+		raw              []byte
 		title, body, url string
 	}
 	jobs := []job{}

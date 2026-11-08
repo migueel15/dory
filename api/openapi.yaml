@@ -1065,7 +1065,7 @@ paths:
   "/t3/threads/{id}/diff":
     get:
       operationId: "getT3ThreadDiff"
-      summary: "Every change the thread made in its worktree, from T3 checkpoints"
+      summary: "Every change the thread made in its worktree: Dory diffs it with git when an item of the thread names a branch checked out on this machine, else T3 checkpoints"
       parameters:
         - {name: "id", in: "path", required: true, schema: {type: "string"}}
       responses:
@@ -1073,7 +1073,99 @@ paths:
           description: "Unified diff, empty when no turn changed files"
           content:
             application/json:
-              schema: {type: "object", required: ["diff"], properties: {diff: {type: "string"}}}
+              schema: {type: "object", required: ["diff", "source"], properties: {diff: {type: "string"}, source: {type: "string", enum: ["t3", "git"]}, branch: {type: "string"}, worktree: {type: "string"}, base: {type: "string"}}}
+  "/t3/threads":
+    post:
+      operationId: "createT3Thread"
+      summary: "Start a free thread with no item: text starts the first turn, without it the chat opens empty; an item can be linked later"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              required: ["instance_id", "project_id", "provider", "model"]
+              properties:
+                instance_id: {type: "string"}
+                project_id: {type: "string"}
+                provider: {type: "string"}
+                model: {type: "string"}
+                effort_option: {type: "string"}
+                effort: {type: "string"}
+                text: {type: "string"}
+      responses:
+        "201":
+          description: "The new thread"
+          content:
+            application/json:
+              schema: {type: "object", required: ["thread_id"], properties: {thread_id: {type: "string"}}}
+  "/t3/threads/{id}/secrets/{item}":
+    post:
+      operationId: "answerT3SecretRequest"
+      summary: "Answer a request_secret card: the secret goes straight to T3 (never logged or stored by Dory), or decline"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+        - {name: "item", in: "path", required: true, schema: {type: "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: "object", properties: {secret: {type: "string"}, decline: {type: "boolean"}}}
+      responses:
+        "204":
+          description: "Answered"
+  "/github/repos/{owner}/{repo}/pull-refs":
+    get:
+      operationId: "searchGithubPullRefs"
+      summary: "Pull requests of a repository in every state (open, draft, merged, closed), newest first, for # references"
+      parameters:
+        - {name: "owner", in: "path", required: true, schema: {type: "string"}}
+        - {name: "repo", in: "path", required: true, schema: {type: "string"}}
+        - {name: "q", in: "query", required: false, schema: {type: "string"}}
+      responses:
+        "200":
+          description: "Matching pull requests"
+          content:
+            application/json:
+              schema: {type: "object", required: ["pulls"], properties: {pulls: {type: array, items: {type: object, required: [number, title, state], properties: {number: {type: integer}, title: {type: string}, state: {type: string, enum: [open, draft, merged, closed]}}}}}}
+  "/t3/threads/{id}/composer":
+    get:
+      operationId: "getT3ThreadComposer"
+      summary: "Slash commands and skills for the composer: the repository's own (T3's scan of the thread folder) first, then the provider's global ones"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+        - {name: "provider", in: "query", required: true, schema: {type: "string"}}
+      responses:
+        "200":
+          description: "Commands and skills"
+          content:
+            application/json:
+              schema: {type: object, required: [commands, skills], properties: {commands: {type: array, items: {type: object, required: [name], properties: {name: {type: string}, description: {type: string}}}}, skills: {type: array, items: {type: object, required: [name], properties: {name: {type: string}, description: {type: string}}}}}}
+  "/t3/threads/{id}/entries":
+    get:
+      operationId: "searchT3ThreadEntries"
+      summary: "Files and folders of the thread's workspace (Dory's git worktree first, else T3's folder) for @ mentions"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+        - {name: "q", in: "query", required: false, schema: {type: "string"}}
+      responses:
+        "200":
+          description: "Matching entries"
+          content:
+            application/json:
+              schema: {type: "object", required: ["entries"], properties: {entries: {type: array, items: {type: object, required: [path, kind], properties: {path: {type: string}, kind: {type: string}}}}}}
+  "/t3/threads/{id}/attachments/{aid}":
+    get:
+      operationId: "getT3ThreadAttachment"
+      summary: "A file sent with a message of the thread, proxied from T3 inline for previews; name and mime are optional hints"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+        - {name: "aid", in: "path", required: true, schema: {type: "string"}}
+        - {name: "name", in: "query", required: false, schema: {type: "string"}}
+        - {name: "mime", in: "query", required: false, schema: {type: "string"}}
+      responses:
+        "200":
+          description: "The file bytes with their content type"
   "/t3/threads/{id}/send":
     post:
       operationId: "sendT3ThreadTurn"
@@ -1092,6 +1184,8 @@ paths:
                 mode: {type: "string", enum: ["auto", "steer"]}
                 provider_id: {type: "string"}
                 model: {type: "string"}
+                skills: {type: "array", items: {type: "string"}, description: "$skills picked in the composer, sent as T3 context records"}
+                mentions: {type: "array", items: {type: "string"}, description: "@paths picked in the composer, sent as T3 context records"}
                 effort_option: {type: "string"}
                 effort: {type: "string"}
                 attachments: {type: "array", items: {$ref: "#/components/schemas/T3Attachment"}}

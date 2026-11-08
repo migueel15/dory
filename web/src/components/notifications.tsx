@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { ArrowLeft, Bell, Check, GearSix, Trash, X } from "@phosphor-icons/react";
 import { createPortal } from "react-dom";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -26,7 +26,13 @@ const external = (url: string) => {
 };
 type Channel = "enabled" | "bell" | "toast" | "push";
 type Settings = Record<string, Partial<Record<Channel, boolean>>>;
-const events = { item_ready: "Item listo", item_blocked: "Item bloqueado", thread_finished: "Hilo finalizado", thread_attention: "Hilo requiere atención" };
+const events = {
+  thread_finished: "Hilo finalizado", thread_attention: "Hilo requiere atención",
+  item_inbox: "Item en bandeja", item_triaged: "Item clasificado", item_ready: "Item listo", item_in_progress: "Item en curso",
+  item_validating: "Item en validación", item_blocked: "Item bloqueado", item_done: "Item hecho", item_cancelled: "Item cancelado",
+};
+// Only these events start enabled; the other item statuses are opt-in (same rule as emit_notification).
+const onByDefault = new Set(["item_ready", "item_blocked", "thread_finished", "thread_attention"]);
 function ago(iso: string) {
   const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
   if (s < 60) return "ahora";
@@ -151,7 +157,7 @@ export function Notifications() {
                   <tbody className="divide-y divide-slate-100 dark:divide-border/60">
                     {Object.entries(events).map(([kind, label]) => <tr key={kind}>
                       <td className="py-2 pr-2">{label}</td>
-                      {(["enabled", "bell", "toast", "push"] as Channel[]).map(c => <td key={c} className="py-2 text-center"><input type="checkbox" aria-label={`${label}: ${channelLabel[c]}`} className="size-4 accent-slate-900 dark:accent-accent" disabled={busy || !prefs.data} checked={prefs.data?.settings[kind]?.[c] ?? true} onChange={e => { const settings = prefs.data!.settings; void act(() => request("/preferences", "PUT", { ...settings, [kind]: { ...settings[kind], [c]: e.target.checked } })); }} /></td>)}
+                      {(["enabled", "bell", "toast", "push"] as Channel[]).map(c => <td key={c} className="py-2 text-center"><input type="checkbox" aria-label={`${label}: ${channelLabel[c]}`} className="size-4 accent-slate-900 dark:accent-accent" disabled={busy || !prefs.data} checked={prefs.data?.settings[kind]?.[c] ?? (c !== "enabled" || onByDefault.has(kind))} onChange={e => { const settings = prefs.data!.settings; void act(() => request("/preferences", "PUT", { ...settings, [kind]: { ...settings[kind], [c]: e.target.checked } })); }} /></td>)}
                     </tr>)}
                   </tbody>
                 </table>
@@ -196,7 +202,7 @@ export function NotificationItem() {
   return <ItemForm item={item.data[0]} onClose={() => { window.location.href = "/inbox"; }} />;
 }
 
-// ToastStack shows in-app notices bottom-center. Collapsed, the newest sits on top and the
+// ToastStack shows in-app notices top-right, stacking downwards. Collapsed, the newest sits on top and the
 // older ones peek out above it; a click expands the stack upwards to show all of them.
 function ToastStack({ toasts, expanded, setExpanded, onOpen, onClose }: { toasts: Notice[]; expanded: boolean; setExpanded: (v: boolean) => void; onOpen: (n: Notice) => void; onClose: (id: number) => void }) {
   const refs = useRef(new Map<number, HTMLDivElement>());
@@ -207,19 +213,42 @@ function ToastStack({ toasts, expanded, setExpanded, onOpen, onClose }: { toasts
     setHeights((old) => (JSON.stringify(old) === JSON.stringify(next) ? old : next));
   }, [toasts]);
   const stacked = toasts.length > 1 && !expanded;
+  // Swipe to dismiss: sideways or upwards with finger or mouse. A drag never opens the notice.
+  const [drag, setDrag] = useState<{ id: number; x: number; y: number; dx: number; dy: number } | null>(null);
+  const dragged = useRef(false);
+  const swipe = (n: Notice) => ({
+    onPointerDown: (e: RPointerEvent) => {
+      if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+      dragged.current = false;
+      setDrag({ id: n.id, x: e.clientX, y: e.clientY, dx: 0, dy: 0 });
+    },
+    onPointerMove: (e: RPointerEvent) => {
+      if (drag?.id !== n.id) return;
+      const dx = e.clientX - drag.x, dy = Math.min(0, e.clientY - drag.y);
+      if (!dragged.current && Math.hypot(dx, dy) > 6) { dragged.current = true; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); }
+      if (dragged.current) setDrag({ ...drag, dx, dy });
+    },
+    onPointerUp: () => {
+      if (drag?.id !== n.id) return;
+      if (Math.abs(drag.dx) > 80 || drag.dy < -40) onClose(n.id);
+      setDrag(null);
+    },
+    onPointerCancel: () => setDrag(null),
+  });
   let offset = 0;
   return (
     <div aria-live="polite" onMouseLeave={() => setExpanded(false)}
-      className="fixed bottom-4 left-1/2 z-[110] w-96 max-w-[calc(100vw-2rem)] -translate-x-1/2"
+      className="fixed right-4 top-4 z-[110] w-96 max-w-[calc(100vw-2rem)]"
       style={{ height: toasts.length ? (expanded ? toasts.reduce((h, n) => h + (heights[n.id] ?? 72) + 8, -8) : (heights[toasts[0]?.id] ?? 72) + Math.min(toasts.length - 1, 3) * 8) : 0 }}>
       {toasts.map((n, i) => {
         const y = expanded ? offset : i * 8;
         offset += (heights[n.id] ?? 72) + 8;
         return (
           <div key={n.id} ref={(el) => { if (el) refs.current.set(n.id, el); else refs.current.delete(n.id); }}
-            onClickCapture={(e) => { if (stacked && !(e.target as HTMLElement).closest("button")) { e.preventDefault(); e.stopPropagation(); setExpanded(true); } }}
-            style={{ transform: `translateY(-${y}px) scale(${expanded ? 1 : 1 - i * 0.05})`, zIndex: 10 - i, opacity: !expanded && i > 2 ? 0 : 1 }}
-            className="toast-in absolute inset-x-0 bottom-0 origin-bottom rounded-lg border border-slate-200 bg-white p-3 shadow-lg transition-all duration-300 ease-out motion-reduce:transition-none dark:border-border dark:bg-surface">
+            {...swipe(n)}
+            onClickCapture={(e) => { if (dragged.current) { e.preventDefault(); e.stopPropagation(); dragged.current = false; return; } if (stacked && !(e.target as HTMLElement).closest("button")) { e.preventDefault(); e.stopPropagation(); setExpanded(true); } }}
+            style={(() => { const d = drag?.id === n.id ? drag : null; return { transform: `translate(${d?.dx ?? 0}px, ${y + (d?.dy ?? 0)}px) scale(${expanded ? 1 : 1 - i * 0.05})`, zIndex: 10 - i, opacity: !expanded && i > 2 ? 0 : d ? Math.max(0.2, 1 - Math.max(Math.abs(d.dx) / 200, -d.dy / 100)) : 1, transition: d ? "none" : undefined, touchAction: "none" }; })()}
+            className="toast-in absolute inset-x-0 top-0 origin-top rounded-lg border border-slate-200 bg-white p-3 shadow-lg transition-all duration-300 ease-out motion-reduce:transition-none dark:border-border dark:bg-surface">
             <a href={href(n.url)} {...external(href(n.url))} onClick={() => onOpen(n)} className="block pr-6"><span className="block text-sm font-semibold">{n.title}</span>{n.body && <span className={`block break-words text-sm ${stacked && i > 0 ? "line-clamp-1" : ""}`}>{n.body}</span>}</a>
             <button className="absolute right-1 top-1 px-2" aria-label="Cerrar aviso" onClick={() => onClose(n.id)}><X weight="regular" aria-hidden="true" className="size-4" /></button>
             {stacked && i === 0 && <span className="mt-1 block text-xs text-slate-500 dark:text-muted">+{toasts.length - 1} más · clic para ver</span>}
