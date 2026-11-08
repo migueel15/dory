@@ -8,7 +8,9 @@ import { Input } from "./ui";
 
 // ProjectSwitcher picks the global project. It looks like a sidebar link and opens a
 // searchable menu; "compact" fits the phone top bar.
-export function ProjectSwitcher({ compact = false }: { compact?: boolean }) {
+// folded: the sidebar is folded to icons. As it narrows the name truncates away,
+// then the caret is clipped, and the icon stays in the icon column.
+export function ProjectSwitcher({ compact = false, folded = false }: { compact?: boolean; folded?: boolean }) {
   const project = useProject();
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const current = projects.data?.find((p) => p.id === project);
@@ -21,6 +23,9 @@ export function ProjectSwitcher({ compact = false }: { compact?: boolean }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const name = current?.name ?? "Todos los proyectos";
+  // Folded, the name is hidden: an instant tooltip to the right says which project is on.
+  const [tip, setTip] = useState<CSSProperties | null>(null);
+  const showTip = () => { const t = trigger.current?.getBoundingClientRect(); if (folded && t && !open) setTip({ left: t.right + 8, top: t.top + t.height / 2 }); };
 
   useLayoutEffect(() => {
     if (!open || !trigger.current) return;
@@ -44,8 +49,9 @@ export function ProjectSwitcher({ compact = false }: { compact?: boolean }) {
   const pick = (id: string) => { setProject(id); setOpen(false); };
 
   const button = (
-    <button ref={trigger} type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)} title="Cambiar de proyecto"
-      className={`flex w-full items-center rounded text-left ${compact ? "min-h-11 px-2" : "px-2 py-1"} text-sm font-medium text-slate-800 hover:bg-slate-200 dark:text-text dark:hover:bg-raised ${open ? "bg-slate-200 dark:bg-raised" : ""}`}>
+    <button ref={trigger} type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => { setTip(null); setOpen(!open); }} title={folded ? undefined : "Cambiar de proyecto"}
+      onMouseEnter={showTip} onMouseLeave={() => setTip(null)} onFocus={showTip} onBlur={() => setTip(null)}
+      className={`flex w-full items-center overflow-hidden rounded text-left ${compact ? "min-h-11 px-2" : "h-8 px-[7px]"} text-sm font-medium text-slate-800 hover:bg-slate-200 dark:text-text dark:hover:bg-raised ${open ? "bg-slate-200 dark:bg-raised" : ""}`}>
       {current ? <FolderSimple weight="duotone" aria-hidden="true" className="mr-2.5 size-[18px] shrink-0 opacity-80" /> : <SquaresFour weight="duotone" aria-hidden="true" className="mr-2.5 size-[18px] shrink-0 opacity-80" />}
       <span className="min-w-0 flex-1 truncate">{name}</span>
       <CaretUpDown weight="regular" aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
@@ -55,6 +61,13 @@ export function ProjectSwitcher({ compact = false }: { compact?: boolean }) {
   return (
     <>
       {button}
+      {tip && folded && !open && createPortal(
+        <div role="tooltip" style={tip} className="notif-in pointer-events-none fixed z-[100] -translate-y-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-xs text-white shadow-lg dark:bg-raised dark:text-text">
+          <div className="text-[10px] uppercase tracking-wide opacity-60">Proyecto</div>
+          <div className="font-medium">{name}</div>
+        </div>,
+        document.body,
+      )}
       {open && createPortal(
         <div ref={panel} style={pos} className="notif-in fixed z-[100] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-border dark:bg-surface">
           <div className="relative border-b border-slate-200 p-1.5 dark:border-border">

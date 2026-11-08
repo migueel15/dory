@@ -48,7 +48,11 @@ export function useThreadLive(threadId: string | undefined, queryKey: unknown[])
   useEffect(() => {
     if (!threadId) return;
     const source = new EventSource(`/api/t3/threads/${encodeURIComponent(threadId)}/stream`, { withCredentials: true });
-    source.addEventListener("thread", () => qc.invalidateQueries({ queryKey: JSON.parse(key) }));
+    const refresh = () => qc.invalidateQueries({ queryKey: JSON.parse(key) });
+    source.addEventListener("thread", refresh);
+    // The server skips the first T3 snapshot of each connection, so whatever changed
+    // while the stream was down (T3 dropped it, the browser reconnected) is lost: reload on every (re)open.
+    source.addEventListener("open", refresh);
     return () => source.close();
   }, [threadId, key, qc]);
 }

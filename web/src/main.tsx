@@ -1,6 +1,7 @@
-import { ThreadOpen, ThreadView } from "./pages/thread";
-import { StrictMode, useEffect, useRef, useState } from "react";
-import { Brain, ChartBar, ChatsCircle, FolderSimple, Gear, GithubLogo, HardDrives, House, IconContext, Kanban, List, Moon, Robot, SignOut, Sun, Tray, BellRinging, X } from "@phosphor-icons/react";
+import { ThreadView } from "./pages/thread";
+import { Threads } from "./pages/threads";
+import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Brain, ChartBar, ChatsCircle, FolderSimple, Gear, GithubLogo, HardDrives, House, IconContext, Kanban, List, Moon, Robot, SidebarSimple, SignOut, Sun, Tray, BellRinging, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
@@ -104,6 +105,13 @@ function Layout() {
     return () => mq.removeEventListener("change", on);
   }, []);
   const drawer = useRef<HTMLDialogElement>(null);
+  // The desktop sidebar folds to icons; the choice is remembered in this browser.
+  const [folded, setFolded] = useState(() => { try { return localStorage.getItem("dory.sidebar-folded") === "1"; } catch { return false; } });
+  const fold = (v: boolean) => {
+    setFolded(v);
+    try { localStorage.setItem("dory.sidebar-folded", v ? "1" : "0"); } catch { /* per-browser only */ }
+  };
+
   useEffect(() => { setMenu(false); }, [path]);
   useEffect(() => {
     if (!menu || !me.data) return;
@@ -124,47 +132,57 @@ function Layout() {
   }, [menu, !!me.data]);
   if (me.isPending) return null;
   if (!me.data) return <Login />;
-  const ico = "mr-2.5 size-[18px] shrink-0 text-slate-900 dark:text-accent-text [.active_&]:text-white";
-  const link = "flex min-h-11 shrink-0 items-center rounded px-3 text-sm font-medium text-slate-800 dark:text-text sm:min-h-0 sm:px-2 sm:py-1 hover:bg-slate-200 dark:hover:bg-raised [&.active]:bg-slate-900 dark:[&.active]:bg-accent [&.active]:text-white dark:[&.active]:text-white";
+  const ico = "size-[18px] shrink-0";
+  // On desktop a link is 32 px tall with the icon 7 px in, so folded (32 px wide)
+  // the selected link is a square and the icon never moves.
+  const link = "flex min-h-11 shrink-0 items-center gap-2.5 overflow-hidden rounded px-3 text-sm font-medium text-slate-800 dark:text-text sm:h-8 sm:min-h-0 sm:px-[7px] sm:py-0 hover:bg-slate-200 dark:hover:bg-raised [&.active]:bg-slate-900 dark:[&.active]:bg-accent [&.active]:text-white dark:[&.active]:text-white";
   // Group headings share the links' left padding and a rule above, so each section reads as a block.
-  const group = (name: string) => <span className="mt-3 mb-1 border-t border-slate-200 px-3 pt-3 text-xs font-semibold uppercase tracking-wider text-slate-400 first:mt-1 first:border-t-0 first:pt-0 dark:border-border dark:text-muted sm:px-2">{name}</span>;
-  const links = (
+  // A section heading is a divider plus its name. Folded, the name fades and its
+  // row collapses smoothly, so the links below move up and only the divider stays.
+  const group = (name: string, small = false) => (
+    <div className={`border-t border-slate-200 transition-[margin,padding] duration-200 first:mt-1 first:border-t-0 first:pt-0 dark:border-border ${small ? "mt-2 mb-1 pt-2" : "mt-3 mb-1 pt-3"}`}>
+      <div className={`grid transition-[grid-template-rows,opacity] duration-200 ${small ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]"}`}>
+        <span className="overflow-hidden whitespace-nowrap px-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-muted sm:px-[7px]">{name}</span>
+      </div>
+    </div>
+  );
+  // small: the folded sidebar shows icons only, with each name as a tooltip.
+  const navLinks = (small = false) => (
     <>
-      {group("Trabajo")}
-      <Link to="/" activeOptions={{ exact: true }} className={link}><House weight="duotone" className={ico} aria-hidden="true" />Inicio</Link>
-      <Link to="/inbox" className={link}><Tray weight="duotone" className={ico} aria-hidden="true" />Inbox</Link>
-      <Link to="/projects" className={link}><FolderSimple weight="duotone" className={ico} aria-hidden="true" />Proyectos</Link>
-      {group("Agentes")}
-      <Link to="/tasks" className={link}><Kanban weight="duotone" className={ico} aria-hidden="true" />Tareas</Link>
-      <Link to="/attention" className={link}><BellRinging weight="duotone" className={ico} aria-hidden="true" />Atención{attention > 0 && <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-white">{attention}</span>}</Link>
-      <Link to="/jobs" className={link}><Robot weight="duotone" className={ico} aria-hidden="true" />Trabajos</Link>
-      <Link to="/threads" className={link}><ChatsCircle weight="duotone" className={ico} aria-hidden="true" />Hilos</Link>
-      <Link to="/usage" className={link}><ChartBar weight="duotone" className={ico} aria-hidden="true" />Uso</Link>
-      {group("Sistema")}
-      <Link to="/github" className={link}><GithubLogo weight="duotone" className={ico} aria-hidden="true" />GitHub</Link>
-      <Link to="/environments" className={link}><HardDrives weight="duotone" className={ico} aria-hidden="true" />Entornos</Link>
-      <Link to="/memories" className={link}><Brain weight="duotone" className={ico} aria-hidden="true" />Memorias</Link>
+      {group("Trabajo", small)}
+      <Link to="/" activeOptions={{ exact: true }} className={link} title={small ? "Inicio" : undefined}><House weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Inicio</span></Link>
+      <Link to="/inbox" className={link} title={small ? "Inbox" : undefined}><Tray weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Inbox</span></Link>
+      <Link to="/projects" className={link} title={small ? "Proyectos" : undefined}><FolderSimple weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Proyectos</span></Link>
+      {group("Agentes", small)}
+      <Link to="/tasks" className={link} title={small ? "Tareas" : undefined}><Kanban weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Tareas</span></Link>
+      <Link to="/attention" className={`${link} relative`} title={small ? "Atención" : undefined}><BellRinging weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Atención</span>{attention > 0 && (small ? <span className="absolute right-1.5 top-1 size-2 rounded-full bg-amber-500" /> : <span className={`ml-1.5 rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-white transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>{attention}</span>)}</Link>
+      <Link to="/jobs" className={link} title={small ? "Trabajos" : undefined}><Robot weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Trabajos</span></Link>
+      <Link to="/threads" className={link} title={small ? "Hilos" : undefined}><ChatsCircle weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Hilos</span></Link>
+      <Link to="/usage" className={link} title={small ? "Uso" : undefined}><ChartBar weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Uso</span></Link>
+      {group("Sistema", small)}
+      <Link to="/github" className={link} title={small ? "GitHub" : undefined}><GithubLogo weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>GitHub</span></Link>
+      <Link to="/environments" className={link} title={small ? "Entornos" : undefined}><HardDrives weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Entornos</span></Link>
+      <Link to="/memories" className={link} title={small ? "Memorias" : undefined}><Brain weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Memorias</span></Link>
     </>
   );
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex sm:h-screen sm:bg-white sm:dark:bg-surface">
-      <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col bg-white dark:bg-surface sm:flex">
-        <div className="flex items-center pr-2"><Link to="/" className="flex items-center gap-2 px-4 py-3 font-bold">Dory<DevBadge /></Link><CommandsButton /></div>
-        <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4">{links}</nav>
-        <div className="shrink-0 px-2 pb-2"><ProjectSwitcher /></div>
-        <div className="shrink-0 space-y-2 border-t border-slate-200 p-3 dark:border-border">
-          <div className="flex items-center gap-1 [&>*]:flex [&>*]:flex-1 [&>*]:items-center [&>*]:justify-center">
-            {desktop && <Notifications />}
-            <ThemeToggle />
-            <SettingsLink />
-            <UsageQuick />
+      <aside className={`sticky top-0 hidden h-screen shrink-0 flex-col overflow-hidden bg-white transition-[width] duration-200 ease-out dark:bg-surface sm:flex ${folded ? "w-14" : "w-56"}`}>
+        {/* The toggle sits first, centered on the icon column, so it never moves. */}
+        <div className="flex w-56 items-center pl-3 pr-2">
+          <button type="button" onClick={() => fold(!folded)} aria-label={folded ? "Expandir barra lateral" : "Plegar barra lateral"} title={folded ? "Expandir barra lateral" : "Plegar barra lateral"}
+            className="grid size-8 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white">
+            <SidebarSimple weight="regular" className="size-[18px]" aria-hidden="true" />
+          </button>
+          <div className={`flex min-w-0 flex-1 items-center transition-opacity duration-150 ${folded ? "pointer-events-none opacity-0" : ""}`}>
+            <Link to="/" tabIndex={folded ? -1 : undefined} className="flex items-center gap-2 px-2 py-3 font-bold">Dory<DevBadge /></Link>
+            <div className="ml-auto"><CommandsButton /></div>
           </div>
-          <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 py-1 pl-3 pr-1 dark:border-border">
-            <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
-            <Button variant="bare" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => logout.mutate()}><SignOut weight="regular" className="size-5" aria-hidden="true" /></Button>
-          </div>
-          <VersionBadge />
         </div>
+        <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-3 pb-4">{navLinks(folded)}</nav>
+        <div className="shrink-0 px-3 pb-2"><ProjectSwitcher folded={folded} /></div>
+        <SidebarFooter folded={folded} username={me.data.username} onLogout={() => logout.mutate()}
+          controls={[desktop && <Notifications key="n" />, <ThemeToggle key="t" />, <SettingsLink key="s" />, <UsageQuick key="u" />].filter(Boolean) as React.ReactElement[]} />
       </aside>
       {/* On desktop the current view is a card framed by the sidebar background. */}
       <div className="min-w-0 flex-1 sm:my-2 sm:mr-2 sm:overflow-auto sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">
@@ -205,7 +223,7 @@ function Layout() {
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4">
           <nav aria-label="Navegación móvil" className="flex flex-col gap-1" onClick={(event) => {
             if ((event.target as HTMLElement).closest("a")) setMenu(false);
-          }}>{links}</nav>
+          }}>{navLinks()}</nav>
         </div>
         <div className="shrink-0 space-y-3 border-t border-slate-200 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-border">
           {/* Theme, settings and usage live here on phones so the top bar keeps room for the project. */}
@@ -237,7 +255,7 @@ const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/github", component: Github }),
   createRoute({ getParentRoute: () => root, path: "/github/$owner/$repo/$kind/$number", component: GithubView }),
   createRoute({ getParentRoute: () => root, path: "/tasks", component: Tasks }),
-  createRoute({ getParentRoute: () => root, path: "/threads", component: ThreadOpen }),
+  createRoute({ getParentRoute: () => root, path: "/threads", component: Threads }),
   createRoute({ getParentRoute: () => root, path: "/threads/$threadId", component: ThreadView }),
   createRoute({ getParentRoute: () => root, path: "/projects", component: Projects }),
   createRoute({ getParentRoute: () => root, path: "/projects/$id", component: ProjectDetail }),
@@ -267,3 +285,61 @@ function DevBadge() {
   if (!import.meta.env.DEV) return null;
   return <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">dev</span>;
 }
+
+// SidebarFooter follows the sidebar width as it folds, so nothing pops: the
+// controls fold into a column one by one (theme under notifications, then
+// settings, then usage), and the user card narrows until only the sign-out
+// button is left, when its frame fades out.
+function SidebarFooter({ folded, username, onLogout, controls }: { folded: boolean; username: string; onLogout: () => void; controls: React.ReactElement[] }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(200);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // The layout is a pure function of the measured width, recomputed on every
+  // frame of the fold, with no CSS transition of its own: nothing can lag behind
+  // the bar. t runs from 1 (open) to 0 (folded). The row of controls stays on the
+  // bottom line: its leftmost control rises into a stack that grows upward
+  // (notifications first, then theme, then settings), the rest of the row slides
+  // left one place each time, and usage ends at the bottom without moving up.
+  // Every rise is one step, so no control travels further than another.
+  const cell = 32, gap = 4, n = controls.length, full = 200, row = cell + gap;
+  const t = Math.max(0, Math.min(1, (width - cell) / (full - cell)));
+  const rise = (i: number) => (i >= n - 1 ? 0 : Math.max(0, Math.min(1, (1 - i / (n - 1) - t) * (n - 1))));
+  const base = ((full / n - cell) / 2) * t;
+  // k: a control's slot in the bottom row (continuous); risen ones leave it.
+  let sum = 0;
+  const k = controls.map((_, i) => { sum += rise(i); return i - sum; });
+  const last = k[n - 1];
+  const step = last > 0.001 ? (width - 2 * base - cell) / last : 0;
+  const pos = (i: number) => {
+    let up = 0;
+    for (let j = i; j < n - 1; j++) up += rise(j); // risen controls are pushed up by each one rising after them
+    return { x: base + Math.max(0, k[i]) * step, y: -up * row };
+  };
+  const height = cell + controls.reduce((h, _, i) => h + rise(i), 0) * row;
+  const narrow = width < 56; // only the sign-out button fits
+  return (
+    <div className="shrink-0 space-y-2 border-t border-slate-200 px-3 py-3 dark:border-border">
+      <div ref={box} className="sidebar-track relative" style={{ height }}>
+        {controls.map((c, i) => {
+          const { x, y } = pos(i);
+          return (
+            <div key={c.key} className="sidebar-track absolute bottom-0 left-0 grid size-8 place-items-center [&>*]:!min-h-0 [&>*]:!min-w-0 [&>*]:!size-8 [&>*]:!p-0 [&>*]:grid [&>*]:place-items-center"
+              style={{ transform: `translate(${x}px, ${y}px)` }}>{c}</div>
+          );
+        })}
+      </div>
+      <div className={`flex items-center justify-end gap-2 overflow-hidden rounded-md border py-1 transition-[border-color,padding] duration-200 ${narrow ? "border-transparent pl-0 pr-0" : "border-slate-200 pl-3 pr-1 dark:border-border"}`}>
+        <span className={`min-w-0 flex-1 truncate whitespace-nowrap text-sm text-slate-500 transition-opacity duration-150 dark:text-muted ${width < 110 ? "opacity-0" : ""}`}>{username}</span>
+        <Button variant="bare" aria-label="Cerrar sesión" title={`Cerrar sesión (${username})`} onClick={onLogout} className="grid size-8 shrink-0 place-items-center !p-0"><SignOut weight="regular" className="size-5" aria-hidden="true" /></Button>
+      </div>
+      <div className={`grid transition-[grid-template-rows,opacity] duration-200 ${folded ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]"}`}><div className="overflow-hidden whitespace-nowrap"><VersionBadge /></div></div>
+    </div>
+  );
+}
+

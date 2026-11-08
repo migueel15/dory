@@ -84,6 +84,8 @@ export function Usage() {
   const envName = (id: string) => envs.data?.find((e) => e.id === id)?.name ?? "";
   const qc = useQueryClient();
   const refresh = useMutation({ mutationFn: api.t3UsageRefresh, onSuccess: (data) => qc.setQueryData(["t3-usage"], data) });
+  // Opening the page asks the instances for fresh limits; the sidebar dial shares the same cache.
+  useEffect(() => { refresh.mutate(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const { mutate } = refresh;
   useEffect(() => { mutate(); }, [mutate]);
   const sorted = [...(usage.data ?? [])].sort((a, b) => envName(a.environment_id).localeCompare(envName(b.environment_id)) || a.instance_id.localeCompare(b.instance_id));

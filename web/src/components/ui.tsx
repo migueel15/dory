@@ -256,3 +256,22 @@ export const uuid = () =>
 export const csv = (s: string) => s.split(",").map((t) => t.trim()).filter(Boolean);
 export const errMsg = (e: unknown) => (e instanceof Error ? e.message : "");
 export const ErrorText = ({ error }: { error: unknown }) => (error ? <p className="text-sm text-red-600 dark:text-red-400">{errMsg(error)}</p> : null);
+
+// copyText copies to the clipboard. The Clipboard API exists only on HTTPS or
+// localhost, so plain HTTP (the dev preview, LAN access) falls back to execCommand.
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; }
+  } catch { /* fall back below */ }
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none";
+  // Inside a modal dialog the textarea must live in it to be focusable.
+  (document.activeElement?.closest("dialog") ?? document.body).appendChild(area);
+  area.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch { ok = false; }
+  area.remove();
+  return ok;
+}
