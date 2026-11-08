@@ -64,3 +64,34 @@ func (c Client) Upload(ctx context.Context, name, mimeType string, data []byte) 
 func (a Attachment) wire() map[string]any {
 	return map[string]any{"type": a.Type, "id": a.ID, "name": a.Name, "mimeType": a.MimeType, "sizeBytes": a.SizeBytes}
 }
+
+// Open streams an attachment from T3: it mints a signed inline asset URL and
+// fetches it, so the browser never talks to T3 directly. The caller closes the body.
+func (c Client) Open(ctx context.Context, id, name, mimeType string) (*http.Response, error) {
+	res := map[string]any{"_tag": "attachment", "attachmentId": id, "disposition": "inline"}
+	if name != "" {
+		res["fileName"] = name
+	}
+	if mimeType != "" {
+		res["mimeType"] = mimeType
+	}
+	var minted struct {
+		RelativeURL string `json:"relativeUrl"`
+	}
+	if err := c.call(ctx, "assets.createUrl", map[string]any{"resource": res}, &minted); err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(c.BaseURL, "/")+"/"+strings.TrimLeft(minted.RelativeURL, "/"), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		resp.Body.Close()
+		return nil, fmt.Errorf("t3: asset returned %d", resp.StatusCode)
+	}
+	return resp, nil
+}

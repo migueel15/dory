@@ -44,6 +44,51 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
+	// A free thread with no item: with text it starts the first turn, without
+	// it the chat opens empty. An item can be linked later through /api/item-threads.
+	mux.HandleFunc("POST /api/t3/threads", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			InstanceID   string `json:"instance_id"`
+			ProjectID    string `json:"project_id"`
+			Provider     string `json:"provider"`
+			Model        string `json:"model"`
+			EffortOption string `json:"effort_option"`
+			Effort       string `json:"effort"`
+			Text         string `json:"text"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.InstanceID == "" || body.ProjectID == "" || body.Provider == "" || body.Model == "" {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "instance_id, project_id, provider and model are required")
+			return
+		}
+		c, err := monitor.InstanceClient(r.Context(), body.InstanceID)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		var threadID string
+		if strings.TrimSpace(body.Text) == "" {
+			threadID, err = c.CreateThread(r.Context(), t3.CreateThreadInput{
+				ProjectID: body.ProjectID, Title: quickTitle(""), InstanceID: body.Provider, Model: body.Model,
+				EffortOption: body.EffortOption, Effort: body.Effort,
+			})
+		} else {
+			threadID, err = c.Launch(r.Context(), t3.LaunchInput{
+				ProjectID: body.ProjectID, Title: quickTitle(body.Text), Provider: body.Provider, Model: body.Model,
+				EffortOption: body.EffortOption, Effort: body.Effort, Prompt: body.Text,
+			})
+		}
+		if threadID == "" {
+			writeT3Error(w, err)
+			return
+		}
+		monitor.Refresh(body.InstanceID)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		audit(r, svc, threadID, map[string]any{"operation": "t3.thread.create", "model": body.Model, "effort": body.Effort})
+		writeJSON(w, http.StatusCreated, map[string]string{"thread_id": threadID})
+	})
 	mux.HandleFunc("POST /api/items/{id}/launch", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			InstanceID string `json:"instance_id"`
@@ -145,4 +190,16 @@ func sameRepository(w http.ResponseWriter, r *http.Request, svc service.Service,
 	}
 	writeError(w, http.StatusBadRequest, "invalid_argument", "the T3 project must have the same repository as the item's Dory project")
 	return false
+}
+
+// quickTitle names a free thread after the first line of its question.
+func quickTitle(text string) string {
+	line := strings.TrimSpace(strings.SplitN(strings.TrimSpace(text), "\n", 2)[0])
+	if r := []rune(line); len(r) > 60 {
+		line = string(r[:59]) + "…"
+	}
+	if line == "" {
+		line = "Nuevo hilo"
+	}
+	return line
 }

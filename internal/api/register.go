@@ -139,6 +139,14 @@ func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"diff": diff})
 	})
+	mux.HandleFunc("GET /api/github/repos/{owner}/{repo}/pull-refs", func(w http.ResponseWriter, r *http.Request) {
+		refs, err := gh.PullRefs(r.Context(), r.PathValue("owner")+"/"+r.PathValue("repo"), r.URL.Query().Get("q"))
+		if err != nil {
+			writeGithubError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"pulls": refs})
+	})
 	mux.HandleFunc("GET /api/search", search(svc))
 	mux.HandleFunc("GET /api/events/stream", streamEvents(svc, monitor))
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
