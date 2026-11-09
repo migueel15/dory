@@ -34,7 +34,7 @@ export function Jobs() {
     ...(issues.data ?? []).map((j) => {
       const l = live.get(`${j.instance_id}:${j.thread_id}`);
       const [owner, repo] = j.repo.split("/");
-      return { key: j.id, kind: j.kind === "resolve_conflicts" ? "Resolver conflictos" : "Definir tareas", title: `${j.repo}#${j.number} ${j.title}`, to: { owner, repo, number: j.number, kind: j.kind === "resolve_conflicts" ? "pulls" : "issues" }, model: j.model, effort: j.effort, created: j.created_at, thread: l?.thread, host: l?.host ?? host(j.instance_id) };
+      return { key: j.id, kind: j.kind === "resolve_conflicts" ? "Resolver conflictos" : j.kind === "review" ? "Revisar PR" : "Definir tareas", title: `${j.repo}#${j.number} ${j.title}`, to: { owner, repo, number: j.number, kind: j.kind === "define_issue" ? "issues" : "pulls" }, model: j.model, effort: j.effort, created: j.created_at, thread: l?.thread, host: l?.host ?? host(j.instance_id) };
     }),
     ...(items.data ?? []).map((j) => {
       const l = live.get(`${j.instance_id}:${j.thread_id}`);

@@ -27,6 +27,10 @@ En una PR abierta con conflictos, «Resolver conflictos» abre el formulario com
 
 El hilo recibe instrucciones para trabajar en un worktree temporal, incorporar la base mediante merge, validar y empujar la rama sin force-push. Si hay dudas o fallan las comprobaciones, debe detener el push y explicarlo en el hilo. El lanzamiento se sigue desde Trabajos como «Resolver conflictos» y queda auditado como `t3.resolve_conflicts`. El endpoint devuelve 409 cuando la PR ya no tiene conflictos.
 
+En el diff de una PR, «Preguntar al agente» manda la consulta, con las líneas seleccionadas, al hilo de revisión de la PR. La primera vez no existe: se elige máquina, proyecto T3 y modelo, y se crea un hilo que sabe que revisa esa PR sin modificar nada salvo petición explícita, y recibe la pregunta. Queda guardado como `issue_threads` de tipo `review` y auditado como `t3.review_pull`. Desde entonces la PR muestra ese hilo como chat a la derecha (60/40, redimensionable y plegable con «Agente»); preguntar desde el diff lo abre si estaba oculto.
+
+El hilo de revisión trabaja en un worktree de la PR: antes de crearlo, Dory pide a T3 (`git.preparePullRequestThread` en modo worktree, en la raíz del proyecto T3 elegido) que haga checkout de la PR, y el hilo nace ligado a ese worktree. El agente lo actualiza antes de cada consulta y cita los ficheros como `ruta:línea`, que en Dory abren el diff en esa línea. Cada 10 minutos Dory revisa las PR con hilo de revisión: si una se ha mergeado o cerrado, elimina el worktree directamente por T3 (`vcs.removeWorktree`, sin forzar: git no lo borra si tiene cambios sin guardar) y archiva la asociación, así que la PR deja de mostrar el chat. Si la máquina no responde o el borrado falla, lo reintenta en la siguiente pasada. No interviene el agente.
+
 ## Notificaciones y push
 
 Ver [notificaciones](notificaciones.md) para los ajustes por usuario, la activación

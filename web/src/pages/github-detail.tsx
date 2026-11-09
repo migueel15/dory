@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
+import { Robot } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { api, type GithubDetail, type GithubPull, type GithubThread } from "../api/client";
 import { Badge, Button, Card, Input, Select, ErrorText, Md, Arrow, pill, toggleTask, Textarea, keepAboveKeyboard } from "../components/ui";
 import { Avatar, PullStatus, StackBar } from "./github";
-import { Diff } from "./github-diff";
+import { Diff, FullscreenHost } from "./github-diff";
 import { DefineIssueDialog } from "./define-issue";
+import { ResizeHandle, ThreadChat } from "./thread";
+import { FileRefContext, type FileRef } from "../components/refs";
 import { GithubMark, Icon, IconButton, Menu, MenuItem, RefContext, RefMd, Tip, UserPicker, icons, useArm, MentionArea } from "../components/github-ui";
 
 const labels: Record<string, string> = {
@@ -324,9 +327,35 @@ export function GithubView() {
   const people = d ? [...new Set([...d.candidates.map((u) => u.login), (d.pull ?? d.issue)!.author, ...d.timeline.map((e) => e.actor), ...d.threads.flatMap((t) => t.comments.map((c) => c.author))])].filter((p) => /^[\w-]+$/.test(p) && p !== d.viewer).sort() : [];
   const act: Act = (type, extra = {}) => action.mutate({ type, ...extra });
   const open = (d?.pull ?? d?.issue)?.state === "OPEN";
-  return (
+  // A pull request's review thread shows as a chat on the right, 60/40 by
+  // default and resizable; asking from the diff always opens it.
+  const agent = useQuery({ queryKey: ["pull-agent", full, n], queryFn: () => api.pullAgent(full, n), enabled: kind === "pulls" });
+  const [chat, setChat] = useState(true);
+  const side = useRef<HTMLElement>(null);
+  const [width, setWidth] = useState<number | null>(null);
+  // Until dragged, the chat takes 40 % of the page.
+  const frame = useRef<HTMLDivElement>(null);
+  const [frameW, setFrameW] = useState(0);
+  useEffect(() => {
+    const el = frame.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setFrameW(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [agent.data?.thread_id]);
+  const panelW = width ?? Math.round((frameW || 1200) * 0.4);
+  const reviewThread = agent.data?.available ? agent.data.thread_id : undefined;
+  const showChat = !!reviewThread && chat;
+  // File references in the chat open the diff on that line.
+  const [focus, setFocus] = useState<FileRef & { seq: number }>();
+  // With the chat open, the diff's full screen covers only the PR column.
+  const [column, setColumn] = useState<HTMLElement | null>(null);
+  const openRef = (ref: FileRef) => { setShowDiff(true); setFocus((p) => ({ ...ref, seq: (p?.seq ?? 0) + 1 })); };
+  const page = (
     <div className="space-y-3">
-      <Link to="/github" className={pill}><Arrow back /> GitHub</Link>
+      <div className="flex items-center justify-between gap-2">
+        <Link to="/github" className={pill}><Arrow back /> GitHub</Link>
+      </div>
       <ErrorText error={detail.error ?? action.error} />
       {detail.isPending && <DetailSkeleton />}
       {d && <RefContext.Provider value={{ owner: full.split("/")[0], repo: full.split("/")[1], links: d.links }}>
@@ -338,7 +367,7 @@ export function GithubView() {
           {d.issue && <IssueActions open={open} act={act} busy={false} />}
         </>} />
         {defining && <DefineIssueDialog resolve={!!d.pull} repo={full} number={n} onClose={() => setDefining(false)} />}
-        {showDiff && <Diff repo={full} pr={n} />}
+        {showDiff && <Diff repo={full} pr={n} focus={focus} onAsked={() => setChat(true)} />}
         <Threads threads={d.threads} me={d.viewer} people={people} links={d.links} act={action.mutateAsync} busy={false} />
         {d.timeline.map((e, i) => (
           <div key={i} className={e.body ? "" : "px-3 text-xs text-slate-500 dark:text-muted"}>
@@ -361,7 +390,7 @@ export function GithubView() {
             </div>
           </Card>
         </div>
-        {!atBottom && (
+        {!atBottom && !showChat && (
           <span className="fixed bottom-5 right-5 z-40">
             <Tip text="Escribir un mensaje">
               <button type="button" aria-label="Escribir un mensaje" onClick={write} className="grid size-12 place-items-center rounded-full bg-blue-600 dark:bg-accent text-white shadow-lg ring-4 ring-white/60 transition-transform hover:scale-105 hover:bg-blue-700 dark:hover:bg-accent dark:ring-surface/60">
@@ -371,6 +400,40 @@ export function GithubView() {
           </span>
         )}
       </RefContext.Provider>}
+    </div>
+  );
+  // The page uses the full width only with the chat; alone it keeps its usual width.
+  if (!reviewThread) return <div className="mx-auto max-w-6xl">{page}</div>;
+  // The chat panel stays mounted and slides its width like the thread's changes
+  // panel; its content is pinned right so it enters from the right edge.
+  return (
+    <div ref={frame} className="flex h-[calc(100dvh-4rem-1px)] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
+      <div ref={setColumn} className="relative min-h-0 min-w-0 flex-1">
+        {!chat && (
+          // Pinned to the top right while the PR scrolls, so the agent opens from anywhere.
+          <button type="button" onClick={() => setChat(true)} title="Abrir el agente de revisión" aria-label="Abrir el agente de revisión"
+            className={`${pill} !px-2 absolute right-3 top-0 z-30 hidden bg-white shadow-sm lg:inline-flex dark:bg-surface`}><Robot className="size-4" /></button>
+        )}
+        <div className="h-full overflow-y-auto pr-2"><FullscreenHost.Provider value={column}><div
+          // Closed, the PR is centred at its usual width; opening the chat slides it
+          // left and widens it at the same pace as the panel (margins in % animate, auto ones don't).
+          style={{ maxWidth: chat ? "100%" : "72rem", marginLeft: chat ? "0px" : "max(0px, calc((100% - 72rem) / 2))" }}
+          className="transition-[max-width,margin-left] duration-300 ease-out motion-reduce:transition-none">{page}</div></FullscreenHost.Provider></div>
+      </div>
+      <aside ref={side} aria-label="Hilo de revisión" aria-hidden={!chat} style={{ "--panel-w": `${panelW}px` } as React.CSSProperties}
+        className={`hidden min-h-0 overflow-hidden lg:flex lg:shrink-0 lg:transition-[width] lg:duration-300 lg:ease-out ${chat ? "lg:w-[var(--panel-w)]" : "lg:w-0"}`}>
+        <div className="ml-auto flex min-h-0 w-[var(--panel-w)] shrink-0">
+          <ResizeHandle panel={side} width={panelW} onResize={setWidth} storageKey={null} min={360} rest={420} />
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            {/* Open, the toggle lives at the chat's top left; closing it puts it back in the page header. */}
+            <div className="flex shrink-0 px-2 pt-1">
+              <button type="button" onClick={() => setChat(false)} title="Cerrar el agente de revisión" aria-label="Cerrar el agente de revisión"
+                className={`${pill} !px-2 !border-slate-500 !text-slate-900 dark:!text-white`}><Robot className="size-4" /></button>
+            </div>
+            <FileRefContext.Provider value={openRef}><ThreadChat threadId={reviewThread} /></FileRefContext.Provider>
+          </div>
+        </div>
+      </aside>
     </div>
   );
 }

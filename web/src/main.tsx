@@ -1,5 +1,5 @@
 import { ThreadView } from "./pages/thread";
-import { Threads } from "./pages/threads";
+import { Threads, ThreadsHome } from "./pages/threads";
 import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Brain, ChartBar, ChatsCircle, FolderSimple, Gear, GithubLogo, HardDrives, House, IconContext, Kanban, List, Moon, Robot, SidebarSimple, SignOut, Sun, Tray, BellRinging, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
@@ -91,7 +91,7 @@ function Layout() {
   const logout = useMutation({ mutationFn: api.logout, onSuccess: () => qc.clear() });
   useLiveUpdates(!!me.data);
   // The project board needs the full width.
-  const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") || l.pathname.startsWith("/items/") || l.pathname.startsWith("/threads/") || l.pathname === "/tasks" });
+  const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") || l.pathname.startsWith("/items/") || l.pathname.startsWith("/threads") || /^\/github\/[^/]+\/[^/]+\/(pulls|issues)\//.test(l.pathname) || l.pathname === "/tasks" });
   const attention = useAttentionCount(!!me.data);
 
   const path = useLocation({ select: (l) => l.pathname });
@@ -245,6 +245,8 @@ function Layout() {
 }
 
 const root = createRootRoute({ component: Layout });
+// The threads section keeps its list on the left; home and each thread fill the middle.
+const threadsRoute = createRoute({ getParentRoute: () => root, path: "/threads", component: Threads });
 const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/", component: Home }),
   createRoute({ getParentRoute: () => root, path: "/inbox", component: Inbox }),
@@ -255,8 +257,10 @@ const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/github", component: Github }),
   createRoute({ getParentRoute: () => root, path: "/github/$owner/$repo/$kind/$number", component: GithubView }),
   createRoute({ getParentRoute: () => root, path: "/tasks", component: Tasks }),
-  createRoute({ getParentRoute: () => root, path: "/threads", component: Threads }),
-  createRoute({ getParentRoute: () => root, path: "/threads/$threadId", component: ThreadView }),
+  threadsRoute.addChildren([
+    createRoute({ getParentRoute: () => threadsRoute, path: "/", component: ThreadsHome }),
+    createRoute({ getParentRoute: () => threadsRoute, path: "$threadId", component: ThreadView }),
+  ]),
   createRoute({ getParentRoute: () => root, path: "/projects", component: Projects }),
   createRoute({ getParentRoute: () => root, path: "/projects/$id", component: ProjectDetail }),
   createRoute({ getParentRoute: () => root, path: "/items/$id/define", component: Define }),

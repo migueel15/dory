@@ -1,4 +1,17 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+
+// useVisible tracks whether this tab is on screen. Live streams only stay open
+// while it is: over plain HTTP a browser allows about six connections per host,
+// and two per background tab would leave a new tab's streams waiting.
+function useVisible() {
+  const [visible, setVisible] = useState(() => typeof document === "undefined" || document.visibilityState !== "hidden");
+  useEffect(() => {
+    const on = () => setVisible(document.visibilityState !== "hidden");
+    document.addEventListener("visibilitychange", on);
+    return () => document.removeEventListener("visibilitychange", on);
+  }, []);
+  return visible;
+}
 import { useQueryClient } from "@tanstack/react-query";
 
 // Query keys refreshed for each audit entity_type.
@@ -21,11 +34,15 @@ const keys: Record<string, string[]> = {
 // affected queries, batching bursts so a replay triggers one refetch.
 export function useLiveUpdates(enabled: boolean) {
   const qc = useQueryClient();
+  const visible = useVisible();
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !visible) return;
     const pending = new Set<string>();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const source = new EventSource("/api/events/stream?after=latest", { withCredentials: true });
+    // Back from the background (or a reconnect): what changed meanwhile was not streamed.
+    let opened = false;
+    source.addEventListener("open", () => { if (opened) qc.invalidateQueries(); opened = true; });
     source.addEventListener("change", (e) => {
       const { entity_type } = JSON.parse((e as MessageEvent).data) as { entity_type: string };
       for (const k of keys[entity_type] ?? []) pending.add(k);
@@ -36,7 +53,10 @@ export function useLiveUpdates(enabled: boolean) {
       }, 300);
     });
     return () => { clearTimeout(timer); source.close(); };
-  }, [enabled, qc]);
+  }, [enabled, visible, qc]);
+  // Returning to the tab reloads what changed while its stream was closed.
+  const [seen, setSeen] = useState(visible);
+  useEffect(() => { if (visible && !seen) qc.invalidateQueries(); setSeen(visible); }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 // useThreadLive follows one T3 thread while a view shows its conversation and
@@ -45,8 +65,9 @@ export function useLiveUpdates(enabled: boolean) {
 export function useThreadLive(threadId: string | undefined, queryKey: unknown[]) {
   const qc = useQueryClient();
   const key = JSON.stringify(queryKey);
+  const visible = useVisible();
   useEffect(() => {
-    if (!threadId) return;
+    if (!threadId || !visible) return;
     const source = new EventSource(`/api/t3/threads/${encodeURIComponent(threadId)}/stream`, { withCredentials: true });
     const refresh = () => qc.invalidateQueries({ queryKey: JSON.parse(key) });
     source.addEventListener("thread", refresh);
@@ -54,5 +75,5 @@ export function useThreadLive(threadId: string | undefined, queryKey: unknown[])
     // while the stream was down (T3 dropped it, the browser reconnected) is lost: reload on every (re)open.
     source.addEventListener("open", refresh);
     return () => source.close();
-  }, [threadId, key, qc]);
+  }, [threadId, key, visible, qc]);
 }

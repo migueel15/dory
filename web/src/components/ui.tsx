@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, KeyboardEvent, ReactNode, Ref, TextareaHTMLAttributes } from "react";
 import Markdown, { defaultUrlTransform, type Options } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { RefCode, RefImg, RefLink } from "./refs";
 export { defaultUrlTransform };
 
 const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(" ");
@@ -179,6 +180,9 @@ const prose = [
 
 // Md renders GitHub-flavored markdown. With onToggle, task checkboxes can be
 // clicked and report the source line of their item.
+// keepLocal lets file:// image paths through (react-markdown drops unknown schemes).
+const keepLocal = (url: string) => (url.startsWith("file://") ? url : defaultUrlTransform(url));
+
 export function Md({ children, components, urlTransform, onToggle }: { children: string; onToggle?: (line: number) => void } & Pick<Options, "components" | "urlTransform">) {
   const tasks: Options["components"] = onToggle && {
     li: ({ node, children: content, ...rest }) => {
@@ -189,7 +193,7 @@ export function Md({ children, components, urlTransform, onToggle }: { children:
   };
   return (
     <div className={prose}>
-      <Markdown remarkPlugins={[remarkGfm]} components={{ ...tasks, ...components }} urlTransform={urlTransform}>{children}</Markdown>
+      <Markdown remarkPlugins={[remarkGfm]} components={{ a: RefLink, code: RefCode, img: RefImg, ...tasks, ...components }} urlTransform={urlTransform ?? keepLocal}>{children}</Markdown>
     </div>
   );
 }

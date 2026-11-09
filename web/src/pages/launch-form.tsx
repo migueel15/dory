@@ -77,27 +77,25 @@ export function useLaunchForm({ section, doryProject, repo: repoPathIn, worktree
     effort_option: model?.effort?.id, effort: model?.effort ? effortValue : undefined,
     ...(canWorktree ? { worktree, base_branch: worktree ? baseValue : undefined } : {}),
   };
+  // The pickers, framed as labelled fields (fields) or as compact chips (chips).
+  const machinePick = (plain?: boolean) => (
+    <Select plain={plain} className={plain ? "w-auto" : undefined} value={instanceId} onChange={(v) => { setInstance(v); setProject(""); setChoice(""); setEffort(""); }} placeholder={checking ? "Buscando máquinas con el repositorio…" : restricted ? "Ninguna máquina tiene este repositorio" : plain ? "Entorno" : "—"} options={statuses.map((s) => ({
+      value: s.instance_id,
+      label: `${envName(s.environment_id) || s.base_url}${s.state !== "available" ? ` (${stateLabel[s.state] ?? s.state})` : !eligible(s.instance_id) ? " (sin este repositorio)" : ""}`,
+      disabled: s.state !== "available" || !eligible(s.instance_id),
+      icon: <span title={stateLabel[s.state] ?? s.state} className={`size-2 shrink-0 rounded-full ${stateDot(s.state)}`} />,
+    }))} />
+  );
+  const projectPick = (plain?: boolean) => <Select plain={plain} className={plain ? "w-auto" : undefined} value={projectId} onChange={setProject} placeholder={plain ? "Proyecto" : "Elige el proyecto del repositorio"} options={choices.map((p) => ({ value: p.id, label: p.title }))} />;
+  const modelPick = (plain?: boolean) => <Select plain={plain} className={plain ? "w-auto" : undefined} value={selected} onChange={(v) => { setChoice(v); setEffort(""); }} options={(catalog.data?.providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `${p.instance_id}|${m.slug}`, label: m.name, group: p.name, icon: <ProviderIcon driver={p.driver || p.name} model={`${m.slug} ${m.name}`} /> })))} />;
+  const effortPick = (plain?: boolean) => model?.effort ? <Select plain={plain} className={plain ? "w-auto" : undefined} value={effortValue} onChange={setEffort} options={model.effort.values.map((v) => ({ value: v, label: v }))} /> : null;
+  const chips: ReactNode = <>{machinePick(true)}{projectPick(true)}{modelPick(true)}{effortPick(true)}</>;
   const fields: ReactNode = (
     <>
-      <Label text="Máquina">
-        <Select value={instanceId} onChange={(v) => { setInstance(v); setProject(""); setChoice(""); setEffort(""); }} placeholder={checking ? "Buscando máquinas con el repositorio…" : restricted ? "Ninguna máquina tiene este repositorio" : "—"} options={statuses.map((s) => ({
-          value: s.instance_id,
-          label: `${envName(s.environment_id) || s.base_url}${s.state !== "available" ? ` (${stateLabel[s.state] ?? s.state})` : !eligible(s.instance_id) ? " (sin este repositorio)" : ""}`,
-          disabled: s.state !== "available" || !eligible(s.instance_id),
-          icon: <span title={stateLabel[s.state] ?? s.state} className={`size-2 shrink-0 rounded-full ${stateDot(s.state)}`} />,
-        }))} />
-      </Label>
-      <Label text="Proyecto de T3">
-        <Select value={projectId} onChange={setProject} placeholder="Elige el proyecto del repositorio" options={choices.map((p) => ({ value: p.id, label: p.title }))} />
-      </Label>
-      <Label text="Modelo">
-        <Select value={selected} onChange={(v) => { setChoice(v); setEffort(""); }} options={(catalog.data?.providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `${p.instance_id}|${m.slug}`, label: m.name, group: p.name, icon: <ProviderIcon driver={p.driver || p.name} model={`${m.slug} ${m.name}`} /> })))} />
-      </Label>
-      {model?.effort && (
-        <Label text="Razonamiento">
-          <Select value={effortValue} onChange={setEffort} options={model.effort.values.map((v) => ({ value: v, label: v }))} />
-        </Label>
-      )}
+      <Label text="Máquina">{machinePick()}</Label>
+      <Label text="Proyecto de T3">{projectPick()}</Label>
+      <Label text="Modelo">{modelPick()}</Label>
+      {model?.effort && <Label text="Razonamiento">{effortPick()}</Label>}
       {canWorktree && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={worktree} onChange={(e) => setWorktree(e.target.checked)} />Crear un worktree nuevo</label>}
       {canWorktree && worktree && (
         <Label text="Rama base">
@@ -108,7 +106,7 @@ export function useLaunchForm({ section, doryProject, repo: repoPathIn, worktree
     </>
   );
   return {
-    fields, value, error: catalog.error,
+    fields, chips, value, error: catalog.error,
     ready: !!instanceId && !!projectId && !!model,
     // remember keeps the reasoning used with this model as its next default.
     remember: () => { if (model?.effort) saveEffort(model.slug, effortValue); if (selected) saveModel(section, selected); },

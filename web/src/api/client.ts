@@ -44,7 +44,7 @@ export type TitleSettings = S["TitleSettings"];
 export type RefineInput = { text?: string; restart?: boolean; instance_id?: string; project_id?: string; provider?: string; model?: string; effort_option?: string; effort?: string };
 
 export type PullReview = { path: string; patch_hash: string; reviewed_at: string };
-export type PullAgent = { available: boolean; item_id?: string; thread_id?: string; url?: string; t3_environment_id?: string };
+export type PullAgent = { available: boolean; thread_id?: string; url?: string; t3_environment_id?: string };
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -101,7 +101,7 @@ export const api = {
   markPullReview: (repo: string, number: number, path: string, patch_hash: string) => req<void>("PUT", `/github/repos/${repo}/pulls/${number}/reviews`, { path, patch_hash }),
   unmarkPullReview: (repo: string, number: number, path: string) => req<void>("DELETE", `/github/repos/${repo}/pulls/${number}/reviews?path=${encodeURIComponent(path)}`),
   pullAgent: (repo: string, number: number) => req<PullAgent>("GET", `/github/repos/${repo}/pulls/${number}/agent`),
-  askPullAgent: (repo: string, number: number, body: { path: string; start: number; end: number; snippet: string; question: string }) =>
+  askPullAgent: (repo: string, number: number, body: { path: string; start: number; end: number; snippet: string; question: string; launch?: { instance_id: string; project_id: string; provider: string; model: string; effort_option?: string; effort?: string } }) =>
     req<PullAgent>("POST", `/github/repos/${repo}/pulls/${number}/ask`, body),
   t3Pair: (id: string) => req<{ url: string }>("POST", `/t3/instances/${id}/pair`),
   t3Context: (id: string) => req<T3ThreadContext>("GET", `/t3/threads/${id}/context`),

@@ -1,17 +1,19 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ArrowLeft, ChatCircleText, PencilSimpleLine, Question } from "@phosphor-icons/react";
 import { Link, useParams } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Item, type ItemPlan, type ItemRefinement, type PlanSections, type RefineInput } from "../api/client";
+import { api, itemInput, type Item, type ItemPlan, type ItemRefinement, type PlanSections, type RefineInput } from "../api/client";
 import { useThreadLive } from "../api/live";
 import { ItemTitle, pendingPoll } from "../components/item-title";
-import { PendingRequest } from "../components/pending-request";
 import { ThreadLink } from "../components/thread-link";
 import { ThreadStatus } from "../components/thread-status";
-import { DictationInput } from "../components/dictation-input";
-import { Badge, Button, Card, ErrorText, Label, Md, Notice, StatusPill, Textarea } from "../components/ui";
+import { Badge, Button, Card, ErrorText, Label, Md, Notice, Select, StatusPill, Textarea } from "../components/ui";
 import { LaunchDialog } from "./launch";
 import { useLaunchForm } from "./launch-form";
 import { STATUS_INFO } from "./items";
+import { ResizeHandle, ThreadChat, type Insert } from "./thread";
+import { quoteLabel } from "../components/composer-tokens";
+import { SelectionMenu } from "../components/selection-menu";
 
 const SECTIONS: { key: keyof PlanSections; title: string; hint: string }[] = [
   { key: "goal", title: "Objetivo", hint: "Qué se quiere conseguir y por qué." },
@@ -35,8 +37,12 @@ export function Define() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<"chat" | "plan">("chat");
   const [draft, setDraft] = useState("");
+  // The plan column is resizable, like the thread's changes panel. Each visit
+  // starts at 60 % chat / 40 % plan; a drag fixes it in pixels until leaving.
+  const side = useRef<HTMLElement>(null);
+  const [width, setWidth] = useState<number | null>(null);
+  const [insert, setInsert] = useState<Insert>();
   const [implement, setImplement] = useState(false);
-  const composer = useRef<HTMLTextAreaElement>(null);
   const item = useQuery({ queryKey: ["items", "one", id], queryFn: () => api.item(id), refetchInterval: pendingPoll });
   const refinement = useQuery({ queryKey: ["refinement", id], queryFn: () => api.refinement(id), refetchInterval: (q) => (working(q.state.data) ? 15_000 : 60_000) });
   const plans = useQuery({ queryKey: ["refinement", id, "plans"], queryFn: () => api.plans(id) });
@@ -46,25 +52,37 @@ export function Define() {
   if (!item.data) return item.error ? <ErrorText error={item.error} /> : <Notice loading />;
   const it = item.data;
   const plan = refinement.data?.plan ?? null;
-  const previous = plans.data?.find((p) => plan && p.version === plan.version - 1);
   const canAccept = !!plan && definable(it.status) && plan.open_questions.length === 0 && !(it.status === "ready" && plan.accepted_at);
-  const comment = (title: string, text: string) => {
-    const quote = text.split("\n").filter(Boolean).slice(0, 3).map((l) => `> ${l}`).join("\n");
-    setDraft(`Sobre «${title}»:\n${quote}\n\n`);
+  // comment quotes a section (its first lines) or, with a lead, the selected text whole.
+  const comment = (title: string, text: string, lead?: string) => {
+    const lines = text.split("\n").filter(Boolean);
+    const quote = (lead ? lines : lines.slice(0, 3)).map((l) => `> ${l}`).join("\n");
+    const ref = `Sobre «${title}»:\n${quote}\n\n${lead ?? ""}`;
+    // With a thread the reference goes to its composer; before, to the start form.
+    if (refinement.data?.thread) setInsert((p) => ({ text: lead ?? "", quote: { label: lead ? `${title}: ${quoteLabel(text, 24)}` : title, body: text }, seq: (p?.seq ?? 0) + 1 }));
+    else setDraft(ref);
     setTab("chat");
-    setTimeout(() => composer.current?.focus(), 0);
   };
   const info = STATUS_INFO[it.status];
+  const accepted = it.status === "ready" && plan?.accepted_at ? plan.version : null;
+  if (!definable(it.status)) {
+    return (
+      <div className="space-y-3">
+        <Link to={it.project_id ? "/projects/$id" : "/inbox"} params={{ id: it.project_id ?? "" }} className={`${muted} hover:underline`}>← Volver</Link>
+        <h1 className="text-lg font-semibold break-words"><ItemTitle item={it} /></h1>
+        <Notice>Este item ya está en «{info.label}»; la definición está cerrada. <Link to={it.project_id ? "/projects/$id" : "/inbox"} params={{ id: it.project_id ?? "" }} className="underline">Ver el item en su lista</Link></Notice>
+      </div>
+    );
+  }
   return (
-    <div className="flex flex-col gap-3 lg:h-[calc(100dvh-6rem)]">
-      <header className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 space-y-1">
-          <Link to={it.project_id ? "/projects/$id" : "/inbox"} params={{ id: it.project_id ?? "" }} className={`${muted} hover:underline`}>← Volver</Link>
-          <h1 className="text-lg font-semibold break-words"><ItemTitle item={it} /></h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${info.tone}`}>{info.label}</span>
-            {refinement.data?.thread && <ThreadState refinement={refinement.data} />}
-          </div>
+    <div className="flex h-[calc(100dvh-4rem-1px)] min-h-0 flex-col gap-3 sm:h-[calc(100dvh-3rem-2px)]">
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <Link to={it.project_id ? "/projects/$id" : "/inbox"} params={{ id: it.project_id ?? "" }} title="Volver" aria-label="Volver"
+            className="grid size-8 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white"><ArrowLeft className="size-4" /></Link>
+          <h1 className="min-w-0 text-lg font-semibold break-words"><ItemTitle item={it} /></h1>
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${info.tone}`}>{info.label}</span>
+          {refinement.data?.thread && <ThreadState refinement={refinement.data} />}
         </div>
         <div className="flex flex-wrap gap-2">
           {definable(it.status) && <Button disabled={!canAccept || accept.isPending} title={plan?.open_questions.length ? "Quedan preguntas abiertas" : undefined} onClick={() => accept.mutate()}>Aceptar plan</Button>}
@@ -77,12 +95,16 @@ export function Define() {
           <Button key={t} role="tab" aria-selected={tab === t} variant={tab === t ? "default" : "ghost"} className="flex-1" onClick={() => setTab(t)}>{t === "chat" ? "Chat" : `Plan${plan ? ` · v${plan.version}` : ""}`}</Button>
         ))}
       </div>
-      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
-        <section className={`${tab === "chat" ? "flex" : "hidden"} min-h-0 flex-col lg:flex`} aria-label="Chat">
-          <Chat item={it} data={refinement.data} draft={draft} setDraft={setDraft} composer={composer} onChange={refresh} />
+      <div className="flex min-h-0 flex-1">
+        <section className={`${tab === "chat" ? "flex" : "hidden"} min-h-0 min-w-0 flex-1 flex-col lg:flex`} aria-label="Chat">
+          <Chat item={it} data={refinement.data} draft={draft} setDraft={setDraft} accepted={accepted} insert={insert} onChange={refresh} />
         </section>
-        <section className={`${tab === "plan" ? "block" : "hidden"} min-h-0 overflow-y-auto lg:block`} aria-label="Plan">
-          <PlanPanel item={it} plan={plan} previous={previous} onComment={comment} onSaved={refresh} />
+        <section ref={side} style={{ "--panel-w": width ? `${width}px` : "40%" } as React.CSSProperties}
+          className={`${tab === "plan" ? "flex" : "hidden"} min-h-0 w-full lg:flex lg:w-[var(--panel-w)] lg:shrink-0`} aria-label="Plan">
+          <ResizeHandle panel={side} width={width ?? side.current?.offsetWidth ?? 0} onResize={setWidth} storageKey={null} min={360} rest={360} />
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pb-4 pr-2 [scrollbar-gutter:stable] lg:pl-2">
+            <PlanPanel item={it} latest={plan} versions={plans.data ?? []} onComment={comment} onSaved={refresh} />
+          </div>
         </section>
       </div>
       {implement && <LaunchDialog items={[it]} role="implementation" onClose={() => setImplement(false)} />}
@@ -96,78 +118,34 @@ function ThreadState({ refinement }: { refinement: ItemRefinement }) {
   return t.url ? <ThreadLink url={t.url} threadId={t.thread_id} title="Abrir el hilo en T3 Code">{label}</ThreadLink> : label;
 }
 
-function Chat({ item, data, draft, setDraft, composer, onChange }: { item: Item; data?: ItemRefinement; draft: string; setDraft: (s: string) => void; composer: React.RefObject<HTMLTextAreaElement | null>; onChange: () => void }) {
+// Chat starts the definition thread or, once it runs, shows the same chat as
+// the thread page. With the plan accepted, a message reopens it first.
+function Chat({ item, data, draft, setDraft, accepted, insert, onChange }: { item: Item; data?: ItemRefinement; draft: string; setDraft: (s: string) => void; accepted: number | null; insert?: { text: string; seq: number }; onChange: () => void }) {
   const [restart, setRestart] = useState(false);
   const qc = useQueryClient();
-  const key = ["refinement", item.id];
-  // A message to an open thread shows at once; a failed send restores the chat and the draft.
   const send = useMutation({
     mutationFn: (body: RefineInput) => api.refine(item.id, body),
-    onMutate: async (body) => {
-      const prev = qc.getQueryData<ItemRefinement>(key);
-      if (!prev?.thread || body.restart || !body.text) return { prev: undefined };
-      await qc.cancelQueries({ queryKey: key });
-      qc.setQueryData<ItemRefinement>(key, { ...prev, messages: [...prev.messages, { role: "user", text: body.text } as ItemRefinement["messages"][number]] });
-      setDraft("");
-      return { prev };
-    },
-    onError: (_e, body, c) => { if (c?.prev) { qc.setQueryData(key, c.prev); setDraft(body.text ?? ""); } },
     onSuccess: () => { setDraft(""); setRestart(false); },
     onSettled: onChange,
   });
-  const end = useRef<HTMLDivElement>(null);
-  const count = data?.messages.length ?? 0;
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [count, data?.pending?.id]);
+  // Back to triaged so the plan must be accepted again; body_md is untouched.
+  const reopen = async () => {
+    await api.items.update(item.id, itemInput(item, { status: "triaged" }));
+    ["items", "item", "refinement"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+  };
   if (!data) return <Notice loading />;
-  const open = definable(item.status);
-  if (open && (!data.thread || restart)) return <StartForm item={item} draft={draft} setDraft={setDraft} restart={restart} send={send} onCancel={data.thread ? () => setRestart(false) : undefined} />;
-  const submit = () => { if (draft.trim() && !send.isPending) send.mutate({ text: draft.trim() }); };
-  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); } };
+  if (!data.thread || restart) return <StartForm item={item} draft={draft} setDraft={setDraft} restart={restart} send={send} onCancel={data.thread ? () => setRestart(false) : undefined} />;
   return (
-    <Card className="flex min-h-0 flex-1 flex-col gap-2">
-      <div className="min-h-64 flex-1 space-y-2 overflow-y-auto pr-1">
-        {data.messages.map((m, i) => <Bubble key={i} role={m.role} text={m.text} first={i === 0} />)}
-        {working(data) && <p className={`${muted} motion-safe:animate-pulse`}>El agente está trabajando…</p>}
-        {data.pending && data.thread && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
-            <PendingRequest key={data.pending.id} threadId={data.thread.thread_id} pending={data.pending} onDone={onChange} />
-          </div>
-        )}
-        <div ref={end} />
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
       {data.thread_error && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded bg-slate-100 p-2 text-sm dark:bg-raised">
           <span>{data.thread_error}</span>
-          {open && <Button variant="ghost" onClick={() => setRestart(true)}>Empezar un hilo nuevo</Button>}
+          <Button variant="ghost" onClick={() => setRestart(true)}>Empezar un hilo nuevo</Button>
         </div>
       )}
-      {open ? (
-        <div className="space-y-1">
-          <Textarea ref={composer} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey} placeholder="Escribe al agente: correcciones, ideas o respuestas (Ctrl+Enter para enviar)" className="min-h-20" />
-          <ErrorText error={send.error} />
-          <div className="flex justify-end"><Button disabled={!draft.trim() || send.isPending} onClick={submit}>Enviar</Button></div>
-          {data.thread && <DictationInput target={{ kind: "define", item_id: item.id }} onSubmit={(text) => send.mutate({ text })} onSent={() => setTimeout(onChange, 5000)} />}
-        </div>
-      ) : <p className={muted}>El item ya no está en definición; la conversación queda como referencia.</p>}
-    </Card>
-  );
-}
-
-// Bubble shows one message; the first one is Dory's setup prompt, kept folded.
-function Bubble({ role, text, first }: { role: string; text: string; first: boolean }) {
-  if (first && role === "user") {
-    return (
-      <details className="rounded-lg bg-slate-50 p-2 text-xs dark:bg-raised/60">
-        <summary className="cursor-pointer text-slate-500 dark:text-muted">Instrucciones enviadas al agente</summary>
-        <p className="mt-2 whitespace-pre-wrap break-words">{text}</p>
-      </details>
-    );
-  }
-  const mine = role === "user";
-  return (
-    <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-      <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm break-words ${mine ? "rounded-br-sm bg-blue-600 text-white whitespace-pre-wrap dark:bg-accent" : "rounded-bl-sm bg-slate-100 dark:bg-raised"}`}>
-        {mine ? text : <Md>{text}</Md>}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <ThreadChat threadId={data.thread.thread_id} insert={insert} beforeSend={accepted !== null ? reopen : undefined}
+          notice={accepted !== null && <p className="mx-3 -mb-4 rounded-t-3xl border border-b-0 border-green-300 bg-green-50 px-4 pb-6 pt-2 text-xs font-medium text-green-800 dark:border-green-800 dark:bg-green-950/30 dark:text-green-300">Plan v{accepted} aceptado · si escribes, se reabrirá y habrá que volver a aceptarlo</p>} />
       </div>
     </div>
   );
@@ -193,10 +171,20 @@ function StartForm({ item, draft, setDraft, restart, send, onCancel }: { item: I
   );
 }
 
-function PlanPanel({ item, plan, previous, onComment, onSaved }: { item: Item; plan: ItemPlan | null; previous?: ItemPlan; onComment: (title: string, text: string) => void; onSaved: () => void }) {
+// PlanPanel shows the latest plan or, picked from the version select, an older
+// one read-only; each is compared with the version right before it.
+function PlanPanel({ item, latest, versions, onComment, onSaved }: { item: Item; latest: ItemPlan | null; versions: ItemPlan[]; onComment?: (title: string, text: string, lead?: string) => void; onSaved: () => void }) {
   const [editing, setEditing] = useState(false);
-  if (editing) return <PlanEditor item={item} plan={plan} onDone={() => { setEditing(false); onSaved(); }} onCancel={() => setEditing(false)} />;
-  const open = definable(item.status);
+  const box = useRef<HTMLDivElement>(null);
+  const [picked, setPicked] = useState<number | null>(null);
+  if (editing) return <PlanEditor item={item} plan={latest} onDone={() => { setEditing(false); setPicked(null); onSaved(); }} onCancel={() => setEditing(false)} />;
+  const old = picked !== null && picked !== latest?.version ? versions.find((p) => p.version === picked) : undefined;
+  const plan = old ?? latest;
+  const previous = plan ? versions.find((p) => p.version === plan.version - 1) : undefined;
+  const open = definable(item.status) && !old;
+  const options = [...new Map([...(latest ? [latest] : []), ...versions].map((p) => [p.version, p])).values()]
+    .sort((a, b) => b.version - a.version)
+    .map((p) => ({ value: String(p.version), label: `Versión ${p.version}${p.version === latest?.version ? " (actual)" : ""} · ${p.author === "user" ? "tuya" : "del agente"} · ${date(p.created_at)}` }));
   if (!plan) {
     return (
       <Card className="space-y-2">
@@ -208,10 +196,17 @@ function PlanPanel({ item, plan, previous, onComment, onSaved }: { item: Item; p
   const filled = SECTIONS.filter((s) => plan.sections[s.key].trim());
   const missing = SECTIONS.filter((s) => !plan.sections[s.key].trim());
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className={muted}>Versión {plan.version} · {plan.author === "user" ? "escrita por ti" : "del agente"} · {date(plan.created_at)}</p>
+    <div ref={box} className="space-y-3">
+      {open && onComment && <SelectionMenu box={box} scope="[data-section]" label="Enviar la selección al chat" actions={[
+        { label: "Pedir cambio", icon: <PencilSimpleLine className="size-3.5" />, run: (t, el) => onComment(el.dataset.section ?? "", t, "Cambia esto: ") },
+        { label: "Preguntar", icon: <Question className="size-3.5" />, run: (t, el) => onComment(el.dataset.section ?? "", t, "Pregunta: ") },
+      ]} />}
+      <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 py-2 dark:border-border dark:bg-canvas">
+        {options.length > 1
+          ? <Select value={String(plan.version)} onChange={(v) => setPicked(Number(v))} options={options} className="max-w-full text-xs" />
+          : <p className={muted}>Versión {plan.version} · {plan.author === "user" ? "escrita por ti" : "del agente"} · {date(plan.created_at)}</p>}
         <div className="flex items-center gap-2">
+          {old && <Button variant="ghost" onClick={() => setPicked(null)}>Ver la actual</Button>}
           {plan.accepted_at && <StatusPill tone="green">Aceptado</StatusPill>}
           {open && <Button variant="ghost" onClick={() => setEditing(true)}>Editar</Button>}
         </div>
@@ -225,16 +220,16 @@ function PlanPanel({ item, plan, previous, onComment, onSaved }: { item: Item; p
       {filled.map((s) => {
         const changed = !!previous && previous.sections[s.key] !== plan.sections[s.key];
         return (
-          <Card key={s.key} className={changed ? "ring-2 ring-amber-300 dark:ring-amber-700" : ""}>
+          <div key={s.key} data-section={s.title}><Card className={changed ? "!border-amber-400 dark:!border-amber-600" : ""}>
             <div className="mb-1 flex items-start justify-between gap-2">
               <div>
-                <h3 className="text-sm font-semibold">{s.title} {changed && <StatusPill tone="amber">Cambiado</StatusPill>}</h3>
+                <h3 className="flex items-center gap-1.5 text-sm font-semibold">{s.title}{changed && <PencilSimpleLine weight="bold" className="size-3.5 text-amber-600 dark:text-amber-400" aria-label={`Cambiado desde la versión ${previous!.version}`}><title>{`Cambiado desde la versión ${previous!.version}`}</title></PencilSimpleLine>}</h3>
                 <p className={muted}>{s.hint}</p>
               </div>
-              {open && <Button variant="bare" className={`${muted} hover:underline`} onClick={() => onComment(s.title, plan.sections[s.key])}>Comentar</Button>}
+              {open && onComment && <Button variant="ghost" className="!p-1.5" title="Citar en el chat" aria-label={`Citar «${s.title}» en el chat`} onClick={() => onComment(s.title, plan.sections[s.key])}><ChatCircleText className="size-4" /></Button>}
             </div>
             <Md>{plan.sections[s.key]}</Md>
-          </Card>
+          </Card></div>
         );
       })}
       {missing.length > 0 && <p className={muted}>Sin definir: {missing.map((s) => s.title).join(", ")}.</p>}
@@ -242,6 +237,8 @@ function PlanPanel({ item, plan, previous, onComment, onSaved }: { item: Item; p
   );
 }
 
+// PlanEditor keeps the plan's look: the same separate cards, each with its
+// Markdown text editable in place. Saving creates a version written by the user.
 function PlanEditor({ item, plan, onDone, onCancel }: { item: Item; plan: ItemPlan | null; onDone: () => void; onCancel: () => void }) {
   const [sections, setSections] = useState<PlanSections>(plan?.sections ?? EMPTY);
   const [questions, setQuestions] = useState((plan?.open_questions ?? []).join("\n"));
@@ -250,19 +247,44 @@ function PlanEditor({ item, plan, onDone, onCancel }: { item: Item; plan: ItemPl
     onSuccess: onDone,
   });
   return (
-    <Card className="space-y-2">
-      <p className={muted}>Guardar crea una versión nueva escrita por ti. Si el agente sigue trabajando, avísale en el chat.</p>
-      {SECTIONS.map((s) => (
-        <Label key={s.key} text={s.title}>
-          <Textarea value={sections[s.key]} placeholder={s.hint} onChange={(e) => setSections({ ...sections, [s.key]: e.target.value })} />
-        </Label>
-      ))}
-      <Label text="Preguntas abiertas (una por línea)"><Textarea value={questions} onChange={(e) => setQuestions(e.target.value)} className="min-h-16" /></Label>
-      <ErrorText error={save.error} />
-      <div className="flex justify-end gap-2">
-        <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
-        <Button disabled={save.isPending || SECTIONS.every((s) => !sections[s.key].trim())} onClick={() => save.mutate()}>Guardar versión</Button>
+    <div className="space-y-3">
+      <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 py-2 dark:border-border dark:bg-canvas">
+        <p className={muted}>Editando: guardar crea una versión nueva escrita por ti. Si el agente sigue trabajando, avísale en el chat.</p>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
+          <Button disabled={save.isPending || SECTIONS.every((s) => !sections[s.key].trim())} onClick={() => save.mutate()}>Guardar versión</Button>
+        </div>
       </div>
-    </Card>
+      <ErrorText error={save.error} />
+      <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
+        <p className="font-medium text-amber-900 dark:text-amber-300">Preguntas abiertas</p>
+        <InlineText value={questions} onChange={setQuestions} placeholder="Una por línea; vacío si no quedan" />
+      </div>
+      {SECTIONS.map((s) => (
+        <Card key={s.key}>
+          <div className="mb-1">
+            <h3 className="text-sm font-semibold">{s.title}</h3>
+            <p className={muted}>{s.hint}</p>
+          </div>
+          <InlineText value={sections[s.key]} onChange={(v) => setSections({ ...sections, [s.key]: v })} placeholder={s.hint} mono />
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// InlineText is a borderless textarea that grows with its content, so editing
+// keeps the size and look of the text it replaces.
+function InlineText({ value, onChange, placeholder, mono }: { value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+  return (
+    <textarea ref={ref} value={value} rows={1} placeholder={placeholder} onChange={(e) => onChange(e.target.value)}
+      className={`mt-1 block w-full resize-none overflow-hidden rounded bg-transparent p-0 text-sm leading-6 outline-none placeholder:text-slate-400 focus:ring-0 ${mono ? "font-mono text-[13px]" : ""}`} />
   );
 }
