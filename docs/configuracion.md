@@ -31,6 +31,8 @@ En el diff de una PR, «Preguntar al agente» manda la consulta, con las líneas
 
 El hilo de revisión trabaja en un worktree de la PR: antes de crearlo, Dory pide a T3 (`git.preparePullRequestThread` en modo worktree, en la raíz del proyecto T3 elegido) que haga checkout de la PR, y el hilo nace ligado a ese worktree. El agente lo actualiza antes de cada consulta y cita los ficheros como `ruta:línea`, que en Dory abren el diff en esa línea. Cada 10 minutos Dory revisa las PR con hilo de revisión: si una se ha mergeado o cerrado, elimina el worktree directamente por T3 (`vcs.removeWorktree`, sin forzar: git no lo borra si tiene cambios sin guardar) y archiva la asociación, así que la PR deja de mostrar el chat. Si la máquina no responde o el borrado falla, lo reintenta en la siguiente pasada. No interviene el agente.
 
+Al lanzar un item con worktree, Dory pide a T3 (`vcs.createWorktree`, en la raíz del proyecto T3, sobre `origin/<base>` o `origin/HEAD`) un worktree en detached HEAD, sin rama, y crea el hilo ligado a él; así el panel de cambios muestra el diff desde la primera edición. Dory guarda en el item la ref `worktree:<ruta>`. El agente crea la rama según sus skills antes del primer commit. Cuando la PR del item se mergea o se cierra, Dory elimina el worktree con `vcs.removeWorktree` (sin forzar) y quita la ref. El token de Dory debe autorizar `vcs.createWorktree`; si T3 responde `EnvironmentAuthorizationError`, hay que ampliar su permiso.
+
 ## Notificaciones y push
 
 Ver [notificaciones](notificaciones.md) para los ajustes por usuario, la activación

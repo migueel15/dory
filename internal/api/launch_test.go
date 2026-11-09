@@ -10,24 +10,16 @@ import (
 func TestLaunchPrompt(t *testing.T) {
 	item := service.Item{Title: "Idea"}
 	item.ID = "12345678-aaaa"
-	for _, base := range []string{"", "main"} {
-		p := launchPrompt(item, true, base)
-		from := "origin/HEAD"
-		if base != "" {
-			from = "la rama " + base
-		}
-		for _, instruction := range []string{
-			from, "dory/12345678", "~/.t3/worktrees/<repo>/dory-12345678",
-			"nombre de la carpeta del repositorio principal", "Tras el merge de la PR",
-			"vuelve al checkout principal", "git worktree remove", "git branch -d",
-			"sin cambios pendientes", "No fuerces la limpieza", "explica el motivo en este hilo",
-		} {
-			if !strings.Contains(p, instruction) {
-				t.Errorf("worktree prompt missing %q: %s", instruction, p)
-			}
+	p := launchPrompt(item, "/w/dory-x")
+	for _, instruction := range []string{"worktree sin rama en /w/dory-x", "git switch -c", "No crees otro worktree", "Dory elimina el worktree"} {
+		if !strings.Contains(p, instruction) {
+			t.Errorf("worktree prompt missing %q: %s", instruction, p)
 		}
 	}
-	if p := launchPrompt(item, false, ""); strings.Contains(p, "worktree") {
+	if strings.Contains(p, "dory/") || strings.Contains(p, "git worktree add") {
+		t.Fatalf("prompt must not impose branch names or ask for a worktree: %s", p)
+	}
+	if p := launchPrompt(item, ""); strings.Contains(p, "worktree") {
 		t.Fatalf("unexpected worktree: %s", p)
 	}
 }

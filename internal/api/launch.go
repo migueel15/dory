@@ -15,20 +15,18 @@ import (
 const roleImplementation = "implementation"
 
 // launchPrompt gives the agent the item and what it may do with it.
-func launchPrompt(item service.Item, worktree bool, base string) string {
+func launchPrompt(item service.Item, worktree string) string {
 	task := fmt.Sprintf("Item de Dory %s\nTítulo: %s\nTexto original: %s\nDescripción:\n%s\n\n", item.ID, item.Title, item.RawText, item.BodyMd)
 	task += "Implementa este item siguiendo $dory-workflow; ya está en in_progress y vinculado a este hilo."
-	if worktree {
-		// Dory's token cannot create worktrees (no source-control:write), so the agent does.
-		from := "la rama por defecto del repositorio (origin/HEAD)"
-		if base != "" {
-			from = "la rama " + base
-		}
-		task += fmt.Sprintf(" Antes de tocar código actualiza el remoto y crea con git un worktree nuevo desde %s, en ~/.t3/worktrees/<repo>/dory-%s (sustituye <repo> por el nombre de la carpeta del repositorio principal), en la rama dory/%s, y trabaja solo allí.", from, item.ID[:8], item.ID[:8])
-		task += " Tras el merge de la PR, vuelve al checkout principal y elimina el worktree con git worktree remove y la rama local con git branch -d, si es posible y sin cambios pendientes. No fuerces la limpieza; si falla o no puede hacerse, explica el motivo en este hilo."
+	if worktree != "" {
+		task += fmt.Sprintf(" Ya trabajas en un worktree sin rama en %s. Crea la rama con git switch -c según tus skills antes del primer commit. Antes de empezar haz git fetch y comprueba que partes de la base actual. No crees otro worktree.", worktree)
+		task += " Tras el merge de la PR, Dory elimina el worktree; no lo borres tú."
 	}
 	return task
 }
+
+// worktreeRefPrefix marks the item ref that records the worktree Dory created.
+const worktreeRefPrefix = "worktree:"
 
 func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 	mux.HandleFunc("GET /api/t3/instances/{id}/catalog", func(w http.ResponseWriter, r *http.Request) {
@@ -131,11 +129,33 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 		if !sameRepository(w, r, svc, c, item, body.ProjectID) {
 			return
 		}
+		// T3 creates the worktree (detached HEAD) so its diff panel works from the
+		// first edit; Dory cannot, because it has no write access to the repository.
+		root, worktree := "", ""
+		if body.Worktree {
+			ref := "origin/HEAD"
+			if base := strings.TrimSpace(body.BaseBranch); base != "" {
+				ref = "origin/" + strings.TrimPrefix(base, "origin/")
+			}
+			if root, err = c.ProjectRoot(r.Context(), body.ProjectID); err != nil {
+				writeT3Error(w, err)
+				return
+			}
+			if worktree, err = c.CreateWorktree(r.Context(), root, ref); err != nil {
+				writeT3Error(w, err)
+				return
+			}
+		}
 		threadID, err := c.Launch(r.Context(), t3.LaunchInput{
 			ProjectID: body.ProjectID, Title: item.Title, Provider: body.Provider, Model: body.Model, EffortOption: body.EffortOption, Effort: body.Effort,
-			Prompt: launchPrompt(item, body.Worktree, strings.TrimSpace(body.BaseBranch)),
+			WorktreePath: worktree, Prompt: launchPrompt(item, worktree),
 		})
 		if threadID == "" {
+			if worktree != "" {
+				if rerr := c.RemoveWorktree(r.Context(), root, worktree); rerr != nil {
+					logError(rerr)
+				}
+			}
 			writeT3Error(w, err)
 			return
 		}
@@ -150,6 +170,9 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 			return
 		}
 		item.Status = "in_progress"
+		if worktree != "" {
+			item.Refs = append(item.Refs, worktreeRefPrefix+worktree)
+		}
 		if _, err := svc.Items().Put(r.Context(), actor(r), item); err != nil {
 			logError(err)
 		}
