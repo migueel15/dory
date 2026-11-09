@@ -193,7 +193,7 @@ function ThreadDetails({ v }: { v: T3ThreadView }) {
   const first = v.pull_requests.map((p) => prOf(p.url)).find(Boolean);
   // Same keys as the PR page and the changes panel, so the fetches are shared.
   const pull = useQuery({ queryKey: ["github-detail", first?.repo, "pulls", first?.number], queryFn: () => api.githubDetail(first!.repo, "pulls", first!.number), enabled: !!first, staleTime: 30_000 });
-  const diff = useQuery({ queryKey: ["t3-diff", v.id, v.messages.length], queryFn: () => api.t3Diff(v.id), staleTime: 30_000 });
+  const diff = useQuery({ queryKey: ["t3-diff", v.id], queryFn: () => api.t3Diff(v.id), staleTime: 30_000 });
   const envId = t3.data?.find((x) => x.instance_id === v.instance_id)?.environment_id;
   const catalog = useQuery({ queryKey: ["t3-catalog", v.instance_id], queryFn: () => api.t3Catalog(v.instance_id), enabled: !!v.instance_id, staleTime: 60_000 });
   const project = catalog.data?.projects.find((p) => p.id === v.project_id);
@@ -981,7 +981,11 @@ function Changes({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const prs = v.pull_requests.map((p) => ({ ...p, parsed: prOf(p.url) })).filter((p) => p.parsed);
   const [source, setSource] = useState("thread");
   const pr = prs.find((p) => p.url === source)?.parsed;
-  const local = useQuery({ queryKey: ["t3-diff", v.id, v.messages.length], queryFn: () => api.t3Diff(v.id), enabled: !pr });
+  const local = useQuery({ queryKey: ["t3-diff", v.id], queryFn: () => api.t3Diff(v.id), enabled: !pr });
+  // Refresh in place so new messages keep the mounted diff and its scroll.
+  useEffect(() => {
+    void qc.invalidateQueries({ queryKey: ["t3-diff", v.id] });
+  }, [qc, v.id, v.messages.length]);
   const prDiff = useQuery({ queryKey: ["github-diff", pr?.repo, pr?.number], queryFn: () => api.githubDiff(pr!.repo, pr!.number), enabled: !!pr });
   const text = pr ? prDiff.data?.diff : local.data?.diff;
   const suggest = async (s: Suggestion) => {
