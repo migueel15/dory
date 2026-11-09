@@ -88,6 +88,16 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 			writeT3Error(w, err)
 			return
 		}
+		// ?checkpoint= asks for the changes of one turn only.
+		if cp := r.URL.Query().Get("checkpoint"); cp != "" {
+			diff, err := c.TurnDiff(r.Context(), id, cp)
+			if err != nil {
+				writeT3Error(w, err)
+				return
+			}
+			writeJSONETag(w, r, localChanges{Diff: diff, Source: "t3"})
+			return
+		}
 		// When an item of the thread names a branch checked out on this machine,
 		// Dory diffs that worktree itself: it also covers worktrees T3 does not know.
 		if links, err := svc.ItemThreads().List(r.Context(), service.Filter{Fields: map[string]any{"thread_id": id}, Limit: 20}); err == nil {

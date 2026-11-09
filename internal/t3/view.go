@@ -36,6 +36,16 @@ type ViewMessage struct {
 	Skills []string `json:"skills,omitempty"`
 	// Attachments are the files sent with a user message.
 	Attachments []Attachment `json:"attachments,omitempty"`
+	// Files are the files a turn changed (role "changes"); ID is the checkpoint.
+	Files []ChangedFile `json:"files,omitempty"`
+}
+
+// ChangedFile is a file a turn changed, with its added and removed lines.
+type ChangedFile struct {
+	Path      string `json:"path"`
+	Kind      string `json:"kind"`
+	Additions int    `json:"additions"`
+	Deletions int    `json:"deletions"`
 }
 
 // wireAttachment is a chat attachment as T3 stores it on a message.
@@ -89,6 +99,9 @@ type wireTurnItem struct {
 	Placeholder  *string `json:"placeholder"`
 	Delivery     *string `json:"delivery"`
 	SecretStatus *string `json:"secretStatus"`
+	// A checkpoint names its id and the files its turn changed.
+	CheckpointID string        `json:"checkpointId"`
+	Files        []ChangedFile `json:"files"`
 }
 
 // HTMLRender is a page the agent showed with T3's html_render tool.
@@ -468,6 +481,13 @@ func timeline(in []wireTurnItem, msgs map[string]ViewMessage, runStatus map[stri
 			}
 			h.From = strings.Join(from, ", ")
 			out = append(out, h)
+		case it.Type == "checkpoint" && len(it.Files) > 0:
+			// The files a turn changed show as a card after its answer, like T3 Code.
+			id := it.CheckpointID
+			if id == "" {
+				id = it.ID
+			}
+			out = append(out, ViewMessage{ID: id, Role: "changes", CreatedAt: it.StartedAt, Files: it.Files})
 		case it.Type == "reasoning":
 			out = append(out, ViewMessage{ID: it.ID, Role: "reasoning", Text: str(it.Text), Streaming: it.Streaming, CreatedAt: it.StartedAt, Status: it.Status})
 		case !hiddenItems[it.Type]:
@@ -689,6 +709,36 @@ func (c Client) ThreadDiff(ctx context.Context, threadID string) (string, error)
 	}
 	err := c.call(ctx, "orchestration.getFullThreadDiff", map[string]any{"threadId": threadID, "toTurnCount": turns, "ignoreWhitespace": false}, &out)
 	return out.Diff, err
+}
+
+// TurnDiff returns the changes of the turn that ended in checkpoint id.
+func (c Client) TurnDiff(ctx context.Context, threadID, checkpointID string) (string, error) {
+	var p struct {
+		Checkpoints []struct {
+			ID            string `json:"id"`
+			AppRunOrdinal *int   `json:"appRunOrdinal"`
+		} `json:"checkpoints"`
+	}
+	if err := c.call(ctx, "orchestration.getThreadProjection", map[string]any{"threadId": threadID}, &p); err != nil {
+		return "", err
+	}
+	for _, cp := range p.Checkpoints {
+		if cp.ID == checkpointID && cp.AppRunOrdinal != nil && *cp.AppRunOrdinal > 0 {
+			var out struct {
+				Diff string `json:"diff"`
+			}
+			to := *cp.AppRunOrdinal
+			// T3's own client asks the first turn as a full diff.
+			method, in := "orchestration.getTurnDiff", map[string]any{"threadId": threadID, "fromTurnCount": to - 1, "toTurnCount": to, "ignoreWhitespace": false}
+			if to == 1 {
+				method = "orchestration.getFullThreadDiff"
+				delete(in, "fromTurnCount")
+			}
+			err := c.call(ctx, method, in, &out)
+			return out.Diff, err
+		}
+	}
+	return "", ErrThreadNotFound
 }
 
 // AnswerSecret answers a request_secret card: with a value T3 stores it and

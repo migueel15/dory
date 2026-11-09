@@ -133,3 +133,14 @@ func TestTimelineFoldsAnswersIntoQuestion(t *testing.T) {
 		t.Fatalf("got %+v", out)
 	}
 }
+
+func TestTimelineShowsCheckpointChanges(t *testing.T) {
+	files := []ChangedFile{{Path: "web/a.tsx", Kind: "modified", Additions: 3, Deletions: 1}}
+	out := timeline([]wireTurnItem{
+		{ID: "c1", Type: "checkpoint", CheckpointID: "cp1", Files: files, Ordinal: 2},
+		{ID: "c2", Type: "checkpoint", CheckpointID: "cp2", Ordinal: 3},
+	}, map[string]ViewMessage{}, nil, map[string]bool{}, false)
+	if len(out) != 1 || out[0].Role != "changes" || out[0].ID != "cp1" || len(out[0].Files) != 1 || out[0].Files[0].Additions != 3 {
+		t.Fatalf("got %+v", out)
+	}
+}

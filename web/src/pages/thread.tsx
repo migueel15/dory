@@ -1,9 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { ArrowDown, ArrowRight, ArrowSquareOut, ArrowUp, ArrowsOut, Browser, Cube, LinkSimple, Eye, EyeSlash, Key, Cloud, FolderSimple, GitBranch, GitPullRequest, Info, Kanban, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, GitDiff, SidebarSimple, Paperclip, Lightning, ListBullets, PencilSimple, Play, Question, Quotes, Stop, Trash, Wrench, X } from "@phosphor-icons/react";
-import { api, type T3Attachment, type T3QueuedRun, type T3ThreadView, type T3ViewMessage } from "../api/client";
+import { ArrowDown, ArrowRight, ArrowSquareOut, ArrowUp, ArrowsIn, ArrowsOut, ArrowsOutLineVertical, Browser, Cube, LinkSimple, Eye, EyeSlash, Key, Cloud, FolderSimple, GitBranch, GitPullRequest, Info, Kanban, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, GitDiff, SidebarSimple, Paperclip, Lightning, ListBullets, PencilSimple, Play, Question, Quotes, Stop, Trash, Wrench, X } from "@phosphor-icons/react";
+import { api, type T3Attachment, type T3ChangedFile, type T3QueuedRun, type T3ThreadView, type T3ViewMessage } from "../api/client";
 import { useThreadLive, useVisible } from "../api/live";
 import { Button, copyText, ErrorText, Input, Md, errMsg, uuid, Notice, Select, StatusPill, pill } from "../components/ui";
 import { OpenInT3 } from "../components/thread-link";
@@ -66,6 +66,9 @@ export function ThreadView() {
   const { threadId } = useParams({ from: "/threads/$threadId" });
   const { view, v, key, setStopping } = useThreadView(threadId);
   const [panel, setPanel] = useState<"" | "changes">("");
+  // The turn (and file) a changes card asked the panel to show.
+  const [target, setTarget] = useState<TurnTarget & { seq: number }>();
+  const openTurn = useCallback((t: TurnTarget) => { setTarget((p) => ({ ...t, seq: (p?.seq ?? 0) + 1 })); setPanel("changes"); }, []);
   const aside = useRef<HTMLElement>(null);
   const [opened, setOpened] = useState(false);
   useEffect(() => { if (panel) setOpened(true); }, [panel]);
@@ -82,7 +85,7 @@ export function ThreadView() {
         </button>
       </ContextBar>
       <div className="relative flex min-h-0 flex-1">
-        <div className={`min-h-0 min-w-0 flex-1 flex-col ${panel ? "hidden lg:flex" : "flex"}`}><Chat key={v.id} v={v} queryKey={key} onStop={setStopping} /></div>
+        <div className={`min-h-0 min-w-0 flex-1 flex-col ${panel ? "hidden lg:flex" : "flex"}`}><OpenTurnContext.Provider value={openTurn}><Chat key={v.id} v={v} queryKey={key} onStop={setStopping} /></OpenTurnContext.Provider></div>
         {/* Always mounted (its content only once opened): on desktop its width
             slides between 0 and the panel width, with the content pinned right
             so it enters from the right edge and leaves the same way. */}
@@ -92,7 +95,7 @@ export function ThreadView() {
             style={{ "--panel-w": `${width}px` } as React.CSSProperties}>
             <div className="ml-auto flex min-h-0 w-full flex-1 lg:w-[var(--panel-w)]">
               <ResizeHandle panel={aside} width={width} onResize={setWidth} />
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col pb-4 lg:pl-3">{opened && <Changes v={v} queryKey={key} />}</div>
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col pb-4 lg:pl-3">{opened && <Changes v={v} queryKey={key} target={target} />}</div>
             </div>
           </aside>
         )}
@@ -397,7 +400,7 @@ function Chat({ v, queryKey, onStop, notice, beforeSend, insert }: { v: T3Thread
             </button>
           </div>
         )}
-        {groups(all).map((m, gi, all) => Array.isArray(m) ? <WorkBlock key={m[0].id} steps={m} live={!!v.active_run_id && gi === all.length - 1} /> : m.role === "plan" ? <PlanCard key={m.id} m={m} /> : m.role === "handoff" ? <Handoff key={m.id} m={m} /> : m.role === "secret" ? <SecretLine key={m.id} m={m} /> : m.role === "html" && m.html ? <HtmlRender key={m.id} threadId={v.id} page={m.html} /> : m.role === "interrupt" ? (
+        {groups(all).map((m, gi, all) => Array.isArray(m) ? <WorkBlock key={m[0].id} steps={m} live={!!v.active_run_id && gi === all.length - 1} /> : m.role === "plan" ? <PlanCard key={m.id} m={m} /> : m.role === "handoff" ? <Handoff key={m.id} m={m} /> : m.role === "secret" ? <SecretLine key={m.id} m={m} /> : m.role === "changes" && m.files ? <ChangesCard key={m.id} m={m} /> : m.role === "html" && m.html ? <HtmlRender key={m.id} threadId={v.id} page={m.html} /> : m.role === "interrupt" ? (
           <div key={m.id} role="separator" className="flex items-center gap-3 text-[11px] font-medium uppercase tracking-wide text-slate-400">
             <span className="h-px flex-1 bg-slate-200 dark:bg-border" /><Stop weight="fill" className="size-3" />{m.text}<span className="h-px flex-1 bg-slate-200 dark:bg-border" />
           </div>
@@ -990,12 +993,85 @@ const prOf = (url: string) => {
 
 const DIFF_POLL_MS = 3000;
 
+type TurnTarget = { checkpoint: string; path?: string };
+// OpenTurnContext opens the side panel on a turn's changes; null where the chat has no panel.
+const OpenTurnContext = createContext<((t: TurnTarget) => void) | null>(null);
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const Counts = ({ add, del }: { add: number; del: number }) => (
+  <span className="shrink-0 font-mono text-xs tabular-nums"><span className="text-emerald-600 dark:text-emerald-400">+{add}</span> <span className="text-red-600 dark:text-red-400">-{del}</span></span>
+);
+
+// ChangesCard lists the files a turn changed, grouped by folder, like T3 Code.
+// Clicking a file, a folder or "Abrir diff" opens the side panel on that turn.
+function ChangesCard({ m }: { m: T3ViewMessage }) {
+  const open = useContext(OpenTurnContext);
+  const files = m.files ?? [];
+  const dirs = useMemo(() => {
+    const by = new Map<string, T3ChangedFile[]>();
+    for (const f of files) {
+      const i = f.path.lastIndexOf("/");
+      const d = i < 0 ? "" : f.path.slice(0, i);
+      by.set(d, [...(by.get(d) ?? []), f]);
+    }
+    return [...by].sort(([a], [b]) => a.localeCompare(b)).map(([dir, fs]) => ({ dir, files: fs, add: fs.reduce((n, f) => n + f.additions, 0), del: fs.reduce((n, f) => n + f.deletions, 0) }));
+  }, [files]);
+  const [shown, setShown] = useState<Set<string>>(() => new Set());
+  const all = dirs.length > 0 && dirs.every((d) => shown.has(d.dir));
+  const toggle = (d: string) => setShown((s) => { const n = new Set(s); if (!n.delete(d)) n.add(d); return n; });
+  const add = files.reduce((n, f) => n + f.additions, 0), del = files.reduce((n, f) => n + f.deletions, 0);
+  const row = "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-slate-100 dark:hover:bg-raised";
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 dark:border-border dark:bg-surface">
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        <span className="text-xs font-semibold text-slate-900 dark:text-white">{plural(files.length, "archivo cambiado", "archivos cambiados")}</span>
+        <Counts add={add} del={del} />
+        <span className="flex-1" />
+        <button type="button" onClick={() => setShown(all ? new Set() : new Set(dirs.map((d) => d.dir)))} title={all ? "Plegar todo" : "Desplegar todo"} aria-label={all ? "Plegar todo" : "Desplegar todo"}
+          className="rounded p-1 text-slate-500 hover:bg-slate-200 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white">
+          {all ? <ArrowsIn className="size-3.5" /> : <ArrowsOutLineVertical className="size-3.5" />}
+        </button>
+        {open && (
+          <button type="button" onClick={() => open({ checkpoint: m.id })} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-200 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white">
+            <GitDiff className="size-3.5" />Abrir diff
+          </button>
+        )}
+      </div>
+      <div className="px-1 pb-1.5">
+        {dirs.map((d) => (
+          <div key={d.dir}>
+            <button type="button" onClick={() => toggle(d.dir)} aria-expanded={shown.has(d.dir)} className={`${row} text-slate-500 dark:text-muted`}>
+              {shown.has(d.dir) ? <CaretDown className="size-3 shrink-0" /> : <CaretRight className="size-3 shrink-0" />}
+              <FolderSimple className="size-3.5 shrink-0" />
+              <span className="min-w-0 flex-1 truncate font-mono">{d.dir || "."}</span>
+              <Counts add={d.add} del={d.del} />
+            </button>
+            {shown.has(d.dir) && d.files.map((f) => (
+              <button type="button" key={f.path} disabled={!open} onClick={() => open?.({ checkpoint: m.id, path: f.path })} title={f.path}
+                className={`${row} pl-9 text-slate-700 disabled:cursor-default disabled:hover:bg-transparent dark:text-text-secondary`}>
+                <FileText className="size-3.5 shrink-0" />
+                <span className="min-w-0 flex-1 truncate font-mono">{f.path.slice(f.path.lastIndexOf("/") + 1)}</span>
+                <Counts add={f.additions} del={f.deletions} />
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Changes shows the thread's own changes or its pull request, and sends a
 // selected range to the chat through the same queue or steer as the composer.
-function Changes({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
+function Changes({ v, queryKey, target }: { v: T3ThreadView; queryKey: unknown[]; target?: TurnTarget & { seq: number } }) {
   const qc = useQueryClient();
   const prs = v.pull_requests.map((p) => ({ ...p, parsed: prOf(p.url) })).filter((p) => p.parsed);
-  const [source, setSource] = useState("thread");
+  const [source, setSource] = useState(target ? `turn:${target.checkpoint}` : "thread");
+  // A changes card in the chat switches the panel to its turn each time it is clicked.
+  useEffect(() => { if (target) setSource(`turn:${target.checkpoint}`); }, [target]);
+  const turn = source.startsWith("turn:") ? source.slice(5) : "";
+  const turnDiff = useQuery({ queryKey: ["t3-diff", v.id, "turn", turn], queryFn: () => api.t3Diff(v.id, turn), enabled: !!turn, staleTime: Infinity });
+  const focus = useMemo(() => turn && target?.path && target.checkpoint === turn ? { path: target.path, seq: target.seq } : undefined, [turn, target]);
   const pr = prs.find((p) => p.url === source)?.parsed;
   const visible = useVisible();
   const local = useQuery({ queryKey: ["t3-diff", v.id], queryFn: () => api.t3Diff(v.id), enabled: !pr, refetchInterval: visible ? DIFF_POLL_MS : false });
@@ -1004,7 +1080,7 @@ function Changes({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
     void qc.invalidateQueries({ queryKey: ["t3-diff", v.id] });
   }, [qc, v.id, v.messages.length]);
   const prDiff = useQuery({ queryKey: ["github-diff", pr?.repo, pr?.number], queryFn: () => api.githubDiff(pr!.repo, pr!.number), enabled: !!pr });
-  const text = pr ? prDiff.data?.diff : local.data?.diff;
+  const text = turn ? turnDiff.data?.diff : pr ? prDiff.data?.diff : local.data?.diff;
   const suggest = async (s: Suggestion) => {
     const where = s.start === s.end ? `línea ${s.start}` : `líneas ${s.start}–${s.end}`;
     const body = `Sugerencia sobre \`${s.path}\` (${where}):\n\n\`\`\`diff\n${s.snippet}\n\`\`\`\n\n${s.question}`;
@@ -1016,13 +1092,14 @@ function Changes({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         <Select className="w-64" value={source} onChange={setSource} options={[
           { value: "thread", label: "Cambios del hilo (worktree)" },
+          ...(target ? [{ value: `turn:${target.checkpoint}`, label: "Cambios de este turno" }] : []),
           ...prs.map((p) => ({ value: p.url, label: `PR #${p.number} · ${p.repository}` })),
         ]} />
         {v.worktree_path && <span className="truncate font-mono text-xs text-slate-500 dark:text-muted" title={v.worktree_path}>{v.worktree_path}</span>}
       </div>
-      <ErrorText error={pr ? prDiff.error : local.error} />
+      <ErrorText error={turn ? turnDiff.error : pr ? prDiff.error : local.error} />
       {text === undefined ? <Notice loading /> : text === "" ? <p className="text-sm text-slate-500 dark:text-muted">Sin cambios todavía.</p>
-        : <div className="min-h-0 flex-1"><Diff key={source} text={text} onSuggest={suggest} fill /></div>}
+        : <div className="min-h-0 flex-1"><Diff key={source} text={text} onSuggest={suggest} focus={focus} fill /></div>}
     </section>
   );
 }
