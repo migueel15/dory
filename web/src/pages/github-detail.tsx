@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { Robot } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
@@ -289,6 +289,27 @@ function SubLink({ s, here, dot }: { s: GithubDetail["sub_issues"][number]; here
   );
 }
 
+type ComposerHandle = { quote: (q: string) => void };
+
+// Composer owns the message text, so typing re-renders only the box and not the page or the diff.
+function Composer({ ref, boxRef, people, links, pull, viewer, open, onSend }: { ref: Ref<ComposerHandle>; boxRef: React.RefObject<HTMLTextAreaElement | null>; people: string[]; links: GithubDetail["links"]; pull?: GithubPull; viewer: string; open: boolean; onSend: (type: string, body: string) => void }) {
+  const [text, setText] = useState("");
+  useImperativeHandle(ref, () => ({ quote: (q) => setText((t) => q + t) }), []);
+  const discard = () => { setText(""); boxRef.current?.blur(); };
+  const send = (type: string) => { onSend(type, text); discard(); };
+  return (
+    <Card className="space-y-2">
+      <MentionArea boxRef={boxRef} people={people} links={links} id="composer" aria-label="Mensaje" value={text} onValue={setText} onKeyDown={(e) => e.key === "Escape" && boxRef.current?.blur()} rows={4} placeholder="Escribe un mensaje…" className="p-2" />
+      <div className="flex flex-wrap gap-2">
+        <Button disabled={!text.trim()} onClick={() => send("comment")}>Comentar</Button>
+        {pull && open && <Button variant="ghost" disabled={!text.trim()} onClick={() => send("request_changes")}>Pedir cambios</Button>}
+        {pull && open && canApprove(pull, viewer) && <Button variant="ghost" disabled={!text.trim()} onClick={() => send("approve")}>Aprobar con mensaje</Button>}
+        {text && <Button variant="ghost" className="ml-auto" onClick={discard}>Descartar</Button>}
+      </div>
+    </Card>
+  );
+}
+
 const stateColor: Record<string, string> = { OPEN: "bg-green-600", CLOSED: "bg-red-600", MERGED: "bg-purple-600" };
 const stateName: Record<string, string> = { OPEN: "Abierta", CLOSED: "Cerrada", MERGED: "Mergeada" };
 
@@ -297,9 +318,8 @@ export function GithubView() {
   const full = `${owner}/${repo}`;
   const n = Number(number);
   const qc = useQueryClient();
-  const [text, setText] = useState("");
   const box = useRef<HTMLTextAreaElement>(null);
-  const discard = () => { setText(""); box.current?.blur(); };
+  const composer = useRef<ComposerHandle>(null);
   // On phones the keyboard shrinks the visual viewport after focus; keep the box above it.
   const focusBox = () => requestAnimationFrame(() => {
     const el = box.current; if (!el) return;
@@ -308,6 +328,7 @@ export function GithubView() {
   });
   const write = () => { bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }); focusBox(); };
   const [showDiff, setShowDiff] = useState(false);
+  const onAsked = useCallback(() => setChat(true), []);
   const [defining, setDefining] = useState(false);
   const key = ["github-detail", full, kind, n];
   const detail = useQuery({ queryKey: key, queryFn: () => api.githubDetail(full, kind, n), refetchInterval: 60_000 });
@@ -367,28 +388,20 @@ export function GithubView() {
           {d.issue && <IssueActions open={open} act={act} busy={false} />}
         </>} />
         {defining && <DefineIssueDialog resolve={!!d.pull} repo={full} number={n} onClose={() => setDefining(false)} />}
-        {showDiff && <Diff repo={full} pr={n} focus={focus} onAsked={() => setChat(true)} />}
+        {showDiff && <Diff repo={full} pr={n} focus={focus} onAsked={onAsked} />}
         <Threads threads={d.threads} me={d.viewer} people={people} links={d.links} act={action.mutateAsync} busy={false} />
         {d.timeline.map((e, i) => (
           <div key={i} className={e.body ? "" : "px-3 text-xs text-slate-500 dark:text-muted"}>
             {e.body ? (
               <Card>
                 <Message author={e.actor} verb={reviewStates[e.state] ?? labels[e.type] ?? e.type} at={e.at} body={e.body} mine={e.actor === d.viewer} editType={e.type === "PullRequestReview" ? "edit_review" : "edit_comment"} id={e.id} act={action.mutateAsync} busy={false}
-                  onReply={(q) => { setText(q + text); write(); }} />
+                  onReply={(q) => { composer.current?.quote(q); write(); }} />
               </Card>
             ) : <>{e.actor} {reviewStates[e.state] ?? labels[e.type] ?? e.type} {e.detail} · {new Date(e.at).toLocaleString()}</>}
           </div>
         ))}
         <div ref={bottom}>
-          <Card className="space-y-2">
-            <MentionArea boxRef={box} people={people} links={d.links} id="composer" aria-label="Mensaje" value={text} onValue={setText} onKeyDown={(e) => e.key === "Escape" && box.current?.blur()} rows={4} placeholder="Escribe un mensaje…" className="p-2" />
-            <div className="flex flex-wrap gap-2">
-              <Button disabled={!text.trim()} onClick={() => { action.mutate({ type: "comment", body: text }); discard(); }}>Comentar</Button>
-              {d.pull && open && <Button variant="ghost" disabled={!text.trim()} onClick={() => { action.mutate({ type: "request_changes", body: text }); discard(); }}>Pedir cambios</Button>}
-              {d.pull && open && canApprove(d.pull, d.viewer) && <Button variant="ghost" disabled={!text.trim()} onClick={() => { action.mutate({ type: "approve", body: text }); discard(); }}>Aprobar con mensaje</Button>}
-              {text && <Button variant="ghost" className="ml-auto" onClick={discard}>Descartar</Button>}
-            </div>
-          </Card>
+          <Composer ref={composer} boxRef={box} people={people} links={d.links} pull={d.pull ?? undefined} viewer={d.viewer} open={open} onSend={(type, body) => action.mutate({ type, body })} />
         </div>
         {!atBottom && !showChat && (
           <span className="fixed bottom-5 right-5 z-40">
