@@ -38,3 +38,27 @@ func TestRefineFirstMessage(t *testing.T) {
 		t.Fatalf("user text missing: %s", msg)
 	}
 }
+
+func TestItemWorktree(t *testing.T) {
+	for _, tc := range []struct{ root, want string }{
+		{"/home/miguel/repos/dory", "/home/miguel/.t3/worktrees/dory/dory-3e3f909c"},
+		{"/Users/ana/src/dory", "/Users/ana/.t3/worktrees/dory/dory-3e3f909c"},
+	} {
+		item := service.Item{}
+		item.ID = "3e3f909c-bf6f-4e6b-b524-a152053f84f6"
+		got, create := itemWorktree(item, tc.root)
+		if got != tc.want || !create {
+			t.Fatalf("path=%q create=%v", got, create)
+		}
+		item.ID = "abcdef12-bf6f-4e6b-b524-a152053f84f6"
+		other, create := itemWorktree(item, tc.root)
+		if other == got || !create {
+			t.Fatalf("items must use distinct paths: %q", other)
+		}
+		item.Refs = []string{"https://github.com/migueel15/dory/issues/122", "worktree:" + got}
+		reused, create := itemWorktree(item, tc.root)
+		if reused != got || create {
+			t.Fatalf("must reuse recorded path: %q create=%v", reused, create)
+		}
+	}
+}
