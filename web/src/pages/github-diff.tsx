@@ -171,8 +171,8 @@ const UnifiedRow = memo(function UnifiedRow({ path, i, l, picked, q, hl, choose,
   return (
     <div data-ref={`${path}:${i}`} onMouseEnter={() => l.kind !== "hunk" && extend(path, i)} className={`flex ${picked ? pickedBg : color[l.kind]} ${hit ? ring : ""}`}>
       {l.kind === "hunk" ? null : (
-        <button type="button" title="Comentar esta línea (en móvil, toca otra para ampliar el rango)" onPointerDown={(e) => { touch.current = e.pointerType !== "mouse"; }} onMouseDown={(e) => { e.preventDefault(); choose(path, i, e.shiftKey || touch.current); }} onMouseEnter={() => extend(path, i)} className={`w-20 shrink-0 touch-manipulation select-none border-r border-slate-200 pr-2 text-right text-slate-400 hover:text-blue-600 dark:border-border dark:hover:text-accent-text ${picked ? "" : gutter[l.kind]}`}>
-          <span className="inline-block w-8">{l.old ?? ""}</span> <span className="inline-block w-8">{l.new ?? ""}</span>
+        <button type="button" title="Comentar esta línea (en móvil, toca otra para ampliar el rango)" onPointerDown={(e) => { touch.current = e.pointerType !== "mouse"; }} onMouseDown={(e) => { e.preventDefault(); choose(path, i, e.shiftKey || touch.current); }} onMouseEnter={() => extend(path, i)} className={`flex w-24 shrink-0 touch-manipulation select-none whitespace-nowrap border-r border-slate-200 pr-2 text-right tabular-nums leading-5 text-slate-400 hover:text-blue-600 dark:border-border dark:hover:text-accent-text ${picked ? "" : gutter[l.kind]}`}>
+          <span className="w-1/2">{l.old ?? ""}</span><span className="w-1/2">{l.new ?? ""}</span>
         </button>
       )}
       {h !== undefined ? (
