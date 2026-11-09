@@ -122,10 +122,14 @@ func TestThreadViewKeepsPendingQuestions(t *testing.T) {
 	}
 }
 
-func TestTimelineShowsAnswersAsStep(t *testing.T) {
+func TestTimelineFoldsAnswersIntoQuestion(t *testing.T) {
 	id, text := "async-answer:runtime-request:x", "¿Color? Rojo"
-	out := timeline([]wireTurnItem{{ID: "i", Type: "user_message", MessageID: &id, Text: &text}}, map[string]ViewMessage{}, nil, map[string]bool{}, false)
-	if len(out) != 1 || out[0].Role != "tool" || out[0].Detail != text {
+	q := wireTurnItem{ID: "q", Type: "user_input_request", Status: "running", Ordinal: 1}
+	q.Questions = append(q.Questions, struct {
+		Question string `json:"question"`
+	}{"¿Color?"})
+	out := timeline([]wireTurnItem{q, {ID: "a", Type: "user_message", MessageID: &id, Text: &text, Ordinal: 2}}, map[string]ViewMessage{}, nil, map[string]bool{}, false)
+	if len(out) != 1 || out[0].Title != "Ask User Question" || out[0].Detail != text || out[0].Status != "completed" {
 		t.Fatalf("got %+v", out)
 	}
 }

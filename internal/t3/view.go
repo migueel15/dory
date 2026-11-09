@@ -70,6 +70,10 @@ type wireTurnItem struct {
 	StartedAt string          `json:"startedAt"`
 	RunID     string          `json:"runId"`
 	Markdown  *string         `json:"markdown"`
+	// A question to the user (user_input_request) lists what it asks.
+	Questions []struct {
+		Question string `json:"question"`
+	} `json:"questions"`
 	// A provider handoff names the models before and after it.
 	FromModelSelections []struct {
 		InstanceID string `json:"instanceId"`
@@ -146,7 +150,7 @@ func htmlRenderOf(it wireTurnItem) *HTMLRender {
 }
 
 // hiddenItems are turn items the chat does not show as steps.
-var hiddenItems = map[string]bool{"checkpoint": true, "user_input_request": true, "user_message": true, "assistant_message": true, "run_interrupt_request": true}
+var hiddenItems = map[string]bool{"checkpoint": true, "user_message": true, "assistant_message": true, "run_interrupt_request": true}
 
 // toolDetail summarizes a tool input: a command as is, anything else as compact JSON.
 func toolDetail(raw json.RawMessage) string {
@@ -388,6 +392,7 @@ func (p wireViewProjection) view(threadID string) ThreadView {
 // missing there is rebuilt from the item's own text (older history pages).
 func timeline(in []wireTurnItem, msgs map[string]ViewMessage, runStatus map[string]string, shown map[string]bool, fromItems bool) []ViewMessage {
 	out := []ViewMessage{}
+	lastQuestion := -1
 	items := append([]wireTurnItem(nil), in...)
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Ordinal < items[j].Ordinal })
 	for _, it := range items {
@@ -400,16 +405,29 @@ func timeline(in []wireTurnItem, msgs map[string]ViewMessage, runStatus map[stri
 			it.Streaming, it.Status = false, "completed"
 		}
 		switch {
+		case it.Type == "user_input_request":
+			// A question to the user shows as a step, like Claude's AskUserQuestion.
+			var qs []string
+			for _, q := range it.Questions {
+				qs = append(qs, q.Question)
+			}
+			lastQuestion = len(out)
+			out = append(out, ViewMessage{ID: it.ID, Role: "tool", Title: "Ask User Question", Detail: strings.Join(qs, "\n"), CreatedAt: it.StartedAt, Status: it.Status})
 		case it.MessageID != nil && strings.HasPrefix(*it.MessageID, "async-answer:"):
-			// T3 records the answers to a question as a server-made user message:
-			// it belongs to the question tool, so it shows as a step, not as the user's.
-			if !shown[*it.MessageID] {
-				shown[*it.MessageID] = true
-				text := str(it.Text)
-				if m, ok := msgs[*it.MessageID]; ok && m.Text != "" {
-					text = m.Text
-				}
-				out = append(out, ViewMessage{ID: *it.MessageID, Role: "tool", Title: "Respuestas a las preguntas", Detail: text, CreatedAt: it.StartedAt, Status: "completed"})
+			// T3 records the answers as a server-made user message: they belong to
+			// the question step, not to the user's own messages.
+			if shown[*it.MessageID] {
+				break
+			}
+			shown[*it.MessageID] = true
+			text := str(it.Text)
+			if m, ok := msgs[*it.MessageID]; ok && m.Text != "" {
+				text = m.Text
+			}
+			if lastQuestion >= 0 {
+				out[lastQuestion].Detail, out[lastQuestion].Status = text, "completed"
+			} else {
+				out = append(out, ViewMessage{ID: *it.MessageID, Role: "tool", Title: "Ask User Question", Detail: text, CreatedAt: it.StartedAt, Status: "completed"})
 			}
 		case it.MessageID != nil:
 			m, ok := msgs[*it.MessageID]
