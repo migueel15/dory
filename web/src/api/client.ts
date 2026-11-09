@@ -19,7 +19,8 @@ export type T3InstanceHistory = S["T3InstanceHistory"];
 export type T3DayUsage = S["T3DayUsage"];
 export type T3ThreadContext = S["T3ThreadContext"];
 // Reasoning and tool entries are steps of the model between messages.
-export type T3ViewMessage = { id: string; role: "user" | "assistant" | "system" | "reasoning" | "tool" | "interrupt" | "plan" | "handoff" | "html" | "secret"; text: string; streaming: boolean; created_at: string; title?: string; detail?: string; status?: string; attachments?: T3Attachment[]; mentions?: string[]; skills?: string[]; from?: string; to?: string; from_provider?: string; to_provider?: string; html?: { attachment_id: string; title: string; height: number } };
+export type T3ViewMessage = { id: string; role: "user" | "assistant" | "system" | "reasoning" | "tool" | "interrupt" | "plan" | "handoff" | "html" | "secret" | "changes"; text: string; streaming: boolean; created_at: string; title?: string; detail?: string; status?: string; attachments?: T3Attachment[]; mentions?: string[]; skills?: string[]; from?: string; to?: string; from_provider?: string; to_provider?: string; html?: { attachment_id: string; title: string; height: number }; files?: T3ChangedFile[] };
+export type T3ChangedFile = { path: string; kind: string; additions: number; deletions: number };
 export type T3QueuedRun = { run_id: string; text: string; position: number; held: boolean };
 export type T3ThreadView = {
   id: string; title: string; provider_id: string; model: string; effort: string; effort_option: string;
@@ -108,7 +109,7 @@ export const api = {
   t3Send: (id: string, text: string) => req<void>("POST", `/t3/threads/${id}/messages`, { text }),
   t3View: (id: string) => req<T3ThreadView>("GET", `/t3/threads/${id}/view`),
   t3History: (id: string, cursor: string) => req<{ messages: T3ViewMessage[]; next_cursor: string; has_more: boolean }>("GET", `/t3/threads/${id}/history?cursor=${encodeURIComponent(cursor)}`),
-  t3Diff: (id: string) => req<{ diff: string; source: "t3" | "git"; branch?: string; worktree?: string; base?: string }>("GET", `/t3/threads/${id}/diff`),
+  t3Diff: (id: string, checkpoint?: string) => req<{ diff: string; source: "t3" | "git"; branch?: string; worktree?: string; base?: string }>("GET", `/t3/threads/${id}/diff${checkpoint ? `?checkpoint=${encodeURIComponent(checkpoint)}` : ""}`),
   githubPullRefs: (repo: string, q: string) => req<{ pulls: { number: number; title: string; state: "open" | "draft" | "merged" | "closed" }[] }>("GET", `/github/repos/${repo}/pull-refs?q=${encodeURIComponent(q)}`),
   t3Composer: (id: string, provider: string) => req<{ commands: T3ComposerEntry[]; skills: T3ComposerEntry[] }>("GET", `/t3/threads/${id}/composer?provider=${encodeURIComponent(provider)}`),
   t3Entries: (id: string, q: string) => req<{ entries: { path: string; kind: string }[] }>("GET", `/t3/threads/${id}/entries?q=${encodeURIComponent(q)}`),
