@@ -411,15 +411,14 @@ func (c Client) RemoveWorktree(ctx context.Context, cwd, path string) error {
 }
 
 // CreateWorktree asks T3 for a new worktree of the repository at cwd, checked
-// out at ref without creating a branch (detached HEAD), and returns its path.
-// The agent creates the branch afterwards.
-func (c Client) CreateWorktree(ctx context.Context, cwd, ref, path string) (string, error) {
+// out on branch from ref, and returns the path chosen by T3.
+func (c Client) CreateWorktree(ctx context.Context, cwd, ref, branch string) (string, error) {
 	var out struct {
 		Worktree struct {
 			Path string `json:"path"`
 		} `json:"worktree"`
 	}
-	if err := c.callFor(ctx, gitTimeout, "vcs.createWorktree", map[string]any{"cwd": cwd, "refName": ref, "path": path}, &out); err != nil {
+	if err := c.callFor(ctx, gitTimeout, "vcs.createWorktree", map[string]any{"cwd": cwd, "refName": ref, "path": nil, "newRefName": branch}, &out); err != nil {
 		return "", err
 	}
 	if out.Worktree.Path == "" {

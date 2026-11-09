@@ -120,8 +120,8 @@ func TestArchiveThreadDispatch(t *testing.T) {
 
 func TestCreateWorktree(t *testing.T) {
 	var seen map[string]any
-	c := rpcServer(t, `{"_tag":"Success","value":{"worktree":{"path":"/w/x","refName":"origin/main"}}}`, &seen)
-	path, err := c.CreateWorktree(context.Background(), "/repo", "origin/main", "/w/x")
+	c := rpcServer(t, `{"_tag":"Success","value":{"worktree":{"path":"/w/x","refName":"dory/12345678"}}}`, &seen)
+	path, err := c.CreateWorktree(context.Background(), "/repo", "origin/main", "dory/12345678")
 	if err != nil || path != "/w/x" {
 		t.Fatalf("path=%q err=%v", path, err)
 	}
@@ -129,14 +129,14 @@ func TestCreateWorktree(t *testing.T) {
 	if seen["tag"] != "vcs.createWorktree" || p["cwd"] != "/repo" || p["refName"] != "origin/main" {
 		t.Fatalf("unexpected request: %+v", seen)
 	}
-	if _, ok := p["newRefName"]; ok {
-		t.Fatalf("must not create a branch: %+v", p)
+	if p["newRefName"] != "dory/12345678" {
+		t.Fatalf("must create the provisional branch: %+v", p)
 	}
-	if v, ok := p["path"]; !ok || v != "/w/x" {
-		t.Fatalf("path must be explicit: %+v", p)
+	if v, ok := p["path"]; !ok || v != nil {
+		t.Fatalf("path must be null: %+v", p)
 	}
 	c = rpcServer(t, `{"_tag":"Success","value":{"worktree":{}}}`, nil)
-	if _, err := c.CreateWorktree(context.Background(), "/repo", "origin/main", "/w/x"); err == nil {
+	if _, err := c.CreateWorktree(context.Background(), "/repo", "origin/main", "dory/12345678"); err == nil {
 		t.Fatal("empty path must fail")
 	}
 }
