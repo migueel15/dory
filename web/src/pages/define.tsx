@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowLeft, ChatCircleText, PencilSimpleLine, Question } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, ChatCircleText, ListChecks, Rocket, PencilSimpleLine, Question } from "@phosphor-icons/react";
 import { Link, useParams } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, itemInput, type Item, type ItemPlan, type ItemRefinement, type PlanSections, type RefineInput } from "../api/client";
+import { latestThread, useItemThreads } from "../api/item-threads";
 import { useThreadLive } from "../api/live";
 import { ItemTitle, pendingPoll } from "../components/item-title";
 import { ThreadLink } from "../components/thread-link";
@@ -48,6 +49,7 @@ export function Define() {
   const plans = useQuery({ queryKey: ["refinement", id, "plans"], queryFn: () => api.plans(id) });
   const refresh = () => ["refinement", "items", "t3-status"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   useThreadLive(refinement.data?.thread?.thread_id, ["refinement", id]);
+  const implementation = latestThread(useItemThreads(id, "implementation"));
   const accept = useMutation({ mutationFn: () => api.acceptPlan(id), onSuccess: refresh });
   if (!item.data) return item.error ? <ErrorText error={item.error} /> : <Notice loading />;
   const it = item.data;
@@ -70,7 +72,13 @@ export function Define() {
       <div className="space-y-3">
         <Link to={it.project_id ? "/projects/$id" : "/inbox"} params={{ id: it.project_id ?? "" }} className={`${muted} hover:underline`}>← Volver</Link>
         <h1 className="text-lg font-semibold break-words"><ItemTitle item={it} /></h1>
-        <Notice>Este item ya está en «{info.label}»; la definición está cerrada. <Link to={it.project_id ? "/projects/$id" : "/inbox"} params={{ id: it.project_id ?? "" }} className="underline">Ver el item en su lista</Link></Notice>
+        <Card className="space-y-3">
+          <p className="text-sm">Este item ya está en «{info.label}»; la definición está cerrada.</p>
+          <div className="flex flex-wrap gap-2">
+            <Link to={it.project_id ? "/projects/$id" : "/inbox"} params={{ id: it.project_id ?? "" }} className={actionClass}><ListChecks className="size-4" aria-hidden="true" />Ver en tareas</Link>
+            {implementation && <ImplementationLink thread={implementation} />}
+          </div>
+        </Card>
       </div>
     );
   }
@@ -86,6 +94,7 @@ export function Define() {
         </div>
         <div className="flex flex-wrap gap-2">
           {definable(it.status) && <Button disabled={!canAccept || accept.isPending} title={plan?.open_questions.length ? "Quedan preguntas abiertas" : undefined} onClick={() => accept.mutate()}>Aceptar plan</Button>}
+          {it.status === "ready" && implementation && <ImplementationLink thread={implementation} />}
           {it.status === "ready" && <Button variant={canAccept ? "ghost" : "default"} onClick={() => setImplement(true)}>Enviar a implementar</Button>}
         </div>
       </header>
@@ -107,8 +116,21 @@ export function Define() {
           </div>
         </section>
       </div>
-      {implement && <LaunchDialog items={[it]} role="implementation" onClose={() => setImplement(false)} />}
+      {implement && <LaunchDialog items={[it]} role="implementation" onClose={() => { setImplement(false); qc.invalidateQueries({ queryKey: ["item-threads"] }); }} />}
     </div>
+  );
+}
+
+const actionClass = "inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 no-underline shadow-sm hover:bg-slate-50 dark:border-border dark:bg-surface dark:text-text-secondary dark:hover:bg-raised";
+
+// ImplementationLink opens the implementation thread's view in Dory.
+function ImplementationLink({ thread }: { thread: ReturnType<typeof useItemThreads>[number] }) {
+  return (
+    <ThreadLink url={thread.url} environmentId={thread.t3_environment_id} threadId={thread.id} title={thread.title} className={actionClass}>
+      <Rocket className="size-4" aria-hidden="true" />Ver implementación
+      <ThreadStatus status={thread.status} attention={thread.attention} />
+      <ArrowRight className="size-3.5" aria-hidden="true" />
+    </ThreadLink>
   );
 }
 
