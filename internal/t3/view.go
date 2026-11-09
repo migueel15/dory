@@ -400,6 +400,17 @@ func timeline(in []wireTurnItem, msgs map[string]ViewMessage, runStatus map[stri
 			it.Streaming, it.Status = false, "completed"
 		}
 		switch {
+		case it.MessageID != nil && strings.HasPrefix(*it.MessageID, "async-answer:"):
+			// T3 records the answers to a question as a server-made user message:
+			// it belongs to the question tool, so it shows as a step, not as the user's.
+			if !shown[*it.MessageID] {
+				shown[*it.MessageID] = true
+				text := str(it.Text)
+				if m, ok := msgs[*it.MessageID]; ok && m.Text != "" {
+					text = m.Text
+				}
+				out = append(out, ViewMessage{ID: *it.MessageID, Role: "tool", Title: "Respuestas a las preguntas", Detail: text, CreatedAt: it.StartedAt, Status: "completed"})
+			}
 		case it.MessageID != nil:
 			m, ok := msgs[*it.MessageID]
 			if !ok && fromItems && (it.Type == "user_message" || it.Type == "assistant_message") {

@@ -121,3 +121,11 @@ func TestThreadViewKeepsPendingQuestions(t *testing.T) {
 		t.Fatalf("pending %+v", v.Pending)
 	}
 }
+
+func TestTimelineShowsAnswersAsStep(t *testing.T) {
+	id, text := "async-answer:runtime-request:x", "¿Color? Rojo"
+	out := timeline([]wireTurnItem{{ID: "i", Type: "user_message", MessageID: &id, Text: &text}}, map[string]ViewMessage{}, nil, map[string]bool{}, false)
+	if len(out) != 1 || out[0].Role != "tool" || out[0].Detail != text {
+		t.Fatalf("got %+v", out)
+	}
+}
