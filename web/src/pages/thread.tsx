@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { ArrowDown, ArrowRight, ArrowSquareOut, ArrowUp, ArrowsOut, Browser, Cube, LinkSimple, Eye, EyeSlash, Key, Cloud, FolderSimple, GitBranch, GitPullRequest, Info, Kanban, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, GitDiff, SidebarSimple, Paperclip, Lightning, ListBullets, PencilSimple, Play, Question, Quotes, Stop, Trash, Wrench, X } from "@phosphor-icons/react";
 import { api, type T3Attachment, type T3QueuedRun, type T3ThreadView, type T3ViewMessage } from "../api/client";
-import { useThreadLive } from "../api/live";
+import { useThreadLive, useVisible } from "../api/live";
 import { Button, copyText, ErrorText, Input, Md, errMsg, uuid, Notice, Select, StatusPill, pill } from "../components/ui";
 import { OpenInT3 } from "../components/thread-link";
 import { PendingRequest, type QuestionControl } from "../components/pending-request";
@@ -34,7 +34,8 @@ function useThreadView(threadId: string) {
   const key = ["t3-view", threadId];
   // Safety net for a stalled live stream: while a turn runs, reload every 15 s.
   const view = useQuery({ queryKey: key, queryFn: () => api.t3View(threadId), refetchInterval: (q) => q.state.data?.active_run_id ? 15_000 : false });
-  useThreadLive(threadId, key);
+  // The agent edits the worktree during a turn: refresh its diff with each thread event.
+  useThreadLive(threadId, key, [["t3-diff", threadId]]);
   const [stopping, setStopping] = useState("");
   const running = view.data?.active_run_id ?? "";
   useEffect(() => {
@@ -193,7 +194,10 @@ function ThreadDetails({ v }: { v: T3ThreadView }) {
   const first = v.pull_requests.map((p) => prOf(p.url)).find(Boolean);
   // Same keys as the PR page and the changes panel, so the fetches are shared.
   const pull = useQuery({ queryKey: ["github-detail", first?.repo, "pulls", first?.number], queryFn: () => api.githubDetail(first!.repo, "pulls", first!.number), enabled: !!first, staleTime: 30_000 });
-  const diff = useQuery({ queryKey: ["t3-diff", v.id], queryFn: () => api.t3Diff(v.id), staleTime: 30_000 });
+  const visible = useVisible();
+  // Polled while the tab is on screen: the worktree can change from outside the chat.
+  // The server answers 304 when nothing changed, and equal data keeps its reference.
+  const diff = useQuery({ queryKey: ["t3-diff", v.id], queryFn: () => api.t3Diff(v.id), refetchInterval: visible ? DIFF_POLL_MS : false });
   const envId = t3.data?.find((x) => x.instance_id === v.instance_id)?.environment_id;
   const catalog = useQuery({ queryKey: ["t3-catalog", v.instance_id], queryFn: () => api.t3Catalog(v.instance_id), enabled: !!v.instance_id, staleTime: 60_000 });
   const project = catalog.data?.projects.find((p) => p.id === v.project_id);
@@ -984,6 +988,8 @@ const prOf = (url: string) => {
   return m ? { repo: m[1], number: Number(m[2]) } : undefined;
 };
 
+const DIFF_POLL_MS = 3000;
+
 // Changes shows the thread's own changes or its pull request, and sends a
 // selected range to the chat through the same queue or steer as the composer.
 function Changes({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
@@ -991,7 +997,8 @@ function Changes({ v, queryKey }: { v: T3ThreadView; queryKey: unknown[] }) {
   const prs = v.pull_requests.map((p) => ({ ...p, parsed: prOf(p.url) })).filter((p) => p.parsed);
   const [source, setSource] = useState("thread");
   const pr = prs.find((p) => p.url === source)?.parsed;
-  const local = useQuery({ queryKey: ["t3-diff", v.id], queryFn: () => api.t3Diff(v.id), enabled: !pr });
+  const visible = useVisible();
+  const local = useQuery({ queryKey: ["t3-diff", v.id], queryFn: () => api.t3Diff(v.id), enabled: !pr, refetchInterval: visible ? DIFF_POLL_MS : false });
   // Refresh in place so new messages keep the mounted diff and its scroll.
   useEffect(() => {
     void qc.invalidateQueries({ queryKey: ["t3-diff", v.id] });

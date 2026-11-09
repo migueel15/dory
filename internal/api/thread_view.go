@@ -92,7 +92,7 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 		// Dory diffs that worktree itself: it also covers worktrees T3 does not know.
 		if links, err := svc.ItemThreads().List(r.Context(), service.Filter{Fields: map[string]any{"thread_id": id}, Limit: 20}); err == nil {
 			if out, ok := gitChanges(r.Context(), svc, links); ok {
-				writeJSON(w, http.StatusOK, out)
+				writeJSONETag(w, r, out)
 				return
 			}
 		}
@@ -101,7 +101,7 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 			writeT3Error(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, localChanges{Diff: diff, Source: "t3"})
+		writeJSONETag(w, r, localChanges{Diff: diff, Source: "t3"})
 	})
 	mux.HandleFunc("POST /api/t3/threads/{id}/send", func(w http.ResponseWriter, r *http.Request) {
 		var b struct {
