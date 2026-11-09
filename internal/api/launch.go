@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"path"
 	"strings"
 
 	"github.com/migueel15/dory/internal/service"
@@ -20,7 +19,7 @@ func launchPrompt(item service.Item, worktree string) string {
 	task := fmt.Sprintf("Item de Dory %s\nTítulo: %s\nTexto original: %s\nDescripción:\n%s\n\n", item.ID, item.Title, item.RawText, item.BodyMd)
 	task += "Implementa este item siguiendo $dory-workflow; ya está en in_progress y vinculado a este hilo."
 	if worktree != "" {
-		task += fmt.Sprintf(" Ya trabajas en un worktree sin rama en %s. Crea la rama con git switch -c según tus skills antes del primer commit. Antes de empezar haz git fetch y comprueba que partes de la base actual. No crees otro worktree.", worktree)
+		task += fmt.Sprintf(" Ya trabajas en un worktree en %s. La rama provisional inicial es %s; si aún estás en ella, antes del primer commit renómbrala con git branch -m <nombre> según las skills de rama del proyecto. Si el worktree se ha reutilizado y la rama ya está renombrada, conserva esa rama. Antes de empezar haz git fetch y comprueba que partes de la base actual. No crees otro worktree.", worktree, provisionalBranch(item))
 		task += " Tras el merge de la PR, Dory elimina el worktree; no lo borres tú."
 	}
 	return task
@@ -130,7 +129,7 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 		if !sameRepository(w, r, svc, c, item, body.ProjectID) {
 			return
 		}
-		// T3 creates the worktree (detached HEAD) so its diff panel works from the
+		// T3 creates the worktree on a provisional branch so its diff panel works from the
 		// first edit; Dory cannot, because it has no write access to the repository.
 		root, worktree := "", ""
 		createdWorktree := false
@@ -143,9 +142,9 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 				writeT3Error(w, err)
 				return
 			}
-			worktree, createdWorktree = itemWorktree(item, root)
+			worktree, createdWorktree = itemWorktree(item)
 			if createdWorktree {
-				if worktree, err = c.CreateWorktree(r.Context(), root, ref, worktree); err != nil {
+				if worktree, err = c.CreateWorktree(r.Context(), root, ref, provisionalBranch(item)); err != nil {
 					writeT3Error(w, err)
 					return
 				}
@@ -232,18 +231,17 @@ func quickTitle(text string) string {
 	return line
 }
 
-// itemWorktree reuses the recorded path or selects a distinct path per item.
-// The root belongs to the remote T3 user; never use Dory's local home.
-func itemWorktree(item service.Item, root string) (string, bool) {
+// provisionalBranch gives T3 a distinct initial branch for each item.
+func provisionalBranch(item service.Item) string {
+	return "dory/" + item.ID[:min(8, len(item.ID))]
+}
+
+// itemWorktree only detects reuse; T3 chooses the path for new worktrees.
+func itemWorktree(item service.Item) (string, bool) {
 	for _, ref := range item.Refs {
 		if strings.HasPrefix(ref, worktreeRefPrefix) && strings.TrimPrefix(ref, worktreeRefPrefix) != "" {
 			return strings.TrimPrefix(ref, worktreeRefPrefix), false
 		}
 	}
-	parts := strings.Split(strings.TrimPrefix(path.Clean(root), "/"), "/")
-	home := path.Join("/", parts[0])
-	if len(parts) > 1 {
-		home = path.Join(home, parts[1])
-	}
-	return path.Join(home, ".t3", "worktrees", path.Base(root), "dory-"+item.ID[:min(8, len(item.ID))]), true
+	return "", true
 }
