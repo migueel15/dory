@@ -13,7 +13,7 @@ import (
 
 func TestPromptCarriesIDAndDescription(t *testing.T) {
 	p := Prompt(service.Item{Record: service.Record{ID: "abc"}, RawText: "arreglar el login\ncon detalle"})
-	for _, want := range []string{"`abc`", "update_item", `title_source: "ai"`, "No archives", "arreglar el login\ncon detalle"} {
+	for _, want := range []string{"`abc`", "update_item", `"id": "abc", "changes": {"title"`, `"title_source": "ai"`, "No archives", "arreglar el login\ncon detalle"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("prompt lacks %q:\n%s", want, p)
 		}
