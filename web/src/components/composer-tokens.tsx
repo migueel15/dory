@@ -1,9 +1,9 @@
-import { GitPullRequest, Lightning, LinkSimple, Terminal, type Icon } from "@phosphor-icons/react";
+import { GitPullRequest, Lightning, LinkSimple, Quotes, Terminal, type Icon } from "@phosphor-icons/react";
 
 // Composer tokens: a /command, $skill, @file or #pull request picked from the
-// menu. In the text they are plain characters (what T3 receives); the UI always
+// menu, or a quote of a message or plan text (value is the quoted text). In the text they are plain characters (what T3 receives); the UI always
 // shows them as one object, and they delete as a whole.
-export type TokenKind = "command" | "skill" | "path" | "ref";
+export type TokenKind = "command" | "skill" | "path" | "ref" | "quote";
 export type Token = { kind: TokenKind; value: string; title?: string };
 export type Tokens = Record<string, Token>; // keyed by the exact text in the composer
 
@@ -12,7 +12,18 @@ const looks: Record<TokenKind, { icon: Icon; color: string }> = {
   skill: { icon: Lightning, color: "text-violet-600 dark:text-violet-400" },
   path: { icon: LinkSimple, color: "text-sky-600 dark:text-sky-400" },
   ref: { icon: GitPullRequest, color: "text-emerald-600 dark:text-emerald-400" },
+  quote: { icon: Quotes, color: "text-indigo-600 dark:text-indigo-400" },
 };
+
+// A quote goes to the agent as a Markdown block quote headed by its label, so
+// sent messages can show it again as one object.
+export const quoteLabel = (text: string, max = 32) => {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max).trimEnd()}…` : flat;
+};
+export const quoteBlock = (label: string, body: string) =>
+  `\n\n> «${label}»\n${body.split("\n").filter((l) => l.trim()).map((l) => `> ${l}`).join("\n")}\n\n`;
+export const QUOTE_RE = /(?:^|\n)> «([^»\n]+)»\n((?:>[^\n]*(?:\n|$))*)/g;
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -42,7 +53,7 @@ export function paintTokens(text: string, tokens: Tokens) {
     out.push(text.slice(last, r.start));
     out.push(
       <span key={r.start} className={`underline decoration-current/30 underline-offset-2 ${color}`}>
-        <span className="relative"><span className="text-transparent">{r.text[0]}</span><Glyph weight="bold" className="absolute left-1/2 top-1/2 size-[0.8em] -translate-x-1/2 -translate-y-1/2" /></span>{r.text.slice(1)}
+        <span className="relative"><span className="text-transparent">{r.text[0]}</span><Glyph weight="bold" className="absolute right-[0.25em] top-1/2 size-[0.8em] -translate-y-1/2" /></span>{r.text.slice(1)}
       </span>,
     );
     last = r.end;
@@ -56,7 +67,7 @@ export function paintTokens(text: string, tokens: Tokens) {
 export function TokenChip({ kind, label, title }: { kind: TokenKind; label: string; title?: string }) {
   const { icon: Glyph, color } = looks[kind];
   return (
-    <span title={title} className={`inline-flex items-baseline gap-1 font-medium ${color}`}>
+    <span title={title} className={`inline-flex items-baseline gap-1.5 font-medium ${color}`}>
       <Glyph weight="bold" aria-hidden="true" className="size-3.5 shrink-0 translate-y-0.5" />
       <span className="underline decoration-current/30 underline-offset-2">{label}</span>
     </span>

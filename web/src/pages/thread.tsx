@@ -2,18 +2,20 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { ArrowDown, ArrowRight, ArrowSquareOut, ArrowUp, ArrowsOut, Browser, Cube, LinkSimple, Eye, EyeSlash, Key, Cloud, FolderSimple, GitBranch, GitPullRequest, Info, Kanban, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, GitDiff, SidebarSimple, Paperclip, Lightning, ListBullets, PencilSimple, Play, Question, Stop, Trash, Wrench, X } from "@phosphor-icons/react";
+import { ArrowDown, ArrowRight, ArrowSquareOut, ArrowUp, ArrowsOut, Browser, Cube, LinkSimple, Eye, EyeSlash, Key, Cloud, FolderSimple, GitBranch, GitPullRequest, Info, Kanban, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, GitDiff, SidebarSimple, Paperclip, Lightning, ListBullets, PencilSimple, Play, Question, Quotes, Stop, Trash, Wrench, X } from "@phosphor-icons/react";
 import { api, type T3Attachment, type T3QueuedRun, type T3ThreadView, type T3ViewMessage } from "../api/client";
 import { useThreadLive } from "../api/live";
 import { Button, copyText, ErrorText, Input, Md, errMsg, uuid, Notice, Select, StatusPill, pill } from "../components/ui";
 import { OpenInT3 } from "../components/thread-link";
 import { PendingRequest, type QuestionControl } from "../components/pending-request";
+import { SelectionMenu } from "../components/selection-menu";
+import { RefLink, ThreadMediaContext } from "../components/refs";
 import { ProviderIcon } from "./launch-form";
 import { saveEffort, savedEffort } from "../effort";
 import { Diff, type Suggestion } from "./github-diff";
 import { PdfThumb } from "../components/pdf-thumb";
 import { useComposerSuggest } from "../components/composer-suggest";
-import { paintTokens, tokenRanges, TokenChip, type Token, type Tokens } from "../components/composer-tokens";
+import { paintTokens, QUOTE_RE, quoteBlock, quoteLabel, tokenRanges, TokenChip, type Token, type Tokens } from "../components/composer-tokens";
 import { defaultUrlTransform } from "react-markdown";
 
 const runtimeModes = [
@@ -25,19 +27,14 @@ const runtimeModes = [
 
 // ThreadView shows one T3 Code thread: conversation and composer on the left,
 // changed files on the right.
-export function ThreadView() {
-  const { threadId } = useParams({ from: "/threads/$threadId" });
+// useThreadView loads a thread's view live and tracks the run the user just
+// stopped: the view shows it stopped until T3 confirms, and goes back if T3
+// keeps it running.
+function useThreadView(threadId: string) {
   const key = ["t3-view", threadId];
   // Safety net for a stalled live stream: while a turn runs, reload every 15 s.
   const view = useQuery({ queryKey: key, queryFn: () => api.t3View(threadId), refetchInterval: (q) => q.state.data?.active_run_id ? 15_000 : false });
   useThreadLive(threadId, key);
-  const [panel, setPanel] = useState<"" | "changes">("");
-  const aside = useRef<HTMLElement>(null);
-  const [opened, setOpened] = useState(false);
-  useEffect(() => { if (panel) setOpened(true); }, [panel]);
-  const [width, setWidth] = useState(() => { try { return Number(localStorage.getItem("dory.thread-panel-width")) || 560; } catch { return 560; } });
-  // stopping is the run the user just stopped: the view shows it stopped
-  // until T3 confirms, and goes back if T3 keeps it running.
   const [stopping, setStopping] = useState("");
   const running = view.data?.active_run_id ?? "";
   useEffect(() => {
@@ -46,13 +43,36 @@ export function ThreadView() {
     const t = setTimeout(() => setStopping(""), 15_000);
     return () => clearTimeout(t);
   }, [stopping, running]);
-  if (view.isPending) return <Notice loading />;
-  if (view.error) return <ErrorText error={view.error} />;
-  const v: T3ThreadView = stopping && view.data.active_run_id === stopping
+  const v: T3ThreadView | undefined = view.data && stopping && view.data.active_run_id === stopping
     ? { ...view.data, active_run_id: "", active_status: "", interrupted: true }
     : view.data;
+  return { view, v, key, setStopping };
+}
+
+// ThreadChat is the thread's chat (messages, questions, queue and composer),
+// shared by the thread page and other views that embed a thread. notice shows
+// above the composer; beforeSend runs before each message and, if it fails,
+// the message is not sent.
+// insert adds text to the composer each time its seq changes.
+export function ThreadChat({ threadId, notice, beforeSend, insert }: { threadId: string; notice?: React.ReactNode; beforeSend?: () => Promise<unknown>; insert?: Insert }) {
+  const { view, v, key, setStopping } = useThreadView(threadId);
+  if (view.isPending) return <ChatLoading />;
+  if (view.error || !v) return <ErrorText error={view.error} />;
+  return <Chat key={v.id} v={v} queryKey={key} onStop={setStopping} notice={notice} beforeSend={beforeSend} insert={insert} />;
+}
+
+export function ThreadView() {
+  const { threadId } = useParams({ from: "/threads/$threadId" });
+  const { view, v, key, setStopping } = useThreadView(threadId);
+  const [panel, setPanel] = useState<"" | "changes">("");
+  const aside = useRef<HTMLElement>(null);
+  const [opened, setOpened] = useState(false);
+  useEffect(() => { if (panel) setOpened(true); }, [panel]);
+  const [width, setWidth] = useState(() => { try { return Number(localStorage.getItem("dory.thread-panel-width")) || 560; } catch { return 560; } });
+  if (view.isPending) return <div className="flex h-full min-h-0 flex-col"><ChatLoading /></div>;
+  if (view.error || !v) return <ErrorText error={view.error} />;
   return (
-    <div className="flex h-[calc(100dvh-4rem-1px)] sm:h-[calc(100dvh-3rem-2px)] min-h-0 flex-col gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3">
       <ContextBar v={v}>
         <ThreadDetails v={v} />
         <button type="button" aria-pressed={panel === "changes"} onClick={() => setPanel(panel === "changes" ? "" : "changes")} title="Panel de cambios" aria-label="Panel de cambios"
@@ -80,16 +100,37 @@ export function ThreadView() {
   );
 }
 
+// ChatLoading keeps the chat's frame while the conversation loads: a notice in
+// the middle and the composer's shape at the bottom, so nothing jumps after.
+function ChatLoading() {
+  return (
+    <section aria-busy="true" className="relative flex min-h-0 flex-1 flex-col">
+      <div className="grid min-h-0 flex-1 place-items-center">
+        <p className="flex items-center gap-2 text-sm text-slate-500 motion-safe:animate-pulse dark:text-muted">Cargando conversación…</p>
+      </div>
+      <div className="mx-auto w-full max-w-3xl px-3 pb-4 pt-2 sm:px-6">
+        <div className="rounded-3xl border border-slate-200 bg-white shadow-md dark:border-border-strong dark:bg-surface">
+          <textarea disabled rows={1} aria-label="Mensaje" placeholder="Escribe al hilo…" className="block w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 placeholder:text-slate-400" />
+          <div className="flex items-center gap-0.5 px-2 pb-2">
+            <span className="grid size-8 place-items-center text-slate-300 dark:text-muted"><Paperclip className="size-4" /></span>
+            <span className="ml-auto grid size-8 place-items-center rounded-full bg-slate-200 text-white dark:bg-raised"><ArrowUp weight="bold" className="size-4" /></span>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ResizeHandle drags the side panel's left edge. While dragging it only moves
 // a CSS variable on the panel, once per frame, so React does not re-render the
 // chat and the diff on every pointer move; the width is saved on release.
-function ResizeHandle({ panel, width, onResize }: { panel: React.RefObject<HTMLElement | null>; width: number; onResize: (w: number) => void }) {
+export function ResizeHandle({ panel, width, onResize, storageKey = "dory.thread-panel-width", min = 320, rest = 420 }: { panel: React.RefObject<HTMLElement | null>; width: number; onResize: (w: number) => void; storageKey?: string | null; min?: number; rest?: number }) {
   const start = (e: React.PointerEvent) => {
     e.preventDefault();
     const x0 = e.clientX, w0 = width;
     let last = w0, frame = 0;
     const move = (ev: PointerEvent) => {
-      last = Math.min(Math.max(320, w0 + x0 - ev.clientX), window.innerWidth - 420);
+      last = Math.min(Math.max(min, w0 + x0 - ev.clientX), window.innerWidth - rest);
       if (!frame) frame = requestAnimationFrame(() => { frame = 0; panel.current?.style.setProperty("--panel-w", `${last}px`); });
     };
     const up = () => {
@@ -98,7 +139,7 @@ function ResizeHandle({ panel, width, onResize }: { panel: React.RefObject<HTMLE
       onResize(last);
       window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
       document.body.style.cursor = ""; document.body.style.userSelect = "";
-      try { localStorage.setItem("dory.thread-panel-width", String(Math.round(last))); } catch { /* per-browser only */ }
+      if (storageKey) try { localStorage.setItem(storageKey, String(Math.round(last))); } catch { /* per-browser only */ }
     };
     document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none";
     panel.current?.style.setProperty("transition", "none");
@@ -274,10 +315,16 @@ function CopyText({ text, mono, small, hidden, icon, title = "Copiar" }: { text:
   );
 }
 
-function Chat({ v, queryKey, onStop }: { v: T3ThreadView; queryKey: unknown[]; onStop: (run: string) => void }) {
+// Insert adds text to the composer; with quote, a quote object goes before it.
+export type Insert = { text: string; seq: number; quote?: { label: string; body: string } };
+function Chat({ v, queryKey, onStop, notice, beforeSend, insert }: { v: T3ThreadView; queryKey: unknown[]; onStop: (run: string) => void; notice?: React.ReactNode; beforeSend?: () => Promise<unknown>; insert?: Insert }) {
   const qc = useQueryClient();
   const end = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  // Text sent to the composer: from the host view (insert) or from a selection.
+  const [ins, setIns] = useState<Insert>();
+  const push = (text: string, quote?: Insert["quote"]) => setIns((p) => ({ text, quote, seq: (p?.seq ?? 0) + 1 }));
+  useEffect(() => { if (insert) push(insert.text, insert.quote); }, [insert?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
   // While a question is open, text sent from the composer answers it.
   const [question, setQuestion] = useState<QuestionControl | null>(null);
   const onControl = (c: QuestionControl | null) => setQuestion((p) => (p && c && p.picked === c.picked && p.last === c.last && p.busy === c.busy ? (p.next = c.next, p) : c));
@@ -320,8 +367,13 @@ function Chat({ v, queryKey, onStop }: { v: T3ThreadView; queryKey: unknown[]; o
   const pendingSecret = [...all].reverse().find((m) => m.role === "secret" && m.status === "pending");
   const working = !!v.active_run_id && !last?.streaming && (last?.role === "user" || last?.role === "assistant" || !last);
   return (
+    <ThreadMediaContext.Provider value={v.id}>
     <section className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={scroller} onScroll={onScroll} className="thin-scroll min-h-0 flex-1 overflow-y-auto py-3"><div className="mx-auto w-full max-w-3xl space-y-4 px-3 sm:px-6">
+      <SelectionMenu box={scroller} scope="[data-message]" label="Usar la selección en el mensaje" actions={[
+        { label: "Preguntar", icon: <Question className="size-3.5" />, run: (t) => push("Pregunta: ", { label: quoteLabel(t), body: t }) },
+        { label: "Citar", icon: <Quotes className="size-3.5" />, run: (t) => push("", { label: quoteLabel(t), body: t }) },
+      ]} />
+      <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto py-3"><div className="mx-auto w-full max-w-3xl space-y-4 px-3 sm:px-6">
         {v.messages.length === 0 && <p className="py-10 text-center text-sm text-slate-500 dark:text-muted">Sin mensajes todavía. Escribe abajo para empezar.</p>}
         {nextCursor && (
           <div className="flex justify-center">
@@ -336,7 +388,7 @@ function Chat({ v, queryKey, onStop }: { v: T3ThreadView; queryKey: unknown[]; o
             <span className="h-px flex-1 bg-slate-200 dark:bg-border" /><Stop weight="fill" className="size-3" />{m.text}<span className="h-px flex-1 bg-slate-200 dark:bg-border" />
           </div>
         ) : m.role === "user" ? (
-          <div key={m.id} className={`group flex flex-col items-end ${initial.current?.has(m.id) ? "" : "msg-in"}`}>
+          <div key={m.id} data-message className={`group flex flex-col items-end ${initial.current?.has(m.id) ? "" : "msg-in"}`}>
             {!!m.attachments?.length && <SentAttachments threadId={v.id} list={m.attachments} />}
             {(() => {
               // Tokens sent from the composer show inline as objects (tok: links the Md renders).
@@ -348,7 +400,7 @@ function Chat({ v, queryKey, onStop }: { v: T3ThreadView; queryKey: unknown[]; o
             <MessageMeta m={m} />
           </div>
         ) : (
-          <div key={m.id} className={m.role === "system" ? "text-xs text-slate-500 dark:text-muted" : "group max-w-full pr-6"}>
+          <div key={m.id} data-message className={m.role === "system" ? "text-xs text-slate-500 dark:text-muted" : "group max-w-full pr-6"}>
             {m.text ? <Md>{m.text}</Md> : null}
             {m.streaming ? <Dots /> : m.role === "assistant" && <MessageMeta m={m} />}
           </div>
@@ -381,9 +433,11 @@ function Chat({ v, queryKey, onStop }: { v: T3ThreadView; queryKey: unknown[]; o
             <PendingRequest key={v.pending.id} threadId={v.id} pending={v.pending} onDone={() => qc.invalidateQueries({ queryKey })} onControl={onControl} />
           </div>
         )}
-        <div className="relative z-10"><Composer v={v} queryKey={queryKey} onStop={onStop} question={question} /></div>
+        {notice}
+        <div className="relative z-10"><Composer v={v} queryKey={queryKey} onStop={onStop} question={question} beforeSend={beforeSend} insert={ins} /></div>
       </div>
     </section>
+    </ThreadMediaContext.Provider>
   );
 }
 
@@ -674,7 +728,7 @@ function ModelPicker({ models, selected, effort, effortsOf, onChange }: { models
 
 type Draft = { key: string; name: string; mime: string; preview: string; done?: T3Attachment; error?: string };
 
-function Composer({ v, queryKey, onStop, question }: { v: T3ThreadView; queryKey: unknown[]; onStop: (run: string) => void; question: QuestionControl | null }) {
+function Composer({ v, queryKey, onStop, question, beforeSend, insert }: { v: T3ThreadView; queryKey: unknown[]; onStop: (run: string) => void; question: QuestionControl | null; beforeSend?: () => Promise<unknown>; insert?: Insert }) {
   const qc = useQueryClient();
   const catalog = useQuery({ queryKey: ["t3-catalog", v.instance_id], queryFn: () => api.t3Catalog(v.instance_id), enabled: !!v.instance_id, staleTime: 60_000 });
   const [text, setText] = useState("");
@@ -717,12 +771,31 @@ function Composer({ v, queryKey, onStop, question }: { v: T3ThreadView; queryKey
     setTokens((ts) => ({ ...ts, [key]: t }));
     return key;
   };
+  useEffect(() => {
+    if (!insert) return;
+    let add = insert.text;
+    if (insert.quote) {
+      // The quote shows as one object; a repeated label gets a number.
+      let key = `«${insert.quote.label}»`;
+      for (let n = 2; tokens[key] && tokens[key].value !== insert.quote.body; n++) key = `«${insert.quote.label} (${n})»`;
+      setTokens((ts) => ({ ...ts, [key]: { kind: "quote", value: insert.quote!.body, title: insert.quote!.label } }));
+      add = `${key} ${insert.text}`;
+    }
+    setText((t) => (t.trim() ? `${t.trimEnd()}\n${add}` : add));
+    setTimeout(() => { const el = area.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0);
+  }, [insert?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
   const ranges = tokenRanges(text, tokens);
   const present = ranges.map((r) => tokens[r.text]);
   const mentions = [...new Set(present.filter((t) => t.kind === "path").map((t) => t.value))];
   const skillsUsed = [...new Set(present.filter((t) => t.kind === "skill").map((t) => t.value))];
   // T3 gets each @file with its full path; the other tokens go as written.
-  const outgoing = ranges.reduceRight((t, r) => tokens[r.text].kind === "path" ? `${t.slice(0, r.start)}@${tokens[r.text].value}${t.slice(r.end)}` : t, text);
+  // T3 gets each @file with its full path and each quote as a block quote; the other tokens go as written.
+  const outgoing = ranges.reduceRight((t, r) => {
+    const tk = tokens[r.text];
+    if (tk.kind === "path") return `${t.slice(0, r.start)}@${tk.value}${t.slice(r.end)}`;
+    if (tk.kind === "quote") return `${t.slice(0, r.start)}${quoteBlock(tk.title ?? "", tk.value)}${t.slice(r.end).replace(/^ /, "")}`;
+    return t;
+  }, text).trim();
   const paint = useRef<HTMLDivElement>(null);
   // A token deletes as a whole: Backspace at its end or inside, Delete at its start or inside.
   // A selection never splits a token: an edge inside one grows to cover it, and
@@ -782,12 +855,12 @@ function Composer({ v, queryKey, onStop, question }: { v: T3ThreadView; queryKey
 
   const send = useMutation({
     // While a turn runs, Ctrl/Cmd+Enter steers and Enter (or the button) queues.
-    mutationFn: (asSteer?: boolean) => api.t3Dispatch(v.id, {
+    mutationFn: async (asSteer?: boolean) => { await beforeSend?.(); return api.t3Dispatch(v.id, {
       // Inline @labels go out as @full/path (what the agent reads) and as context records.
       text: outgoing,
       mode: asSteer ? "steer" : "auto", ...(ready.length ? { attachments: ready } : {}), skills: skillsUsed, mentions,
       ...(changed ? { provider_id: providerId, model: slug, effort_option: model?.effort?.id, effort: model?.effort ? effortValue : undefined } : {}),
-    }),
+    }); },
     onSuccess: () => { if (changed && model?.effort && effortValue) saveEffort(model.slug, effortValue); setText(""); setTokens({}); suggest.reset(); files.forEach((f) => URL.revokeObjectURL(f.preview)); setFiles([]); qc.invalidateQueries({ queryKey }); },
   });
   const settings = useMutation({ mutationFn: (b: { interaction_mode?: string; runtime_mode?: string }) => api.t3Settings(v.id, b), onSuccess: () => qc.invalidateQueries({ queryKey }) });
@@ -1097,19 +1170,25 @@ function SecretRequest({ threadId, m, onDone }: { threadId: string; m: T3ViewMes
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function tokenize(m: T3ViewMessage): string {
   const link = (kind: string, value: string) => `[${kind}](tok:${kind}:${encodeURIComponent(value)})`;
-  let t = m.text;
+  // Quotes sent from the composer come back as one object each.
+  let t = m.text.replace(QUOTE_RE, (_, label: string, body: string) =>
+    `\n\n${link("quote", JSON.stringify({ label, body: body.split("\n").map((l) => l.replace(/^> ?/, "")).join("\n").trim() }))}\n\n`);
   for (const p of m.mentions ?? []) t = t.split(`@${p}`).join(link("path", p));
   for (const k of m.skills ?? []) t = t.replace(new RegExp(`(^|\\s)\\$${escapeRe(k)}(?=\\s|$)`, "g"), (_, pre: string) => pre + link("skill", k));
   t = t.replace(/^\/([\w:.-]+)(?=\s|$)/, (_, c: string) => link("command", c));
   t = t.replace(/(^|\s)#(\d+)(?=\s|$|[.,;:])/g, (_, pre: string, n: string) => pre + link("ref", n));
   return t;
 }
-const keepToken = (url: string) => (url.startsWith("tok:") ? url : defaultUrlTransform(url));
+const keepToken = (url: string) => (url.startsWith("tok:") || url.startsWith("file://") ? url : defaultUrlTransform(url));
 const tokenLinks = {
   a: ({ href, children, node: _n, ...rest }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) => {
-    if (!href?.startsWith("tok:")) return <a href={href} {...rest}>{children}</a>;
+    if (!href?.startsWith("tok:")) return <RefLink href={href} {...rest}>{children}</RefLink>;
     const [, kind, raw] = href.split(":");
     const value = decodeURIComponent(raw ?? "");
+    if (kind === "quote") {
+      const q = (() => { try { return JSON.parse(value) as { label: string; body: string }; } catch { return { label: value, body: value }; } })();
+      return <TokenChip kind="quote" label={q.label} title={q.body} />;
+    }
     const label = kind === "path" ? value.replace(/\/+$/, "").split("/").pop() || value : value;
     return <TokenChip kind={kind as Token["kind"]} label={label} title={kind === "ref" ? `#${value}` : value} />;
   },

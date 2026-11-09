@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ArrowsIn, CaretDown, ArrowsOut, CaretRight, Columns, Rows, SidebarSimple, ChatCircle, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { Button, ErrorText, Input, Textarea, keepAboveKeyboard } from "../components/ui";
-import { ThreadLink } from "../components/thread-link";
+import { Modal } from "../components/ui";
+import { useLaunchForm, type LaunchChoice } from "./launch-form";
+import type { FileRef } from "../components/refs";
+import { useArm } from "../components/github-ui";
 import { highlight, languageOf, loadLanguage } from "../highlight";
 
 type Side = "LEFT" | "RIGHT";
@@ -154,8 +158,13 @@ export type Suggestion = { path: string; start: number; end: number; snippet: st
 
 // Diff shows a pull request diff, or the given diff text when onSuggest sends
 // selections to a chat; GitHub reviews and comments only apply to the first.
+// FullscreenHost is the element a diff fills in full screen, instead of the window.
+export const FullscreenHost = createContext<HTMLElement | null>(null);
+
 // fill makes the diff take its container's height instead of 80vh.
-export function Diff({ repo = "", pr = 0, text, onSuggest, fill = false }: { repo?: string; pr?: number; text?: string; onSuggest?: (s: Suggestion) => Promise<void>; fill?: boolean }) {
+// onAsked runs after a question reaches the pull request's review thread.
+// focus opens a file on a line (or range) and scrolls to it, each time its seq changes.
+export function Diff({ repo = "", pr = 0, text, onSuggest, onAsked, focus, fill = false }: { repo?: string; pr?: number; text?: string; onSuggest?: (s: Suggestion) => Promise<void>; onAsked?: () => void; focus?: FileRef & { seq: number }; fill?: boolean }) {
   const qc = useQueryClient();
   const gh = !onSuggest && !!repo && !!pr;
   const diff = useQuery({ queryKey: ["github-diff", repo, pr], queryFn: () => api.githubDiff(repo, pr), enabled: text === undefined });
@@ -222,6 +231,24 @@ export function Diff({ repo = "", pr = 0, text, onSuggest, fill = false }: { rep
   // Reviewed files fold unless the user opens them.
   const [folded, setFolded] = useState(new Map<string, boolean>());
   const isFolded = (path: string) => folded.get(path) ?? reviewed.has(path);
+  // Focus a referenced file and line: unfold it, highlight the lines and scroll there.
+  const focused = useRef(0);
+  useEffect(() => {
+    if (!focus || focused.current === focus.seq || !files.length) return;
+    focused.current = focus.seq;
+    const f = files.find((x) => x.path === focus.path) ?? files.find((x) => x.path.endsWith(`/${focus.path}`) || focus.path.endsWith(`/${x.path}`));
+    if (!f) return;
+    setFolded((m) => new Map(m).set(f.path, false));
+    setOpen(false);
+    const at = (n: number) => f.lines.findIndex((l) => l.kind !== "hunk" && l.kind !== "del" && l.new === n);
+    const start = focus.line ? at(focus.line) : -1;
+    const end = focus.end ? Math.max(start, at(focus.end)) : start;
+    setPick(start >= 0 ? { file: f.path, start, end } : undefined);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const row = start >= 0 ? document.querySelector(`[data-ref="${CSS.escape(`${f.path}:${start}`)}"]`) : null;
+      (row ?? document.getElementById(anchor(f.path)))?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }));
+  }, [focus, files]); // eslint-disable-line react-hooks/exhaustive-deps
   const toggleReview = (path: string) => {
     if (!hashes.has(path)) return;
     const on = !reviewed.has(path);
@@ -230,14 +257,20 @@ export function Diff({ repo = "", pr = 0, text, onSuggest, fill = false }: { rep
   };
   const review: Review = { reviewed, toggle: gh ? toggleReview : undefined };
   const agent = useQuery({ queryKey: ["pull-agent", repo, pr], queryFn: () => api.pullAgent(repo, pr), enabled: gh });
+  // The first question creates the review thread: it waits in launching while
+  // the user picks the machine and model.
+  const [launching, setLaunching] = useState<{ f: File; p: Pick }>();
   const ask = useMutation({
-    mutationFn: ({ f, p }: { f: File; p: Pick }) => {
+    mutationFn: ({ f, p, launch }: { f: File; p: Pick; launch?: LaunchChoice }) => {
+      // A whole-file question goes with lines 0–0 and no snippet.
+      if (p.start < 0) return api.askPullAgent(repo, pr, { path: f.path, start: 0, end: 0, snippet: "", question: body.trim(), launch });
       const lines = f.lines.slice(p.start, p.end + 1).filter((l) => l.kind !== "hunk");
       const nums = lines.map(number);
-      return api.askPullAgent(repo, pr, { path: f.path, start: Math.min(...nums), end: Math.max(...nums), snippet: lines.map((l) => l.text).join("\n"), question: body.trim() });
+      return api.askPullAgent(repo, pr, { path: f.path, start: Math.min(...nums), end: Math.max(...nums), snippet: lines.map((l) => l.text).join("\n"), question: body.trim(), launch });
     },
-    onSuccess: () => { setPick(undefined); setBody(""); },
+    onSuccess: () => { setPick(undefined); setBody(""); setLaunching(undefined); qc.invalidateQueries({ queryKey: ["pull-agent", repo, pr] }); onAsked?.(); },
   });
+  const askOrLaunch = (f: File, p: Pick) => (agent.data?.available ? ask.mutate({ f, p }) : setLaunching({ f, p }));
   const suggest = useMutation({
     mutationFn: ({ f, p, steer }: { f: File; p: Pick; steer: boolean }) => {
       const lines = f.lines.slice(p.start, p.end + 1).filter((l) => l.kind !== "hunk");
@@ -280,7 +313,15 @@ export function Diff({ repo = "", pr = 0, text, onSuggest, fill = false }: { rep
   };
   const form = (f: File, p: Pick, placeholder: string) => (
     <div className="my-2 whitespace-normal font-sans">
-                        <Textarea aria-label="Comentario de revisión" autoFocus onFocus={(e) => keepAboveKeyboard(e.currentTarget.parentElement!)} value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder={placeholder} className="p-2" />
+                        <Textarea aria-label="Comentario de revisión" autoFocus onFocus={(e) => keepAboveKeyboard(e.currentTarget.parentElement!)} value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder={placeholder} className="p-2"
+                          onKeyDown={(e) => {
+                            // Ctrl/Cmd+Enter always goes to the agent; Escape cancels. GitHub only by its button.
+                            if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setPick(undefined); return; }
+                            if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey) || !body.trim()) return;
+                            e.preventDefault();
+                            if (onSuggest) { if (p.start >= 0 && !suggest.isPending) suggest.mutate({ f, p, steer: false }); }
+                            else if (!ask.isPending && !agent.isPending) askOrLaunch(f, p);
+                          }} />
                         <div className="mt-2 flex gap-2">
                           {onSuggest ? (
                             <>
@@ -288,11 +329,9 @@ export function Diff({ repo = "", pr = 0, text, onSuggest, fill = false }: { rep
                               <Button variant="ghost" disabled={suggest.isPending || !body.trim() || p.start < 0} onClick={() => suggest.mutate({ f, p, steer: true })} title="Inyecta la sugerencia en el turno en curso">Steer</Button>
                             </>
                           ) : <>
-                          <Button disabled={comment.isPending || !body.trim()} onClick={() => publish(f, p)}>Publicar en GitHub</Button>
-                          {p.start >= 0 && (
-                            <Button disabled={ask.isPending || !body.trim() || !agent.data?.available} onClick={() => ask.mutate({ f, p })}
-                              title={agent.data?.available ? "Consulta privada al hilo donde se implementó la PR; no se publica en GitHub" : "Esta PR no tiene un item de Dory con hilo de implementación"}>Preguntar al agente</Button>
-                          )}
+                          <Button disabled={ask.isPending || !body.trim() || agent.isPending} onClick={() => askOrLaunch(f, p)}
+                            title={`${agent.data?.available ? "Consulta privada al hilo de revisión de la PR" : "La primera pregunta crea el hilo de revisión de la PR"}; no se publica en GitHub (Ctrl+Enter)`}>Preguntar al agente</Button>
+                          <PublishButton disabled={comment.isPending || !body.trim()} onPublish={() => publish(f, p)} />
                           </>}
                           <Button variant="ghost" onClick={() => setPick(undefined)}>Cancelar</Button>
                         </div>
@@ -340,8 +379,11 @@ export function Diff({ repo = "", pr = 0, text, onSuggest, fill = false }: { rep
     </>
   );
 
-  return (
-    <div className={full ? "fixed inset-0 z-50 h-dvh overflow-hidden overscroll-none bg-slate-50 p-3 dark:bg-canvas" : fill ? "h-full min-h-0" : ""}>
+  // Full screen fills the host column when the page provides one (the PR page
+  // with its chat open), else the whole window.
+  const host = useContext(FullscreenHost);
+  const view = (
+    <div className={full ? `${host ? "absolute" : "fixed h-dvh"} inset-0 z-50 overflow-hidden overscroll-none bg-slate-50 p-3 dark:bg-canvas` : fill ? "h-full min-h-0" : ""}>
     <div className={`grid gap-3 ${panelOpen ? "md:grid-cols-[16rem_1fr]" : "md:grid-cols-[2.25rem_1fr]"} ${full || fill ? "h-full grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1" : ""}`}>
       {panelOpen ? (
       <aside className={`${full || fill ? "h-[30vh] md:h-auto" : "h-[30vh] md:h-[80vh]"} ${panel} flex min-h-0 flex-col overflow-hidden`}>
@@ -357,12 +399,7 @@ export function Diff({ repo = "", pr = 0, text, onSuggest, fill = false }: { rep
       )}
       <div className={`min-w-0 space-y-3 overflow-auto overscroll-contain ${full || fill ? "" : "md:h-[80vh]"}`}>
         <ErrorText error={diff.error ?? comment.error ?? ask.error ?? mark.error ?? suggest.error} />
-        {ask.data && (
-          <div role="status" className="flex items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm dark:border-border dark:bg-raised">
-            <span>Consulta enviada al hilo de implementación. {ask.data.url && <ThreadLink url={ask.data.url} environmentId={ask.data.t3_environment_id} threadId={ask.data.thread_id} className="font-medium text-blue-700 underline dark:text-accent-text">Abrir hilo</ThreadLink>}</span>
-            <button type="button" onClick={() => ask.reset()} aria-label="Cerrar aviso" className="text-slate-500">×</button>
-          </div>
-        )}
+        {launching && <ReviewLaunch repo={repo} pr={pr} busy={ask.isPending} error={ask.error} onClose={() => setLaunching(undefined)} onLaunch={(launch) => ask.mutate({ ...launching, launch })} />}
         {loading && filesSkeleton}
         {shown.map((f) => (
           <section key={f.path} className={panel}>
@@ -396,7 +433,7 @@ export function Diff({ repo = "", pr = 0, text, onSuggest, fill = false }: { rep
                     const picked = pick?.file === f.path && i >= pick.start && i <= pick.end;
                     const kind = l.kind === "ctx" ? "ctx" : l.kind;
                     return (
-                      <div onMouseEnter={() => extend(f.path, i)} className={`flex min-w-0 ${picked ? "bg-yellow-100 dark:bg-yellow-900" : color[kind]} ${hit(l) ? "ring-1 ring-inset ring-amber-400/70" : ""}`}>
+                      <div data-ref={`${f.path}:${i}`} onMouseEnter={() => extend(f.path, i)} className={`flex min-w-0 ${picked ? "bg-yellow-100 dark:bg-yellow-900" : color[kind]} ${hit(l) ? "ring-1 ring-inset ring-amber-400/70" : ""}`}>
                         <button type="button" title="Comentar esta línea (en móvil, toca otra para ampliar el rango)" onPointerDown={(e) => { touch.current = e.pointerType !== "mouse"; }} onMouseDown={(e) => { e.preventDefault(); choose(f.path, i, e.shiftKey || touch.current); }} className={`w-10 shrink-0 touch-manipulation select-none border-r border-slate-200 pr-2 text-right text-slate-400 hover:text-blue-600 dark:border-border dark:hover:text-accent-text ${picked ? "" : gutter[kind]}`}>{l[at] ?? ""}</button>
                         {html.get(f.path)?.[i] !== undefined
                           ? <span className="min-w-0 flex-1 whitespace-pre-wrap break-all px-2"><span>{l.text[0]}</span><span dangerouslySetInnerHTML={{ __html: markHtml(html.get(f.path)![i]!, q) }} /></span>
@@ -422,7 +459,7 @@ export function Diff({ repo = "", pr = 0, text, onSuggest, fill = false }: { rep
                 const picked = pick?.file === f.path && i >= pick.start && i <= pick.end;
                 return (
                   <div key={i}>
-                    <div onMouseEnter={() => l.kind !== "hunk" && extend(f.path, i)} className={`flex ${picked ? "bg-yellow-100 dark:bg-yellow-900" : color[l.kind]} ${hit(l) ? "ring-1 ring-inset ring-amber-400/70" : ""}`}>
+                    <div data-ref={`${f.path}:${i}`} onMouseEnter={() => l.kind !== "hunk" && extend(f.path, i)} className={`flex ${picked ? "bg-yellow-100 dark:bg-yellow-900" : color[l.kind]} ${hit(l) ? "ring-1 ring-inset ring-amber-400/70" : ""}`}>
                       {l.kind === "hunk" ? null : (
                         <button type="button" title="Comentar esta línea (en móvil, toca otra para ampliar el rango)" onPointerDown={(e) => { touch.current = e.pointerType !== "mouse"; }} onMouseDown={(e) => { e.preventDefault(); choose(f.path, i, e.shiftKey || touch.current); }} onMouseEnter={() => extend(f.path, i)} className={`w-20 shrink-0 touch-manipulation select-none border-r border-slate-200 pr-2 text-right text-slate-400 hover:text-blue-600 dark:border-border dark:hover:text-accent-text ${picked ? "" : gutter[l.kind]}`}>
                           <span className="inline-block w-8">{l.old ?? ""}</span> <span className="inline-block w-8">{l.new ?? ""}</span>
@@ -447,5 +484,30 @@ export function Diff({ repo = "", pr = 0, text, onSuggest, fill = false }: { rep
       </div>
     </div>
     </div>
+  );
+  return full && host ? createPortal(view, host) : view;
+}
+
+// ReviewLaunch picks where the pull request's review thread runs. The thread
+// opens telling the agent it reviews this PR read-only, then gets the question.
+function ReviewLaunch({ repo, pr, busy, error, onClose, onLaunch }: { repo: string; pr: number; busy: boolean; error: unknown; onClose: () => void; onLaunch: (l: LaunchChoice) => void }) {
+  const form = useLaunchForm({ section: "pull-review", repo });
+  return (
+    <Modal title={`Crear el hilo de revisión de #${pr}`} onClose={onClose}>
+      {form.fields}
+      <p className="text-xs text-slate-500 dark:text-muted">Es la primera pregunta sobre esta PR: se crea un hilo para revisarla, sin modificar nada salvo que lo pidas, y recibe tu pregunta. Las siguientes van al mismo hilo.</p>
+      <ErrorText error={form.error ?? error} />
+      <Button disabled={!form.ready || busy} onClick={() => { form.remember(); onLaunch(form.value); }}>{busy ? "Creando…" : "Crear y preguntar"}</Button>
+    </Modal>
+  );
+}
+
+// PublishButton posts to GitHub only on a second click: the first arms it and
+// changes its label, and it disarms by itself after a few seconds.
+function PublishButton({ disabled, onPublish }: { disabled: boolean; onPublish: () => void }) {
+  const [armed, click] = useArm(onPublish);
+  return (
+    <Button variant="ghost" disabled={disabled} onClick={click} title="Publica el comentario en GitHub; pide confirmación"
+      className={armed ? "!border-amber-400 !text-amber-700 dark:!text-amber-400" : ""}>{armed ? "Confirmar publicación" : "Publicar en GitHub"}</Button>
   );
 }
