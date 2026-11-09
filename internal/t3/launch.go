@@ -212,12 +212,15 @@ type LaunchInput struct {
 	// EffortOption and Effort set the reasoning effort; empty keeps the default.
 	EffortOption string
 	Effort       string
+	// Branch and WorktreePath start the thread in an existing worktree.
+	Branch       string
+	WorktreePath string
 }
 
 // Launch creates the thread and starts its turn. The returned id is set when
 // the thread exists, even if the turn could not start.
 func (c Client) Launch(ctx context.Context, in LaunchInput) (string, error) {
-	id, err := c.CreateThread(ctx, CreateThreadInput{ProjectID: in.ProjectID, Title: in.Title, InstanceID: in.Provider, Model: in.Model, EffortOption: in.EffortOption, Effort: in.Effort})
+	id, err := c.CreateThread(ctx, CreateThreadInput{ProjectID: in.ProjectID, Title: in.Title, InstanceID: in.Provider, Model: in.Model, EffortOption: in.EffortOption, Effort: in.Effort, Branch: in.Branch, WorktreePath: in.WorktreePath})
 	if err != nil {
 		return "", err
 	}

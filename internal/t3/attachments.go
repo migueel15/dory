@@ -75,6 +75,17 @@ func (c Client) Open(ctx context.Context, id, name, mimeType string) (*http.Resp
 	if mimeType != "" {
 		res["mimeType"] = mimeType
 	}
+	return c.openAsset(ctx, res)
+}
+
+// OpenMedia streams a media file (an image the agent shows by its local path)
+// from the machine that runs the thread, as T3 Code does for message images.
+func (c Client) OpenMedia(ctx context.Context, threadID, path string) (*http.Response, error) {
+	return c.openAsset(ctx, map[string]any{"_tag": "media-file", "threadId": threadID, "path": path})
+}
+
+// openAsset mints a signed URL for a T3 asset and fetches it.
+func (c Client) openAsset(ctx context.Context, res map[string]any) (*http.Response, error) {
 	var minted struct {
 		RelativeURL string `json:"relativeUrl"`
 	}

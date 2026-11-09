@@ -690,6 +690,36 @@ func (c Client) SearchEntries(ctx context.Context, cwd, query string) ([]Project
 	return out.Entries, err
 }
 
+// ThreadWorktree returns a thread's project root and its worktree ("" when it
+// works in the root).
+func (c Client) ThreadWorktree(ctx context.Context, threadID string) (root, worktree string, err error) {
+	var p struct {
+		Thread struct {
+			WorktreePath *string `json:"worktreePath"`
+			ProjectID    string  `json:"projectId"`
+		} `json:"thread"`
+	}
+	if err := c.call(ctx, "orchestration.getThreadProjection", map[string]any{"threadId": threadID}, &p); err != nil {
+		return "", "", err
+	}
+	root, err = c.ProjectRoot(ctx, p.Thread.ProjectID)
+	return root, str(p.Thread.WorktreePath), err
+}
+
+// ProjectRoot is the folder of a T3 project.
+func (c Client) ProjectRoot(ctx context.Context, projectID string) (string, error) {
+	cat, err := c.Catalog(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, pr := range cat.Projects {
+		if pr.ID == projectID && pr.Root != "" {
+			return pr.Root, nil
+		}
+	}
+	return "", errors.New("t3: project folder not found")
+}
+
 // ThreadCwd is the folder a thread works in: its worktree, else its project's root.
 func (c Client) ThreadCwd(ctx context.Context, threadID string) (string, error) {
 	var p struct {

@@ -339,7 +339,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Implementation thread that answers review questions, if any */
+        /** Review thread of the pull request, if one was created */
         get: operations["getPullAgent"];
         put?: never;
         post?: never;
@@ -358,8 +358,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Send a private review question to the implementation thread */
+        /** Send a private review question to the review thread; the first one creates it with launch */
         post: operations["askPullAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads/{id}/media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Image the agent shows by local path, proxied from the thread's machine */
+        get: operations["getThreadMedia"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -449,6 +466,296 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/t3/threads/{id}/view": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whole conversation, native queue, settings, pull requests and linked items of a thread */
+        get: operations["getT3ThreadView"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads/{id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every change the thread made in its worktree: Dory diffs it with git when an item of the thread names a branch checked out on this machine, else T3 checkpoints */
+        get: operations["getT3ThreadDiff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a free thread with no item: text starts the first turn, without it the chat opens empty; an item can be linked later */
+        post: operations["createT3Thread"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads/{id}/secrets/{item}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Answer a request_secret card: the secret goes straight to T3 (never logged or stored by Dory), or decline */
+        post: operations["answerT3SecretRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/github/repos/{owner}/{repo}/pull-refs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pull requests of a repository in every state (open, draft, merged, closed), newest first, for # references */
+        get: operations["searchGithubPullRefs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads/{id}/composer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Slash commands and skills for the composer: the repository's own (T3's scan of the thread folder) first, then the provider's global ones */
+        get: operations["getT3ThreadComposer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads/{id}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Files and folders of the thread's workspace (Dory's git worktree first, else T3's folder) for @ mentions */
+        get: operations["searchT3ThreadEntries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads/{id}/attachments/{aid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A file sent with a message of the thread, proxied from T3 inline for previews; name and mime are optional hints */
+        get: operations["getT3ThreadAttachment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads/{id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a message: start it, queue it after the active turn (mode auto) or inject it into the active turn (mode steer); model fields are optional */
+        post: operations["sendT3ThreadTurn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads/{id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read an older page of a thread's conversation; start from history_cursor of /view, then each page's next_cursor */
+        get: operations["getT3ThreadHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads/{id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload one file to the thread's T3 instance (raw body, name in ?name=, type in Content-Type) to send it later with /send */
+        post: operations["uploadT3Attachment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads/{id}/queue/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a message from the queue */
+        delete: operations["cancelT3QueuedMessage"];
+        options?: never;
+        head?: never;
+        /** Replace the text of a queued message */
+        patch: operations["editT3QueuedMessage"];
+        trace?: never;
+    };
+    "/t3/threads/{id}/queue/{run_id}/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move a queued message before another one, or last with an empty before_run_id */
+        post: operations["reorderT3QueuedMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads/{id}/queue/{run_id}/steer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inject a queued message into the active turn */
+        post: operations["steerT3QueuedMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads/{id}/interrupt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop the active turn and hold the queue */
+        post: operations["interruptT3Thread"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads/{id}/queue/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release a held queue so its next message starts */
+        post: operations["resumeT3Queue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads/{id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change the interaction mode (default or plan) or the access level of a thread */
+        patch: operations["setT3ThreadSettings"];
         trace?: never;
     };
     "/version": {
@@ -1007,6 +1314,14 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        T3Attachment: {
+            /** @enum {string} */
+            type: "image" | "file";
+            id: string;
+            name: string;
+            mime_type: string;
+            size_bytes: number;
+        };
         DictationState: {
             id: string;
             text: string;
@@ -1096,7 +1411,7 @@ export interface components {
              * @default define_issue
              * @enum {string}
              */
-            kind: "define_issue" | "resolve_conflicts";
+            kind: "define_issue" | "resolve_conflicts" | "review";
             project_id?: string | null;
             repo: string;
             number: number;
@@ -2896,7 +3211,6 @@ export interface operations {
                 content: {
                     "application/json": {
                         available: boolean;
-                        item_id?: string;
                         thread_id?: string;
                         url?: string;
                         t3_environment_id?: string;
@@ -2924,6 +3238,15 @@ export interface operations {
                     end: number;
                     snippet?: string;
                     question: string;
+                    /** @description Required while the pull request has no review thread */
+                    launch?: {
+                        instance_id: string;
+                        project_id: string;
+                        provider: string;
+                        model: string;
+                        effort_option?: string;
+                        effort?: string;
+                    };
                 };
             };
         };
@@ -2936,15 +3259,59 @@ export interface operations {
                 content: {
                     "application/json": {
                         available: boolean;
-                        item_id?: string;
                         thread_id?: string;
                         url?: string;
                         t3_environment_id?: string;
                     };
                 };
             };
-            /** @description No Dory item with an implementation thread */
+            /** @description Review thread created with the question */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        available: boolean;
+                        thread_id?: string;
+                        url?: string;
+                        t3_environment_id?: string;
+                    };
+                };
+            };
+            /** @description No review thread yet and no launch given */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getThreadMedia: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": unknown;
+                };
+            };
+            /** @description The file is not an image */
+            415: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3084,6 +3451,497 @@ export interface operations {
             };
             /** @description The request is no longer open */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getT3ThreadView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Thread view */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    getT3ThreadDiff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unified diff, empty when no turn changed files */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        diff: string;
+                        /** @enum {string} */
+                        source: "t3" | "git";
+                        branch?: string;
+                        worktree?: string;
+                        base?: string;
+                    };
+                };
+            };
+        };
+    };
+    createT3Thread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    instance_id: string;
+                    project_id: string;
+                    provider: string;
+                    model: string;
+                    effort_option?: string;
+                    effort?: string;
+                    text?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The new thread */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        thread_id: string;
+                    };
+                };
+            };
+        };
+    };
+    answerT3SecretRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                item: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    secret?: string;
+                    decline?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Answered */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    searchGithubPullRefs: {
+        parameters: {
+            query?: {
+                q?: string;
+            };
+            header?: never;
+            path: {
+                owner: string;
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Matching pull requests */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        pulls: {
+                            number: number;
+                            title: string;
+                            /** @enum {string} */
+                            state: "open" | "draft" | "merged" | "closed";
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    getT3ThreadComposer: {
+        parameters: {
+            query: {
+                provider: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Commands and skills */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        commands: {
+                            name: string;
+                            description?: string;
+                        }[];
+                        skills: {
+                            name: string;
+                            description?: string;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    searchT3ThreadEntries: {
+        parameters: {
+            query?: {
+                q?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Matching entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        entries: {
+                            path: string;
+                            kind: string;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    getT3ThreadAttachment: {
+        parameters: {
+            query?: {
+                name?: string;
+                mime?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+                aid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file bytes with their content type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    sendT3ThreadTurn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    text: string;
+                    /** @enum {string} */
+                    mode?: "auto" | "steer";
+                    provider_id?: string;
+                    model?: string;
+                    /** @description $skills picked in the composer, sent as T3 context records */
+                    skills?: string[];
+                    /** @description @paths picked in the composer, sent as T3 context records */
+                    mentions?: string[];
+                    effort_option?: string;
+                    effort?: string;
+                    attachments?: components["schemas"]["T3Attachment"][];
+                };
+            };
+        };
+        responses: {
+            /** @description Sent */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getT3ThreadHistory: {
+        parameters: {
+            query: {
+                cursor: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Older messages, oldest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messages?: Record<string, never>[];
+                        next_cursor?: string;
+                        has_more?: boolean;
+                    };
+                };
+            };
+        };
+    };
+    uploadT3Attachment: {
+        parameters: {
+            query?: {
+                name?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Uploaded */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["T3Attachment"];
+                };
+            };
+        };
+    };
+    cancelT3QueuedMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    editT3QueuedMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    text: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Edited */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reorderT3QueuedMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    before_run_id?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Moved */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    steerT3QueuedMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Steered */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    interruptT3Thread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stopped */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    resumeT3Queue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resumed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    setT3ThreadSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    interaction_mode?: "default" | "plan";
+                    /** @enum {string} */
+                    runtime_mode?: "approval-required" | "auto-accept-edits" | "auto" | "full-access";
+                };
+            };
+        };
+        responses: {
+            /** @description Changed */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };

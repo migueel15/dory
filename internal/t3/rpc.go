@@ -79,7 +79,15 @@ func (c Client) wsURL(ticket string) (string, error) {
 // call runs one RPC on its own connection. T3 writes are rare, so holding a
 // socket open per instance would add state without saving anything.
 func (c Client) call(ctx context.Context, method string, payload, out any) error {
-	ctx, cancel := context.WithTimeout(ctx, rpcTimeout)
+	return c.callFor(ctx, rpcTimeout, method, payload, out)
+}
+
+// gitTimeout covers git work on the machine: fetching and checking out a
+// pull request, or removing a worktree of a large repository.
+const gitTimeout = 3 * time.Minute
+
+func (c Client) callFor(ctx context.Context, timeout time.Duration, method string, payload, out any) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	ticket, err := c.ticket(ctx)
 	if err != nil {
@@ -184,6 +192,9 @@ type CreateThreadInput struct {
 	// that holds it (reasoningEffort, effort, ...). Both empty keeps the default.
 	EffortOption string
 	Effort       string
+	// Branch and WorktreePath bind the thread to a worktree; empty works in the project root.
+	Branch       string
+	WorktreePath string
 }
 
 // CreateThread creates an empty thread and returns its id.
@@ -199,7 +210,7 @@ func (c Client) CreateThread(ctx context.Context, in CreateThreadInput) (string,
 	err := c.Dispatch(ctx, map[string]any{
 		"type": "thread.create", "threadId": id, "projectId": in.ProjectID, "title": in.Title,
 		"modelSelection": selection,
-		"runtimeMode":    mode, "interactionMode": "default", "branch": nil, "worktreePath": nil,
+		"runtimeMode":    mode, "interactionMode": "default", "branch": nullable(in.Branch), "worktreePath": nullable(in.WorktreePath),
 		"createdBy": "user", "creationSource": "web",
 	})
 	return id, err
@@ -368,4 +379,33 @@ func (p wireProjection) context(limit int) ThreadContext {
 		out.Pending = pending
 	}
 	return out
+}
+
+func nullable(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+// PreparePullRequestWorktree checks out a pull request (URL or number) in a new
+// or reused worktree of the repository at cwd, as T3 does for its PR threads.
+func (c Client) PreparePullRequestWorktree(ctx context.Context, cwd, reference string) (branch, worktree string, err error) {
+	var out struct {
+		Branch       string  `json:"branch"`
+		WorktreePath *string `json:"worktreePath"`
+	}
+	if err := c.callFor(ctx, gitTimeout, "git.preparePullRequestThread", map[string]any{"cwd": cwd, "reference": reference, "mode": "worktree"}, &out); err != nil {
+		return "", "", err
+	}
+	if out.WorktreePath == nil || *out.WorktreePath == "" {
+		return "", "", errors.New("t3: pull request worktree not created")
+	}
+	return out.Branch, *out.WorktreePath, nil
+}
+
+// RemoveWorktree removes a linked worktree of the repository at cwd. Without
+// force, git refuses when it has uncommitted changes.
+func (c Client) RemoveWorktree(ctx context.Context, cwd, path string) error {
+	return c.callFor(ctx, gitTimeout, "vcs.removeWorktree", map[string]any{"cwd": cwd, "path": path, "force": false}, nil)
 }

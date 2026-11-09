@@ -906,7 +906,7 @@ paths:
   "/github/repos/{owner}/{repo}/pulls/{number}/agent":
     get:
       operationId: "getPullAgent"
-      summary: "Implementation thread that answers review questions, if any"
+      summary: "Review thread of the pull request, if one was created"
       parameters:
         - {name: "owner", in: "path", required: true, schema: {type: "string"}}
         - {name: "repo", in: "path", required: true, schema: {type: "string"}}
@@ -921,14 +921,13 @@ paths:
                 required: ["available"]
                 properties:
                   available: {type: "boolean"}
-                  item_id: {type: "string"}
                   thread_id: {type: "string"}
                   url: {type: "string"}
                   t3_environment_id: {type: "string"}
   "/github/repos/{owner}/{repo}/pulls/{number}/ask":
     post:
       operationId: "askPullAgent"
-      summary: "Send a private review question to the implementation thread"
+      summary: "Send a private review question to the review thread; the first one creates it with launch"
       parameters:
         - {name: "owner", in: "path", required: true, schema: {type: "string"}}
         - {name: "repo", in: "path", required: true, schema: {type: "string"}}
@@ -946,7 +945,30 @@ paths:
                 end: {type: "integer"}
                 snippet: {type: "string"}
                 question: {type: "string"}
+                launch:
+                  type: "object"
+                  description: "Required while the pull request has no review thread"
+                  required: ["instance_id", "project_id", "provider", "model"]
+                  properties:
+                    instance_id: {type: "string"}
+                    project_id: {type: "string"}
+                    provider: {type: "string"}
+                    model: {type: "string"}
+                    effort_option: {type: "string"}
+                    effort: {type: "string"}
       responses:
+        "201":
+          description: "Review thread created with the question"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                required: ["available"]
+                properties:
+                  available: {type: "boolean"}
+                  thread_id: {type: "string"}
+                  url: {type: "string"}
+                  t3_environment_id: {type: "string"}
         "200":
           description: "Sent"
           content:
@@ -956,12 +978,25 @@ paths:
                 required: ["available"]
                 properties:
                   available: {type: "boolean"}
-                  item_id: {type: "string"}
                   thread_id: {type: "string"}
                   url: {type: "string"}
                   t3_environment_id: {type: "string"}
         "409":
-          description: "No Dory item with an implementation thread"
+          description: "No review thread yet and no launch given"
+  "/t3/threads/{id}/media":
+    get:
+      operationId: "getThreadMedia"
+      summary: "Image the agent shows by local path, proxied from the thread's machine"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+        - {name: "path", in: "query", required: true, schema: {type: "string", maxLength: 1024}}
+      responses:
+        "200":
+          description: "The image"
+          content:
+            image/*: {}
+        "415":
+          description: "The file is not an image"
   "/t3/instances/{id}/pair":
     post:
       operationId: "pairT3Instance"
@@ -2921,7 +2956,7 @@ components:
       required: [id, kind, repo, number, issue_url, title, instance_id, thread_id, model, effort, created_at]
       properties:
         id: {type: string}
-        kind: {type: string, enum: [define_issue, resolve_conflicts], default: define_issue}
+        kind: {type: string, enum: [define_issue, resolve_conflicts, review], default: define_issue}
         project_id: {type: string, nullable: true}
         repo: {type: string}
         number: {type: integer}

@@ -144,6 +144,39 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 		}
 		writeJSON(w, http.StatusOK, a)
 	})
+	// Images the agent shows by local path (Markdown ![](/abs/path.png)),
+	// proxied from the thread's machine like T3 Code does. Only images pass.
+	mux.HandleFunc("GET /api/t3/threads/{id}/media", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Query().Get("path")
+		if path == "" || len(path) > 1024 {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "path is required")
+			return
+		}
+		c, err := threadClient(r.Context(), svc, monitor, r.PathValue("id"))
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		resp, err := c.OpenMedia(r.Context(), r.PathValue("id"), path)
+		if err != nil {
+			writeT3Error(w, err)
+			return
+		}
+		defer resp.Body.Close()
+		ct := strings.ToLower(resp.Header.Get("Content-Type"))
+		if !strings.HasPrefix(ct, "image/") || strings.Contains(ct, "svg") {
+			writeError(w, http.StatusUnsupportedMediaType, "invalid_argument", "only images are shown")
+			return
+		}
+		for _, h := range []string{"Content-Type", "Content-Length"} {
+			if v := resp.Header.Get(h); v != "" {
+				w.Header().Set(h, v)
+			}
+		}
+		w.Header().Set("Cache-Control", "private, max-age=86400")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		io.Copy(w, io.LimitReader(resp.Body, maxAttachmentBytes))
+	})
 	// Attachments of a thread's messages, proxied from T3 for previews.
 	mux.HandleFunc("GET /api/t3/threads/{id}/attachments/{aid}", func(w http.ResponseWriter, r *http.Request) {
 		c, err := threadClient(r.Context(), svc, monitor, r.PathValue("id"))
