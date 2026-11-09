@@ -121,7 +121,7 @@ func TestArchiveThreadDispatch(t *testing.T) {
 func TestCreateWorktree(t *testing.T) {
 	var seen map[string]any
 	c := rpcServer(t, `{"_tag":"Success","value":{"worktree":{"path":"/w/x","refName":"origin/main"}}}`, &seen)
-	path, err := c.CreateWorktree(context.Background(), "/repo", "origin/main")
+	path, err := c.CreateWorktree(context.Background(), "/repo", "origin/main", "/w/x")
 	if err != nil || path != "/w/x" {
 		t.Fatalf("path=%q err=%v", path, err)
 	}
@@ -132,11 +132,11 @@ func TestCreateWorktree(t *testing.T) {
 	if _, ok := p["newRefName"]; ok {
 		t.Fatalf("must not create a branch: %+v", p)
 	}
-	if v, ok := p["path"]; !ok || v != nil {
-		t.Fatalf("path must be null: %+v", p)
+	if v, ok := p["path"]; !ok || v != "/w/x" {
+		t.Fatalf("path must be explicit: %+v", p)
 	}
 	c = rpcServer(t, `{"_tag":"Success","value":{"worktree":{}}}`, nil)
-	if _, err := c.CreateWorktree(context.Background(), "/repo", "origin/main"); err == nil {
+	if _, err := c.CreateWorktree(context.Background(), "/repo", "origin/main", "/w/x"); err == nil {
 		t.Fatal("empty path must fail")
 	}
 }

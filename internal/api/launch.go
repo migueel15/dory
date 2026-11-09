@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path"
 	"strings"
 
 	"github.com/migueel15/dory/internal/service"
@@ -132,6 +133,7 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 		// T3 creates the worktree (detached HEAD) so its diff panel works from the
 		// first edit; Dory cannot, because it has no write access to the repository.
 		root, worktree := "", ""
+		createdWorktree := false
 		if body.Worktree {
 			ref := "origin/HEAD"
 			if base := strings.TrimSpace(body.BaseBranch); base != "" {
@@ -141,9 +143,12 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 				writeT3Error(w, err)
 				return
 			}
-			if worktree, err = c.CreateWorktree(r.Context(), root, ref); err != nil {
-				writeT3Error(w, err)
-				return
+			worktree, createdWorktree = itemWorktree(item, root)
+			if createdWorktree {
+				if worktree, err = c.CreateWorktree(r.Context(), root, ref, worktree); err != nil {
+					writeT3Error(w, err)
+					return
+				}
 			}
 		}
 		threadID, err := c.Launch(r.Context(), t3.LaunchInput{
@@ -151,7 +156,7 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 			WorktreePath: worktree, Prompt: launchPrompt(item, worktree),
 		})
 		if threadID == "" {
-			if worktree != "" {
+			if createdWorktree {
 				if rerr := c.RemoveWorktree(r.Context(), root, worktree); rerr != nil {
 					logError(rerr)
 				}
@@ -170,7 +175,7 @@ func mountLaunch(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor) {
 			return
 		}
 		item.Status = "in_progress"
-		if worktree != "" {
+		if createdWorktree {
 			item.Refs = append(item.Refs, worktreeRefPrefix+worktree)
 		}
 		if _, err := svc.Items().Put(r.Context(), actor(r), item); err != nil {
@@ -225,4 +230,20 @@ func quickTitle(text string) string {
 		line = "Nuevo hilo"
 	}
 	return line
+}
+
+// itemWorktree reuses the recorded path or selects a distinct path per item.
+// The root belongs to the remote T3 user; never use Dory's local home.
+func itemWorktree(item service.Item, root string) (string, bool) {
+	for _, ref := range item.Refs {
+		if strings.HasPrefix(ref, worktreeRefPrefix) && strings.TrimPrefix(ref, worktreeRefPrefix) != "" {
+			return strings.TrimPrefix(ref, worktreeRefPrefix), false
+		}
+	}
+	parts := strings.Split(strings.TrimPrefix(path.Clean(root), "/"), "/")
+	home := path.Join("/", parts[0])
+	if len(parts) > 1 {
+		home = path.Join(home, parts[1])
+	}
+	return path.Join(home, ".t3", "worktrees", path.Base(root), "dory-"+item.ID[:min(8, len(item.ID))]), true
 }
