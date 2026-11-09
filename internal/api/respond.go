@@ -1,11 +1,14 @@
 package api
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/migueel15/dory/internal/service"
 )
@@ -23,6 +26,31 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		log.Printf("api: encode response: %v", err)
 	}
+}
+
+// writeJSONETag answers like writeJSON but tags the body with a hash and replies
+// 304 when the client already holds it, so polling an unchanged resource costs
+// no transfer. no-cache makes browsers revalidate on every request.
+func writeJSONETag(w http.ResponseWriter, r *http.Request, v any) {
+	body, err := json.Marshal(v)
+	if err != nil {
+		log.Printf("api: encode response: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal", "encode response")
+		return
+	}
+	sum := sha256.Sum256(body)
+	etag := `"` + hex.EncodeToString(sum[:16]) + `"`
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", "no-cache")
+	for _, t := range strings.Split(r.Header.Get("If-None-Match"), ",") {
+		if t = strings.TrimPrefix(strings.TrimSpace(t), "W/"); t == etag || t == "*" {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(append(body, '\n'))
 }
 
 func writeError(w http.ResponseWriter, status int, code, message string) {

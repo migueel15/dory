@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 // useVisible tracks whether this tab is on screen. Live streams only stay open
 // while it is: over plain HTTP a browser allows about six connections per host,
 // and two per background tab would leave a new tab's streams waiting.
-function useVisible() {
+export function useVisible() {
   const [visible, setVisible] = useState(() => typeof document === "undefined" || document.visibilityState !== "hidden");
   useEffect(() => {
     const on = () => setVisible(document.visibilityState !== "hidden");
@@ -62,14 +62,14 @@ export function useLiveUpdates(enabled: boolean) {
 // useThreadLive follows one T3 thread while a view shows its conversation and
 // refetches the given query on each burst of changes. EventSource reconnects
 // on its own if the server or T3 drops the stream.
-export function useThreadLive(threadId: string | undefined, queryKey: unknown[]) {
+export function useThreadLive(threadId: string | undefined, queryKey: unknown[], alsoKeys: unknown[][] = []) {
   const qc = useQueryClient();
-  const key = JSON.stringify(queryKey);
+  const key = JSON.stringify([queryKey, ...alsoKeys]);
   const visible = useVisible();
   useEffect(() => {
     if (!threadId || !visible) return;
     const source = new EventSource(`/api/t3/threads/${encodeURIComponent(threadId)}/stream`, { withCredentials: true });
-    const refresh = () => qc.invalidateQueries({ queryKey: JSON.parse(key) });
+    const refresh = () => { for (const k of JSON.parse(key) as unknown[][]) qc.invalidateQueries({ queryKey: k }); };
     source.addEventListener("thread", refresh);
     // The server skips the first T3 snapshot of each connection, so whatever changed
     // while the stream was down (T3 dropped it, the browser reconnected) is lost: reload on every (re)open.
