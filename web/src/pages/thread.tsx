@@ -321,6 +321,12 @@ function Chat({ v, queryKey, onStop, notice, beforeSend, insert }: { v: T3Thread
   const qc = useQueryClient();
   const end = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  const pinned = useRef(true);
+  const follow = () => {
+    pinned.current = true;
+    end.current?.scrollIntoView({ block: "end", behavior: "instant" });
+  };
+  const sending = async () => { await beforeSend?.(); follow(); };
   // Text sent to the composer: from the host view (insert) or from a selection.
   const [ins, setIns] = useState<Insert>();
   const push = (text: string, quote?: Insert["quote"]) => setIns((p) => ({ text, quote, seq: (p?.seq ?? 0) + 1 }));
@@ -352,7 +358,9 @@ function Chat({ v, queryKey, onStop, notice, beforeSend, insert }: { v: T3Thread
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
-    setAway(el.scrollHeight - el.scrollTop - el.clientHeight > 200);
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    pinned.current = distance < 40;
+    setAway(distance > 200);
     if (el.scrollTop < 300) loadOlder();
   };
   const recent = new Set(v.messages.map((m) => m.id));
@@ -363,7 +371,9 @@ function Chat({ v, queryKey, onStop, notice, beforeSend, insert }: { v: T3Thread
   // Pages overlap the latest turns: the live copy of an entry wins.
   const all = [...older.filter((m) => !recent.has(m.id) && !seen.has(m.id) && seen.add(m.id)), ...v.messages];
   const last = v.messages.at(-1);
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [v.messages.length, last?.text.length, !!v.pending, v.queue.length]);
+  useEffect(() => {
+    if (pinned.current) end.current?.scrollIntoView({ block: "end", behavior: "instant" });
+  }, [v.messages, v.pending, v.queue, v.active_run_id]);
   const pendingSecret = [...all].reverse().find((m) => m.role === "secret" && m.status === "pending");
   const working = !!v.active_run_id && !last?.streaming && (last?.role === "user" || last?.role === "assistant" || !last);
   return (
@@ -412,7 +422,7 @@ function Chat({ v, queryKey, onStop, notice, beforeSend, insert }: { v: T3Thread
       <div className="relative h-0">
         {/* Always mounted so it can slide up on show and down on hide. */}
         {(
-          <button type="button" onClick={() => end.current?.scrollIntoView({ block: "end", behavior: "smooth" })} aria-label="Ir al final" aria-hidden={!away} tabIndex={away ? 0 : -1}
+          <button type="button" onClick={follow} aria-label="Ir al final" aria-hidden={!away} tabIndex={away ? 0 : -1}
             className={`absolute bottom-3 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 transition-[translate,opacity] duration-200 ease-out ${away ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0"} rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-md hover:bg-slate-50 hover:text-slate-900 dark:border-border-strong dark:bg-surface dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white`}>
             <ArrowDown weight="bold" className="size-3.5" />Ir al final
           </button>
@@ -434,7 +444,7 @@ function Chat({ v, queryKey, onStop, notice, beforeSend, insert }: { v: T3Thread
           </div>
         )}
         {notice}
-        <div className="relative z-10"><Composer v={v} queryKey={queryKey} onStop={onStop} question={question} beforeSend={beforeSend} insert={ins} /></div>
+        <div className="relative z-10"><Composer v={v} queryKey={queryKey} onStop={onStop} question={question} beforeSend={sending} insert={ins} /></div>
       </div>
     </section>
     </ThreadMediaContext.Provider>
