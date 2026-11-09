@@ -3,6 +3,9 @@ package api
 import (
 	"context"
 	"log"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/migueel15/dory/internal/github"
@@ -24,6 +27,7 @@ func RunReviewCleanup(ctx context.Context, svc service.Service, monitor *t3.Moni
 			return
 		case <-tick.C:
 			cleanReviews(ctx, svc, monitor, gh)
+			cleanImplementations(ctx, svc, monitor, gh)
 		}
 	}
 }
@@ -61,5 +65,74 @@ func cleanReviews(ctx context.Context, svc service.Service, monitor *t3.Monitor,
 		if err := svc.IssueThreads().Archive(ctx, "review-cleanup", link.ID); err != nil {
 			log.Printf("review cleanup archive %s: %v", link.ID, err)
 		}
+	}
+}
+
+var pullRefPattern = regexp.MustCompile(`^https://github\.com/([^/]+/[^/]+)/pull/(\d+)/?$`)
+
+// cleanImplementations removes, once its pull request is merged or closed, the
+// worktree Dory created for an implementation thread (the item keeps a
+// "worktree:<path>" ref). Git refuses when it has uncommitted changes, and the
+// ref stays so the next pass retries. On success the ref is dropped.
+func cleanImplementations(ctx context.Context, svc service.Service, monitor *t3.Monitor, gh *github.Client) {
+	for _, status := range []string{"in_progress", "validating", "done"} {
+		items, err := svc.Items().List(ctx, service.Filter{Fields: map[string]any{"status": status}, Limit: 1000})
+		if err != nil {
+			log.Printf("implementation cleanup: %v", err)
+			return
+		}
+		for _, item := range items {
+			cleanImplementation(ctx, svc, monitor, gh, item)
+		}
+	}
+}
+
+func cleanImplementation(ctx context.Context, svc service.Service, monitor *t3.Monitor, gh *github.Client, item service.Item) {
+	worktree, pr := "", ""
+	for _, ref := range item.Refs {
+		if strings.HasPrefix(ref, worktreeRefPrefix) {
+			worktree = strings.TrimPrefix(ref, worktreeRefPrefix)
+		} else if pullRefPattern.MatchString(ref) {
+			pr = ref
+		}
+	}
+	if worktree == "" || pr == "" {
+		return
+	}
+	m := pullRefPattern.FindStringSubmatch(pr)
+	number, _ := strconv.Atoi(m[2])
+	detail, err := gh.Detail(ctx, m[1], "pulls", number)
+	if err != nil || detail.Pull == nil || (detail.Pull.State != "MERGED" && detail.Pull.State != "CLOSED") {
+		return
+	}
+	threads, err := svc.ItemThreads().List(ctx, service.Filter{Fields: map[string]any{"item_id": item.ID}, Limit: 20})
+	if err != nil || len(threads) == 0 {
+		return
+	}
+	link := threads[0]
+	c, err := monitor.ThreadClient(ctx, link.ThreadID)
+	if err != nil {
+		c, err = monitor.InstanceClient(ctx, link.InstanceID)
+	}
+	if err == nil {
+		var root string
+		if root, _, err = c.ThreadWorktree(ctx, link.ThreadID); err == nil {
+			err = c.RemoveWorktree(ctx, root, worktree)
+		}
+	}
+	if err != nil {
+		log.Printf("implementation cleanup %s: %v", item.ID, err)
+		return
+	}
+	monitor.Refresh(link.InstanceID)
+	kept := item.Refs[:0:0]
+	for _, ref := range item.Refs {
+		if ref != worktreeRefPrefix+worktree {
+			kept = append(kept, ref)
+		}
+	}
+	item.Refs = kept
+	if _, err := svc.Items().Put(ctx, "worktree-cleanup", item); err != nil {
+		log.Printf("implementation cleanup save %s: %v", item.ID, err)
 	}
 }
