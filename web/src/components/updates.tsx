@@ -78,14 +78,14 @@ export function UpdateReview({ u, names }: { u: Updates; names: Record<string, s
                 {o.server.available && <li className="flex items-center justify-between gap-3 px-3 py-1.5"><span>T3 Code</span><span className="font-mono text-xs tabular-nums"><span className={muted}>{o.server.current || "?"}</span> → {o.server.latest}</span></li>}
                 {o.providers.filter((p) => p.available).map((p) => <li key={p.instance_id} className="flex items-center justify-between gap-3 px-3 py-1.5"><span>{p.name} <span className={`text-xs ${muted}`}>conector</span></span><span className="font-mono text-xs tabular-nums"><span className={muted}>{p.current || "?"}</span> → {p.latest}</span></li>)}
               </ul>
-              {o.server.available && o.active_threads > 0 && <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400"><Warning weight="fill" aria-hidden="true" className="mt-px size-3.5 shrink-0" />Tiene {o.active_threads} {o.active_threads === 1 ? "hilo en ejecución" : "hilos en ejecución"}: reiniciar T3 lo{o.active_threads === 1 ? "" : "s"} cortaría y te lo preguntaré antes.</p>}
+              {o.server.available && o.active_threads > 0 && <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400"><Warning weight="fill" aria-hidden="true" className="mt-px size-3.5 shrink-0" />Tiene {o.active_threads} {o.active_threads === 1 ? "hilo en ejecución" : "hilos en ejecución"}: al reiniciar T3 se cortar{o.active_threads === 1 ? "á" : "án"} si confirmas.</p>}
             </section>
           ))}
         </div>
       )}
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="ghost" onClick={close}>Cancelar</Button>
-        <Button disabled={u.outdated.length === 0 || u.run.isPending} onClick={() => { close(); u.run.mutate({ ids: u.outdated.map((o) => o.instance_id), restart: false }); }}>Confirmar y actualizar</Button>
+        <Button disabled={u.outdated.length === 0 || u.run.isPending} onClick={() => { close(); u.run.mutate({ ids: u.outdated.map((o) => o.instance_id), restart: true }); }}>Confirmar y actualizar</Button>
       </div>
     </Modal>
   );
