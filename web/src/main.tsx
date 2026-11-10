@@ -10,6 +10,7 @@ import { useLiveUpdates } from "./api/live";
 import { Button, Input, Label, errMsg } from "./components/ui";
 import { Environments, Memories, memorySearch } from "./pages/crud";
 import { CommandPalette, CommandsButton } from "./components/commands";
+import { TooltipHost } from "./components/tooltip";
 import { UsageQuick } from "./components/usage-quick";
 import { UpdateDialog, UpdatesButton, useUpdates } from "./components/updates";
 import { ProjectSwitcher } from "./components/project-switcher";
@@ -187,7 +188,8 @@ function Layout() {
         <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-3 pb-4">{navLinks(folded)}</nav>
         <div className="shrink-0 px-3 pb-2"><ProjectSwitcher folded={folded} /></div>
         <SidebarFooter folded={folded} username={me.data.username} onLogout={() => logout.mutate()}
-          controls={[desktop && <Notifications key="n" />, <ThemeToggle key="t" />, <SettingsLink key="s" />, (upd.outdated.length > 0 || upd.run.isPending) && <UpdatesButton key="up" u={upd} names={envNames} />, <UsageQuick key="u" />].filter(Boolean) as React.ReactElement[]} />
+          update={upd.outdated.length > 0 || upd.run.isPending ? <UpdatesButton u={upd} names={envNames} /> : null}
+          controls={[desktop && <Notifications key="n" />, <ThemeToggle key="t" />, <SettingsLink key="s" />, <UsageQuick key="u" />].filter(Boolean) as React.ReactElement[]} />
       </aside>
       {/* On desktop the current view is a card framed by the sidebar background. */}
       <div className="min-w-0 flex-1 sm:my-2 sm:mr-2 sm:overflow-auto sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">
@@ -244,7 +246,7 @@ function Layout() {
           <VersionBadge />
         </div>
       </dialog>
-      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main></div><CommandPalette /><UpdateDialog u={upd} names={envNames} />
+      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main></div><CommandPalette /><UpdateDialog u={upd} names={envNames} /><TooltipHost />
     </div>
   );
 }
@@ -299,7 +301,7 @@ function DevBadge() {
 // controls fold into a column one by one (theme under notifications, then
 // settings, then usage), and the user card narrows until only the sign-out
 // button is left, when its frame fades out.
-function SidebarFooter({ folded, username, onLogout, controls }: { folded: boolean; username: string; onLogout: () => void; controls: React.ReactElement[] }) {
+function SidebarFooter({ folded, username, onLogout, controls, update }: { folded: boolean; username: string; onLogout: () => void; controls: React.ReactElement[]; update: React.ReactElement | null }) {
   const box = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(200);
   useLayoutEffect(() => {
@@ -343,9 +345,13 @@ function SidebarFooter({ folded, username, onLogout, controls }: { folded: boole
           );
         })}
       </div>
-      <div className={`flex items-center justify-end gap-2 overflow-hidden rounded-md border py-1 transition-[border-color,padding] duration-200 ${narrow ? "border-transparent pl-0 pr-0" : "border-slate-200 pl-3 pr-1 dark:border-border"}`}>
-        <span className={`min-w-0 flex-1 truncate whitespace-nowrap text-sm text-slate-500 transition-opacity duration-150 dark:text-muted ${width < 110 ? "opacity-0" : ""}`}>{username}</span>
-        <Button variant="bare" aria-label="Cerrar sesión" title={`Cerrar sesión (${username})`} onClick={onLogout} className="grid size-8 shrink-0 place-items-center !p-0"><SignOut weight="regular" className="size-5" aria-hidden="true" /></Button>
+      {/* The update button sits right of the account box; folded, there is no room, so it goes above. */}
+      <div className={`flex items-center gap-2 ${narrow ? "flex-col-reverse" : ""}`}>
+        <div className={`flex min-w-0 flex-1 items-center justify-end gap-2 overflow-hidden rounded-md border py-1 transition-[border-color,padding] duration-200 ${narrow ? "w-full border-transparent pl-0 pr-0" : "border-slate-200 pl-3 pr-1 dark:border-border"}`}>
+          <span className={`min-w-0 flex-1 truncate whitespace-nowrap text-sm text-slate-500 transition-opacity duration-150 dark:text-muted ${width < 110 ? "opacity-0" : ""}`}>{username}</span>
+          <Button variant="bare" aria-label="Cerrar sesión" title={`Cerrar sesión (${username})`} onClick={onLogout} className="grid size-8 shrink-0 place-items-center !p-0"><SignOut weight="regular" className="size-5" aria-hidden="true" /></Button>
+        </div>
+        {update}
       </div>
       <div className={`grid transition-[grid-template-rows,opacity] duration-200 ${folded ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]"}`}><div className="overflow-hidden whitespace-nowrap"><VersionBadge /></div></div>
     </div>
