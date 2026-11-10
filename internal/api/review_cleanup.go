@@ -32,7 +32,7 @@ func RunReviewCleanup(ctx context.Context, svc service.Service, monitor *t3.Moni
 	}
 }
 
-func cleanReviews(ctx context.Context, svc service.Service, monitor *t3.Monitor, gh *github.Client) {
+func cleanReviews(ctx context.Context, svc service.Service, monitor reviewMonitor, gh reviewGithub) {
 	links, err := svc.IssueThreads().List(ctx, service.Filter{Fields: map[string]any{"kind": "review"}, Limit: 1000})
 	if err != nil {
 		log.Printf("review cleanup: %v", err)
@@ -54,6 +54,8 @@ func cleanReviews(ctx context.Context, svc service.Service, monitor *t3.Monitor,
 		if err == nil {
 			var root, worktree string
 			if root, worktree, err = c.ThreadWorktree(ctx, link.ThreadID); err == nil && worktree != "" {
+				// T3 retains worktreePath after removal. Removing an absent worktree
+				// is idempotent, so later passes can safely repeat this call.
 				err = c.RemoveWorktree(ctx, root, worktree)
 			}
 		}

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -59,7 +60,18 @@ type reviewAgent struct {
 	EnvironmentID string `json:"t3_environment_id,omitempty"`
 }
 
-func agentOf(monitor *t3.Monitor, link *service.IssueThread) reviewAgent {
+// reviewMonitor and reviewGithub describe the existing services used by review handlers.
+type reviewMonitor interface {
+	Thread(string) (t3.Thread, bool)
+	ThreadClient(context.Context, string) (t3.Client, error)
+	InstanceClient(context.Context, string) (t3.Client, error)
+	Refresh(string)
+}
+type reviewGithub interface {
+	Detail(context.Context, string, string, int) (*github.Detail, error)
+}
+
+func agentOf(monitor reviewMonitor, link *service.IssueThread) reviewAgent {
 	if link == nil {
 		return reviewAgent{}
 	}
@@ -79,7 +91,7 @@ type reviewLaunch struct {
 	Effort       string `json:"effort"`
 }
 
-func mountReviewAsk(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *github.Client) {
+func mountReviewAsk(mux *http.ServeMux, svc service.Service, monitor reviewMonitor, gh reviewGithub) {
 	parse := func(r *http.Request) (string, int, bool) {
 		number, err := strconv.Atoi(r.PathValue("number"))
 		return r.PathValue("owner") + "/" + r.PathValue("repo"), number, err == nil && number > 0
@@ -175,7 +187,7 @@ func mountReviewAsk(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor
 	})
 }
 
-func launchReview(w http.ResponseWriter, r *http.Request, svc service.Service, monitor *t3.Monitor, gh *github.Client, repo string, number int, l *reviewLaunch, firstMessage string) {
+func launchReview(w http.ResponseWriter, r *http.Request, svc service.Service, monitor reviewMonitor, gh reviewGithub, repo string, number int, l *reviewLaunch, firstMessage string) {
 	detail, err := gh.Detail(r.Context(), repo, "pulls", number)
 	if err != nil {
 		writeGithubError(w, err)
