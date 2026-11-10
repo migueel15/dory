@@ -70,7 +70,7 @@ export function UpdatesButton({ u, names }: { u: Updates; names: Record<string, 
       <button ref={setAnchor} type="button" disabled={u.run.isPending} aria-label="Actualizar entornos y conectores"
         onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onFocus={() => setHover(true)} onBlur={() => setHover(false)} onClick={() => { setHover(false); u.run.mutate({ ids: u.outdated.map((o) => o.instance_id), restart: false }); }}
         className="grid size-8 shrink-0 place-items-center rounded-md hover:bg-slate-200 disabled:opacity-70 dark:hover:bg-raised">
-        {u.run.isPending ? <ArrowsClockwise className="size-5 animate-spin" aria-hidden="true" /> : <DownloadSimple weight="duotone" className="size-5" aria-hidden="true" />}
+        {u.run.isPending ? <ArrowsClockwise className="size-5 animate-spin" aria-hidden="true" /> : <DownloadSimple weight="regular" className="size-5" aria-hidden="true" />}
       </button>
       {/* What can be updated shows at once on hover: it is information, not a label. */}
       {hover && !u.run.isPending && (
