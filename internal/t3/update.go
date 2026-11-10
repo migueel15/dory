@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -191,6 +192,10 @@ func (m *Monitor) Updates(ctx context.Context, force bool) ([]InstanceUpdates, e
 	if err != nil {
 		return nil, err
 	}
+	// A page reload cancels its request; the read must not turn that into
+	// "unavailable" for everyone, so it runs on its own deadline.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*usageTimeout)
+	defer cancel()
 	out := make([]InstanceUpdates, len(instances))
 	var wg sync.WaitGroup
 	for i, in := range instances {
@@ -201,7 +206,16 @@ func (m *Monitor) Updates(ctx context.Context, force bool) ([]InstanceUpdates, e
 		}()
 	}
 	wg.Wait()
-	m.updates.at, m.updates.data = time.Now(), out
+	// Only a complete read is kept: an instance that did not answer is asked again next time.
+	failed := false
+	for _, u := range out {
+		failed = failed || u.Error != ""
+	}
+	if failed {
+		m.updates.data = nil
+	} else {
+		m.updates.at, m.updates.data = time.Now(), out
+	}
 	return m.withActive(out), nil
 }
 
@@ -210,11 +224,13 @@ func (m *Monitor) readUpdates(ctx context.Context, in service.T3Instance) Instan
 	c := Client{BaseURL: in.BaseUrl, Token: os.Getenv(in.TokenEnv), HTTP: m.client}
 	d, err := c.Discover(ctx)
 	if err != nil {
+		log.Printf("t3: updates of %s: discover: %v", in.BaseUrl, err)
 		u.Error = updateErrorUnavailable
 		return u
 	}
 	server, providers, err := c.Updates(ctx, d.ServerVersion)
 	if err != nil {
+		log.Printf("t3: updates of %s: %v", in.BaseUrl, err)
 		u.Server = ServerUpdate{Current: d.ServerVersion}
 		u.Error = updateErrorUnavailable
 		return u
