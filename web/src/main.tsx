@@ -12,7 +12,7 @@ import { Environments, Memories, memorySearch } from "./pages/crud";
 import { CommandPalette, CommandsButton } from "./components/commands";
 import { TooltipHost } from "./components/tooltip";
 import { UsageQuick } from "./components/usage-quick";
-import { UpdateDialog, UpdatesButton, useUpdates } from "./components/updates";
+import { UpdateDialog, UpdateReview, UpdatesButton, useUpdates } from "./components/updates";
 import { ProjectSwitcher } from "./components/project-switcher";
 import { GithubView } from "./pages/github-detail";
 import { Github } from "./pages/github";
@@ -246,7 +246,7 @@ function Layout() {
           <VersionBadge />
         </div>
       </dialog>
-      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main></div><CommandPalette /><UpdateDialog u={upd} names={envNames} /><TooltipHost />
+      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main></div><CommandPalette /><UpdateReview u={upd} names={envNames} /><UpdateDialog u={upd} names={envNames} /><TooltipHost />
     </div>
   );
 }
