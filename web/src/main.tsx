@@ -11,6 +11,7 @@ import { Button, Input, Label, errMsg } from "./components/ui";
 import { Environments, Memories, memorySearch } from "./pages/crud";
 import { CommandPalette, CommandsButton } from "./components/commands";
 import { UsageQuick } from "./components/usage-quick";
+import { UpdateDialog, UpdatesButton, useUpdates } from "./components/updates";
 import { ProjectSwitcher } from "./components/project-switcher";
 import { GithubView } from "./pages/github-detail";
 import { Github } from "./pages/github";
@@ -93,6 +94,10 @@ function Layout() {
   // The project board needs the full width.
   const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") || l.pathname.startsWith("/items/") || l.pathname.startsWith("/threads") || /^\/github\/[^/]+\/[^/]+\/(pulls|issues)\//.test(l.pathname) || l.pathname === "/tasks" });
   const attention = useAttentionCount(!!me.data);
+  // Environments with outdated T3 or connectors; the footer icon updates them all.
+  const upd = useUpdates(!!me.data);
+  const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list(), enabled: !!me.data });
+  const envNames = Object.fromEntries((upd.updates.data ?? []).map((x) => [x.instance_id, envs.data?.find((e) => e.id === x.environment_id)?.name ?? "Entorno"]));
 
   const path = useLocation({ select: (l) => l.pathname });
   const [menu, setMenu] = useState(false);
@@ -182,7 +187,7 @@ function Layout() {
         <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-3 pb-4">{navLinks(folded)}</nav>
         <div className="shrink-0 px-3 pb-2"><ProjectSwitcher folded={folded} /></div>
         <SidebarFooter folded={folded} username={me.data.username} onLogout={() => logout.mutate()}
-          controls={[desktop && <Notifications key="n" />, <ThemeToggle key="t" />, <SettingsLink key="s" />, <UsageQuick key="u" />].filter(Boolean) as React.ReactElement[]} />
+          controls={[desktop && <Notifications key="n" />, <ThemeToggle key="t" />, <SettingsLink key="s" />, (upd.outdated.length > 0 || upd.run.isPending) && <UpdatesButton key="up" u={upd} names={envNames} />, <UsageQuick key="u" />].filter(Boolean) as React.ReactElement[]} />
       </aside>
       {/* On desktop the current view is a card framed by the sidebar background. */}
       <div className="min-w-0 flex-1 sm:my-2 sm:mr-2 sm:overflow-auto sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">
@@ -239,7 +244,7 @@ function Layout() {
           <VersionBadge />
         </div>
       </dialog>
-      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main></div><CommandPalette />
+      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main></div><CommandPalette /><UpdateDialog u={upd} names={envNames} />
     </div>
   );
 }
