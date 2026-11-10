@@ -1,0 +1,94 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowsClockwise, DownloadSimple, Warning } from "@phosphor-icons/react";
+import { api, type T3InstanceUpdates, type T3UpdateResult } from "../api/client";
+import { Button, ErrorText, Modal } from "./ui";
+
+// Instances with something to update: the server, a connector, or both.
+export const pending = (u: T3InstanceUpdates) => u.server.available || u.providers.some((p) => p.available);
+
+// useUpdates reads what is outdated and runs the updates. The answer of an
+// update lists the instances it left for confirmation (running threads would be
+// cut by the restart) and the ones that failed; the dialog below shows them.
+export function useUpdates(enabled = true) {
+  const qc = useQueryClient();
+  const updates = useQuery({ queryKey: ["t3-updates"], queryFn: () => api.t3Updates(), enabled, refetchInterval: 5 * 60_000, staleTime: 60_000 });
+  const [results, setResults] = useState<T3UpdateResult[]>([]);
+  const run = useMutation({
+    // One request per instance, so a slow install does not hold the others back.
+    mutationFn: async ({ ids, restart }: { ids: string[]; restart: boolean }) => (await Promise.all(ids.map((id) => api.t3Update(id, restart)))).flat(),
+    onSuccess: (res) => {
+      setResults(res.filter((r) => r.status === "needs_confirmation" || r.status === "failed" || r.status === "missing_scope"));
+      qc.invalidateQueries({ queryKey: ["t3-updates"] });
+      qc.invalidateQueries({ queryKey: ["t3-status"] });
+      qc.invalidateQueries({ queryKey: ["t3-catalog"] });
+    },
+  });
+  const outdated = (updates.data ?? []).filter(pending);
+  return { updates, outdated, run, results, close: () => setResults([]) };
+}
+
+export type Updates = ReturnType<typeof useUpdates>;
+
+// UpdateDialog explains what an update left undone and asks before restarting
+// an instance that has running threads.
+export function UpdateDialog({ u, names }: { u: Updates; names: Record<string, string> }) {
+  if (u.results.length === 0) return null;
+  const name = (id: string) => names[id] ?? "Entorno";
+  const confirm = u.results.filter((r) => r.status === "needs_confirmation");
+  return (
+    <Modal title="Actualización" onClose={u.close}>
+      <ul className="space-y-2 text-sm">
+        {u.results.map((r) => (
+          <li key={r.instance_id} className="flex items-start gap-2"><Warning weight="fill" aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-amber-500" />
+            <span>
+              <span className="font-medium">{name(r.instance_id)}</span>:{" "}
+              {r.status === "needs_confirmation" && `tiene ${r.active_threads} ${r.active_threads === 1 ? "hilo en ejecución" : "hilos en ejecución"}; reiniciar T3 los cortaría.`}
+              {r.status === "missing_scope" && "el token de Dory no tiene permiso para actualizar (environment:maintain y providers:manage); hay que ampliarlo."}
+              {r.status === "failed" && (r.error || "no se pudo actualizar.")}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="ghost" onClick={u.close}>Cerrar</Button>
+        {confirm.length > 0 && <Button disabled={u.run.isPending} onClick={() => { const ids = confirm.map((r) => r.instance_id); u.close(); u.run.mutate({ ids, restart: true }); }}>Reiniciar y actualizar</Button>}
+      </div>
+    </Modal>
+  );
+}
+
+// UpdatesButton sits in the sidebar footer: a round download icon, shown only
+// when something is outdated, that updates every environment and its connectors.
+export function UpdatesButton({ u, names }: { u: Updates; names: Record<string, string> }) {
+  const what = u.outdated.map((o) => `${names[o.instance_id] ?? "Entorno"}: ${[o.server.available && `T3 ${o.server.current} → ${o.server.latest}`, ...o.providers.filter((p) => p.available).map((p) => `${p.name} ${p.current} → ${p.latest}`)].filter(Boolean).join(", ")}`).join("\n");
+  return (
+    <button type="button" disabled={u.run.isPending} aria-label="Actualizar entornos y conectores" title={u.run.isPending ? "Actualizando…" : `Actualizar todo\n${what}`}
+      onClick={() => u.run.mutate({ ids: u.outdated.map((o) => o.instance_id), restart: false })}
+      className="grid size-8 shrink-0 place-items-center rounded-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-70 dark:bg-accent dark:hover:bg-accent-hover">
+      {u.run.isPending ? <ArrowsClockwise className="size-4 animate-spin" aria-hidden="true" /> : <DownloadSimple weight="bold" className="size-4" aria-hidden="true" />}
+    </button>
+  );
+}
+
+// MachineUpdate is the update row of one environment's card: versions and its own button.
+export function MachineUpdate({ instanceId, name }: { instanceId: string; name: string }) {
+  const u = useUpdates();
+  const mine = u.updates.data?.find((x) => x.instance_id === instanceId);
+  if (!mine || mine.error) return null;
+  const items = [mine.server.available && { k: "T3 Code", from: mine.server.current, to: mine.server.latest }, ...mine.providers.filter((p) => p.available).map((p) => ({ k: p.name, from: p.current, to: p.latest }))].filter(Boolean) as { k: string; from: string; to: string }[];
+  const muted = "text-xs text-slate-500 dark:text-muted";
+  return (
+    <section className="space-y-1.5">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-muted">Actualizaciones</h3>
+      {items.length === 0 ? <p className={muted}>Todo al día.</p> : (
+        <div className="flex items-start gap-2">
+          <ul className="min-w-0 flex-1 space-y-0.5 text-sm">{items.map((i) => <li key={i.k} className="truncate"><span className="font-medium">{i.k}</span> <span className={muted}>{i.from || "?"} → {i.to}</span></li>)}</ul>
+          <Button disabled={u.run.isPending} onClick={() => u.run.mutate({ ids: [instanceId], restart: false })} className="shrink-0 !px-2.5 !py-1 text-xs">{u.run.isPending ? "Actualizando…" : "Actualizar"}</Button>
+        </div>
+      )}
+      <ErrorText error={u.run.error} />
+      <UpdateDialog u={u} names={{ [instanceId]: name }} />
+    </section>
+  );
+}
