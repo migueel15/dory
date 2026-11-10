@@ -119,8 +119,8 @@ type wireUpdateConfig struct {
 // version advisories of the instance.
 func (c Client) Updates(ctx context.Context, current string) (ServerUpdate, []ProviderUpdate, error) {
 	s := ServerUpdate{Current: current}
-	var cfg wireUpdateConfig
-	if err := c.callFor(ctx, usageTimeout, "server.getConfig", map[string]any{}, &cfg); err != nil {
+	providers, err := c.providerUpdates(ctx)
+	if err != nil {
 		return s, nil, err
 	}
 	var rel struct {
@@ -130,6 +130,15 @@ func (c Client) Updates(ctx context.Context, current string) (ServerUpdate, []Pr
 	if err := c.callFor(ctx, usageTimeout, "server.getNpmRelease", map[string]any{"spec": releaseSpec(current)}, &rel); err == nil && rel.Version != "" {
 		s.Latest = rel.Version
 		s.Available = current != "" && rel.Version != current
+	}
+	return s, providers, nil
+}
+
+// providerUpdates reads each connector's version advisory and update progress.
+func (c Client) providerUpdates(ctx context.Context) ([]ProviderUpdate, error) {
+	var cfg wireUpdateConfig
+	if err := c.callFor(ctx, usageTimeout, "server.getConfig", map[string]any{}, &cfg); err != nil {
+		return nil, err
 	}
 	providers := []ProviderUpdate{}
 	for _, p := range cfg.Providers {
@@ -143,17 +152,42 @@ func (c Client) Updates(ctx context.Context, current string) (ServerUpdate, []Pr
 		}
 		providers = append(providers, u)
 	}
-	return s, providers, nil
+	return providers, nil
 }
 
-// UpdateProvider updates one connector to its latest version.
+// UpdateProvider updates one connector to its latest version and waits for T3
+// to finish: the call only queues the update, and restarting the server before
+// it ends would cut it. T3 installs the latest release itself; asking for an
+// exact version is refused by most installers.
 func (c Client) UpdateProvider(ctx context.Context, p ProviderUpdate) error {
-	in := map[string]any{"provider": p.Driver, "instanceId": p.InstanceID}
-	if p.Latest != "" {
-		in["targetVersion"] = p.Latest
-	}
 	var ignored map[string]any
-	return c.callFor(ctx, updateTimeout, "server.updateProvider", in, &ignored)
+	if err := c.callFor(ctx, updateTimeout, "server.updateProvider", map[string]any{"provider": p.Driver, "instanceId": p.InstanceID}, &ignored); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("%s: the update did not finish in time", p.Name)
+		case <-time.After(2 * time.Second):
+		}
+		list, err := c.providerUpdates(ctx)
+		if err != nil {
+			return err
+		}
+		for _, q := range list {
+			if q.InstanceID != p.InstanceID {
+				continue
+			}
+			switch q.State {
+			case "succeeded", "unchanged":
+				return nil
+			case "failed":
+				return errors.New(q.Message)
+			}
+		}
+	}
 }
 
 // UpdateServer moves the T3 server to an exact release. T3 restarts itself, so
