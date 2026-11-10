@@ -345,15 +345,15 @@ function SidebarFooter({ folded, username, onLogout, controls, update }: { folde
           );
         })}
       </div>
-      {/* The update button sits right of the account box; folded, there is no room, so it goes above. */}
-      <div className={`flex items-center gap-2 ${narrow ? "flex-col-reverse" : ""}`}>
-        <div className={`flex min-w-0 flex-1 items-center justify-end gap-2 overflow-hidden rounded-md border py-1 transition-[border-color,padding] duration-200 ${narrow ? "w-full border-transparent pl-0 pr-0" : "border-slate-200 pl-3 pr-1 dark:border-border"}`}>
-          <span className={`min-w-0 flex-1 truncate whitespace-nowrap text-sm text-slate-500 transition-opacity duration-150 dark:text-muted ${width < 110 ? "opacity-0" : ""}`}>{username}</span>
-          <Button variant="bare" aria-label="Cerrar sesión" title={`Cerrar sesión (${username})`} onClick={onLogout} className="grid size-8 shrink-0 place-items-center !p-0"><SignOut weight="regular" className="size-5" aria-hidden="true" /></Button>
-        </div>
+      <div className={`flex items-center justify-end gap-2 overflow-hidden rounded-md border py-1 transition-[border-color,padding] duration-200 ${narrow ? "border-transparent pl-0 pr-0" : "border-slate-200 pl-3 pr-1 dark:border-border"}`}>
+        <span className={`min-w-0 flex-1 truncate whitespace-nowrap text-sm text-slate-500 transition-opacity duration-150 dark:text-muted ${width < 110 ? "opacity-0" : ""}`}>{username}</span>
+        <Button variant="bare" aria-label="Cerrar sesión" title={`Cerrar sesión (${username})`} onClick={onLogout} className="grid size-8 shrink-0 place-items-center !p-0"><SignOut weight="regular" className="size-5" aria-hidden="true" /></Button>
+      </div>
+      {/* Below the account: the running commit and, to its right, the update button. */}
+      <div className="flex items-center gap-2">
+        <div className={`grid min-w-0 flex-1 transition-[grid-template-rows,opacity] duration-200 ${folded ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]"}`}><div className="overflow-hidden whitespace-nowrap"><VersionBadge /></div></div>
         {update}
       </div>
-      <div className={`grid transition-[grid-template-rows,opacity] duration-200 ${folded ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]"}`}><div className="overflow-hidden whitespace-nowrap"><VersionBadge /></div></div>
     </div>
   );
 }
