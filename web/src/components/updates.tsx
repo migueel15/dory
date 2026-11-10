@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowsClockwise, DownloadSimple, Warning } from "@phosphor-icons/react";
 import { api, type T3InstanceUpdates, type T3UpdateResult } from "../api/client";
 import { Button, ErrorText, Modal } from "./ui";
+import { HoverCard } from "./tooltip";
 
 // Instances with something to update: the server, a connector, or both.
 export const pending = (u: T3InstanceUpdates) => u.server.available || u.providers.some((p) => p.available);
@@ -61,13 +62,24 @@ export function UpdateDialog({ u, names }: { u: Updates; names: Record<string, s
 // UpdatesButton sits in the sidebar footer: a round download icon, shown only
 // when something is outdated, that updates every environment and its connectors.
 export function UpdatesButton({ u, names }: { u: Updates; names: Record<string, string> }) {
-  const what = u.outdated.map((o) => `${names[o.instance_id] ?? "Entorno"}: ${[o.server.available && `T3 ${o.server.current} → ${o.server.latest}`, ...o.providers.filter((p) => p.available).map((p) => `${p.name} ${p.current} → ${p.latest}`)].filter(Boolean).join(", ")}`).join("\n");
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
+  const [hover, setHover] = useState(false);
+  const rows = u.outdated.map((o) => ({ id: o.instance_id, items: [o.server.available && `T3 Code ${o.server.current} → ${o.server.latest}`, ...o.providers.filter((p) => p.available).map((p) => `${p.name} ${p.current} → ${p.latest}`)].filter(Boolean) as string[] }));
   return (
-    <button type="button" disabled={u.run.isPending} aria-label="Actualizar entornos y conectores" title={u.run.isPending ? "Actualizando…" : `Actualizar todo\n${what}`}
-      onClick={() => u.run.mutate({ ids: u.outdated.map((o) => o.instance_id), restart: false })}
-      className="grid size-8 shrink-0 place-items-center rounded-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-70 dark:bg-accent dark:hover:bg-accent-hover">
-      {u.run.isPending ? <ArrowsClockwise className="size-4 animate-spin" aria-hidden="true" /> : <DownloadSimple weight="bold" className="size-4" aria-hidden="true" />}
-    </button>
+    <>
+      <button ref={setAnchor} type="button" disabled={u.run.isPending} aria-label="Actualizar entornos y conectores"
+        onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onFocus={() => setHover(true)} onBlur={() => setHover(false)} onClick={() => { setHover(false); u.run.mutate({ ids: u.outdated.map((o) => o.instance_id), restart: false }); }}
+        className="grid size-8 shrink-0 place-items-center rounded-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-70 dark:bg-accent dark:hover:bg-accent-hover">
+        {u.run.isPending ? <ArrowsClockwise className="size-4 animate-spin" aria-hidden="true" /> : <DownloadSimple weight="bold" className="size-4" aria-hidden="true" />}
+      </button>
+      {/* What can be updated shows at once on hover: it is information, not a label. */}
+      {hover && !u.run.isPending && (
+        <HoverCard anchor={anchor}>
+          <div className="mb-1 font-medium">Actualizar todo</div>
+          <div className="space-y-1">{rows.map((r) => <div key={r.id}><div className="font-medium opacity-90">{names[r.id] ?? "Entorno"}</div>{r.items.map((i) => <div key={i} className="tabular-nums opacity-70">{i}</div>)}</div>)}</div>
+        </HoverCard>
+      )}
+    </>
   );
 }
 

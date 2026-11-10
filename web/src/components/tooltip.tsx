@@ -6,8 +6,7 @@ import { createPortal } from "react-dom";
 // pointer or focus is on the element and draws it itself: centred over the
 // element, rising into place, kept inside the viewport and flipped below when
 // the top is short. Mount it once; a `title` needs nothing else.
-const delay = 350;
-const warm = 600; // moving to a neighbour right after one closes shows at once
+const delay = 700; // like a native title: a label only shows after resting on the element
 
 type Target = { el: HTMLElement; text: string };
 
@@ -19,8 +18,6 @@ export function TooltipHost() {
   useEffect(() => {
     let current: HTMLElement | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let closedAt = 0;
-    let shown = false;
     // Gives the text back to the element so its markup is as React left it.
     const release = () => {
       clearTimeout(timer);
@@ -28,10 +25,8 @@ export function TooltipHost() {
         const text = current.dataset.tip;
         if (text !== undefined && !current.hasAttribute("title")) current.setAttribute("title", text);
         delete current.dataset.tip;
-        if (shown) closedAt = Date.now();
       }
       current = null;
-      shown = false;
       setTarget(null);
       setPos(null);
     };
@@ -43,8 +38,7 @@ export function TooltipHost() {
       el.dataset.tip = text;
       el.removeAttribute("title"); // so the browser draws nothing
       current = el;
-      const show = () => { shown = true; setTarget({ el, text }); };
-      if (Date.now() - closedAt < warm) show(); else timer = setTimeout(show, delay);
+      timer = setTimeout(() => setTarget({ el, text }), delay);
     };
     const find = (n: EventTarget | null) => (n instanceof Element ? (n.closest("[title]:not(svg *), [data-tip]") as HTMLElement | null) : null);
     const over = (e: PointerEvent) => { if (e.pointerType === "mouse") { const el = find(e.target); if (el) take(el); } };
@@ -90,5 +84,26 @@ export function TooltipHost() {
       {target.text}
     </div>,
     document.body,
+  );
+}
+
+// HoverCard is information the pointer asks for by resting on a control (the
+// remaining usage, what can be updated): unlike a label it shows at once. It
+// is centred over the anchor and rises into place like the tooltips.
+export function HoverCard({ anchor, children }: { anchor: HTMLElement | null; children: React.ReactNode }) {
+  const card = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!anchor || !card.current) return;
+    const a = anchor.getBoundingClientRect(), t = card.current.getBoundingClientRect(), m = 8, gap = 8;
+    setPos({ left: Math.min(Math.max(m, a.left + a.width / 2 - t.width / 2), window.innerWidth - t.width - m), top: a.top - t.height - gap >= m ? a.top - t.height - gap : a.bottom + gap });
+  }, [anchor]);
+  if (!anchor) return null;
+  return createPortal(
+    <div ref={card} role="tooltip" style={pos ?? { left: 0, top: 0, visibility: "hidden" }}
+      className="tip-in pointer-events-none fixed z-[100] rounded-md bg-slate-900 px-2.5 py-1.5 text-xs text-white shadow-lg dark:bg-raised dark:text-text">
+      {children}
+    </div>,
+    anchor.closest("dialog") ?? document.body,
   );
 }
