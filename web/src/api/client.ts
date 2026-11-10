@@ -16,7 +16,7 @@ export type User = S["User"];
 export type T3Status = S["T3Status"];
 // What each T3 can update, read live from the instance (see internal/t3/update.go).
 export type T3ProviderUpdate = { instance_id: string; driver: string; name: string; current: string; latest: string; available: boolean; state: string; message: string };
-export type T3InstanceUpdates = { instance_id: string; environment_id: string; server: { current: string; latest: string; available: boolean }; providers: T3ProviderUpdate[]; active_threads: number; error?: string };
+export type T3InstanceUpdates = { instance_id: string; environment_id: string; server: { current: string; latest: string; available: boolean; state?: "updating" }; providers: T3ProviderUpdate[]; active_threads: number; updating?: boolean; error?: string };
 export type T3UpdateResult = { instance_id: string; status: "current" | "updated" | "needs_confirmation" | "failed" | "missing_scope"; active_threads?: number; error?: string };
 export type T3InstanceUsage = S["T3InstanceUsage"];
 export type T3InstanceHistory = S["T3InstanceHistory"];
@@ -158,7 +158,7 @@ export const api = {
   issueThreads: () => req<IssueThread[]>("GET", "/issue-threads?limit=200"),
   version: () => req<S["Version"]>("GET", "/version"),
   t3Status: () => req<T3Status[]>("GET", "/t3/status"),
-  t3Updates: (refresh = false) => req<T3InstanceUpdates[]>("GET", `/t3/updates${refresh ? "?refresh=1" : ""}`),
+  t3Updates: () => req<T3InstanceUpdates[]>("GET", "/t3/updates"),
   t3Update: (instance_id: string, restart: boolean) => req<T3UpdateResult[]>("POST", "/t3/updates", { instance_id, restart }),
   t3Usage: () => req<T3InstanceUsage[]>("GET", "/t3/usage"),
   t3UsageRefresh: () => req<T3InstanceUsage[]>("POST", "/t3/usage/refresh"),

@@ -22,6 +22,9 @@ const updateTimeout = 10 * time.Minute
 // npm registry, so the page does not repeat it on every visit.
 const updatesTTL = 5 * time.Minute
 
+// ServerUpdating is the state of a server being replaced.
+const ServerUpdating = "updating"
+
 // Update results of one instance.
 const (
 	UpdateCurrent            = "current"
@@ -39,6 +42,8 @@ type ServerUpdate struct {
 	Current   string `json:"current"`
 	Latest    string `json:"latest"`
 	Available bool   `json:"available"`
+	// State is "updating" while Dory replaces the server.
+	State string `json:"state,omitempty"`
 }
 
 // ProviderUpdate is one connector (Codex, Claude, ...) of an instance.
@@ -64,6 +69,8 @@ type InstanceUpdates struct {
 	Providers     []ProviderUpdate `json:"providers"`
 	// ActiveThreads run now; restarting the server would cut them.
 	ActiveThreads int `json:"active_threads"`
+	// Updating while Dory runs an update of this instance.
+	Updating bool `json:"updating,omitempty"`
 	// Error is "unavailable" when the instance did not answer.
 	Error string `json:"error,omitempty"`
 }
@@ -115,25 +122,6 @@ type wireUpdateConfig struct {
 	} `json:"providers"`
 }
 
-// Updates reads the server version, the latest release and the connectors'
-// version advisories of the instance.
-func (c Client) Updates(ctx context.Context, current string) (ServerUpdate, []ProviderUpdate, error) {
-	s := ServerUpdate{Current: current}
-	providers, err := c.providerUpdates(ctx)
-	if err != nil {
-		return s, nil, err
-	}
-	var rel struct {
-		Version string `json:"version"`
-	}
-	// The registry may be unreachable for T3; the connectors still count.
-	if err := c.callFor(ctx, usageTimeout, "server.getNpmRelease", map[string]any{"spec": releaseSpec(current)}, &rel); err == nil && rel.Version != "" {
-		s.Latest = rel.Version
-		s.Available = current != "" && rel.Version != current
-	}
-	return s, providers, nil
-}
-
 // providerUpdates reads each connector's version advisory and update progress.
 func (c Client) providerUpdates(ctx context.Context) ([]ProviderUpdate, error) {
 	var cfg wireUpdateConfig
@@ -159,7 +147,7 @@ func (c Client) providerUpdates(ctx context.Context) ([]ProviderUpdate, error) {
 // to finish: the call only queues the update, and restarting the server before
 // it ends would cut it. T3 installs the latest release itself; asking for an
 // exact version is refused by most installers.
-func (c Client) UpdateProvider(ctx context.Context, p ProviderUpdate) error {
+func (c Client) UpdateProvider(ctx context.Context, p ProviderUpdate, progress func()) error {
 	var ignored map[string]any
 	if err := c.callFor(ctx, updateTimeout, "server.updateProvider", map[string]any{"provider": p.Driver, "instanceId": p.InstanceID}, &ignored); err != nil {
 		return err
@@ -175,6 +163,9 @@ func (c Client) UpdateProvider(ctx context.Context, p ProviderUpdate) error {
 		list, err := c.providerUpdates(ctx)
 		if err != nil {
 			return err
+		}
+		if progress != nil {
+			progress()
 		}
 		for _, q := range list {
 			if q.InstanceID != p.InstanceID {
@@ -209,19 +200,70 @@ func activeThreads(threads []Thread) int {
 	return n
 }
 
-type updatesCache struct {
-	mu   sync.Mutex
-	at   time.Time
-	data []InstanceUpdates
+// updatesState is what Dory keeps about updates: the npm lookups (slow and
+// rarely changing) and the instances whose server is being replaced now.
+type updatesState struct {
+	mu      sync.Mutex
+	release map[string]cachedRelease
+	busy    map[string]string // instance -> "providers" or "server" while Dory updates it
 }
 
-// Updates lists what each instance can update. force skips the short cache.
-func (m *Monitor) Updates(ctx context.Context, force bool) ([]InstanceUpdates, error) {
+type cachedRelease struct {
+	at      time.Time
+	spec    string
+	version string
+}
+
+// setPhase records what Dory is updating in an instance ("" when done) and tells watchers.
+func (m *Monitor) setPhase(id, phase string) {
+	m.updates.mu.Lock()
+	if m.updates.busy == nil {
+		m.updates.busy = map[string]string{}
+	}
+	if phase == "" {
+		delete(m.updates.busy, id)
+	} else {
+		m.updates.busy[id] = phase
+	}
+	m.updates.mu.Unlock()
+	m.notify()
+}
+
+func (m *Monitor) phase(id string) string {
 	m.updates.mu.Lock()
 	defer m.updates.mu.Unlock()
-	if !force && m.updates.data != nil && time.Since(m.updates.at) < updatesTTL {
-		return m.withActive(m.updates.data), nil
+	return m.updates.busy[id]
+}
+
+// latest is the newest release of the line the installed version follows,
+// asked to the instance at most every updatesTTL.
+func (m *Monitor) latest(ctx context.Context, id string, c Client, current string) string {
+	spec := releaseSpec(current)
+	m.updates.mu.Lock()
+	r, ok := m.updates.release[id]
+	m.updates.mu.Unlock()
+	if ok && r.spec == spec && time.Since(r.at) < updatesTTL {
+		return r.version
 	}
+	var rel struct {
+		Version string `json:"version"`
+	}
+	if err := c.callFor(ctx, usageTimeout, "server.getNpmRelease", map[string]any{"spec": spec}, &rel); err != nil || rel.Version == "" {
+		return r.version // the registry may be unreachable for T3; keep what was known
+	}
+	m.updates.mu.Lock()
+	if m.updates.release == nil {
+		m.updates.release = map[string]cachedRelease{}
+	}
+	m.updates.release[id] = cachedRelease{at: time.Now(), spec: spec, version: rel.Version}
+	m.updates.mu.Unlock()
+	return rel.Version
+}
+
+// Updates lists what each instance can update, read live from the instances
+// each time (a connector's progress changes second by second); only the npm
+// release lookup is remembered.
+func (m *Monitor) Updates(ctx context.Context) ([]InstanceUpdates, error) {
 	instances, err := m.svc.T3Instances().List(ctx, service.Filter{Limit: 100})
 	if err != nil {
 		return nil, err
@@ -240,40 +282,42 @@ func (m *Monitor) Updates(ctx context.Context, force bool) ([]InstanceUpdates, e
 		}()
 	}
 	wg.Wait()
-	// Only a complete read is kept: an instance that did not answer is asked again next time.
-	failed := false
-	for _, u := range out {
-		failed = failed || u.Error != ""
-	}
-	if failed {
-		m.updates.data = nil
-	} else {
-		m.updates.at, m.updates.data = time.Now(), out
-	}
 	return m.withActive(out), nil
 }
 
 func (m *Monitor) readUpdates(ctx context.Context, in service.T3Instance) InstanceUpdates {
 	u := InstanceUpdates{InstanceID: in.ID, EnvironmentID: in.EnvironmentID, Providers: []ProviderUpdate{}}
 	c := Client{BaseURL: in.BaseUrl, Token: os.Getenv(in.TokenEnv), HTTP: m.client}
+	phase := m.phase(in.ID)
+	u.Updating = phase != ""
 	d, err := c.Discover(ctx)
 	if err != nil {
+		// A server being replaced does not answer for a moment: that is the update, not a fault.
+		if phase == "server" {
+			u.Server = ServerUpdate{Available: true, State: ServerUpdating}
+			return u
+		}
 		log.Printf("t3: updates of %s: discover: %v", in.BaseUrl, err)
 		u.Error = updateErrorUnavailable
 		return u
 	}
-	server, providers, err := c.Updates(ctx, d.ServerVersion)
+	providers, err := c.providerUpdates(ctx)
 	if err != nil {
 		log.Printf("t3: updates of %s: %v", in.BaseUrl, err)
 		u.Server = ServerUpdate{Current: d.ServerVersion}
 		u.Error = updateErrorUnavailable
 		return u
 	}
-	u.Server, u.Providers = server, providers
+	u.Providers = providers
+	u.Server = ServerUpdate{Current: d.ServerVersion, Latest: m.latest(ctx, in.ID, c, d.ServerVersion)}
+	u.Server.Available = u.Server.Latest != "" && u.Server.Latest != d.ServerVersion
+	if phase == "server" {
+		u.Server.State = ServerUpdating
+	}
 	return u
 }
 
-// withActive adds the running threads, which change faster than the cache.
+// withActive adds the running threads, which change faster than the updates.
 func (m *Monitor) withActive(list []InstanceUpdates) []InstanceUpdates {
 	out := make([]InstanceUpdates, len(list))
 	m.mu.RLock()
@@ -289,7 +333,7 @@ func (m *Monitor) withActive(list []InstanceUpdates) []InstanceUpdates {
 // of all of them when instanceID is empty. An instance with running threads is
 // not restarted unless restart is true; it is reported as needing confirmation.
 func (m *Monitor) ApplyUpdates(ctx context.Context, instanceID string, restart bool) ([]UpdateResult, error) {
-	list, err := m.Updates(ctx, true)
+	list, err := m.Updates(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -312,9 +356,6 @@ func (m *Monitor) ApplyUpdates(ctx context.Context, instanceID string, restart b
 		}()
 	}
 	wg.Wait()
-	m.updates.mu.Lock()
-	m.updates.data = nil
-	m.updates.mu.Unlock()
 	return out, nil
 }
 
@@ -323,6 +364,9 @@ func (m *Monitor) applyOne(ctx context.Context, u InstanceUpdates, restart bool)
 	if u.Error != "" {
 		r.Status, r.Error = UpdateFailed, u.Error
 		return r
+	}
+	if u.Updating {
+		return r // already being updated
 	}
 	if u.Server.Available && u.ActiveThreads > 0 && !restart {
 		r.Status = UpdateNeedsConfirmation
@@ -334,6 +378,8 @@ func (m *Monitor) applyOne(ctx context.Context, u InstanceUpdates, restart bool)
 		return r
 	}
 	ctx = context.WithoutCancel(ctx)
+	m.setPhase(u.InstanceID, "providers")
+	defer m.setPhase(u.InstanceID, "")
 	fail := func(err error) UpdateResult {
 		r.Status, r.Error = UpdateFailed, err.Error()
 		if isMissingScope(err) {
@@ -345,20 +391,40 @@ func (m *Monitor) applyOne(ctx context.Context, u InstanceUpdates, restart bool)
 		if !p.Available {
 			continue
 		}
-		if err := c.UpdateProvider(ctx, p); err != nil {
+		if err := c.UpdateProvider(ctx, p, m.notify); err != nil {
 			return fail(fmt.Errorf("%s: %w", p.Name, err))
 		}
 		r.Status = UpdateDone
 	}
 	if u.Server.Available {
-		// A closed connection is how a restarting T3 answers; Refresh checks it came back.
+		m.setPhase(u.InstanceID, "server")
+		// A closed connection is how a restarting T3 answers; below, the new version is waited for.
 		if err := c.UpdateServer(ctx, u.Server.Latest); err != nil && !isClosed(err) {
 			return fail(err)
 		}
+		c.waitVersion(ctx, u.Server.Current)
 		r.Status = UpdateDone
 	}
 	m.Refresh(u.InstanceID)
+	m.notify()
 	return r
+}
+
+// waitVersion waits until the instance answers with a version other than old,
+// that is, until the restart after an update has finished.
+func (c Client) waitVersion(ctx context.Context, old string) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
+		if d, err := c.Discover(ctx); err == nil && d.ServerVersion != old {
+			return
+		}
+	}
 }
 
 // isMissingScope reports T3 refusing the call because the token lacks a scope

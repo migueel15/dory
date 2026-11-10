@@ -57,7 +57,7 @@ func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *
 		writeJSON(w, http.StatusOK, monitor.RefreshUsage(r.Context()))
 	})
 	mux.HandleFunc("GET /api/t3/updates", func(w http.ResponseWriter, r *http.Request) {
-		updates, err := monitor.Updates(r.Context(), r.URL.Query().Get("refresh") == "1")
+		updates, err := monitor.Updates(r.Context())
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal", err.Error())
 			return

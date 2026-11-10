@@ -51,7 +51,7 @@ type Monitor struct {
 	Observe func(context.Context, string, []Thread) error
 	svc     service.Service
 	client  *http.Client
-	updates updatesCache
+	updates updatesState
 	mu      sync.RWMutex
 	byID    map[string]Status
 	usage   map[string]InstanceUsage
