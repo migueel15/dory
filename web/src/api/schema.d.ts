@@ -349,6 +349,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/github/repos/{owner}/{repo}/pulls/{number}/review-thread": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a review thread and wait for the first question */
+        post: operations["createPullReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/github/repos/{owner}/{repo}/pulls/{number}/ask": {
         parameters: {
             query?: never;
@@ -3216,6 +3233,63 @@ export interface operations {
                         t3_environment_id?: string;
                     };
                 };
+            };
+        };
+    };
+    createPullReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                owner: string;
+                repo: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Required while the pull request has no review thread */
+                    launch: {
+                        instance_id: string;
+                        project_id: string;
+                        provider: string;
+                        model: string;
+                        effort_option?: string;
+                        effort?: string;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description Review thread created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        available: boolean;
+                        thread_id?: string;
+                        url?: string;
+                        t3_environment_id?: string;
+                    };
+                };
+            };
+            /** @description Missing or invalid launch */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Review thread already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
