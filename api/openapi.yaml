@@ -924,6 +924,50 @@ paths:
                   thread_id: {type: "string"}
                   url: {type: "string"}
                   t3_environment_id: {type: "string"}
+  "/github/repos/{owner}/{repo}/pulls/{number}/review-thread":
+    post:
+      operationId: "createPullReview"
+      summary: "Create a review thread and wait for the first question"
+      parameters:
+        - {name: "owner", in: "path", required: true, schema: {type: "string"}}
+        - {name: "repo", in: "path", required: true, schema: {type: "string"}}
+        - {name: "number", in: "path", required: true, schema: {type: "integer"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              required: ["launch"]
+              properties:
+                launch:
+                  type: "object"
+                  description: "Required while the pull request has no review thread"
+                  required: ["instance_id", "project_id", "provider", "model"]
+                  properties:
+                    instance_id: {type: "string"}
+                    project_id: {type: "string"}
+                    provider: {type: "string"}
+                    model: {type: "string"}
+                    effort_option: {type: "string"}
+                    effort: {type: "string"}
+      responses:
+        "201":
+          description: "Review thread created"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                required: ["available"]
+                properties:
+                  available: {type: "boolean"}
+                  thread_id: {type: "string"}
+                  url: {type: "string"}
+                  t3_environment_id: {type: "string"}
+        "409":
+          description: "Review thread already exists"
+        "400":
+          description: "Missing or invalid launch"
   "/github/repos/{owner}/{repo}/pulls/{number}/ask":
     post:
       operationId: "askPullAgent"

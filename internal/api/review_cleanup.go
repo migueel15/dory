@@ -16,7 +16,7 @@ import (
 // RunReviewCleanup watches the pull requests that have a review thread. When
 // one is merged or closed, it removes the thread's worktree through T3 on the
 // machine that runs it (git refuses if it has uncommitted changes) and
-// archives the link, so the PR no longer shows the chat. A machine that cannot
+// keeps the link so the PR continues to show the chat. A machine that cannot
 // be reached, or a removal that fails, is retried on the next pass.
 func RunReviewCleanup(ctx context.Context, svc service.Service, monitor *t3.Monitor, gh *github.Client) {
 	tick := time.NewTicker(10 * time.Minute)
@@ -32,7 +32,7 @@ func RunReviewCleanup(ctx context.Context, svc service.Service, monitor *t3.Moni
 	}
 }
 
-func cleanReviews(ctx context.Context, svc service.Service, monitor *t3.Monitor, gh *github.Client) {
+func cleanReviews(ctx context.Context, svc service.Service, monitor reviewMonitor, gh reviewGithub) {
 	links, err := svc.IssueThreads().List(ctx, service.Filter{Fields: map[string]any{"kind": "review"}, Limit: 1000})
 	if err != nil {
 		log.Printf("review cleanup: %v", err)
@@ -54,6 +54,8 @@ func cleanReviews(ctx context.Context, svc service.Service, monitor *t3.Monitor,
 		if err == nil {
 			var root, worktree string
 			if root, worktree, err = c.ThreadWorktree(ctx, link.ThreadID); err == nil && worktree != "" {
+				// T3 retains worktreePath after removal. Removing an absent worktree
+				// is idempotent, so later passes can safely repeat this call.
 				err = c.RemoveWorktree(ctx, root, worktree)
 			}
 		}
@@ -62,9 +64,6 @@ func cleanReviews(ctx context.Context, svc service.Service, monitor *t3.Monitor,
 			continue
 		}
 		monitor.Refresh(link.InstanceID)
-		if err := svc.IssueThreads().Archive(ctx, "review-cleanup", link.ID); err != nil {
-			log.Printf("review cleanup archive %s: %v", link.ID, err)
-		}
 	}
 }
 

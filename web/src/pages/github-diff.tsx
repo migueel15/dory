@@ -612,14 +612,14 @@ export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, onA
 
 // ReviewLaunch picks where the pull request's review thread runs. The thread
 // opens telling the agent it reviews this PR read-only, then gets the question.
-function ReviewLaunch({ repo, pr, busy, error, onClose, onLaunch }: { repo: string; pr: number; busy: boolean; error: unknown; onClose: () => void; onLaunch: (l: LaunchChoice) => void }) {
+export function ReviewLaunch({ repo, pr, busy, error, onClose, onLaunch, createOnly = false }: { repo: string; pr: number; busy: boolean; error: unknown; onClose: () => void; onLaunch: (l: LaunchChoice) => void; createOnly?: boolean }) {
   const form = useLaunchForm({ section: "pull-review", repo });
   return (
     <Modal title={`Crear el hilo de revisión de #${pr}`} onClose={onClose}>
       {form.fields}
-      <p className="text-xs text-slate-500 dark:text-muted">Es la primera pregunta sobre esta PR: se crea un hilo para revisarla, sin modificar nada salvo que lo pidas, y recibe tu pregunta. Las siguientes van al mismo hilo.</p>
+      <p className="text-xs text-slate-500 dark:text-muted">{createOnly ? "Se crea un hilo para tus consultas sobre esta PR. El agente esperará tu primera pregunta." : "Es la primera pregunta sobre esta PR: se crea un hilo para revisarla, sin modificar nada salvo que lo pidas, y recibe tu pregunta. Las siguientes van al mismo hilo."}</p>
       <ErrorText error={form.error ?? error} />
-      <Button disabled={!form.ready || busy} onClick={() => { form.remember(); onLaunch(form.value); }}>{busy ? "Creando…" : "Crear y preguntar"}</Button>
+      <Button disabled={!form.ready || busy} onClick={() => { form.remember(); onLaunch(form.value); }}>{busy ? "Creando…" : createOnly ? "Crear hilo" : "Crear y preguntar"}</Button>
     </Modal>
   );
 }

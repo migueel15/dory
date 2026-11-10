@@ -102,6 +102,7 @@ export const api = {
   markPullReview: (repo: string, number: number, path: string, patch_hash: string) => req<void>("PUT", `/github/repos/${repo}/pulls/${number}/reviews`, { path, patch_hash }),
   unmarkPullReview: (repo: string, number: number, path: string) => req<void>("DELETE", `/github/repos/${repo}/pulls/${number}/reviews?path=${encodeURIComponent(path)}`),
   pullAgent: (repo: string, number: number) => req<PullAgent>("GET", `/github/repos/${repo}/pulls/${number}/agent`),
+  createPullReview: (repo: string, number: number, launch: { instance_id: string; project_id: string; provider: string; model: string; effort_option?: string; effort?: string }): Promise<PullAgent> => req<PullAgent>("POST", `/github/repos/${repo}/pulls/${number}/review-thread`, { launch }),
   askPullAgent: (repo: string, number: number, body: { path: string; start: number; end: number; snippet: string; question: string; launch?: { instance_id: string; project_id: string; provider: string; model: string; effort_option?: string; effort?: string } }) =>
     req<PullAgent>("POST", `/github/repos/${repo}/pulls/${number}/ask`, body),
   t3Pair: (id: string) => req<{ url: string }>("POST", `/t3/instances/${id}/pair`),

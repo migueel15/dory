@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { Robot } from "@phosphor-icons/react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { api, type GithubDetail, type GithubPull, type GithubThread } from "../api/client";
 import { Badge, Button, Card, Input, Select, ErrorText, Md, Arrow, pill, toggleTask, Textarea, keepAboveKeyboard } from "../components/ui";
 import { Avatar, PullStatus, StackBar } from "./github";
-import { Diff, FullscreenHost } from "./github-diff";
+import { Diff, FullscreenHost, ReviewLaunch } from "./github-diff";
 import { DefineIssueDialog } from "./define-issue";
 import { ResizeHandle, ThreadChat } from "./thread";
 import { FileRefContext, type FileRef } from "../components/refs";
@@ -351,6 +351,11 @@ export function GithubView() {
   // A pull request's review thread shows as a chat on the right, 60/40 by
   // default and resizable; asking from the diff always opens it.
   const agent = useQuery({ queryKey: ["pull-agent", full, n], queryFn: () => api.pullAgent(full, n), enabled: kind === "pulls" });
+  const [launchReview, setLaunchReview] = useState(false);
+  const createReview = useMutation({
+    mutationFn: (launch: Parameters<typeof api.createPullReview>[2]) => api.createPullReview(full, n, launch),
+    onSuccess: () => { setLaunchReview(false); setChat(true); qc.invalidateQueries({ queryKey: ["pull-agent", full, n] }); },
+  });
   const [chat, setChat] = useState(true);
   const side = useRef<HTMLElement>(null);
   const [width, setWidth] = useState<number | null>(null);
@@ -382,6 +387,8 @@ export function GithubView() {
       {d && <RefContext.Provider value={{ owner: full.split("/")[0], repo: full.split("/")[1], links: d.links }}>
         {d.pull?.state === "OPEN" && <StackBar repo={full} number={n} />}
         <Header d={d} act={act} busy={false} people={people} actions={<>
+          {d.pull && agent.data?.available === false && <Button disabled={createReview.isPending} onClick={() => { createReview.reset(); setLaunchReview(true); }}>Crear hilo de revisión</Button>}
+          {launchReview && <ReviewLaunch repo={full} pr={n} createOnly busy={createReview.isPending} error={createReview.error} onClose={() => setLaunchReview(false)} onLaunch={(launch) => createReview.mutate(launch)} />}
           {d.pull && <PullActions pull={d.pull} me={d.viewer} act={act} busy={false} diff={showDiff} toggleDiff={() => setShowDiff(!showDiff)} />}
           {d.pull?.mergeable === "CONFLICTING" && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Resolver conflictos</Button>}
           {d.issue && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Definir tareas</Button>}
