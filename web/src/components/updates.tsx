@@ -2,8 +2,13 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowsClockwise, DownloadSimple, Warning } from "@phosphor-icons/react";
 import { api, type T3InstanceUpdates, type T3UpdateResult } from "../api/client";
-import { Button, ErrorText, Modal } from "./ui";
+import { Arrow, Button, ErrorText, Modal } from "./ui";
 import { HoverCard } from "./tooltip";
+
+// Versions shows a change from one version to the next, with the app's arrow icon.
+function Versions({ from, to }: { from: string; to: string }) {
+  return <span className="inline-flex items-center gap-1.5 font-mono tabular-nums"><span className="opacity-60">{from || "?"}</span><Arrow />{to}</span>;
+}
 
 // Instances with something to update: the server, a connector, or both.
 export const pending = (u: T3InstanceUpdates) => u.server.available || u.providers.some((p) => p.available);
@@ -75,8 +80,8 @@ export function UpdateReview({ u, names }: { u: Updates; names: Record<string, s
             <section key={o.instance_id} className="space-y-1.5">
               <h3 className="text-sm font-semibold">{names[o.instance_id] ?? "Entorno"}</h3>
               <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 text-sm dark:divide-border dark:border-border">
-                {o.server.available && <li className="flex items-center justify-between gap-3 px-3 py-1.5"><span>T3 Code</span><span className="font-mono text-xs tabular-nums"><span className={muted}>{o.server.current || "?"}</span> → {o.server.latest}</span></li>}
-                {o.providers.filter((p) => p.available).map((p) => <li key={p.instance_id} className="flex items-center justify-between gap-3 px-3 py-1.5"><span>{p.name} <span className={`text-xs ${muted}`}>conector</span></span><span className="font-mono text-xs tabular-nums"><span className={muted}>{p.current || "?"}</span> → {p.latest}</span></li>)}
+                {o.server.available && <li className="flex items-center justify-between gap-3 px-3 py-1.5"><span>T3 Code</span><span className="text-xs"><Versions from={o.server.current} to={o.server.latest} /></span></li>}
+                {o.providers.filter((p) => p.available).map((p) => <li key={p.instance_id} className="flex items-center justify-between gap-3 px-3 py-1.5"><span>{p.name} <span className={`text-xs ${muted}`}>conector</span></span><span className="text-xs"><Versions from={p.current} to={p.latest} /></span></li>)}
               </ul>
               {o.server.available && o.active_threads > 0 && <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400"><Warning weight="fill" aria-hidden="true" className="mt-px size-3.5 shrink-0" />Tiene {o.active_threads} {o.active_threads === 1 ? "hilo en ejecución" : "hilos en ejecución"}: al reiniciar T3 se cortar{o.active_threads === 1 ? "á" : "án"} si confirmas.</p>}
             </section>
@@ -96,7 +101,7 @@ export function UpdateReview({ u, names }: { u: Updates; names: Record<string, s
 export function UpdatesButton({ u, names }: { u: Updates; names: Record<string, string> }) {
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const [hover, setHover] = useState(false);
-  const rows = u.outdated.map((o) => ({ id: o.instance_id, items: [o.server.available && `T3 Code ${o.server.current} → ${o.server.latest}`, ...o.providers.filter((p) => p.available).map((p) => `${p.name} ${p.current} → ${p.latest}`)].filter(Boolean) as string[] }));
+  const rows = u.outdated.map((o) => ({ id: o.instance_id, items: [o.server.available && { k: "T3 Code", from: o.server.current, to: o.server.latest }, ...o.providers.filter((p) => p.available).map((p) => ({ k: p.name, from: p.current, to: p.latest }))].filter(Boolean) as { k: string; from: string; to: string }[] }));
   return (
     <>
       <button ref={setAnchor} type="button" disabled={u.run.isPending} aria-label="Actualizar entornos y conectores"
@@ -108,7 +113,7 @@ export function UpdatesButton({ u, names }: { u: Updates; names: Record<string, 
       {hover && !u.run.isPending && (
         <HoverCard anchor={anchor}>
           <div className="mb-1 font-medium">Actualizar todo</div>
-          <div className="space-y-1">{rows.map((r) => <div key={r.id}><div className="font-medium opacity-90">{names[r.id] ?? "Entorno"}</div>{r.items.map((i) => <div key={i} className="tabular-nums opacity-70">{i}</div>)}</div>)}</div>
+          <div className="space-y-1">{rows.map((r) => <div key={r.id}><div className="font-medium opacity-90">{names[r.id] ?? "Entorno"}</div>{r.items.map((i) => <div key={i.k} className="flex items-center gap-2 opacity-70"><span>{i.k}</span><span className="text-[11px]"><Versions from={i.from} to={i.to} /></span></div>)}</div>)}</div>
         </HoverCard>
       )}
     </>
@@ -127,7 +132,7 @@ export function MachineUpdate({ instanceId, name }: { instanceId: string; name: 
       <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-muted">Actualizaciones</h3>
       {items.length === 0 ? <p className={muted}>Todo al día.</p> : (
         <div className="flex items-start gap-2">
-          <ul className="min-w-0 flex-1 space-y-0.5 text-sm">{items.map((i) => <li key={i.k} className="truncate"><span className="font-medium">{i.k}</span> <span className={muted}>{i.from || "?"} → {i.to}</span></li>)}</ul>
+          <ul className="min-w-0 flex-1 space-y-0.5 text-sm">{items.map((i) => <li key={i.k} className="truncate"><span className="font-medium">{i.k}</span> <span className={`${muted} text-xs`}><Versions from={i.from} to={i.to} /></span></li>)}</ul>
           <Button disabled={u.run.isPending} onClick={() => u.run.mutate({ ids: [instanceId], restart: false })} className="shrink-0 !px-2.5 !py-1 text-xs">{u.run.isPending ? "Actualizando…" : "Actualizar"}</Button>
         </div>
       )}
