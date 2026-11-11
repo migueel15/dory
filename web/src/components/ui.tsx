@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowRight, CaretUpDown, Check, MagnifyingGlass, X } from "@phosphor-icons/react";
+import { isValidElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { highlight, languageByName, loadLanguage } from "../highlight";
+import { ArrowRight, CaretUpDown, Check, Copy, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { createPortal } from "react-dom";
 import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, KeyboardEvent, ReactNode, Ref, TextareaHTMLAttributes } from "react";
 import Markdown, { defaultUrlTransform, type Options } from "react-markdown";
@@ -183,6 +184,32 @@ const prose = [
 // keepLocal lets file:// image paths through (react-markdown drops unknown schemes).
 const keepLocal = (url: string) => (url.startsWith("file://") ? url : defaultUrlTransform(url));
 
+// CodeBlock renders fenced code with syntax colors and a copy button.
+function CodeBlock({ children }: { children?: ReactNode }) {
+  const el = isValidElement<{ className?: string; children?: ReactNode }>(children) ? children : undefined;
+  const raw = el?.props.children;
+  const code = (typeof raw === "string" ? raw : Array.isArray(raw) ? raw.join("") : "").replace(/\n$/, "");
+  const lang = /language-([^\s]+)/.exec(el?.props.className ?? "")?.[1];
+  const resolved = lang ? languageByName(lang) : undefined;
+  const [ready, setReady] = useState<string>();
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (resolved) loadLanguage(resolved).then((ok) => { if (ok) setReady(resolved); });
+  }, [resolved]);
+  const html = useMemo(() => (resolved && ready === resolved ? highlight(code, resolved) : undefined), [code, resolved, ready]);
+  const copy = async () => {
+    if (await copyText(code)) { setCopied(true); setTimeout(() => setCopied(false), 1500); }
+  };
+  return (
+    <div className="group relative">
+      <pre>{html !== undefined ? <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} /> : <code>{code}</code>}</pre>
+      <button type="button" onClick={copy} aria-label={copied ? "Copiado" : "Copiar"} title={copied ? "Copiado" : "Copiar"} className="absolute right-2 top-2 grid size-7 place-items-center rounded-md border border-slate-200 bg-white/80 text-slate-500 opacity-100 hover:text-slate-900 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 dark:border-border dark:bg-surface/80 dark:text-muted dark:hover:text-white">
+        {copied ? <Check weight="regular" aria-hidden="true" className="size-4" /> : <Copy weight="regular" aria-hidden="true" className="size-4" />}
+      </button>
+    </div>
+  );
+}
+
 export function Md({ children, components, urlTransform, onToggle }: { children: string; onToggle?: (line: number) => void } & Pick<Options, "components" | "urlTransform">) {
   const tasks: Options["components"] = onToggle && {
     li: ({ node, children: content, ...rest }) => {
@@ -193,7 +220,7 @@ export function Md({ children, components, urlTransform, onToggle }: { children:
   };
   return (
     <div className={prose}>
-      <Markdown remarkPlugins={[remarkGfm]} components={{ a: RefLink, code: RefCode, img: RefImg, ...tasks, ...components }} urlTransform={urlTransform ?? keepLocal}>{children}</Markdown>
+      <Markdown remarkPlugins={[remarkGfm]} components={{ a: RefLink, code: RefCode, pre: CodeBlock, img: RefImg, ...tasks, ...components }} urlTransform={urlTransform ?? keepLocal}>{children}</Markdown>
     </div>
   );
 }

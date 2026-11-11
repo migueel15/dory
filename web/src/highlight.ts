@@ -44,6 +44,15 @@ export function languageOf(path: string): string | undefined {
   return ext[name.split(".").pop()!];
 }
 
+const alias: Record<string, string> = { shell: "bash", console: "bash", js: "javascript", ts: "typescript", py: "python", yml: "yaml", html: "xml", rs: "rust", rb: "ruby", golang: "go", "c++": "cpp", "c#": "csharp", docker: "dockerfile", toml: "ini" };
+
+// languageByName maps a markdown fence name (ts, sh, python...) to a loadable language.
+export function languageByName(name: string): string | undefined {
+  const n = name.toLowerCase();
+  const l = alias[n] ?? n;
+  return l in loaders ? l : ext[n];
+}
+
 const loading = new Map<string, Promise<boolean>>();
 
 // loadLanguage registers the language once and resolves true when it can be used.
