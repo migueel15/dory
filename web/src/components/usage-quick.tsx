@@ -72,8 +72,12 @@ export function UsageQuick() {
   // The icon follows one account: the pinned one, else the first.
   const [pin, setPin] = useState(readPin);
   const shown = list.find((p) => keyOf(p) === pin) ?? list[0];
-  const byLength = [...(shown?.windows ?? [])].sort((a, b) => (a.window_minutes ?? 0) - (b.window_minutes ?? 0));
-  const inner = byLength[0], outer = byLength.length > 1 ? byLength[byLength.length - 1] : undefined;
+  const generalWeekly = (w: Provider["windows"][number]) => w.kind === "weekly" && w.label.trim().toLowerCase() === "weekly";
+  const byLength = [...(shown?.windows ?? [])].sort((a, b) => (a.window_minutes ?? 0) - (b.window_minutes ?? 0) || Number(generalWeekly(b)) - Number(generalWeekly(a)));
+  const inner = byLength[0], outer = byLength.length > 1
+    ? byLength.find(generalWeekly)
+      ?? byLength.find((w) => w.kind === "weekly") ?? byLength[byLength.length - 1]
+    : undefined;
   const pinAccount = (k: string) => { setPin(k); try { localStorage.setItem(pinKey, k); } catch { /* per-viewer only */ } };
   // until formats the time to reset: minutes for the short window, days and hours for the weekly one.
   const until = (iso: string | null, short: boolean) => {
@@ -84,7 +88,7 @@ export function UsageQuick() {
     const d = Math.floor(min / 1440), h = Math.floor((min % 1440) / 60);
     return d ? `${d} d ${h} h` : `${h} h ${min % 60} min`;
   };
-  const rows = [inner, outer].filter(Boolean).map((w) => ({ label: w!.label, left: `queda ${Math.round(100 - w!.used_percent)} %`, reset: until(w!.resets_at, w === inner) }));
+  const rows = byLength.map((w) => ({ label: w.label, left: `queda ${Math.round(100 - w.used_percent)} %`, reset: until(w.resets_at, (w.window_minutes ?? 0) <= 300) }));
   const lines = rows.map((r) => `${r.label}: ${r.left}${r.reset ? `, se reinicia en ${r.reset}` : ""}`);
   const summary = shown ? `${shown.name}. ${lines.join(". ")}` : "Límites restantes";
   // Hover shows the dial's numbers at once (a native title takes a second and is easy to miss).
