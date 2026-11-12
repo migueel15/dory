@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -62,6 +63,15 @@ func (e Entry) computeID() string {
 type Log struct {
 	GroupID string  `json:"group_id"`
 	Entries []Entry `json:"entries"`
+
+	mu sync.RWMutex // guards Entries once the log is shared with a server
+}
+
+// Clone returns a consistent copy of the log.
+func (l *Log) Clone() *Log {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return &Log{GroupID: l.GroupID, Entries: append([]Entry{}, l.Entries...)}
 }
 
 // NewGroup creates a log whose first entry is self-signed by the creator.
@@ -103,8 +113,10 @@ func (l *Log) heads() []string {
 
 // Append signs a new entry with signer and adds it, verifying the result.
 func (l *Log) Append(signer *Identity, a Action, subjectPub ed25519.PublicKey, name string) (Entry, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	e := l.build(signer, a, hex.EncodeToString(subjectPub), name, l.heads())
-	if err := l.Add(e); err != nil {
+	if err := l.addLocked(e); err != nil {
 		return Entry{}, err
 	}
 	return e, nil
@@ -112,6 +124,12 @@ func (l *Log) Append(signer *Identity, a Action, subjectPub ed25519.PublicKey, n
 
 // Add inserts a (possibly replicated) entry if the resulting log verifies.
 func (l *Log) Add(e Entry) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.addLocked(e)
+}
+
+func (l *Log) addLocked(e Entry) error {
 	for _, x := range l.Entries {
 		if x.ID == e.ID {
 			return nil
@@ -127,6 +145,8 @@ func (l *Log) Add(e Entry) error {
 
 // Verify checks the whole chain: ids, signatures, causality and signer validity.
 func (l *Log) Verify() error {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 	byID := map[string]Entry{}
 	for _, e := range l.Entries {
 		if _, dup := byID[e.ID]; dup {
@@ -258,6 +278,12 @@ type Member struct {
 // Members returns the active (added, not revoked) members. Call Verify first
 // for untrusted logs.
 func (l *Log) Members() []Member {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.members()
+}
+
+func (l *Log) members() []Member {
 	revoked := map[string]bool{}
 	names := map[string]string{}
 	var order []string
@@ -284,7 +310,9 @@ func (l *Log) Members() []Member {
 // Allowed reports whether pub is an active member.
 func (l *Log) Allowed(pub ed25519.PublicKey) bool {
 	k := hex.EncodeToString(pub)
-	for _, m := range l.Members() {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	for _, m := range l.members() {
 		if m.PublicKey == k {
 			return true
 		}
@@ -294,6 +322,8 @@ func (l *Log) Allowed(pub ed25519.PublicKey) bool {
 
 // SaveFile writes the log as JSON.
 func (l *Log) SaveFile(path string) error {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 	b, err := json.MarshalIndent(l, "", "  ")
 	if err != nil {
 		return err

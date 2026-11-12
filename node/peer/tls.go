@@ -71,6 +71,14 @@ func verifier(m Membership, want string) func([][]byte, [][]*x509.Certificate) e
 // ServerTLS is the TLS 1.3 config of the listener: it demands a client
 // certificate and accepts only members.
 func (i *Identity) ServerTLS(m Membership) (*tls.Config, error) {
+	return i.ServerTLSGated(m, nil)
+}
+
+// ServerTLSGated is ServerTLS, but while open() reports true it also lets
+// non-members complete the handshake (any valid Ed25519 self-signed
+// certificate). The HTTP layer must then restrict such clients to the pairing
+// route; Server does so.
+func (i *Identity) ServerTLSGated(m Membership, open func() bool) (*tls.Config, error) {
 	c, err := i.Certificate()
 	if err != nil {
 		return nil, err
@@ -79,9 +87,60 @@ func (i *Identity) ServerTLS(m Membership) (*tls.Config, error) {
 		MinVersion:            tls.VersionTLS13,
 		Certificates:          []tls.Certificate{c},
 		ClientAuth:            tls.RequireAnyClientCert,
-		VerifyPeerCertificate: verifier(m, ""),
+		VerifyPeerCertificate: gatedVerifier(m, open),
 	}, nil
 }
+
+func gatedVerifier(m Membership, open func() bool) func([][]byte, [][]*x509.Certificate) error {
+	strict := verifier(m, "")
+	if open == nil {
+		return strict
+	}
+	return func(raw [][]byte, chains [][]*x509.Certificate) error {
+		err := strict(raw, chains)
+		if errors.Is(err, ErrNotMember) && open() {
+			return nil
+		}
+		return err
+	}
+}
+
+// pinnedClientTLS dials a not-yet-member: the server must hold exactly the
+// public key pub (from the QR code); client presents its own certificate.
+func (i *Identity) pinnedClientTLS(pub ed25519.PublicKey) (*tls.Config, error) {
+	c, err := i.Certificate()
+	if err != nil {
+		return nil, err
+	}
+	return &tls.Config{
+		MinVersion:         tls.VersionTLS13,
+		Certificates:       []tls.Certificate{c},
+		InsecureSkipVerify: true,
+		VerifyPeerCertificate: func(raw [][]byte, _ [][]*x509.Certificate) error {
+			if len(raw) == 0 {
+				return errors.New("peer: no certificate")
+			}
+			cert, err := x509.ParseCertificate(raw[0])
+			if err != nil {
+				return err
+			}
+			got, ok := cert.PublicKey.(ed25519.PublicKey)
+			if !ok {
+				return errors.New("peer: certificate key is not Ed25519")
+			}
+			if err = cert.CheckSignature(cert.SignatureAlgorithm, cert.RawTBSCertificate, cert.Signature); err != nil {
+				return fmt.Errorf("peer: bad self-signature: %w", err)
+			}
+			if !got.Equal(pub) {
+				return ErrKeyMismatch
+			}
+			return nil
+		},
+	}, nil
+}
+
+// ErrKeyMismatch means the server key differs from the one in the QR code.
+var ErrKeyMismatch = errors.New("peer: server key does not match the QR code")
 
 // ClientTLS is the TLS 1.3 config to dial a member. If want is not empty the
 // server must be that device. Name checks are replaced by key checks.

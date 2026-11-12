@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"crypto/ed25519"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -25,6 +26,7 @@ const (
 	PathStream   = "/peer/v1/ops/stream"
 	PathPresence = "/peer/v1/presence"
 	PathSnapshot = "/peer/v1/snapshot"
+	PathPair     = "/peer/v1/pair"
 )
 
 // Server serves the peer API over mutual TLS 1.3 to group members only.
@@ -34,6 +36,8 @@ type Server struct {
 	Log       *syncx.Log
 	Presence  *Presence // optional; created if nil
 	Intervals Intervals
+	// Pairing, if set, enables the pairing route while its window is open.
+	Pairing *Pairing
 
 	mu  sync.Mutex
 	srv *http.Server
@@ -50,12 +54,38 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET "+PathStream, s.stream)
 	mux.HandleFunc("GET "+PathPresence, s.presence)
 	mux.HandleFunc("GET "+PathSnapshot, s.snapshot)
-	return mux
+	if s.Pairing != nil {
+		mux.HandleFunc("POST "+PathPair, s.Pairing.handle)
+	}
+	return s.membersOnly(mux)
+}
+
+// membersOnly rejects TLS clients that are not members on every route but the
+// pairing one (non-members only get past the handshake while a window is open).
+func (s *Server) membersOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.TLS != nil && r.URL.Path != PathPair {
+			ok := false
+			if len(r.TLS.PeerCertificates) > 0 {
+				pub, isEd := r.TLS.PeerCertificates[0].PublicKey.(ed25519.PublicKey)
+				ok = isEd && s.Members.Allowed(pub)
+			}
+			if !ok {
+				http.Error(w, ErrNotMember.Error(), http.StatusForbidden)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // Serve accepts connections on ln until Close. It returns nil after Close.
 func (s *Server) Serve(ln net.Listener) error {
-	cfg, err := s.Identity.ServerTLS(s.Members)
+	var open func() bool
+	if s.Pairing != nil {
+		open = s.Pairing.Open
+	}
+	cfg, err := s.Identity.ServerTLSGated(s.Members, open)
 	if err != nil {
 		return err
 	}
