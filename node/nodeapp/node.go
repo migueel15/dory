@@ -147,13 +147,14 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 	}
 	n.session = session
 	n.TokenFile = filepath.Join(o.DataDir, "local-token")
-	if err := setupT3(ctx, store, id, o); err != nil {
+	envID, err := setupT3(ctx, store, id, o)
+	if err != nil {
 		return nil, err
 	}
 
 	// Local services. Notifications (Postgres) and dictation stay off.
 	var svc service.Service = store
-	monitor := t3.NewMonitor(ownInstances{Service: svc, env: environmentID(device)})
+	monitor := t3.NewMonitor(ownInstances{Service: svc, env: envID})
 	n.go_(func() { monitor.Run(ctx) })
 	svc = service.WithItemThreadArchiving(svc, func(ctx context.Context, instanceID, threadID string) error {
 		client, err := monitor.InstanceClient(ctx, instanceID)
@@ -440,26 +441,31 @@ func t3InstanceID(device string) string  { return stableID("dory-node-t3:" + dev
 // setupT3 registers the local T3 as a replicated t3_instance owned by this
 // device (the store stamps owner_device). Without $DORY_T3_TOKEN or --t3-url
 // there is nothing to monitor.
-func setupT3(ctx context.Context, svc service.Service, id *peer.Identity, o Options) error {
+func setupT3(ctx context.Context, svc service.Service, id *peer.Identity, o Options) (string, error) {
+	device := id.DeviceID()
+	envID := environmentID(device)
+	// Adopt an existing environment with this device's name (for example one
+	// imported from the old Dory) instead of failing on the unique name.
+	if envs, err := svc.Environments().List(ctx, service.Filter{Fields: map[string]any{"name": id.Name}}); err == nil && len(envs) > 0 {
+		envID = envs[0].ID
+	}
 	if o.T3URL == "" && os.Getenv(t3TokenEnv) == "" {
-		return nil
+		return envID, nil
 	}
 	url := o.T3URL
 	if url == "" {
 		url = defaultT3URL
 	}
-	device := id.DeviceID()
-	envID := environmentID(device)
 	if _, err := svc.Environments().Get(ctx, envID); errors.Is(err, service.ErrNotFound) {
 		_, err = svc.Environments().Put(ctx, nodeActor, service.Environment{Record: service.Record{ID: envID}, Name: id.Name, Os: runtime.GOOS, Access: "local", AgentsAvailable: []string{}})
 		if err != nil {
-			return err
+			return "", err
 		}
 	} else if err != nil {
-		return err
+		return "", err
 	}
 	_, err := svc.T3Instances().Put(ctx, nodeActor, service.T3Instance{Record: service.Record{ID: t3InstanceID(device)}, EnvironmentID: envID, BaseUrl: url, TokenEnv: t3TokenEnv})
-	return err
+	return envID, err
 }
 
 // ownInstances limits the T3 monitor to this device's environment: instances
