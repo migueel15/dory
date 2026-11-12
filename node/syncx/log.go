@@ -356,7 +356,7 @@ func (l *Log) Since(ctx context.Context, vv VersionVector, limit int) ([]Op, err
 func Replicated(kind string) bool {
 	switch kind {
 	case "project", "repository", "environment", "feature", "item", "itemplan",
-		"memory", "link", "itemthread", "issuethread", "t3instance":
+		"memory", "link", "itemthread", "issuethread", "t3instance", "deviceaddress":
 		return true
 	}
 	return false
@@ -365,7 +365,7 @@ func Replicated(kind string) bool {
 // EventReplicated reports whether audit events about kind are replicated.
 func EventReplicated(kind string) bool {
 	switch kind {
-	case "user", "session", "token", "repositorylocation":
+	case "user", "session", "token", "repositorylocation", "deviceaddress":
 		return false
 	}
 	return true

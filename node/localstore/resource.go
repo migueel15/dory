@@ -22,7 +22,7 @@ const timeLayout = "2006-01-02T15:04:05.000000Z"
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // arrayFields marshal as null when unset; they are stored as [].
-var arrayFields = []string{"tags", "refs", "stack", "agents_available", "code_refs", "permissions", "open_questions"}
+var arrayFields = []string{"local", "tags", "refs", "stack", "agents_available", "code_refs", "permissions", "open_questions"}
 
 // columns managed by the store; they are not part of data.
 var columnFields = []string{"id", "created_at", "updated_at", "archived_at"}

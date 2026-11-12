@@ -114,6 +114,7 @@ func init() {
 			return nil
 		},
 		uniques: []unique{{fields: []string{"from_id", "from_type", "to_id", "to_type", "kind"}}}})
+	add(&kindSpec{name: "deviceaddress", uniques: []unique{{fields: []string{"device_id"}}}})
 	add(&kindSpec{name: "user", uniques: []unique{{fields: []string{"username"}}}})
 	add(&kindSpec{name: "session", fks: []fk{{"user_id", "user", true}},
 		uniques: []unique{{fields: []string{"secret_hash"}}}})
