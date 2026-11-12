@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"sort"
+	"sync"
 )
 
 // Execer is satisfied by *sql.DB and *sql.Tx.
@@ -27,6 +28,9 @@ type Log struct {
 	device string
 	clock  *Clock
 	hooks  Hooks
+
+	wmu      sync.Mutex
+	watchers map[chan struct{}]struct{}
 }
 
 // NewLog opens the log over db (which must already have the sync tables) and
@@ -108,24 +112,95 @@ func (l *Log) Commit(ctx context.Context, q Execer, h HLC, kind, entity, id stri
 // operations already in the log are skipped, and applying never creates new
 // operations. Operations may arrive duplicated, permuted or with gaps.
 func (l *Log) Apply(ctx context.Context, ops []Op) error {
+	_, err := l.ApplyNew(ctx, ops)
+	return err
+}
+
+// ApplyNew is Apply that also returns the operations that were new. When some
+// were, it wakes the watchers so that peers subscribed to this log see them.
+func (l *Log) ApplyNew(ctx context.Context, ops []Op) ([]Op, error) {
 	tx, err := l.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback()
 	applied, err := l.ApplyTx(ctx, tx, ops)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err = tx.Commit(); err != nil {
-		return err
+		return nil, err
 	}
 	for _, o := range applied {
 		if h, err := ParseHLC(o.HLC); err == nil && o.DeviceID != l.device {
 			l.clock.Observe(h)
 		}
 	}
-	return nil
+	if len(applied) > 0 {
+		l.Notify()
+	}
+	return applied, nil
+}
+
+// Watch returns a channel that receives a signal after the log grew (a local
+// write committed or remote operations were applied). Signals coalesce. Call
+// cancel to stop watching.
+func (l *Log) Watch() (<-chan struct{}, func()) {
+	ch := make(chan struct{}, 1)
+	l.wmu.Lock()
+	if l.watchers == nil {
+		l.watchers = map[chan struct{}]struct{}{}
+	}
+	l.watchers[ch] = struct{}{}
+	l.wmu.Unlock()
+	return ch, func() {
+		l.wmu.Lock()
+		delete(l.watchers, ch)
+		l.wmu.Unlock()
+	}
+}
+
+// Notify wakes the watchers. The owner of the database calls it after a local
+// write committed.
+func (l *Log) Notify() {
+	l.wmu.Lock()
+	defer l.wmu.Unlock()
+	for ch := range l.watchers {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// Snapshot returns the whole log and its version vector read in one
+// transaction, so a new node can start from a consistent state.
+func (l *Log) Snapshot(ctx context.Context) (VersionVector, []Op, error) {
+	tx, err := l.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, nil, err
+	}
+	defer tx.Rollback()
+	vv, err := vector(ctx, tx)
+	if err != nil {
+		return nil, nil, err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT device_id, seq, hlc, entity, entity_id, kind, fields_json, schema_v FROM ops ORDER BY hlc`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	var ops []Op
+	for rows.Next() {
+		var o Op
+		var body string
+		if err = rows.Scan(&o.DeviceID, &o.Seq, &o.HLC, &o.Entity, &o.EntityID, &o.Kind, &body, &o.SchemaV); err != nil {
+			return nil, nil, err
+		}
+		o.Fields = json.RawMessage(body)
+		ops = append(ops, o)
+	}
+	return vv, ops, rows.Err()
 }
 
 // ApplyTx is Apply inside the caller's transaction. It returns the operations

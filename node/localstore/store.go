@@ -171,7 +171,18 @@ func (b *backend) write(ctx context.Context, fn func(execer) error) error {
 	if err = fn(tx); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	b.notify()
+	return nil
+}
+
+// notify tells the sync subscribers that a local write committed.
+func (b *backend) notify() {
+	if b.log != nil {
+		b.log.Notify()
+	}
 }
 
 func (b *backend) InTx(ctx context.Context, fn func(service.Service) error) error {
@@ -186,7 +197,11 @@ func (b *backend) InTx(ctx context.Context, fn func(service.Service) error) erro
 	if err = fn(&backend{db: tx, root: b.root, opts: b.opts, seq: b.seq, log: b.log}); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	b.notify()
+	return nil
 }
 
 func res[T any](b *backend, kind string) service.Resource[T] {
