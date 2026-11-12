@@ -27,6 +27,7 @@ type kindSpec struct {
 	uniques  []unique
 	check    func(doc map[string]any) error
 	order    string
+	table    string // records, or auth_records for local-only kinds
 }
 
 func str(doc map[string]any, key string) string { s, _ := doc[key].(string); return s }
@@ -39,6 +40,12 @@ var specs = map[string]*kindSpec{}
 
 func init() {
 	add := func(s *kindSpec) {
+		if s.table == "" {
+			s.table = "records"
+			if s.name == "user" || s.name == "session" || s.name == "token" {
+				s.table = "auth_records"
+			}
+		}
 		if s.order == "" {
 			s.order = "created_at, id"
 		}

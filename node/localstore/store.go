@@ -6,7 +6,6 @@ import (
 	"context"
 	"database/sql"
 	"embed"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -19,9 +18,6 @@ import (
 
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
-
-// ErrNotImplemented marks the parts that arrive with MVP 04 (events, search, auth).
-var ErrNotImplemented = errors.New("localstore: not implemented yet")
 
 // Options configures a store. Device and Clock are the hooks later sync builds
 // on: with Local set, every write stamps the fields it changed in field_clock
@@ -130,6 +126,7 @@ func migrate(ctx context.Context, db *sql.DB) error {
 }
 
 var _ service.Service = (*backend)(nil)
+var _ service.Service = (*Store)(nil)
 
 // savepoint runs fn inside a savepoint of the open transaction tx.
 func (b *backend) savepoint(ctx context.Context, tx execer, fn func() error) error {
@@ -176,26 +173,6 @@ func (b *backend) InTx(ctx context.Context, fn func(service.Service) error) erro
 		return err
 	}
 	return tx.Commit()
-}
-
-func (b *backend) ListEvents(context.Context, int64, string, int32) ([]service.Event, error) {
-	return nil, ErrNotImplemented
-}
-func (b *backend) LatestEventID(context.Context) (int64, error) { return 0, ErrNotImplemented }
-func (b *backend) RecordEvent(context.Context, string, string, string, any) error {
-	return ErrNotImplemented
-}
-func (b *backend) Search(context.Context, string, int32, int32) ([]service.SearchHit, error) {
-	return nil, ErrNotImplemented
-}
-func (b *backend) FindUser(context.Context, string) (service.User, error) {
-	return service.User{}, ErrNotImplemented
-}
-func (b *backend) FindSession(context.Context, string) (service.Session, error) {
-	return service.Session{}, ErrNotImplemented
-}
-func (b *backend) FindToken(context.Context, string) (service.Token, error) {
-	return service.Token{}, ErrNotImplemented
 }
 
 func res[T any](b *backend, kind string) service.Resource[T] {

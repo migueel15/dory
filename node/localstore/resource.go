@@ -46,7 +46,7 @@ type row struct {
 
 func (r resource[T]) load(ctx context.Context, q execer, id string) (*row, error) {
 	var x row
-	err := q.QueryRowContext(ctx, `SELECT data, field_clock, owner_device, created_at, updated_at, archived_at FROM records WHERE kind = ? AND id = ?`, r.spec.name, id).
+	err := q.QueryRowContext(ctx, `SELECT data, field_clock, owner_device, created_at, updated_at, archived_at FROM `+r.spec.table+` WHERE kind = ? AND id = ?`, r.spec.name, id).
 		Scan(&x.data, &x.fieldClock, &x.owner, &x.created, &x.updated, &x.archived)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -195,7 +195,7 @@ func (r resource[T]) List(ctx context.Context, f service.Filter) ([]T, error) {
 		}
 	}
 	args = append(args, f.Limit, f.Offset)
-	rows, err := r.b.db.QueryContext(ctx, `SELECT id, data, field_clock, owner_device, created_at, updated_at, archived_at FROM records WHERE `+
+	rows, err := r.b.db.QueryContext(ctx, `SELECT id, data, field_clock, owner_device, created_at, updated_at, archived_at FROM `+r.spec.table+` WHERE `+
 		strings.Join(where, " AND ")+` ORDER BY `+r.spec.order+` LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return nil, err
@@ -219,7 +219,7 @@ func (r resource[T]) List(ctx context.Context, f service.Filter) ([]T, error) {
 
 func (r resource[T]) exists(ctx context.Context, q execer, kind, id string) (bool, error) {
 	var n int
-	err := q.QueryRowContext(ctx, `SELECT count(*) FROM records WHERE kind = ? AND id = ?`, kind, id).Scan(&n)
+	err := q.QueryRowContext(ctx, `SELECT count(*) FROM `+specs[kind].table+` WHERE kind = ? AND id = ?`, kind, id).Scan(&n)
 	return n > 0, err
 }
 
@@ -278,7 +278,7 @@ func (r resource[T]) validate(ctx context.Context, q execer, id string, doc map[
 		}
 	}
 	for _, u := range s.uniques {
-		query := `SELECT count(*) FROM records WHERE kind = ? AND id <> ?`
+		query := `SELECT count(*) FROM ` + s.table + ` WHERE kind = ? AND id <> ?`
 		args := []any{s.name, id}
 		if u.live {
 			query += ` AND archived_at IS NULL`
@@ -391,7 +391,7 @@ func (r resource[T]) Put(ctx context.Context, actor string, v T) (T, error) {
 			if err != nil {
 				return err
 			}
-			_, err = q.ExecContext(ctx, `INSERT INTO records (kind, id, data, field_clock, owner_device, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			_, err = q.ExecContext(ctx, `INSERT INTO `+r.spec.table+` (kind, id, data, field_clock, owner_device, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 				r.spec.name, id, string(data), clock, r.b.opts.Device, now, now)
 			if err != nil {
 				return err
@@ -402,14 +402,21 @@ func (r resource[T]) Put(ctx context.Context, actor string, v T) (T, error) {
 			if err != nil {
 				return err
 			}
-			if _, err = q.ExecContext(ctx, `UPDATE records SET data = ?, field_clock = ?, updated_at = ? WHERE kind = ? AND id = ?`,
+			if _, err = q.ExecContext(ctx, `UPDATE `+r.spec.table+` SET data = ?, field_clock = ?, updated_at = ? WHERE kind = ? AND id = ?`,
 				string(data), clock, now, r.spec.name, id); err != nil {
 				return err
 			}
 			cur.data, cur.updated = string(data), now
 		}
 		out, err = compose(id, cur)
-		return err
+		if err != nil {
+			return err
+		}
+		operation := "put"
+		if err = r.b.indexSearch(ctx, q, r.spec.name, id, doc); err != nil {
+			return err
+		}
+		return r.b.audit(ctx, q, actor, r.spec.name, id, operation, out)
 	})
 	if err != nil {
 		return zero, err
@@ -449,13 +456,29 @@ func (r resource[T]) Archive(ctx context.Context, actor, id string) error {
 				return err
 			}
 		}
-		if _, err = q.ExecContext(ctx, `UPDATE records SET archived_at = ?, updated_at = ?, field_clock = ? WHERE kind = ? AND id = ?`, now, now, clock, r.spec.name, id); err != nil {
+		if _, err = q.ExecContext(ctx, `UPDATE `+r.spec.table+` SET archived_at = ?, updated_at = ?, field_clock = ? WHERE kind = ? AND id = ?`, now, now, clock, r.spec.name, id); err != nil {
+			return err
+		}
+		if err = r.b.unindexSearch(ctx, q, r.spec.name, id); err != nil {
+			return err
+		}
+		x := *cur
+		x.archived = sql.NullString{String: now, Valid: true}
+		x.updated = now
+		snapshot, err := compose(id, &x)
+		if err != nil {
+			return err
+		}
+		if err = r.b.audit(ctx, q, actor, r.spec.name, id, "archive", snapshot); err != nil {
 			return err
 		}
 		if r.spec.name != "project" {
 			return nil
 		}
 		// Archiving a project archives its repositories, items and features with it.
+		if _, err = q.ExecContext(ctx, `DELETE FROM search WHERE entity_type IN ('item','feature') AND entity_id IN (SELECT id FROM records WHERE kind IN ('item','feature') AND archived_at IS NULL AND json_extract(data, '$.project_id') = ?)`, id); err != nil {
+			return err
+		}
 		_, err = q.ExecContext(ctx, `UPDATE records SET archived_at = ?, updated_at = ? WHERE kind IN ('repository','item','feature') AND archived_at IS NULL AND json_extract(data, '$.project_id') = ?`, now, now, id)
 		return err
 	})
