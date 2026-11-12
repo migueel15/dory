@@ -1,0 +1,10 @@
+version: '3'
+
+info:
+  companyName: "dorlab.net"
+  productName: "Dory spike"
+  productIdentifier: "com.wails.app"
+  description: "Wails v3 Android spike for the Dory local-first node"
+  copyright: "(c) 2026, dorlab.net"
+  comments: "Spike, not a product"
+  version: "0.0.1"

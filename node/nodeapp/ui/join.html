@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dory · Unirse a un grupo</title>
+<style>
+:root{color-scheme:light dark;--bg:#fff;--fg:#1c1c1e;--mut:#6b6b70;--line:#d9d9de;--bad:#b42318;--acc:#2f5bea}
+@media (prefers-color-scheme:dark){:root{--bg:#161618;--fg:#ececf0;--mut:#9a9aa3;--line:#33333a;--bad:#f0645a;--acc:#7b9bff}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,sans-serif}
+main{max-width:520px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:22px;margin:0 0 6px}h2{font-size:15px;margin:24px 0 8px}
+.mut{color:var(--mut)}
+button{font:inherit;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--fg)}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+input,textarea{font:inherit;box-sizing:border-box;width:100%;padding:8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--fg)}
+textarea{min-height:90px;font-size:12px}
+video{display:none;width:100%;border-radius:8px;background:#000;margin-top:8px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+#msg{min-height:1.4em;margin-top:12px}.bad{color:var(--bad)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Unirse a un grupo</h1>
+  <p class="mut">En el otro dispositivo abre «Nodo y dispositivos» y pulsa «Añadir dispositivo». Escanea el QR o pega su contenido. La ventana de emparejamiento dura 5 minutos.</p>
+
+  <h2>Nombre de este dispositivo</h2>
+  <input id="name" maxlength="80" placeholder="Mi teléfono">
+
+  <h2>Escanear QR</h2>
+  <div class="row"><button class="primary" id="scan">Escanear con la cámara</button><button id="stop" hidden>Detener</button></div>
+  <video id="video" playsinline muted></video>
+
+  <h2>O pega el contenido del QR</h2>
+  <textarea id="payload" spellcheck="false" placeholder='{"v":1,"group_id":"…"}'></textarea>
+  <div class="row"><button id="join">Unirse</button></div>
+
+  <div id="msg" role="alert"></div>
+</main>
+<script src="jsqr.js"></script>
+<script src="join.js"></script>
+</body>
+</html>

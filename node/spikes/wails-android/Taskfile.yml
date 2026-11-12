@@ -1,0 +1,9 @@
+version: '3'
+
+vars:
+  APP_NAME: "dory-spike"
+  BIN_DIR: "bin"
+
+includes:
+  common: ./build/Taskfile.yml
+  android: ./build/android/Taskfile.yml

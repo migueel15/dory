@@ -8,3 +8,4 @@
 | [ADR-004](adr-004-definicion-interactiva.md) | Definición interactiva de tickets con plan versionado | accepted |
 | [ADR-005](adr-005-suscripcion-t3-code.md) | Suscripción persistente a T3 Code | accepted |
 | [ADR-006](adr-006-dictado-local.md) | Transcripción local del dictado en el servidor | accepted |
+| [ADR-007](adr-007-arquitectura-local-first.md) | Arquitectura local-first con nodos sincronizados entre pares | proposed |
