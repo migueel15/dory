@@ -215,3 +215,36 @@ func TestImportRejectsBadToken(t *testing.T) {
 		t.Fatal("expected an error")
 	}
 }
+
+func TestImportSkipsAndArchivesT3Instances(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	f.seed(t)
+	rep, err := Run(ctx, f.dst, f.opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := rep.Entities["t3instance"]; ok {
+		t.Fatal("t3instance must not be imported")
+	}
+	if ins, _ := f.dst.T3Instances().List(ctx, service.Filter{IncludeArchived: true}); len(ins) != 0 {
+		t.Fatalf("imported %d t3 instances", len(ins))
+	}
+	// An instance owned by the import device (left by earlier versions) is archived.
+	env, err := f.dst.Environments().Put(ctx, "u", service.Environment{Name: "e"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := f.dst.T3Instances().Put(ctx, "u", service.T3Instance{EnvironmentID: env.ID, BaseUrl: "http://t3"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := f.opts
+	opts.Device = "dst" // the owner of in
+	if _, err := Run(ctx, f.dst, opts); err != nil {
+		t.Fatal(err)
+	}
+	if live, _ := f.dst.T3Instances().List(ctx, service.Filter{}); len(live) != 0 {
+		t.Fatalf("live instances after import: %+v (%s)", live, in.ID)
+	}
+}

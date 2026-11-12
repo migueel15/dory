@@ -128,9 +128,6 @@ var entities = []entity{
 	{"repository", "/api/repositories", func(c context.Context, s service.Service) ([]map[string]any, error) {
 		return localAll(c, s.Repositories())
 	}},
-	{"t3instance", "/api/t3-instances", func(c context.Context, s service.Service) ([]map[string]any, error) {
-		return localAll(c, s.T3Instances())
-	}},
 	{"feature", "/api/features", func(c context.Context, s service.Service) ([]map[string]any, error) {
 		return localAll(c, s.Features())
 	}},
@@ -222,6 +219,12 @@ func Run(ctx context.Context, store *localstore.Store, opts Options) (Report, er
 		return rep, err
 	}
 	rep.Skipped = f.skipped
+	// Each node registers its own T3; the production ones (and any imported by
+	// earlier versions, owned by the import device) are archived, which
+	// replicates to peers.
+	if err := archiveImportedT3(ctx, store, opts.device(), &rep); err != nil {
+		return rep, err
+	}
 	var plan []pending
 	for _, e := range entities {
 		c := &Counts{}
@@ -497,4 +500,22 @@ func eventOp(device string, e sourceEvent) (pending, error) {
 		"actor": e.Actor, "change": scrub(change), "at": at.Format("2006-01-02T15:04:05.000000Z"),
 	}}
 	return pending{wall: at.UnixMilli(), entity: "event", id: fmt.Sprintf("%s:%d", device, e.ID), kind: syncx.KindEvent, fields: f}, nil
+}
+
+// archiveImportedT3 archives the t3instance records owned by the import device.
+func archiveImportedT3(ctx context.Context, store *localstore.Store, device string, rep *Report) error {
+	ins, err := store.T3Instances().List(ctx, service.Filter{Limit: 1000})
+	if err != nil {
+		return err
+	}
+	for _, in := range ins {
+		if owner, err := store.OwnerDevice(ctx, "t3instance", in.ID); err != nil || owner != device {
+			continue
+		}
+		if err := store.T3Instances().Archive(ctx, device, in.ID); err != nil {
+			return err
+		}
+		rep.Skipped = append(rep.Skipped, "t3instance archived "+in.ID)
+	}
+	return nil
 }
