@@ -27,6 +27,9 @@ const (
 	PathPresence = "/peer/v1/presence"
 	PathSnapshot = "/peer/v1/snapshot"
 	PathPair     = "/peer/v1/pair"
+	// PathProxy is the prefix of forwarded API calls: /peer/v1/proxy/api/...
+	// reaches /api/... of the owner node.
+	PathProxy = "/peer/v1/proxy"
 )
 
 // Server serves the peer API over mutual TLS 1.3 to group members only.
@@ -38,6 +41,9 @@ type Server struct {
 	Intervals Intervals
 	// Pairing, if set, enables the pairing route while its window is open.
 	Pairing *Pairing
+	// Proxy, if set, serves ANY PathProxy/* for members, with the prefix
+	// stripped.
+	Proxy http.Handler
 
 	mu  sync.Mutex
 	srv *http.Server
@@ -54,6 +60,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET "+PathStream, s.stream)
 	mux.HandleFunc("GET "+PathPresence, s.presence)
 	mux.HandleFunc("GET "+PathSnapshot, s.snapshot)
+	if s.Proxy != nil {
+		mux.Handle(PathProxy+"/", http.StripPrefix(PathProxy, s.Proxy))
+	}
 	if s.Pairing != nil {
 		mux.HandleFunc("POST "+PathPair, s.Pairing.handle)
 	}

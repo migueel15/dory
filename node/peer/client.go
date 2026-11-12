@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"strconv"
 	"strings"
@@ -192,3 +193,33 @@ var (
 	_ syncx.Transport   = (*Client)(nil)
 	_ syncx.Snapshotter = (*Client)(nil)
 )
+
+// Proxy returns a handler that forwards requests to PathProxy+path on the
+// peer, streaming responses (SSE) as they arrive. Credentials of the caller
+// are not forwarded: the peer authenticates the link, not the user.
+func (c *Client) Proxy() http.Handler {
+	return &httputil.ReverseProxy{
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.Out.URL.Scheme = "https"
+			pr.Out.URL.Host = c.Addr
+			pr.Out.URL.Path = PathProxy + pr.In.URL.Path
+			pr.Out.URL.RawPath = ""
+			pr.Out.Host = c.Addr
+			for _, h := range []string{"Authorization", "Cookie", "Origin", "Referer", "Sec-Fetch-Site"} {
+				pr.Out.Header.Del(h)
+			}
+		},
+		Transport:     c.stream.Transport,
+		FlushInterval: -1,
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			WriteProxyError(w, http.StatusBadGateway, "peer_unreachable", "no se pudo contactar con el dispositivo: "+err.Error())
+		},
+	}
+}
+
+// WriteProxyError writes the JSON error envelope the SPA shows.
+func WriteProxyError(w http.ResponseWriter, status int, code, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": code, "message": message}})
+}

@@ -57,6 +57,10 @@ type Options struct {
 	// DeviceName is the name for a new identity; empty means the hostname.
 	DeviceName string
 	Intervals  peer.Intervals
+	// Manual are extra peer addresses by device id (host:port).
+	Manual map[string][]string
+	// t3Stub, in tests, answers /api/t3/* locally instead of the real handlers.
+	t3Stub http.Handler
 	// Confirm asks the user to accept a device that scanned the pairing QR;
 	// nil rejects everyone.
 	Confirm func(name, pubkeyHex string) bool
@@ -76,6 +80,8 @@ type Node struct {
 	// TokenFile holds an admin bearer token for curl and MCP clients.
 	TokenFile string
 
+	conn   *peer.Connector
+	api    http.Handler // authenticated handler without forwarding
 	cancel context.CancelFunc
 	http   *http.Server
 	peers  *peer.Server
@@ -145,7 +151,18 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 	if !o.Headless {
 		mux.Handle("/", autoLogin(svc, session, web.Handler()))
 	}
-	n.http = &http.Server{Handler: auth.Middleware(svc, cfg)(mux), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	var localH http.Handler = mux
+	if o.t3Stub != nil {
+		localH = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, t3Prefix) {
+				o.t3Stub.ServeHTTP(w, r)
+				return
+			}
+			mux.ServeHTTP(w, r)
+		})
+	}
+	n.api = auth.Middleware(svc, cfg)(localH)
+	n.http = &http.Server{Handler: auth.Middleware(svc, cfg)(n.t3Forward(localH)), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	httpLn, err := net.Listen("tcp", o.Listen)
 	if err != nil {
 		return nil, err
@@ -165,7 +182,8 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 	port := peerLn.Addr().(*net.TCPAddr).Port
 	n.PeerAddr = peerLn.Addr().String()
 	n.Presence = peer.NewPresence(o.Intervals)
-	n.peers = &peer.Server{Identity: id, Members: n.Group, Log: store.Log(), Presence: n.Presence, Intervals: o.Intervals}
+	n.peers = &peer.Server{Identity: id, Members: n.Group, Log: store.Log(), Presence: n.Presence, Intervals: o.Intervals,
+		Proxy: ownerProxy(func() http.Handler { return n.api }, session)}
 	var local []string
 	for _, ip := range peer.LocalIPs() {
 		local = append(local, net.JoinHostPort(ip, strconv.Itoa(port)))
@@ -193,8 +211,9 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 		})
 	}
 	conn := &peer.Connector{Identity: id, Group: n.Group, Engine: &syncx.Engine{Log: store.Log()},
-		Presence: n.Presence, Book: store, MDNS: n.mdns, Intervals: o.Intervals,
+		Presence: n.Presence, Book: store, MDNS: n.mdns, Intervals: o.Intervals, Manual: o.Manual,
 		OnConnect: func(dev string, c peer.Candidate) { log.Printf("peer %s connected via %s (%s)", dev, c.Source, c.Addr) }}
+	n.conn = conn
 	n.go_(func() { conn.Run(ctx) })
 	ok = true
 	return n, nil

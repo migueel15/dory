@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -56,6 +57,16 @@ type Store struct {
 func (s *Store) Log() *syncx.Log { return s.log }
 
 func (s *Store) Close() error { return s.root.Close() }
+
+// OwnerDevice is the device that created the record (owner_device).
+func (s *Store) OwnerDevice(ctx context.Context, kind, id string) (string, error) {
+	var owner string
+	err := s.root.QueryRowContext(ctx, `SELECT owner_device FROM records WHERE kind = ? AND id = ?`, kind, id).Scan(&owner)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", service.ErrNotFound
+	}
+	return owner, err
+}
 
 // Open opens (creating it if needed) the database at path and applies migrations.
 func Open(path string, opts Options) (*Store, error) {
