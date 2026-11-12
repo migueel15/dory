@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/migueel15/dory/internal/service"
+	"github.com/migueel15/dory/node/syncx"
 )
 
 const timeLayout = "2006-01-02T15:04:05.000000Z"
@@ -382,31 +383,33 @@ func (r resource[T]) Put(ctx context.Context, actor string, v T) (T, error) {
 				doc["version"] = max.Int64 + 1
 			}
 		}
-		data, err := json.Marshal(doc)
-		if err != nil {
+		if r.synced() {
+			// Replicated write: diff against the stored version and log the op;
+			// the merge writes the row, so it is identical on every replica.
+			for k, v := range doc {
+				if v == nil {
+					delete(doc, k)
+				}
+			}
+			f, err := r.b.log.Diff(ctx, q, r.spec.name, id, oldDoc, doc)
+			if err != nil {
+				return err
+			}
+			if cur == nil && f.Empty() {
+				f.Set = map[string]any{"status": nil}
+			}
+			if _, _, err = r.b.log.Commit(ctx, q, r.b.log.Now(), syncx.KindPut, r.spec.name, id, f); err != nil {
+				return err
+			}
+			if cur, err = r.load(ctx, q, id); err != nil {
+				return err
+			}
+			doc = map[string]any{}
+			if err = json.Unmarshal([]byte(cur.data), &doc); err != nil {
+				return err
+			}
+		} else if cur, err = r.write(ctx, q, id, cur, oldDoc, doc, now); err != nil {
 			return err
-		}
-		if cur == nil {
-			clock, err := r.stamp("{}", nil, doc)
-			if err != nil {
-				return err
-			}
-			_, err = q.ExecContext(ctx, `INSERT INTO `+r.spec.table+` (kind, id, data, field_clock, owner_device, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				r.spec.name, id, string(data), clock, r.b.opts.Device, now, now)
-			if err != nil {
-				return err
-			}
-			cur = &row{data: string(data), created: now, updated: now}
-		} else {
-			clock, err := r.stamp(cur.fieldClock, oldDoc, doc)
-			if err != nil {
-				return err
-			}
-			if _, err = q.ExecContext(ctx, `UPDATE `+r.spec.table+` SET data = ?, field_clock = ?, updated_at = ? WHERE kind = ? AND id = ?`,
-				string(data), clock, now, r.spec.name, id); err != nil {
-				return err
-			}
-			cur.data, cur.updated = string(data), now
 		}
 		out, err = compose(id, cur)
 		if err != nil {
@@ -422,6 +425,35 @@ func (r resource[T]) Put(ctx context.Context, actor string, v T) (T, error) {
 		return zero, err
 	}
 	return decode[T](out, nil)
+}
+
+func (r resource[T]) synced() bool { return r.b.log != nil && syncx.Replicated(r.spec.name) }
+
+// write stores doc as the new version of the row (the non-replicated path).
+func (r resource[T]) write(ctx context.Context, q execer, id string, cur *row, oldDoc, doc map[string]any, now string) (*row, error) {
+	data, err := json.Marshal(doc)
+	if err != nil {
+		return nil, err
+	}
+	if cur == nil {
+		clock, err := r.stamp("{}", nil, doc)
+		if err != nil {
+			return nil, err
+		}
+		_, err = q.ExecContext(ctx, `INSERT INTO `+r.spec.table+` (kind, id, data, field_clock, owner_device, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			r.spec.name, id, string(data), clock, r.b.opts.Device, now, now)
+		return &row{data: string(data), created: now, updated: now}, err
+	}
+	clock, err := r.stamp(cur.fieldClock, oldDoc, doc)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = q.ExecContext(ctx, `UPDATE `+r.spec.table+` SET data = ?, field_clock = ?, updated_at = ? WHERE kind = ? AND id = ?`,
+		string(data), clock, now, r.spec.name, id); err != nil {
+		return nil, err
+	}
+	cur.data, cur.updated = string(data), now
+	return cur, nil
 }
 
 func maps(m map[string]any) map[string]any {
@@ -447,6 +479,9 @@ func (r resource[T]) Archive(ctx context.Context, actor, id string) error {
 		}
 		if cur == nil || cur.archived.Valid {
 			return service.ErrNotFound
+		}
+		if r.synced() {
+			return r.archiveSynced(ctx, q, actor, id)
 		}
 		now := r.now()
 		clock := cur.fieldClock
@@ -482,4 +517,52 @@ func (r resource[T]) Archive(ctx context.Context, actor, id string) error {
 		_, err = q.ExecContext(ctx, `UPDATE records SET archived_at = ?, updated_at = ? WHERE kind IN ('repository','item','feature') AND archived_at IS NULL AND json_extract(data, '$.project_id') = ?`, now, now, id)
 		return err
 	})
+}
+
+// archiveSynced archives through the operation log. Archiving a project logs
+// one op per child, so the cascade replicates like any other change.
+func (r resource[T]) archiveSynced(ctx context.Context, q execer, actor, id string) error {
+	if _, err := r.b.log.Archive(ctx, q, r.b.log.Now(), r.spec.name, id); err != nil {
+		return err
+	}
+	if err := r.b.unindexSearch(ctx, q, r.spec.name, id); err != nil {
+		return err
+	}
+	cur, err := r.load(ctx, q, id)
+	if err != nil {
+		return err
+	}
+	snapshot, err := compose(id, cur)
+	if err != nil {
+		return err
+	}
+	if err = r.b.audit(ctx, q, actor, r.spec.name, id, "archive", snapshot); err != nil {
+		return err
+	}
+	if r.spec.name != "project" {
+		return nil
+	}
+	rows, err := q.QueryContext(ctx, `SELECT kind, id FROM records WHERE kind IN ('repository','item','feature') AND archived_at IS NULL AND json_extract(data, '$.project_id') = ? ORDER BY kind, id`, id)
+	if err != nil {
+		return err
+	}
+	var children [][2]string
+	for rows.Next() {
+		var c [2]string
+		if err = rows.Scan(&c[0], &c[1]); err != nil {
+			rows.Close()
+			return err
+		}
+		children = append(children, c)
+	}
+	rows.Close()
+	for _, c := range children {
+		if _, err = r.b.log.Archive(ctx, q, r.b.log.Now(), c[0], c[1]); err != nil {
+			return err
+		}
+		if err = r.b.unindexSearch(ctx, q, c[0], c[1]); err != nil {
+			return err
+		}
+	}
+	return nil
 }

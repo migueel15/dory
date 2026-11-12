@@ -10,6 +10,7 @@ import (
 	"unicode"
 
 	"github.com/migueel15/dory/internal/service"
+	"github.com/migueel15/dory/node/syncx"
 )
 
 // audit appends an event for a write, in the caller's transaction. Password and
@@ -29,9 +30,34 @@ func (b *backend) audit(ctx context.Context, q execer, actor, kind, id, operatio
 }
 
 func (b *backend) appendEvent(ctx context.Context, q execer, actor, kind, id string, change []byte) error {
-	_, err := q.ExecContext(ctx, `INSERT INTO events (device, seq, entity_type, entity_id, actor, change, at)
-		VALUES (?, (SELECT coalesce(max(seq), 0) + 1 FROM events WHERE device = ?), ?, ?, ?, ?, ?)`,
-		b.opts.Device, b.opts.Device, kind, id, actor, string(change), b.opts.Clock().UTC().Format(timeLayout))
+	if b.log == nil || !syncx.EventReplicated(kind) {
+		_, err := q.ExecContext(ctx, `INSERT INTO events (device, seq, entity_type, entity_id, actor, change, at)
+			VALUES (?, (SELECT coalesce(max(seq), 0) + 1 FROM events WHERE device = ?), ?, ?, ?, ?, ?)`,
+			b.opts.Device, b.opts.Device, kind, id, actor, string(change), b.opts.Clock().UTC().Format(timeLayout))
+		return err
+	}
+	// A replicated event is stored in canonical JSON and logged as an op, so
+	// every replica ends with the same bytes.
+	var parsed any
+	if err := json.Unmarshal(change, &parsed); err != nil {
+		return err
+	}
+	canonical, err := json.Marshal(parsed)
+	if err != nil {
+		return err
+	}
+	h := b.log.Now()
+	at := syncx.FormatTime(h)
+	var seq int64
+	err = q.QueryRowContext(ctx, `INSERT INTO events (device, seq, entity_type, entity_id, actor, change, at)
+		VALUES (?, (SELECT coalesce(max(seq), 0) + 1 FROM events WHERE device = ?), ?, ?, ?, ?, ?) RETURNING seq`,
+		b.opts.Device, b.opts.Device, kind, id, actor, string(canonical), at).Scan(&seq)
+	if err != nil {
+		return err
+	}
+	_, _, err = b.log.Commit(ctx, q, h, syncx.KindEvent, "event", fmt.Sprintf("%s:%d", b.opts.Device, seq), syncx.Fields{Event: map[string]any{
+		"device": b.opts.Device, "seq": seq, "entity_type": kind, "entity_id": id, "actor": actor, "change": parsed, "at": at,
+	}})
 	return err
 }
 

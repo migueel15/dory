@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/service"
+	"github.com/migueel15/dory/node/syncx"
 	_ "modernc.org/sqlite"
 )
 
@@ -41,13 +42,18 @@ type backend struct {
 	root *sql.DB
 	opts Options
 	seq  *atomic.Int64
+	log  *syncx.Log // set when Options.Local: writes append replicated operations
 }
 
 // Store is a service.Service backed by SQLite that can be closed.
 type Store struct {
 	service.Service
 	root *sql.DB
+	log  *syncx.Log
 }
+
+// Log is the operation log; nil unless the store was opened with Local.
+func (s *Store) Log() *syncx.Log { return s.log }
 
 func (s *Store) Close() error { return s.root.Close() }
 
@@ -75,7 +81,15 @@ func Open(path string, opts Options) (*Store, error) {
 		return nil, err
 	}
 	b := &backend{db: db, root: db, opts: opts, seq: new(atomic.Int64)}
-	return &Store{Service: b, root: db}, nil
+	if opts.Local {
+		log, err := syncx.NewLog(context.Background(), db, opts.Device, syncx.NewClock(opts.Device, opts.Clock), syncx.Hooks{Reindex: b.reindex})
+		if err != nil {
+			db.Close()
+			return nil, err
+		}
+		b.log = log
+	}
+	return &Store{Service: b, root: db, log: b.log}, nil
 }
 
 func migrate(ctx context.Context, db *sql.DB) error {
@@ -169,7 +183,7 @@ func (b *backend) InTx(ctx context.Context, fn func(service.Service) error) erro
 		return err
 	}
 	defer tx.Rollback()
-	if err = fn(&backend{db: tx, root: b.root, opts: b.opts, seq: b.seq}); err != nil {
+	if err = fn(&backend{db: tx, root: b.root, opts: b.opts, seq: b.seq, log: b.log}); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -234,4 +248,12 @@ func (t titledItems) Put(ctx context.Context, actor string, in service.Item) (se
 	}
 	in.TitleSource = source
 	return t.Resource.Put(ctx, actor, in)
+}
+
+// reindex keeps the search index in step with records changed by sync.
+func (b *backend) reindex(ctx context.Context, q syncx.Execer, kind, id string, doc map[string]any, archived bool) error {
+	if archived {
+		return b.unindexSearch(ctx, q, kind, id)
+	}
+	return b.indexSearch(ctx, q, kind, id, doc)
 }

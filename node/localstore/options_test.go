@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/service"
+	"github.com/migueel15/dory/node/syncx"
 )
 
 func TestSyncHooksAndReopen(t *testing.T) {
@@ -43,7 +44,13 @@ func TestSyncHooksAndReopen(t *testing.T) {
 	}
 	m := map[string]string{}
 	json.Unmarshal([]byte(clock), &m)
-	if owner != "dev-a" || m["name"] != "2026-01-02T03:05:05.000000Z@dev-a" || m["slug"] != "2026-01-02T03:04:05.000000Z@dev-a" {
+	name, err := syncx.ParseHLC(m["name"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	slug, _ := syncx.ParseHLC(m["slug"])
+	if owner != "dev-a" || name.Device != "dev-a" || name.Compare(slug) != 1 ||
+		name.Time() != at || slug.Time() != at.Add(-time.Minute) {
 		t.Fatalf("owner=%q clock=%v", owner, m)
 	}
 }
