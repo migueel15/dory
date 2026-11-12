@@ -22,6 +22,8 @@ import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.util.Base64;
 import android.util.Log;
+import android.view.View;
+import android.view.Window;
 import android.webkit.ConsoleMessage;
 import android.webkit.ValueCallback;
 import android.webkit.JavascriptInterface;
@@ -37,6 +39,10 @@ import android.webkit.WebViewClient;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.webkit.WebViewAssetLoader;
 
 import org.json.JSONObject;
@@ -100,6 +106,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        applySystemBarInsets();
 
         String devURL = WailsBridge.devServerURL(this);
         if (devURL != null) devServer = Uri.parse(devURL);
@@ -113,6 +120,27 @@ public class MainActivity extends AppCompatActivity {
 
         // Load the application
         loadApplication();
+    }
+
+    // Dory: Android 15+ enforces edge-to-edge; keep the web content out of the
+    // status bar, notch and gesture bar, and paint the bars dark with light icons.
+    private void applySystemBarInsets() {
+        final int bg = 0xFF111113;
+        Window window = getWindow();
+        WindowCompat.setDecorFitsSystemWindows(window, false);
+        window.setStatusBarColor(bg);
+        window.setNavigationBarColor(bg);
+        WindowCompat.getInsetsController(window, window.getDecorView()).setAppearanceLightStatusBars(false);
+        WindowCompat.getInsetsController(window, window.getDecorView()).setAppearanceLightNavigationBars(false);
+        View container = findViewById(R.id.main_container);
+        container.setBackgroundColor(bg);
+        ViewCompat.setOnApplyWindowInsetsListener(container, (v, insets) -> {
+            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars()
+                    | WindowInsetsCompat.Type.displayCutout());
+            Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
+            v.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
+            return WindowInsetsCompat.CONSUMED;
+        });
     }
 
     @SuppressLint("SetJavaScriptEnabled")
