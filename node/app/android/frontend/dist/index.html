@@ -1,0 +1,24 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Dory</title>
+<style>:root{color-scheme:light dark}body{font:16px system-ui,sans-serif;margin:0;display:grid;place-items:center;height:100vh}
+#e{color:#b42318;padding:16px;white-space:pre-wrap}</style></head>
+<body><div id="s">Iniciando Dory…</div><div id="e"></div>
+<script>
+(async () => {
+  try {
+    let ifaces = [];
+    if (window.DoryNative) {
+      try { window.DoryNative.multicast(true); } catch (e) {}
+      ifaces = JSON.parse(window.DoryNative.interfaces());
+    }
+    const b64 = btoa(JSON.stringify(ifaces)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const r = await fetch('/boot/' + b64);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    location.replace(d.url);
+  } catch (e) {
+    document.getElementById('s').textContent = '';
+    document.getElementById('e').textContent = 'No se pudo iniciar el nodo: ' + e.message;
+  }
+})();
+</script></body></html>

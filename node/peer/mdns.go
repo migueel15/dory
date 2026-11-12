@@ -49,6 +49,7 @@ type MDNS struct {
 	Ifaces []net.Interface
 
 	mu    sync.Mutex
+	gen   int // bumped by SetNetwork; Browse rebuilds its resolver when it changes
 	srv   *zeroconf.Server
 	found map[string]mdnsEntry // device id -> last announcement
 }
@@ -79,6 +80,18 @@ func (m *MDNS) Announce() error {
 	return nil
 }
 
+// SetNetwork replaces the announced addresses and the multicast interfaces
+// (the device changed network) and announces again. Browse follows within one
+// cycle.
+func (m *MDNS) SetNetwork(ips []string, ifaces []net.Interface) error {
+	m.mu.Lock()
+	m.IPs, m.Ifaces = ips, ifaces
+	m.gen++
+	m.mu.Unlock()
+	m.Stop()
+	return m.Announce()
+}
+
 // Stop withdraws the announcement.
 func (m *MDNS) Stop() {
 	m.mu.Lock()
@@ -91,18 +104,26 @@ func (m *MDNS) Stop() {
 
 // Browse keeps the cache of discovered peers fresh until ctx ends. It blocks.
 func (m *MDNS) Browse(ctx context.Context) error {
-	var opts []zeroconf.ClientOption
-	if m.Ifaces != nil {
-		opts = append(opts, zeroconf.SelectIfaces(m.Ifaces))
-	}
-	res, err := zeroconf.NewResolver(opts...)
-	if err != nil {
-		return err
-	}
+	var res *zeroconf.Resolver
+	gen := -1
 	for ctx.Err() == nil {
+		m.mu.Lock()
+		ifaces, g := m.Ifaces, m.gen
+		m.mu.Unlock()
+		if res == nil || g != gen {
+			var opts []zeroconf.ClientOption
+			if ifaces != nil {
+				opts = append(opts, zeroconf.SelectIfaces(ifaces))
+			}
+			r, err := zeroconf.NewResolver(opts...)
+			if err != nil {
+				return err
+			}
+			res, gen = r, g
+		}
 		entries := make(chan *zeroconf.ServiceEntry, 16)
 		bctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		if err = res.Browse(bctx, MDNSService, "local.", entries); err != nil {
+		if err := res.Browse(bctx, MDNSService, "local.", entries); err != nil {
 			cancel()
 			return err
 		}

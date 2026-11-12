@@ -189,7 +189,7 @@ func (n *Node) nodeAPI() http.Handler {
 			members = append(members, v)
 		}
 		out := map[string]any{
-			"device":  map[string]any{"device_id": self, "name": n.Identity.Name, "peer_addrs": n.local},
+			"device":  map[string]any{"device_id": self, "name": n.Identity.Name, "peer_addrs": n.localAddrs()},
 			"members": members,
 			"pairing": map[string]any{"open": n.Pairing.Open()},
 		}
@@ -314,7 +314,7 @@ func (n *Node) republish(r *http.Request, edit func(*localstore.DeviceAddress)) 
 		return err
 	}
 	rec.DeviceID, rec.Name = self, n.Identity.Name
-	rec.Local = n.local
+	rec.Local = n.localAddrs()
 	edit(&rec)
 	return n.Store.PublishAddress(r.Context(), rec)
 }

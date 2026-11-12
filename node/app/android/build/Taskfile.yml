@@ -1,0 +1,17 @@
+version: '3'
+
+# Trimmed from the Wails template: the frontend is plain static files in
+# frontend/dist (no npm/vite), so there is nothing to build.
+tasks:
+  go:mod:tidy:
+    summary: Runs `go mod tidy`
+    internal: true
+    run: once
+    cmds:
+      - go mod tidy
+
+  build:frontend:
+    summary: No-op, frontend/dist is committed
+    run: once
+    cmds:
+      - test -f frontend/dist/index.html

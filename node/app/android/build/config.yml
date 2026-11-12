@@ -1,0 +1,10 @@
+version: '3'
+
+info:
+  companyName: "dorlab.net"
+  productName: "Dory"
+  productIdentifier: "com.wails.app"
+  description: "Dory local-first node for Android"
+  copyright: "(c) 2026, dorlab.net"
+  comments: "MVP 14"
+  version: "0.1.0"

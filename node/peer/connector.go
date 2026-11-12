@@ -43,6 +43,28 @@ type Connector struct {
 	mu      sync.Mutex
 	last    map[string]string
 	running map[string]bool
+	wake    chan struct{} // closed (and replaced) by Kick
+}
+
+// Kick wakes every peer loop that is waiting to retry, so the node reconnects
+// right away (the app came back to the foreground, the network changed).
+// Links that are already syncing are untouched.
+func (c *Connector) Kick() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.wake != nil {
+		close(c.wake)
+	}
+	c.wake = make(chan struct{})
+}
+
+func (c *Connector) kicked() <-chan struct{} {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.wake == nil {
+		c.wake = make(chan struct{})
+	}
+	return c.wake
 }
 
 // Candidates returns the addresses to try for deviceID.
@@ -121,6 +143,7 @@ func (c *Connector) Dial(ctx context.Context, deviceID string) (*Client, Candida
 func (c *Connector) RunPeer(ctx context.Context, deviceID string) {
 	delay := c.Intervals.backoffMin()
 	for ctx.Err() == nil {
+		kick := c.kicked()
 		cl, cd, err := c.Dial(ctx, deviceID)
 		if err == nil {
 			c.mu.Lock()
@@ -144,6 +167,9 @@ func (c *Connector) RunPeer(ctx context.Context, deviceID string) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-kick:
+			delay = c.Intervals.backoffMin()
+			continue
 		case <-time.After(delay):
 		}
 		delay = min(delay*2, c.Intervals.backoffMax())

@@ -65,6 +65,11 @@ type Options struct {
 	// Confirm asks the user to accept a device that scanned the pairing QR;
 	// nil rejects everyone.
 	Confirm func(name, pubkeyHex string) bool
+	// IPs and Ifaces replace the host's own interface enumeration, which
+	// Android forbids: the IPs announced over mDNS and put in the address
+	// record, and the interfaces multicast uses. Empty means ask the OS.
+	IPs    []string
+	Ifaces []net.Interface
 	// ConfirmViaUI, when Confirm is nil, asks on the /node/ pages instead of
 	// rejecting everyone.
 	ConfirmViaUI bool
@@ -96,6 +101,8 @@ type Node struct {
 	peers   *peer.Server
 	mdns    *peer.MDNS
 	wg      sync.WaitGroup
+	port    int
+	netMu   sync.Mutex
 }
 
 // Start brings the node up. It returns once the listeners are bound.
@@ -201,7 +208,11 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 	n.peers = &peer.Server{Identity: id, Members: n.Group, Log: store.Log(), Presence: n.Presence, Intervals: o.Intervals,
 		Proxy: ownerProxy(func() http.Handler { return n.api }, session)}
 	var local []string
-	for _, ip := range peer.LocalIPs() {
+	ips := o.IPs
+	if len(ips) == 0 {
+		ips = peer.LocalIPs()
+	}
+	for _, ip := range ips {
 		local = append(local, net.JoinHostPort(ip, strconv.Itoa(port)))
 	}
 	confirm := o.Confirm
@@ -224,7 +235,7 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 		return nil, fmt.Errorf("publish address: %w", err)
 	}
 	if !o.NoMDNS {
-		n.mdns = &peer.MDNS{Identity: id, Port: port}
+		n.mdns = &peer.MDNS{Identity: id, Port: port, IPs: o.IPs, Ifaces: o.Ifaces}
 		if err := n.mdns.Announce(); err != nil {
 			log.Printf("mdns announce: %v", err)
 		}
@@ -240,6 +251,7 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 	n.conn = conn
 	n.go_(func() { conn.Run(ctx) })
 	n.local = local
+	n.port = port
 	ok = true
 	return n, nil
 }
@@ -264,6 +276,53 @@ func (n *Node) Handler() http.Handler {
 		r2.AddCookie(&http.Cookie{Name: sessionCookie, Value: n.session})
 		n.handler.ServeHTTP(w, r2)
 	})
+}
+
+func (n *Node) localAddrs() []string {
+	n.netMu.Lock()
+	defer n.netMu.Unlock()
+	return n.local
+}
+
+// Kick makes the node retry its peers now instead of waiting for the backoff:
+// call it when the app returns to the foreground.
+func (n *Node) Kick() {
+	if n.conn != nil {
+		n.conn.Kick()
+	}
+}
+
+// SetNetwork tells the node the device changed network (new IPs and
+// multicast interfaces): it re-announces over mDNS, republishes its address
+// record and kicks the connector. Addresses already shown in a pairing QR stay
+// as they were.
+func (n *Node) SetNetwork(ips []string, ifaces []net.Interface) error {
+	n.netMu.Lock()
+	defer n.netMu.Unlock()
+	var local []string
+	for _, ip := range ips {
+		local = append(local, net.JoinHostPort(ip, strconv.Itoa(n.port)))
+	}
+	var err error
+	if n.mdns != nil {
+		err = n.mdns.SetNetwork(ips, ifaces)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	rec, found, aerr := n.Store.AddressOf(ctx, n.Identity.DeviceID())
+	if aerr != nil {
+		return aerr
+	}
+	if !found {
+		rec = localstore.DeviceAddress{DeviceID: n.Identity.DeviceID(), Name: n.Identity.Name}
+	}
+	rec.Local = local
+	n.local = local
+	if perr := n.Store.PublishAddress(ctx, rec); perr != nil {
+		return perr
+	}
+	n.Kick()
+	return err
 }
 
 // Stop shuts everything down and closes the database.
