@@ -1,0 +1,35 @@
+version: '3'
+
+vars:
+  APP_NAME: dory-desktop
+  BIN_DIR: bin
+
+tasks:
+  web:
+    summary: Build the SPA (web/dist), which the node embeds
+    dir: ../../../web
+    cmds:
+      - npm ci --no-audit --no-fund
+      - npm run build
+    status:
+      - test -f dist/index.html
+
+  build:
+    summary: Linux binary in bin/dory-desktop (needs gtk3 and webkit2gtk-4.1 dev packages)
+    deps: [web]
+    cmds:
+      - go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o {{.BIN_DIR}}/{{.APP_NAME}} .
+    env:
+      CGO_ENABLED: "1"
+
+  run:
+    summary: Build and run
+    deps: [build]
+    cmds:
+      - ./{{.BIN_DIR}}/{{.APP_NAME}}
+
+  test:
+    summary: Run the node tests
+    dir: ../..
+    cmds:
+      - go test ./...

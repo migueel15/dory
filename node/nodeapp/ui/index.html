@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dory · Nodo</title>
+<style>
+:root{color-scheme:light dark;--bg:#fff;--fg:#1c1c1e;--mut:#6b6b70;--line:#d9d9de;--ok:#1a7f37;--bad:#b42318;--acc:#2f5bea}
+@media (prefers-color-scheme:dark){:root{--bg:#161618;--fg:#ececf0;--mut:#9a9aa3;--line:#33333a;--ok:#3fb950;--bad:#f0645a;--acc:#7b9bff}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,sans-serif}
+main{max-width:720px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:28px 0 8px}
+.mut{color:var(--mut)}
+table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
+button{font:inherit;padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--fg);cursor:pointer}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff}button.danger{color:var(--bad)}
+input{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--fg);min-width:0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--mut);margin-right:6px}
+.connected .dot{background:var(--ok)}.seen .dot{background:#d29922}
+.box{border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:8px}
+.prompt{border-color:var(--acc)}
+img.qr{display:block;width:240px;height:240px;background:#fff;padding:8px;border-radius:6px}
+#err{color:var(--bad);min-height:1.4em}
+code{font-size:12px;word-break:break-all}
+</style>
+</head>
+<body>
+<main>
+  <h1>Nodo Dory</h1>
+  <div class="mut" id="self"></div>
+  <div id="err" role="alert"></div>
+  <div id="prompt"></div>
+
+  <h2>Dispositivos</h2>
+  <table><thead><tr><th>Nombre</th><th>Estado</th><th>Dirección manual</th><th></th></tr></thead><tbody id="members"></tbody></table>
+
+  <h2>Añadir dispositivo</h2>
+  <div class="row"><button class="primary" id="pair">Añadir dispositivo</button><button id="pair-close" hidden>Cerrar ventana</button></div>
+  <div id="qr"></div>
+
+  <h2>Este dispositivo</h2>
+  <form class="row" id="name-form"><label for="name">Nombre</label><input id="name" maxlength="80"><button>Guardar</button></form>
+  <form class="row" id="addr-form" style="margin-top:8px"><label for="addr">Dirección manual (host:puerto)</label><input id="addr" placeholder="mi-pc.tailnet:7710"><button>Guardar</button></form>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

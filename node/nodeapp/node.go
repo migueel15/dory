@@ -1,4 +1,4 @@
-package main
+package nodeapp
 
 import (
 	"context"
@@ -45,6 +45,7 @@ const (
 type Options struct {
 	DataDir string
 	// Listen is the host:port of the API, MCP and SPA; the host must be loopback.
+	// Empty means no HTTP listener: the app serves Node.Handler in-process.
 	Listen string
 	// PeerPort is the TCP port of the mTLS peer API (0 picks a free one).
 	PeerPort int
@@ -64,6 +65,9 @@ type Options struct {
 	// Confirm asks the user to accept a device that scanned the pairing QR;
 	// nil rejects everyone.
 	Confirm func(name, pubkeyHex string) bool
+	// ConfirmViaUI, when Confirm is nil, asks on the /node/ pages instead of
+	// rejecting everyone.
+	ConfirmViaUI bool
 }
 
 // Node is a running dory-node.
@@ -80,19 +84,26 @@ type Node struct {
 	// TokenFile holds an admin bearer token for curl and MCP clients.
 	TokenFile string
 
-	conn   *peer.Connector
-	api    http.Handler // authenticated handler without forwarding
-	cancel context.CancelFunc
-	http   *http.Server
-	peers  *peer.Server
-	mdns   *peer.MDNS
-	wg     sync.WaitGroup
+	handler http.Handler // full handler: auth, T3 forwarding, SPA, /node/
+	dir     string
+	session string
+	local   []string
+	prompts *prompts
+	conn    *peer.Connector
+	api     http.Handler // authenticated handler without forwarding
+	cancel  context.CancelFunc
+	http    *http.Server
+	peers   *peer.Server
+	mdns    *peer.MDNS
+	wg      sync.WaitGroup
 }
 
 // Start brings the node up. It returns once the listeners are bound.
 func Start(ctx context.Context, o Options) (*Node, error) {
-	if err := requireLoopback(o.Listen); err != nil {
-		return nil, err
+	if o.Listen != "" {
+		if err := requireLoopback(o.Listen); err != nil {
+			return nil, err
+		}
 	}
 	if err := os.MkdirAll(o.DataDir, 0o700); err != nil {
 		return nil, err
@@ -106,7 +117,7 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	n := &Node{Store: store, Identity: id}
+	n := &Node{Store: store, Identity: id, dir: o.DataDir, prompts: newPrompts()}
 	ok := false
 	defer func() {
 		if !ok {
@@ -127,6 +138,7 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	n.session = session
 	n.TokenFile = filepath.Join(o.DataDir, "local-token")
 	if err := setupT3(ctx, store, id, o); err != nil {
 		return nil, err
@@ -148,6 +160,7 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 	api.Register(mux, svc, monitor, gh, dictation.New(nil))
 	auth.Register(mux, svc, cfg)
 	mux.Handle("/mcp", mcp.Handler(svc, monitor.Locate))
+	n.mountNodeUI(mux, svc, session)
 	if !o.Headless {
 		mux.Handle("/", autoLogin(svc, session, web.Handler()))
 	}
@@ -162,17 +175,20 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 		})
 	}
 	n.api = auth.Middleware(svc, cfg)(localH)
-	n.http = &http.Server{Handler: auth.Middleware(svc, cfg)(n.t3Forward(localH)), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
-	httpLn, err := net.Listen("tcp", o.Listen)
-	if err != nil {
-		return nil, err
-	}
-	n.HTTPAddr = httpLn.Addr().String()
-	n.go_(func() {
-		if err := n.http.Serve(httpLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("http: %v", err)
+	n.handler = auth.Middleware(svc, cfg)(n.t3Forward(localH))
+	if o.Listen != "" {
+		n.http = &http.Server{Handler: n.handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+		httpLn, err := net.Listen("tcp", o.Listen)
+		if err != nil {
+			return nil, err
 		}
-	})
+		n.HTTPAddr = httpLn.Addr().String()
+		n.go_(func() {
+			if err := n.http.Serve(httpLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Printf("http: %v", err)
+			}
+		})
+	}
 
 	// Peer side: mTLS server, address record, mDNS, connector.
 	peerLn, err := net.Listen("tcp", ":"+strconv.Itoa(o.PeerPort))
@@ -188,7 +204,11 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 	for _, ip := range peer.LocalIPs() {
 		local = append(local, net.JoinHostPort(ip, strconv.Itoa(port)))
 	}
-	n.Pairing = &peer.Pairing{Identity: id, Group: n.Group, Data: store.Log(), Addrs: local, Confirm: o.Confirm,
+	confirm := o.Confirm
+	if confirm == nil && o.ConfirmViaUI {
+		confirm = n.prompts.ask
+	}
+	n.Pairing = &peer.Pairing{Identity: id, Group: n.Group, Data: store.Log(), Addrs: local, Confirm: confirm,
 		Persist: func(g *peer.Log) error { return peer.SaveGroup(o.DataDir, g) }}
 	n.peers.Pairing = n.Pairing
 	n.go_(func() {
@@ -196,7 +216,11 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 			log.Printf("peer: %v", err)
 		}
 	})
-	if err := store.PublishAddress(ctx, localstore.DeviceAddress{DeviceID: device, Name: id.Name, Local: local}); err != nil {
+	rec := localstore.DeviceAddress{DeviceID: device, Name: id.Name, Local: local}
+	if old, found, err := store.AddressOf(ctx, device); err == nil && found {
+		rec.Tailnet, rec.Manual = old.Tailnet, old.Manual // typed by the user, keep across restarts
+	}
+	if err := store.PublishAddress(ctx, rec); err != nil {
 		return nil, fmt.Errorf("publish address: %w", err)
 	}
 	if !o.NoMDNS {
@@ -215,6 +239,7 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 		OnConnect: func(dev string, c peer.Candidate) { log.Printf("peer %s connected via %s (%s)", dev, c.Source, c.Addr) }}
 	n.conn = conn
 	n.go_(func() { conn.Run(ctx) })
+	n.local = local
 	ok = true
 	return n, nil
 }
@@ -222,6 +247,23 @@ func Start(ctx context.Context, o Options) (*Node, error) {
 func (n *Node) go_(f func()) {
 	n.wg.Add(1)
 	go func() { defer n.wg.Done(); f() }()
+}
+
+// Handler is the in-process handler for the app window: the same routes as the
+// loopback listener, but every request is treated as coming from the local
+// user. Webviews do not keep cookies for custom schemes (wails://), so the
+// session is attached here and browser-origin headers are dropped (the
+// webview origin is not the Host, which the same-origin check would refuse).
+// Only the app's own webview can reach it; there is no socket.
+func (n *Node) Handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r2 := r.Clone(r.Context())
+		for _, h := range []string{"Authorization", "Cookie", "Origin", "Referer", "Sec-Fetch-Site"} {
+			r2.Header.Del(h)
+		}
+		r2.AddCookie(&http.Cookie{Name: sessionCookie, Value: n.session})
+		n.handler.ServeHTTP(w, r2)
+	})
 }
 
 // Stop shuts everything down and closes the database.

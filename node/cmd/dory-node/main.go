@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/migueel15/dory/node/localstore"
+	"github.com/migueel15/dory/node/nodeapp"
 	"github.com/migueel15/dory/node/peer"
 )
 
@@ -49,7 +50,7 @@ func defaultDataDir() string {
 
 func runServe(args []string) error {
 	fs := flag.NewFlagSet("dory-node", flag.ContinueOnError)
-	var o Options
+	var o nodeapp.Options
 	fs.StringVar(&o.DataDir, "data-dir", defaultDataDir(), "directory with the identity, database and group")
 	fs.StringVar(&o.Listen, "listen", "127.0.0.1:8080", "API, MCP and SPA address (localhost only)")
 	fs.IntVar(&o.PeerPort, "peer-port", 7710, "mTLS port for other devices")
@@ -72,7 +73,7 @@ func runServe(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	o.Confirm = confirmOnTerminal
-	n, err := Start(ctx, o)
+	n, err := nodeapp.Start(ctx, o)
 	if err != nil {
 		return err
 	}

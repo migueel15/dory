@@ -1,0 +1,7 @@
+version: '3'
+info:
+  companyName: "Dory"
+  productName: "Dory"
+  productIdentifier: "net.dorlab.dory"
+  description: "Dory local-first node"
+  version: "0.0.0-dev"
