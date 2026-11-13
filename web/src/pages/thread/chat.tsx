@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowRight, ArrowSquareOut, ArrowUp, ArrowsOut, Browser, Eye, EyeSlash, Key, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, Question, Quotes, Stop, Wrench, X } from "@phosphor-icons/react";
+import { ArrowDown, ArrowRight, ArrowSquareOut, ArrowUp, ArrowsOut, Browser, Eye, EyeSlash, Key, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, Question, Quotes, Stop, TerminalWindow, Wrench, X } from "@phosphor-icons/react";
 import { api, type T3Attachment, type T3ThreadView, type T3ViewMessage } from "../../api/client";
 import { copyText, ErrorText, Md } from "../../components/ui";
 import { PendingRequest, type QuestionControl } from "../../components/pending-request";
@@ -251,6 +251,44 @@ export function StepIcon({ m }: { m: T3ViewMessage }) {
 
 // WorkBlock is one label that follows the model's current step; unfolded it
 // lists every thought and tool of that stretch, each foldable on its own.
+// commandName is the program a shell command runs, as T3 Code names it:
+// "cd x && sed -i …" → "sed", "FOO=1 python3 - <<EOF" → "python3".
+const commandName = (cmd = "") => {
+  for (const part of cmd.split(/&&|\|\||;|\n/)) {
+    const words = part.trim().split(/\s+/).filter((w) => w && !/^\w+=/.test(w));
+    if (words.length && words[0] !== "cd") return words[0].replace(/^.*\//, "");
+  }
+  return "";
+};
+
+// StepLine is one step of a turn, as T3 Code lists them: an icon and a line.
+// Thinking shows its text; a command reads "Running python3" (then "Ran …")
+// and opens to the full command; other tools show their name and input.
+// A note the model writes between steps is plain text: not an answer, so no
+// time or copy button.
+export function StepLine({ m }: { m: T3ViewMessage }) {
+  const [open, setOpen] = useState(false);
+  const muted = "text-[13px] leading-relaxed text-slate-500 dark:text-muted";
+  if (m.role === "assistant") return <div className={`pl-6 ${muted} !text-slate-700 dark:!text-text-secondary [&_*]:!text-inherit [&_p]:my-0.5`}>{m.text ? <Md>{m.text}</Md> : null}{m.streaming && <Dots />}</div>;
+  if (m.role === "reasoning") {
+    if (!m.text.trim()) return m.streaming ? <div className={`flex items-center gap-2 ${muted}`}><Brain weight="regular" className="size-4 shrink-0" />Thinking…</div> : null;
+    return <div className={`flex gap-2 ${muted}`}><Brain weight="regular" className="mt-0.5 size-4 shrink-0" /><div className="min-w-0 flex-1 [&_*]:!text-inherit [&_p]:my-0"><Md>{m.text}</Md></div></div>;
+  }
+  const running = stepRunning(m), failed = stepFailed(m);
+  const cmd = m.title === "command execution";
+  const label = cmd ? `${running ? "Running" : failed ? "Failed" : "Ran"} ${commandName(m.detail) || "command"}` : m.title || "Tool";
+  return (
+    <div className={muted}>
+      <button type="button" disabled={!m.detail} onClick={() => setOpen(!open)} className="flex max-w-full items-center gap-2 text-left enabled:hover:text-slate-900 dark:enabled:hover:text-white">
+        {cmd ? <TerminalWindow weight="regular" className="size-4 shrink-0" /> : <Wrench weight="regular" className="size-4 shrink-0" />}
+        <span className={`shrink-0 ${running ? "motion-safe:animate-pulse" : ""} ${failed ? "text-red-600 dark:text-red-400" : ""}`}>{label}</span>
+        {!cmd && !open && m.detail && <code className="min-w-0 truncate font-mono text-xs opacity-70">{m.detail}</code>}
+      </button>
+      {open && m.detail && <pre className="mb-1 ml-6 mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-100 p-2 font-mono text-[11px] dark:bg-raised">{m.detail}</pre>}
+    </div>
+  );
+}
+
 // Worked is a finished turn's work folded into one entry, as in T3 Code.
 export type Worked = { worked: true; id: string; items: T3ViewMessage[]; secs: number; live?: boolean; since?: string };
 
@@ -316,9 +354,7 @@ export function WorkedBlock({ items, secs, live = false, since }: { items: T3Vie
           <span className="shrink-0 font-medium tabular-nums">Working for {Number.isFinite(from) ? elapsed((now - from) / 1000) : "…"}</span>
           <span className="h-px flex-1 bg-slate-200 dark:bg-border" />
         </div>
-        {groups(items).map((m) => Array.isArray(m) ? <WorkBlock key={m[0].id} steps={m} live={m.includes(items.at(-1)!)} />
-          : m.role === "reasoning" ? <Reasoning key={m.id} m={m} />
-          : <div key={m.id} className="max-w-full pr-6 [&_p]:my-1">{m.text ? <Md>{m.text}</Md> : null}{m.streaming && <Dots />}</div>)}
+        {items.map((m) => <StepLine key={m.id} m={m} />)}
       </div>
     );
   }
@@ -332,11 +368,7 @@ export function WorkedBlock({ items, secs, live = false, since }: { items: T3Vie
         <span className="h-px flex-1 bg-slate-200 dark:bg-border" />
       </button>
       {shown && items.length > 0 && (
-        <div className="mt-1 space-y-1 border-l-2 border-slate-200 pl-3 dark:border-border">
-          {items.map((m) => m.role === "assistant"
-            ? <div key={m.id} className="py-0.5 text-[13px] text-slate-600 dark:text-text-secondary [&_*]:!text-inherit">{m.text ? <Md>{m.text}</Md> : null}{m.streaming && <Dots />}</div>
-            : <Step key={m.id} m={m} />)}
-        </div>
+        <div className="mt-1.5 space-y-1.5">{items.map((m) => <StepLine key={m.id} m={m} />)}</div>
       )}
     </div>
   );
