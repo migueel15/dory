@@ -74,6 +74,9 @@ export const diffStats = (diff = "") => {
   return { files, add, del };
 };
 
+// SUBAGENTS_SHOWN is how many subagents the details card lists before "Mostrar N más".
+const SUBAGENTS_SHOWN = 5;
+
 // Each thread remembers whether its details card is open (per browser).
 const DETAILS_KEY = "dory.thread-details";
 const MAX_REMEMBERED = 300;
@@ -107,6 +110,9 @@ export function ThreadDetails({ v, onChanges, panelOpen = false }: { v: T3Thread
   };
   const keepOpenIn = (id: string) => rememberDetails(id, true);
   const [showDone, setShowDone] = useState(false);
+  // At most SUBAGENTS_SHOWN rows at first; "Mostrar N más" lists them all in a scroll.
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => { setShowAll(false); }, [v.id]);
   // Subagents of this thread, as T3 Code lists them: the ones at work first,
   // then the finished ones folded away. A subagent leads back to its parent.
   const threads = useQuery({ queryKey: ["t3-threads"], queryFn: api.t3Threads, refetchInterval: 60_000 });
@@ -116,6 +122,9 @@ export function ThreadDetails({ v, onChanges, panelOpen = false }: { v: T3Thread
   const subagents = subagentRows(v, everything);
   const live = subagents.filter((x) => x.live);
   const done = subagents.filter((x) => !x.live);
+  const liveShown = showAll ? live : live.slice(0, SUBAGENTS_SHOWN);
+  const doneShown = showAll ? done : done.slice(0, Math.max(0, SUBAGENTS_SHOWN - liveShown.length));
+  const hidden = live.length - liveShown.length + (showDone ? done.length - doneShown.length : 0);
   const box = useRef<HTMLDivElement>(null);
   // Everything loads in the background as the thread opens, so the card is ready
   // when opened; the chat never waits for it.
@@ -203,21 +212,27 @@ export function ThreadDetails({ v, onChanges, panelOpen = false }: { v: T3Thread
                   <span className="min-w-0 flex-1 truncate">Volver a <span className="font-medium">{parent.title || parent.id}</span></span>
                 </Link>
               )}
-              <ul className="max-h-80 overflow-y-auto">
-                {live.map((x) => <SubagentRow key={x.id} t={x} onOpen={() => keepOpenIn(x.id)} />)}
+              <ul className={showAll ? "max-h-72 overflow-y-auto" : ""}>
+                {liveShown.map((x) => <SubagentRow key={x.id} t={x} onOpen={() => keepOpenIn(x.id)} />)}
                 {done.length > 0 && (
                   <li>
-                    <button type="button" onClick={() => setShowDone(!showDone)} aria-expanded={showDone}
+                    <button type="button" onClick={() => { setShowDone(!showDone); setShowAll(false); }} aria-expanded={showDone}
                       className={`${rowCls} w-full text-left hover:bg-slate-100 dark:hover:bg-raised`}>
                       <Robot className={ico} />
                       <span className="flex-1">Agentes previos</span>
                       <span className="text-xs tabular-nums text-slate-500 dark:text-muted">{done.length}</span>
                       <CaretRight weight="regular" className={`size-3.5 text-slate-400 transition-transform ${showDone ? "rotate-90" : ""}`} />
                     </button>
-                    {showDone && <ul>{done.map((x) => <SubagentRow key={x.id} t={x} onOpen={() => keepOpenIn(x.id)} />)}</ul>}
+                    {showDone && <ul>{doneShown.map((x) => <SubagentRow key={x.id} t={x} onOpen={() => keepOpenIn(x.id)} />)}</ul>}
                   </li>
                 )}
               </ul>
+              {hidden > 0 && (
+                <button type="button" onClick={() => setShowAll(true)}
+                  className="mt-0.5 w-full rounded-md px-2 py-1 text-left text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white">
+                  Mostrar {hidden} más
+                </button>
+              )}
             </div>
           )}
         </div>
