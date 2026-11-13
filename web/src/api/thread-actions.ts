@@ -70,7 +70,9 @@ export const isUnread = (t: Pick<T3Thread, "last_visited_at" | "updated_at">) =>
 export function threadMenu(t: T3Thread, run: (a: T3ThreadAction) => void, opts: { onRename: () => void }): ContextAction[] {
   const out: ContextAction[] = [{ label: "Renombrar", run: opts.onRename }];
   out.push(t.pinned_at ? { label: "Desfijar", run: () => run({ action: "unpin" }) } : { label: "Fijar arriba", run: () => run({ action: "pin" }) });
-  out.push(isUnread(t) ? { label: "Marcar como leído", run: () => run({ action: "read" }) } : { label: "Marcar como no leído", run: () => run({ action: "unread" }) });
+  // T3 only marks unread a thread with a finished turn.
+  if (isUnread(t)) out.push({ label: "Marcar como leído", run: () => run({ action: "read" }) });
+  else if (t.status && t.status !== "idle" && !isWorking(t.status)) out.push({ label: "Marcar como no leído", run: () => run({ action: "unread" }) });
   if (isSnoozed(t)) out.push({ label: "Despertar ahora", run: () => run({ action: "unsnooze" }) });
   else out.push({
     label: "Posponer", children: [

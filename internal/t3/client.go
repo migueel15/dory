@@ -178,11 +178,21 @@ func (c Client) shell(ctx context.Context) (active, all []Thread, err error) {
 	if err := c.get(ctx, "/api/orchestration/shell?omitIdleSubagents=false&omitOlderSettled=false", true, &snap); err != nil {
 		return nil, nil, err
 	}
+	// The shell leaves archived threads out (its archivedThreads stays empty);
+	// T3 Code reads them with their own RPC. Without them the list still works.
+	var archived struct {
+		Threads []wireThread `json:"threads"`
+	}
+	if err := c.call(ctx, "orchestration.getArchivedShellSnapshot", map[string]any{}, &archived); err == nil {
+		snap.Archived = append(snap.Archived, archived.Threads...)
+	}
 	all = make([]Thread, 0, len(snap.Threads)+len(snap.Archived))
+	seen := map[string]bool{}
 	for _, w := range append(snap.Threads, snap.Archived...) {
-		if w.DeletedAt != nil {
+		if w.DeletedAt != nil || seen[w.ID] {
 			continue
 		}
+		seen[w.ID] = true
 		t := w.thread()
 		all = append(all, t)
 		if t.SettledAt != "" || t.ArchivedAt != "" || t.Relation == "subagent" && !t.Attention && !working(t.Status) {

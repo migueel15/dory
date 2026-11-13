@@ -77,6 +77,10 @@ func mountThreadActions(mux *http.ServeMux, svc service.Service, monitor *t3.Mon
 					run = th.RunID
 				}
 			}
+			if run == "" {
+				writeError(w, http.StatusBadRequest, "invalid_argument", "the thread has no turn to fork from")
+				return
+			}
 			forked, err = c.ForkThread(ctx, id, run, b.Title)
 		default:
 			writeError(w, http.StatusBadRequest, "invalid_argument", "unknown action")
