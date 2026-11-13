@@ -268,11 +268,11 @@ export function layout(ms: T3ViewMessage[], running: boolean): (T3ViewMessage | 
     if (!seg.length && !(last && running)) return;
     let head: T3ViewMessage | undefined;
     if (seg[0].role === "user") { head = seg[0]; out.push(seg.shift()!); }
-    // The turn at work: "Working for…" from the start, open, with every step
-    // and note below as it comes; the answer is told apart once it ends.
+    // The turn at work: a "Working for…" line and a divider, then its steps
+    // and notes as usual, as they come. It folds only once the turn ends.
     if (last && running) {
-      out.push({ worked: true, live: true, id: `working:${head?.id ?? seg[0]?.id ?? "turn"}`, items: seg.filter(isWork), secs: 0, since: head?.created_at || seg[0]?.created_at });
-      out.push(...groups(seg.filter((m) => !isWork(m))));
+      out.push({ worked: true, live: true, id: `working:${head?.id ?? seg[0]?.id ?? "turn"}`, items: [], secs: 0, since: head?.created_at || seg[0]?.created_at });
+      out.push(...groups(seg));
       return;
     }
     let answer = -1;
@@ -295,9 +295,9 @@ export function layout(ms: T3ViewMessage[], running: boolean): (T3ViewMessage | 
   return out;
 }
 
-// WorkedBlock is a turn's work. While the turn runs it reads "Working for 12s"
-// (ticking), stays open and lists each thought, tool and note as it comes.
-// Once the turn ends it folds to "Worked for 1m 59s", and a click opens it.
+// WorkedBlock is a turn's work. While the turn runs it is only a "Working for
+// 12s" line (ticking) with a divider; the steps follow as usual. Once the turn
+// ends they fold into "Worked for 1m 59s", and a click opens it.
 export function WorkedBlock({ items, secs, live = false, since }: { items: T3ViewMessage[]; secs: number; live?: boolean; since?: string }) {
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -307,7 +307,16 @@ export function WorkedBlock({ items, secs, live = false, since }: { items: T3Vie
     return () => clearInterval(id);
   }, [live]);
   const from = Date.parse(since ?? "");
-  const shown = live || open;
+  if (live) {
+    return (
+      <div role="status" className="flex items-center gap-3 text-xs text-slate-500 dark:text-muted">
+        <span className="size-3 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
+        <span className="shrink-0 font-medium tabular-nums">Working for {Number.isFinite(from) ? elapsed((now - from) / 1000) : "…"}</span>
+        <span className="h-px flex-1 bg-slate-200 dark:bg-border" />
+      </div>
+    );
+  }
+  const shown = open;
   const label = live ? `Working for ${Number.isFinite(from) ? elapsed((now - from) / 1000) : "…"}` : secs >= 1 ? `Worked for ${elapsed(secs)}` : "Worked";
   return (
     <div className="text-sm">
@@ -331,7 +340,9 @@ export function WorkedBlock({ items, secs, live = false, since }: { items: T3Vie
 // Reasoning shows the model's thinking in the chat, folded to its title: a
 // click opens it, in muted text.
 export function Reasoning({ m }: { m: T3ViewMessage }) {
-  const [open, setOpen] = useState(false);
+  const [opened, setOpen] = useState<boolean | null>(null);
+  // Folded, except while the model is still thinking it.
+  const open = opened ?? m.streaming;
   if (!m.text.trim() && !m.streaming) return null;
   return (
     <div className="text-sm">
