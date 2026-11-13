@@ -92,7 +92,7 @@ export function ThreadView() {
             style={{ "--panel-w": `${width}px` } as React.CSSProperties}>
             <div className="ml-auto flex min-h-0 w-full flex-1 lg:w-[var(--panel-w)]">
               <ResizeHandle panel={aside} width={width} onResize={setWidth} />
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col pb-4 lg:pl-3">{opened && <Changes v={v} queryKey={key} target={target} />}</div>
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col pb-4 lg:pl-3">{opened && <Changes v={v} queryKey={key} target={target} onClose={() => setPanel("")} />}</div>
             </div>
           </aside>
         )}

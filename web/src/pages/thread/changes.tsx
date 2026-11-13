@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowsIn, ArrowsOutLineVertical, FolderSimple, CaretDown, CaretRight, FileText, GitDiff } from "@phosphor-icons/react";
+import { ArrowsIn, ArrowsOutLineVertical, FolderSimple, CaretDown, CaretRight, FileText, GitDiff, X } from "@phosphor-icons/react";
 import { api, type T3ChangedFile, type T3ThreadView, type T3ViewMessage } from "../../api/client";
 import { useVisible } from "../../api/live";
 import { ErrorText, Notice, Select } from "../../components/ui";
@@ -90,7 +90,7 @@ export function ChangesCard({ m }: { m: T3ViewMessage }) {
 
 // Changes shows the thread's own changes or its pull request, and sends a
 // selected range to the chat through the same queue or steer as the composer.
-export function Changes({ v, queryKey, target }: { v: T3ThreadView; queryKey: unknown[]; target?: TurnTarget & { seq: number } }) {
+export function Changes({ v, queryKey, target, onClose }: { v: T3ThreadView; queryKey: unknown[]; target?: TurnTarget & { seq: number } ; onClose?: () => void }) {
   const qc = useQueryClient();
   const prs = v.pull_requests.map((p) => ({ ...p, parsed: prOf(p.url) })).filter((p) => p.parsed);
   const [source, setSource] = useState(target ? `turn:${target.checkpoint}` : "thread");
@@ -118,6 +118,10 @@ export function Changes({ v, queryKey, target }: { v: T3ThreadView; queryKey: un
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex shrink-0 flex-wrap items-center gap-2">
+        {onClose && (
+          <button type="button" onClick={onClose} title="Cerrar el panel de cambios" aria-label="Cerrar el panel de cambios"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white"><X className="size-4" /></button>
+        )}
         <Select className="w-64" value={source} onChange={setSource} options={[
           { value: "thread", label: "Cambios del hilo (worktree)" },
           ...(target ? [{ value: `turn:${target.checkpoint}`, label: "Cambios de este turno" }] : []),
