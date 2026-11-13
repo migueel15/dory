@@ -81,7 +81,6 @@ export function Chat({ v, queryKey, onStop, notice, beforeSend, insert }: { v: T
     if (pinned.current) end.current?.scrollIntoView({ block: "end", behavior: "instant" });
   }, [v.messages, v.pending, v.queue, v.active_run_id]);
   const pendingSecret = [...all].reverse().find((m) => m.role === "secret" && m.status === "pending");
-  const working = !!v.active_run_id && !last?.streaming && (last?.role === "user" || last?.role === "assistant" || !last);
   return (
     <ThreadMediaContext.Provider value={v.id}>
     <section className="relative flex min-h-0 flex-1 flex-col">
@@ -99,7 +98,7 @@ export function Chat({ v, queryKey, onStop, notice, beforeSend, insert }: { v: T
             </button>
           </div>
         )}
-        {layout(all, !!v.active_run_id).map((m, gi, all) => "worked" in m ? <WorkedBlock key={m.id} items={m.items} secs={m.secs} /> : Array.isArray(m) ? <WorkBlock key={m[0].id} steps={m} live={!!v.active_run_id && gi === all.length - 1} /> : m.role === "reasoning" ? <Reasoning key={m.id} m={m} /> : m.role === "plan" ? <PlanCard key={m.id} m={m} /> : m.role === "handoff" ? <Handoff key={m.id} m={m} /> : m.role === "secret" ? <SecretLine key={m.id} m={m} /> : m.role === "changes" && m.files ? <ChangesCard key={m.id} m={m} /> : m.role === "html" && m.html ? <HtmlRender key={m.id} threadId={v.id} page={m.html} /> : m.role === "interrupt" ? (
+        {layout(all, !!v.active_run_id).map((m, gi, all) => "worked" in m ? <WorkedBlock key={m.id} items={m.items} secs={m.secs} live={m.live} since={m.since} /> : Array.isArray(m) ? <WorkBlock key={m[0].id} steps={m} live={!!v.active_run_id && gi === all.length - 1} /> : m.role === "reasoning" ? <Reasoning key={m.id} m={m} /> : m.role === "plan" ? <PlanCard key={m.id} m={m} /> : m.role === "handoff" ? <Handoff key={m.id} m={m} /> : m.role === "secret" ? <SecretLine key={m.id} m={m} /> : m.role === "changes" && m.files ? <ChangesCard key={m.id} m={m} /> : m.role === "html" && m.html ? <HtmlRender key={m.id} threadId={v.id} page={m.html} /> : m.role === "interrupt" ? (
           <div key={m.id} role="separator" className="flex items-center gap-3 text-[11px] font-medium uppercase tracking-wide text-slate-400">
             <span className="h-px flex-1 bg-slate-200 dark:bg-border" /><Stop weight="fill" className="size-3" />{m.text}<span className="h-px flex-1 bg-slate-200 dark:bg-border" />
           </div>
@@ -121,7 +120,6 @@ export function Chat({ v, queryKey, onStop, notice, beforeSend, insert }: { v: T
             {m.streaming ? <Dots /> : m.role === "assistant" && <MessageMeta m={m} />}
           </div>
         ))}
-        {working && <Dots />}
         <Queue v={v} queryKey={queryKey} />
         <div ref={end} />
       </div></div>
@@ -254,7 +252,7 @@ export function StepIcon({ m }: { m: T3ViewMessage }) {
 // WorkBlock is one label that follows the model's current step; unfolded it
 // lists every thought and tool of that stretch, each foldable on its own.
 // Worked is a finished turn's work folded into one entry, as in T3 Code.
-export type Worked = { worked: true; id: string; items: T3ViewMessage[]; secs: number };
+export type Worked = { worked: true; id: string; items: T3ViewMessage[]; secs: number; live?: boolean; since?: string };
 
 // layout lays a conversation out turn by turn (by T3 run), as T3 Code does.
 // In a finished turn, everything between the user's message and the final answer (thinking,
@@ -267,10 +265,16 @@ export function layout(ms: T3ViewMessage[], running: boolean): (T3ViewMessage | 
   let start = 0;
   const flush = (end: number, last: boolean) => {
     const seg = ms.slice(start, end);
-    if (!seg.length) return;
+    if (!seg.length && !(last && running)) return;
     let head: T3ViewMessage | undefined;
     if (seg[0].role === "user") { head = seg[0]; out.push(seg.shift()!); }
-    if (last && running) { out.push(...groups(seg)); return; }
+    // The turn at work: "Working for…" from the start, open, with every step
+    // and note below as it comes; the answer is told apart once it ends.
+    if (last && running) {
+      out.push({ worked: true, live: true, id: `working:${head?.id ?? seg[0]?.id ?? "turn"}`, items: seg.filter(isWork), secs: 0, since: head?.created_at || seg[0]?.created_at });
+      out.push(...groups(seg.filter((m) => !isWork(m))));
+      return;
+    }
     let answer = -1;
     for (let i = seg.length - 1; i >= 0; i--) if (seg[i].role === "assistant") { answer = i; break; }
     const work = seg.filter((m, i) => isWork(m) && i !== answer);
@@ -291,23 +295,32 @@ export function layout(ms: T3ViewMessage[], running: boolean): (T3ViewMessage | 
   return out;
 }
 
-// WorkedBlock is a finished turn's work, folded: "Trabajado durante 1m 59s".
-// Opened, it lists the thinking and the tools (each folded too) and the notes
-// the model wrote between them.
-export function WorkedBlock({ items, secs }: { items: T3ViewMessage[]; secs: number }) {
+// WorkedBlock is a turn's work. While the turn runs it reads "Working for 12s"
+// (ticking), stays open and lists each thought, tool and note as it comes.
+// Once the turn ends it folds to "Worked for 1m 59s", and a click opens it.
+export function WorkedBlock({ items, secs, live = false, since }: { items: T3ViewMessage[]; secs: number; live?: boolean; since?: string }) {
   const [open, setOpen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!live) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [live]);
+  const from = Date.parse(since ?? "");
+  const shown = live || open;
+  const label = live ? `Working for ${Number.isFinite(from) ? elapsed((now - from) / 1000) : "…"}` : secs >= 1 ? `Worked for ${elapsed(secs)}` : "Worked";
   return (
     <div className="text-sm">
-      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
-        className="flex max-w-full items-center gap-2 rounded-lg py-0.5 text-xs text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
-        <Check weight="regular" className="size-3.5 shrink-0" />
-        <span className="font-medium">{secs >= 1 ? `Trabajado durante ${elapsed(secs)}` : "Trabajo"}</span>
-        {open ? <CaretDown weight="regular" className="size-3 shrink-0" /> : <CaretRight weight="regular" className="size-3 shrink-0" />}
+      <button type="button" aria-expanded={shown} disabled={live} onClick={() => setOpen(!open)}
+        className="flex max-w-full items-center gap-2 rounded-lg py-0.5 text-xs text-slate-500 enabled:hover:text-slate-900 dark:text-muted dark:enabled:hover:text-white">
+        {live ? <span className="size-3 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <Check weight="regular" className="size-3.5 shrink-0" />}
+        <span className="font-medium tabular-nums">{label}</span>
+        {!live && (open ? <CaretDown weight="regular" className="size-3 shrink-0" /> : <CaretRight weight="regular" className="size-3 shrink-0" />)}
       </button>
-      {open && (
+      {shown && items.length > 0 && (
         <div className="mt-1 space-y-1 border-l-2 border-slate-200 pl-3 dark:border-border">
           {items.map((m) => m.role === "assistant"
-            ? <div key={m.id} className="py-0.5 text-[13px] text-slate-600 dark:text-text-secondary [&_*]:!text-inherit"><Md>{m.text}</Md></div>
+            ? <div key={m.id} className="py-0.5 text-[13px] text-slate-600 dark:text-text-secondary [&_*]:!text-inherit">{m.text ? <Md>{m.text}</Md> : null}{m.streaming && <Dots />}</div>
             : <Step key={m.id} m={m} />)}
         </div>
       )}
