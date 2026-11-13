@@ -162,6 +162,12 @@ func htmlRenderOf(it wireTurnItem) *HTMLRender {
 	return walk(v, 0)
 }
 
+// systemNotice reports a message T3 wrote in the user's name to wake the
+// thread when a background task (a subagent, a command) finishes.
+func systemNotice(text string) bool {
+	return strings.HasPrefix(strings.TrimSpace(text), "<task-notification>")
+}
+
 // hiddenItems are turn items the chat does not show as steps.
 var hiddenItems = map[string]bool{"checkpoint": true, "user_message": true, "assistant_message": true, "run_interrupt_request": true}
 
@@ -401,6 +407,9 @@ func (p wireViewProjection) view(threadID string) ThreadView {
 			if r.QueuePosition != nil {
 				pos = *r.QueuePosition
 			}
+			if systemNotice(text[r.UserMessageID]) {
+				break
+			}
 			v.Queue = append(v.Queue, QueuedRun{RunID: r.ID, Text: text[r.UserMessageID], Position: pos, Held: r.QueueHeld})
 			queued[r.UserMessageID] = true
 		case activeStatuses[r.Status]:
@@ -416,8 +425,9 @@ func (p wireViewProjection) view(threadID string) ThreadView {
 	sort.SliceStable(v.Queue, func(i, j int) bool { return v.Queue[i].Position < v.Queue[j].Position })
 	msgs := map[string]ViewMessage{}
 	for _, m := range p.FullMessages {
-		// Queued messages show in the queue, not in the conversation.
-		if !queued[m.ID] {
+		// Queued messages show in the queue, not in the conversation; T3's
+		// notices of finished background tasks are not the user's and stay out.
+		if !queued[m.ID] && !(m.Role == "user" && systemNotice(m.Text)) {
 			msgs[m.ID] = ViewMessage{ID: m.ID, Role: m.Role, Text: m.Text, Streaming: m.Streaming, CreatedAt: m.CreatedAt, Attachments: attachmentsOf(m.Attachments)}
 			if m.Context != nil {
 				for _, rec := range m.Context.Records {
@@ -466,6 +476,12 @@ func timeline(in []wireTurnItem, msgs map[string]ViewMessage, runStatus map[stri
 			it.Streaming, it.Status = false, "completed"
 		}
 		switch {
+		case it.Type == "notification":
+			// A background task (a subagent) finished and woke the thread. T3 sends
+			// it as a user message, which T3 Code never shows: hide both.
+			if id, err := url.PathUnescape(strings.TrimPrefix(it.ID, "turn-item:message:")); err == nil && id != it.ID {
+				shown[id] = true
+			}
 		case it.Type == "user_input_request":
 			// A question to the user shows as a step, like Claude's AskUserQuestion.
 			var qs []string
@@ -495,7 +511,7 @@ func timeline(in []wireTurnItem, msgs map[string]ViewMessage, runStatus map[stri
 			if !ok && fromItems && (it.Type == "user_message" || it.Type == "assistant_message") {
 				m, ok = ViewMessage{ID: *it.MessageID, Role: strings.TrimSuffix(it.Type, "_message"), Text: str(it.Text), CreatedAt: it.StartedAt}, true
 			}
-			if ok && !shown[m.ID] {
+			if ok && !shown[m.ID] && !(m.Role == "user" && systemNotice(m.Text)) {
 				shown[m.ID] = true
 				out = append(out, m)
 			}

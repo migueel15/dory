@@ -98,7 +98,7 @@ export function Chat({ v, queryKey, onStop, notice, beforeSend, insert }: { v: T
             </button>
           </div>
         )}
-        {groups(all).map((m, gi, all) => Array.isArray(m) ? <WorkBlock key={m[0].id} steps={m} live={!!v.active_run_id && gi === all.length - 1} /> : m.role === "plan" ? <PlanCard key={m.id} m={m} /> : m.role === "handoff" ? <Handoff key={m.id} m={m} /> : m.role === "secret" ? <SecretLine key={m.id} m={m} /> : m.role === "changes" && m.files ? <ChangesCard key={m.id} m={m} /> : m.role === "html" && m.html ? <HtmlRender key={m.id} threadId={v.id} page={m.html} /> : m.role === "interrupt" ? (
+        {groups(all).map((m, gi, all) => Array.isArray(m) ? <WorkBlock key={m[0].id} steps={m} live={!!v.active_run_id && gi === all.length - 1} /> : m.role === "reasoning" ? <Reasoning key={m.id} m={m} /> : m.role === "plan" ? <PlanCard key={m.id} m={m} /> : m.role === "handoff" ? <Handoff key={m.id} m={m} /> : m.role === "secret" ? <SecretLine key={m.id} m={m} /> : m.role === "changes" && m.files ? <ChangesCard key={m.id} m={m} /> : m.role === "html" && m.html ? <HtmlRender key={m.id} threadId={v.id} page={m.html} /> : m.role === "interrupt" ? (
           <div key={m.id} role="separator" className="flex items-center gap-3 text-[11px] font-medium uppercase tracking-wide text-slate-400">
             <span className="h-px flex-1 bg-slate-200 dark:bg-border" /><Stop weight="fill" className="size-3" />{m.text}<span className="h-px flex-1 bg-slate-200 dark:bg-border" />
           </div>
@@ -227,12 +227,13 @@ export function PlanCard({ m }: { m: T3ViewMessage }) {
 
 export const isStep = (m: T3ViewMessage) => m.role === "reasoning" || m.role === "tool";
 
-// groups folds each run of consecutive reasoning and tool steps into one block.
+// groups folds each run of consecutive tool steps into one block. Reasoning
+// stays out of it and shows in the chat, as in T3 Code.
 export function groups(ms: T3ViewMessage[]): (T3ViewMessage | T3ViewMessage[])[] {
   const out: (T3ViewMessage | T3ViewMessage[])[] = [];
   for (const m of ms) {
     const prev = out.at(-1);
-    if (!isStep(m)) out.push(m);
+    if (m.role !== "tool") out.push(m);
     else if (Array.isArray(prev)) prev.push(m);
     else out.push([m]);
   }
@@ -251,6 +252,25 @@ export function StepIcon({ m }: { m: T3ViewMessage }) {
 
 // WorkBlock is one label that follows the model's current step; unfolded it
 // lists every thought and tool of that stretch, each foldable on its own.
+// Reasoning shows the model's thinking in the chat, open, in muted text; it
+// folds to its title with a click.
+export function Reasoning({ m }: { m: T3ViewMessage }) {
+  const [open, setOpen] = useState(true);
+  if (!m.text.trim() && !m.streaming) return null;
+  return (
+    <div className="text-sm">
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 py-0.5 text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
+        <StepIcon m={m} />{stepLabel(m)}
+        {open ? <CaretDown weight="regular" className="size-3 shrink-0" /> : <CaretRight weight="regular" className="size-3 shrink-0" />}
+      </button>
+      {open && m.text.trim() && (
+        <div className="mt-0.5 border-l-2 border-slate-200 pl-3 text-[13px] leading-relaxed text-slate-500 dark:border-border dark:text-muted [&_*]:!text-inherit"><Md>{m.text}</Md></div>
+      )}
+    </div>
+  );
+}
+
 export function WorkBlock({ steps, live }: { steps: T3ViewMessage[]; live: boolean }) {
   const [open, setOpen] = useState(false);
   const last = steps[steps.length - 1];

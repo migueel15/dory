@@ -163,3 +163,29 @@ func TestViewKeepsSubagentsState(t *testing.T) {
 		t.Errorf("subagent = %+v", s)
 	}
 }
+
+func TestViewHidesTaskNotifications(t *testing.T) {
+	var p wireViewProjection
+	raw := `{"messages":[
+		{"id":"m1","role":"user","text":"hola"},
+		{"id":"m2","role":"user","text":"<task-notification>\n<task-id>x</task-id>\n</task-notification>"},
+		{"id":"m3","role":"user","text":"<task-notification>pendiente</task-notification>"}],
+		"turnItems":[
+		{"id":"i1","type":"user_message","messageId":"m1","ordinal":1},
+		{"id":"turn-item:message:m2","type":"notification","ordinal":2,"summary":"Subagent finished"}]}`
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(raw), &p.wireProjection); err != nil {
+		t.Fatal(err)
+	}
+	v := p.view("th")
+	for _, m := range v.Messages {
+		if m.ID != "m1" {
+			t.Errorf("shown %+v", m)
+		}
+	}
+	if len(v.Messages) != 1 {
+		t.Errorf("messages = %+v", v.Messages)
+	}
+}
