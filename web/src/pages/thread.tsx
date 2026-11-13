@@ -77,8 +77,8 @@ export function ThreadView() {
     <div ref={setHost} className="relative flex h-full min-h-0">
       <FullscreenHost.Provider value={host}>
       {/* With the panel open, the chat column keeps the same gap to the divider
-          as the panel does (lg:pl-3), so the two header buttons sit symmetric. */}
-      <div className={`min-h-0 min-w-0 flex-1 flex-col gap-3 ${panel ? "hidden lg:flex lg:pr-3" : "flex"}`}>
+          as the panel does (lg:pl-1), so the two header buttons sit symmetric. */}
+      <div className={`min-h-0 min-w-0 flex-1 flex-col gap-3 ${panel ? "hidden lg:flex lg:pr-1" : "flex"}`}>
       <ContextBar v={v}>
         <ThreadDetails v={v} onChanges={() => setPanel("changes")} panelOpen={panel !== ""} />
         {/* With the panel open, its toggle moves to the panel's own top row. */}
@@ -99,7 +99,7 @@ export function ThreadView() {
             style={{ "--panel-w": `${width}px` } as React.CSSProperties}>
             <div className="ml-auto flex min-h-0 w-full flex-1 lg:w-[var(--panel-w)]">
               <ResizeHandle panel={aside} width={width} onResize={setWidth} />
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col pb-4 lg:pl-3">{opened && <Changes v={v} queryKey={key} target={target} onClose={() => setPanel("")} />}</div>
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col pb-4 lg:pl-1">{opened && <Changes v={v} queryKey={key} target={target} onClose={() => setPanel("")} />}</div>
             </div>
           </aside>
         )}
