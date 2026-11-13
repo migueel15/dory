@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowBendUpLeft, Cube, Cloud, FolderSimple, GitBranch, GitPullRequest, Info, Kanban, CaretRight, Check, Copy, DotsThree, Robot, GitDiff } from "@phosphor-icons/react";
+import { ArrowBendUpLeft, Cube, Cloud, FolderSimple, GitBranch, GitPullRequest, Info, Kanban, CaretRight, Check, Copy, DotsThree, Robot, GitDiff, GitMerge } from "@phosphor-icons/react";
 import { api, type T3Thread, type T3ThreadView } from "../../api/client";
 import { useVisible } from "../../api/live";
 import { isUnread, isWorking, threadMenu, useThreadAction } from "../../api/thread-actions";
 import { ContextMenu } from "../../components/context-menu";
-import { copyText, StatusPill, pill } from "../../components/ui";
+import { copyText, errMsg, StatusPill, pill } from "../../components/ui";
+import { useArm } from "../../components/github-ui";
 import { OpenInT3 } from "../../components/thread-link";
 import { statusLabel, ThreadStatus } from "../../components/thread-status";
 import { ModelLogo } from "../../components/model-logo";
@@ -172,7 +173,7 @@ export function ThreadDetails({ v, onChanges, panelOpen = false }: { v: T3Thread
               {branch ? <span className="min-w-0 flex-1 truncate font-medium" title={branch}>{branch}</span> : <span className="flex-1 text-slate-400 dark:text-muted">Sin rama</span>}
               {branch && <CopyText text={branch} hidden title="Copiar rama" />}
             </div>
-            {v.pull_requests.map((p, i) => <PullRow key={p.url} link={p} pull={i === 0 ? pr ?? undefined : undefined} onOpen={() => {}} />)}
+            {v.pull_requests.map((p, i) => <PullRow key={p.url} link={p} pull={i === 0 ? pr ?? undefined : undefined} />)}
             {v.items.map((it) => (
               <Link key={it.item_id} to="/items/$id/define" params={{ id: it.item_id }} className={`${rowCls} hover:bg-slate-100 dark:hover:bg-raised`}>
                 <Kanban className={ico} />
@@ -180,8 +181,6 @@ export function ThreadDetails({ v, onChanges, panelOpen = false }: { v: T3Thread
                 <CaretRight weight="regular" className="size-3.5 text-slate-400" />
               </Link>
             ))}
-          </div>
-          <div className="py-1.5">
             <button type="button" disabled={!onChanges} onClick={() => { setPopup(false); onChanges?.(); }} title="Abrir el panel de cambios"
               className={`${rowCls} w-full text-left enabled:hover:bg-slate-100 dark:enabled:hover:bg-raised`}>
               <GitDiff className={ico} />
@@ -194,7 +193,7 @@ export function ThreadDetails({ v, onChanges, panelOpen = false }: { v: T3Thread
           </div>
           {(subagents.length > 0 || parent) && (
             <div className="pt-1.5">
-              <p className="px-2 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-muted">Linaje</p>
+              <p className="px-2 pb-1 pt-0.5 text-xs font-semibold text-slate-500 dark:text-muted">Linaje</p>
               {parent && (
                 <Link to="/threads/$threadId" params={{ threadId: parent.id }} onClick={() => keepOpenIn(parent.id)} title="Volver al hilo padre"
                   className="flex min-h-8 items-center gap-2.5 rounded-md px-2 text-sm hover:bg-slate-100 dark:hover:bg-raised">
@@ -204,7 +203,6 @@ export function ThreadDetails({ v, onChanges, panelOpen = false }: { v: T3Thread
               )}
               <ul className="max-h-80 overflow-y-auto">
                 {live.map((x) => <SubagentRow key={x.id} t={x} onOpen={() => keepOpenIn(x.id)} />)}
-                {subagents.length > 0 && live.length === 0 && <li className="px-2 py-1 text-xs text-slate-400 dark:text-muted">Ningún subagente trabajando.</li>}
                 {done.length > 0 && (
                   <li>
                     <button type="button" onClick={() => setShowDone(!showDone)} aria-expanded={showDone}
@@ -252,35 +250,51 @@ function SubagentRow({ t, onOpen, idle }: { t: T3Thread; onOpen: () => void; idl
   );
 }
 
-export const prBadge = (p?: { draft: boolean; state: string }) => {
-  if (!p) return null;
-  const s = p.state.toLowerCase();
-  const [label, cls] = s === "merged" ? ["Merged", "bg-violet-600"] : s === "closed" ? ["Closed", "bg-red-600"] : p.draft ? ["Draft", "bg-slate-500"] : ["Ready", "bg-blue-600"];
-  return <span className={`rounded-md px-2 py-0.5 text-xs font-semibold text-white ${cls}`}>{label}</span>;
-};
-
-// PullRow is a pull request in the details card: title, number and state;
-// it opens the PR inside Dory, and the arrow opens it on GitHub.
-export function PullRow({ link, pull, onOpen }: { link: { url: string; number: number; repository: string }; pull?: { title: string; draft: boolean; state: string }; onOpen: () => void }) {
+// PullRow is a pull request in the details card: its icon shows the state
+// (draft, open, merged, closed), and the button moves it on, one step at a
+// time and with a second click to confirm: mark a draft ready, merge a ready one.
+export function PullRow({ link, pull }: { link: { url: string; number: number; repository: string }; pull?: { title: string; draft: boolean; state: string } }) {
+  const qc = useQueryClient();
   const p = prOf(link.url);
   const [owner, repo] = (p?.repo ?? link.repository).split("/");
+  const state = pull?.state.toLowerCase() ?? "";
+  const look = state === "merged" ? { Glyph: GitMerge, cls: "text-violet-600 dark:text-violet-400", label: "Mergeada" }
+    : state === "closed" ? { Glyph: GitPullRequest, cls: "text-red-600 dark:text-red-400", label: "Cerrada" }
+    : pull?.draft ? { Glyph: GitPullRequest, cls: "text-slate-400 dark:text-muted", label: "Borrador" }
+    : pull ? { Glyph: GitPullRequest, cls: "text-emerald-600 dark:text-emerald-400", label: "Abierta" }
+    : { Glyph: GitPullRequest, cls: "text-slate-500 dark:text-muted", label: "" };
+  const next = !p || !pull || state !== "open" ? undefined : pull.draft ? { type: "ready", label: "Marcar lista" } : { type: "merge", label: "Mergear" };
+  const act = useMutation({
+    mutationFn: (type: string) => api.githubAct(p!.repo, "pulls", p!.number, type === "merge" ? { type, method: "MERGE" } : { type }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ["github-detail", p?.repo, "pulls", p?.number] });
+      void qc.invalidateQueries({ queryKey: ["github"] });
+    },
+  });
+  const [armed, click] = useArm(() => next && act.mutate(next.type));
   const body = (
     <>
-      <GitPullRequest className="mt-0.5 size-[18px] shrink-0 text-slate-500 dark:text-muted" />
+      <look.Glyph weight="bold" className={`mt-0.5 size-[18px] shrink-0 ${look.cls}`} aria-label={look.label || undefined} />
       <span className="min-w-0 flex-1">
         <span className="line-clamp-2 font-medium">{pull?.title ?? link.repository}</span>
-        <span className="mt-1 flex items-center gap-2">
-          <span className="font-mono text-xs text-slate-500 dark:text-muted">#{link.number}</span>
-          <span className="ml-auto">{prBadge(pull)}</span>
-        </span>
+        <span className="font-mono text-xs text-slate-500 dark:text-muted">#{link.number}{look.label && ` · ${look.label}`}</span>
       </span>
     </>
   );
   const cls = "flex min-w-0 flex-1 items-start gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-raised";
   return (
-    <div className="flex items-start gap-0.5">
-      {p ? <Link to="/github/$owner/$repo/$kind/$number" params={{ owner, repo, kind: "pulls", number: String(p.number) }} onClick={onOpen} className={cls} title="Abrir la PR en Dory">{body}</Link>
-        : <a href={link.url} target="_blank" rel="noreferrer" className={cls}>{body}</a>}
+    <div>
+      <div className="flex items-center gap-1">
+        {p ? <Link to="/github/$owner/$repo/$kind/$number" params={{ owner, repo, kind: "pulls", number: String(p.number) }} className={cls} title="Abrir la PR en Dory">{body}</Link>
+          : <a href={link.url} target="_blank" rel="noreferrer" className={cls}>{body}</a>}
+        {next && (
+          <button type="button" onClick={click} disabled={act.isPending} title={armed ? "Pulsa otra vez para confirmar" : next.type === "merge" ? "Mergear la PR (merge commit)" : "Marcar la PR como lista para revisión"}
+            className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-white transition-colors disabled:opacity-50 ${armed ? "bg-amber-600" : next.type === "merge" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-blue-600 hover:bg-blue-700"}`}>
+            {act.isPending ? "…" : armed ? "¿Confirmar?" : next.label}
+          </button>
+        )}
+      </div>
+      {act.error && <p className="px-2 pb-1 text-xs text-red-600 dark:text-red-400">{errMsg(act.error)}</p>}
     </div>
   );
 }
