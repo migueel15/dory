@@ -261,30 +261,52 @@ const commandName = (cmd = "") => {
   return "";
 };
 
-// StepLine is one step of a turn, as T3 Code lists them: an icon and a line.
-// Thinking shows its text; a command reads "Running python3" (then "Ran …")
-// and opens to the full command; other tools show their name and input.
-// A note the model writes between steps is plain text: not an answer, so no
-// time or copy button.
-export function StepLine({ m }: { m: T3ViewMessage }) {
-  const [open, setOpen] = useState(false);
-  const muted = "text-[13px] leading-relaxed text-slate-500 dark:text-muted";
-  if (m.role === "assistant") return <div className={`pl-6 ${muted} !text-slate-700 dark:!text-text-secondary [&_*]:!text-inherit [&_p]:my-0.5`}>{m.text ? <Md>{m.text}</Md> : null}{m.streaming && <Dots />}</div>;
-  if (m.role === "reasoning") {
-    if (!m.text.trim()) return m.streaming ? <div className={`flex items-center gap-2 ${muted}`}><Brain weight="regular" className="size-4 shrink-0" />Thinking…</div> : null;
-    return <div className={`flex gap-2 ${muted}`}><Brain weight="regular" className="mt-0.5 size-4 shrink-0" /><div className="min-w-0 flex-1 [&_*]:!text-inherit [&_p]:my-0"><Md>{m.text}</Md></div></div>;
+// stepKind says which steps share a line: consecutive thoughts, commands,
+// notes or calls to the same tool show as one line that updates in place.
+const stepKind = (m: T3ViewMessage) => m.role === "assistant" ? "note" : m.role === "reasoning" ? "think" : m.title === "command execution" ? "cmd" : `tool:${m.title}`;
+
+// stepRuns groups consecutive steps of the same kind.
+export function stepRuns(items: T3ViewMessage[]): T3ViewMessage[][] {
+  const out: T3ViewMessage[][] = [];
+  for (const m of items) {
+    if (m.role === "reasoning" && !m.text.trim() && !m.streaming) continue;
+    const last = out.at(-1);
+    if (last && stepKind(last[0]) === stepKind(m)) last.push(m);
+    else out.push([m]);
   }
+  return out;
+}
+
+const oneLine = (t = "") => t.replace(/[`*_#>]/g, "").replace(/\s+/g, " ").trim();
+
+// StepLine is a run of steps of one kind, as T3 Code lists them: an icon and a
+// single line with the latest step, cut with an ellipsis. A thought shows its
+// text, a command "Running python3" (then "Ran …"), a tool its name and input,
+// a note the model wrote between steps its text (no time or copy: it is not an
+// answer). A click opens every step of the run in full.
+export function StepLine({ run }: { run: T3ViewMessage[] }) {
+  const [open, setOpen] = useState(false);
+  const m = run[run.length - 1];
+  const kind = stepKind(m);
   const running = stepRunning(m), failed = stepFailed(m);
-  const cmd = m.title === "command execution";
-  const label = cmd ? `${running ? "Running" : failed ? "Failed" : "Ran"} ${commandName(m.detail) || "command"}` : m.title || "Tool";
+  const icon = kind === "think" ? <Brain weight="regular" className="size-4 shrink-0" /> : kind === "cmd" ? <TerminalWindow weight="regular" className="size-4 shrink-0" />
+    : kind === "note" ? <span className="size-4 shrink-0" /> : <Wrench weight="regular" className="size-4 shrink-0" />;
+  const line = kind === "think" ? (oneLine(m.text) || "Thinking…")
+    : kind === "note" ? oneLine(m.text)
+    : kind === "cmd" ? `${running ? "Running" : failed ? "Failed" : "Ran"} ${commandName(m.detail) || "command"}`
+    : `${m.title || "Tool"}${m.detail ? ` ${oneLine(m.detail)}` : ""}`;
+  const full = (x: T3ViewMessage) => x.role === "tool"
+    ? <pre key={x.id} className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-100 p-2 font-mono text-[11px] dark:bg-raised">{x.detail}</pre>
+    : <div key={x.id} className="[&_*]:!text-inherit [&_p]:my-0.5"><Md>{x.text}</Md></div>;
   return (
-    <div className={muted}>
-      <button type="button" disabled={!m.detail} onClick={() => setOpen(!open)} className="flex max-w-full items-center gap-2 text-left enabled:hover:text-slate-900 dark:enabled:hover:text-white">
-        {cmd ? <TerminalWindow weight="regular" className="size-4 shrink-0" /> : <Wrench weight="regular" className="size-4 shrink-0" />}
-        <span className={`shrink-0 ${running ? "motion-safe:animate-pulse" : ""} ${failed ? "text-red-600 dark:text-red-400" : ""}`}>{label}</span>
-        {!cmd && !open && m.detail && <code className="min-w-0 truncate font-mono text-xs opacity-70">{m.detail}</code>}
+    <div className={`text-[13px] leading-relaxed ${kind === "note" ? "text-slate-700 dark:text-text-secondary" : "text-slate-500 dark:text-muted"}`}>
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
+        className="flex w-full min-w-0 items-center gap-2 text-left hover:text-slate-900 dark:hover:text-white">
+        {icon}
+        <span className={`min-w-0 flex-1 truncate ${running ? "motion-safe:animate-pulse" : ""} ${failed ? "text-red-600 dark:text-red-400" : ""}`}>{line}</span>
+        {run.length > 1 && <span className="shrink-0 text-[11px] tabular-nums opacity-60">{run.length}</span>}
       </button>
-      {open && m.detail && <pre className="mb-1 ml-6 mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-100 p-2 font-mono text-[11px] dark:bg-raised">{m.detail}</pre>}
+      {open && <div className="mb-1 ml-6 mt-1 space-y-1.5">{run.map(full)}</div>}
     </div>
   );
 }
@@ -354,7 +376,7 @@ export function WorkedBlock({ items, secs, live = false, since }: { items: T3Vie
           <span className="shrink-0 font-medium tabular-nums">Working for {Number.isFinite(from) ? elapsed((now - from) / 1000) : "…"}</span>
           <span className="h-px flex-1 bg-slate-200 dark:bg-border" />
         </div>
-        {items.map((m) => <StepLine key={m.id} m={m} />)}
+        {stepRuns(items).map((r) => <StepLine key={r[0].id} run={r} />)}
       </div>
     );
   }
@@ -368,7 +390,7 @@ export function WorkedBlock({ items, secs, live = false, since }: { items: T3Vie
         <span className="h-px flex-1 bg-slate-200 dark:bg-border" />
       </button>
       {shown && items.length > 0 && (
-        <div className="mt-1.5 space-y-1.5">{items.map((m) => <StepLine key={m.id} m={m} />)}</div>
+        <div className="mt-1.5 space-y-1.5">{stepRuns(items).map((r) => <StepLine key={r[0].id} run={r} />)}</div>
       )}
     </div>
   );
