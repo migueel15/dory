@@ -120,7 +120,7 @@ export function Changes({ v, queryKey, target, onClose }: { v: T3ThreadView; que
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         {onClose && (
           <button type="button" onClick={onClose} title="Cerrar el panel de cambios" aria-label="Cerrar el panel de cambios"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white"><X className="size-4" /></button>
+            className="-mr-1 grid shrink-0 place-items-center p-0.5 text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white"><X className="size-4" /></button>
         )}
         <Select className="w-64" value={source} onChange={setSource} options={[
           { value: "thread", label: "Cambios del hilo (worktree)" },
