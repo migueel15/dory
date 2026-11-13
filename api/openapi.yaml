@@ -3722,6 +3722,8 @@ components:
         branch: {type: "string"}
         worktree_path: {type: "string"}
         provider: {type: "string", description: "T3 provider instance running the thread (codex, claudeAgent…)"}
+        run_started_at: {type: "string", description: "Start of the latest run"}
+        run_completed_at: {type: "string", description: "End of the latest run, empty while it runs"}
         parent_id: {type: "string", description: "Thread that spawned this one"}
         relation: {type: "string", enum: ["subagent", "fork"]}
     T3ThreadContext:

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowRight, ArrowSquareOut, ArrowUp, ArrowsOut, Browser, Eye, EyeSlash, Key, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, Question, Quotes, Stop, Wrench, X } from "@phosphor-icons/react";
 import { api, type T3Attachment, type T3ThreadView, type T3ViewMessage } from "../../api/client";
 import { copyText, ErrorText, Md } from "../../components/ui";
@@ -13,12 +13,17 @@ import { QUOTE_RE, quoteLabel, TokenChip, type Token, type Tokens } from "../../
 import { defaultUrlTransform } from "react-markdown";
 import { Queue, iconBtn } from "./queue";
 import { Composer } from "./composer";
+import { SubagentBar } from "./subagent-bar";
 import { ChangesCard } from "./changes";
 
 // Insert adds text to the composer; with quote, a quote object goes before it.
 export type Insert = { text: string; seq: number; quote?: { label: string; body: string } };
 export function Chat({ v, queryKey, onStop, notice, beforeSend, insert }: { v: T3ThreadView; queryKey: unknown[]; onStop: (run: string) => void; notice?: React.ReactNode; beforeSend?: () => Promise<unknown>; insert?: Insert }) {
   const qc = useQueryClient();
+  const threads = useQuery({ queryKey: ["t3-threads"], queryFn: api.t3Threads, refetchInterval: 60_000 });
+  const everything = threads.data?.flatMap((x) => x.threads);
+  const self = everything?.find((x) => x.id === v.id);
+  const parent = self?.parent_id ? everything?.find((x) => x.id === self.parent_id) : undefined;
   const end = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -144,7 +149,10 @@ export function Chat({ v, queryKey, onStop, notice, beforeSend, insert }: { v: T
           </div>
         )}
         {notice}
-        <div className="relative z-10"><Composer v={v} queryKey={queryKey} onStop={onStop} question={question} beforeSend={sending} insert={ins} /></div>
+        {/* A subagent is driven by its parent and takes no messages: a bar
+            with its run and a way back replaces the composer, as in T3 Code. */}
+        <div className="relative z-10">{self?.relation === "subagent" ? <SubagentBar v={v} t={self} parent={parent} />
+          : <Composer v={v} queryKey={queryKey} onStop={onStop} question={question} beforeSend={sending} insert={ins} />}</div>
       </div>
     </section>
     </ThreadMediaContext.Provider>

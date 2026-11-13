@@ -1764,6 +1764,10 @@ export interface components {
             worktree_path?: string;
             /** @description T3 provider instance running the thread (codex, claudeAgent…) */
             provider?: string;
+            /** @description Start of the latest run */
+            run_started_at?: string;
+            /** @description End of the latest run, empty while it runs */
+            run_completed_at?: string;
             /** @description Thread that spawned this one */
             parent_id?: string;
             /** @enum {string} */

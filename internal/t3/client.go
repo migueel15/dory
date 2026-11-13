@@ -47,9 +47,11 @@ type Thread struct {
 	Attention   bool   `json:"attention"`
 	SettledAt   string `json:"settled_at,omitempty"`
 	RunID       string `json:"-"`
-	CompletedAt string `json:"-"`
-	RequestID   string `json:"-"`
-	URL         string `json:"url"`
+	CompletedAt string `json:"run_completed_at,omitempty"`
+	// RunStartedAt is when the latest run started; with CompletedAt it gives its duration.
+	RunStartedAt string `json:"run_started_at,omitempty"`
+	RequestID    string `json:"-"`
+	URL          string `json:"url"`
 	// EnvironmentID is the T3 environment, used for app deep links.
 	EnvironmentID string `json:"t3_environment_id"`
 	// Organization of the thread in T3 Code's sidebar.
@@ -70,6 +72,7 @@ type Thread struct {
 type wireThread struct {
 	LatestRunID          string  `json:"latestRunId"`
 	LatestRunCompletedAt string  `json:"latestRunCompletedAt"`
+	LatestRunStartedAt   string  `json:"latestRunStartedAt"`
 	ID                   string  `json:"id"`
 	ProjectID            string  `json:"projectId"`
 	Title                string  `json:"title"`
@@ -223,7 +226,7 @@ func (w wireThread) thread() Thread {
 	}
 	_ = json.Unmarshal(w.PendingRequest, &pending)
 	return Thread{
-		RunID: w.LatestRunID, CompletedAt: w.LatestRunCompletedAt, RequestID: pending.ID, SettledAt: str(w.SettledAt),
+		RunID: w.LatestRunID, CompletedAt: w.LatestRunCompletedAt, RunStartedAt: w.LatestRunStartedAt, RequestID: pending.ID, SettledAt: str(w.SettledAt),
 		ID: w.ID, ProjectID: w.ProjectID, Title: w.Title, Status: w.Status, Model: w.ModelSelection.Model, Provider: w.ModelSelection.InstanceID, Effort: w.effort(),
 		UpdatedAt: w.UpdatedAt, Attention: w.attention(),
 		ArchivedAt: str(w.ArchivedAt), PinnedAt: str(w.PinnedAt), PinOrderKey: str(w.PinOrderKey), SnoozedUntil: str(w.SnoozedUntil),
