@@ -193,7 +193,8 @@ func activeThreads(threads []Thread) int {
 	n := 0
 	for _, t := range threads {
 		switch t.Status {
-		case updateActiveThreadStatus, "starting", "preparing":
+		// A thread with a turn queued or waiting for the user would lose it too.
+		case updateActiveThreadStatus, "starting", "preparing", "queued", "waiting":
 			n++
 		}
 	}
