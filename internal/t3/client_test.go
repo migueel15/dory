@@ -70,3 +70,45 @@ func TestHTMLFallbackIsAnError(t *testing.T) {
 		t.Error("HTML accepted as discovery")
 	}
 }
+
+func TestShellKeepsEveryThreadWithLineage(t *testing.T) {
+	c := server(t, "2", `{"threads":[
+		{"id":"a","status":"running"},
+		{"id":"s","status":"completed","settledAt":"2026-01-01","pinnedAt":"2026-01-02","pinOrderKey":"a0"},
+		{"id":"k","status":"completed","lineage":{"parentThreadId":"a","relationshipToParent":"subagent"}},
+		{"id":"w","status":"running","lineage":{"parentThreadId":"a","relationshipToParent":"subagent"}},
+		{"id":"x","status":"completed","deletedAt":"2026-01-03"}],
+		"archivedThreads":[{"id":"z","status":"completed","archivedAt":"2026-01-04"}]}`)
+	active, all, err := c.shell(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := func(l []Thread) (out []string) {
+		for _, th := range l {
+			out = append(out, th.ID)
+		}
+		return
+	}
+	if got := ids(active); len(got) != 2 || got[0] != "a" || got[1] != "w" {
+		t.Errorf("active = %v", got)
+	}
+	if got := ids(all); len(got) != 5 {
+		t.Errorf("all = %v", got)
+	}
+	for _, th := range all {
+		switch th.ID {
+		case "s":
+			if th.PinnedAt == "" || th.PinOrderKey != "a0" || th.SettledAt == "" {
+				t.Errorf("s = %+v", th)
+			}
+		case "k":
+			if th.ParentID != "a" || th.Relation != "subagent" {
+				t.Errorf("k = %+v", th)
+			}
+		case "z":
+			if th.ArchivedAt == "" {
+				t.Errorf("z = %+v", th)
+			}
+		}
+	}
+}

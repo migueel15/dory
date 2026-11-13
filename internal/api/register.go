@@ -68,6 +68,7 @@ func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *
 	mountReviewAsk(mux, svc, monitor, gh)
 	mountThreads(mux, svc, monitor)
 	mountThreadView(mux, svc, monitor)
+	mountThreadActions(mux, svc, monitor)
 	mountLaunch(mux, svc, monitor)
 	mountDefine(mux, svc, monitor, gh)
 	mountDictation(mux, svc, monitor, dict)

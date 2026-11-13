@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
 )
 
 // rpcTimeout bounds one write call, including the WebSocket handshake.

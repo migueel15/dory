@@ -1153,7 +1153,50 @@ paths:
           content:
             application/json:
               schema: {type: "object", required: ["diff", "source"], properties: {diff: {type: "string"}, source: {type: "string", enum: ["t3", "git"]}, branch: {type: "string"}, worktree: {type: "string"}, base: {type: "string"}}}
+  "/t3/threads/{id}/actions":
+    post:
+      operationId: "actOnT3Thread"
+      summary: "Organize a thread as T3 Code's sidebar does: rename, archive, unarchive, delete, pin, unpin, settle, unsettle, snooze, unsnooze, read, unread, stop or fork (from run_id, or the latest run)"
+      parameters:
+        - {name: "id", in: "path", required: true, schema: {type: "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              required: ["action"]
+              properties:
+                action: {type: "string", enum: ["rename", "archive", "unarchive", "delete", "pin", "unpin", "settle", "unsettle", "snooze", "unsnooze", "read", "unread", "stop", "fork"]}
+                title: {type: "string", description: "New title (rename) or title of the fork"}
+                until: {type: "string", format: "date-time", description: "End of the snooze"}
+                run_id: {type: "string", description: "Run the fork copies up to"}
+      responses:
+        "200":
+          description: "The forked thread"
+          content:
+            application/json:
+              schema: {type: "object", required: ["thread_id"], properties: {thread_id: {type: "string"}}}
+        "204":
+          description: "Done"
   "/t3/threads":
+    get:
+      operationId: "listAllT3Threads"
+      summary: "Every thread of each available instance (settled, archived and subagents included) from the monitor's last read"
+      responses:
+        "200":
+          description: "Threads per instance"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  type: "object"
+                  required: ["instance_id", "environment_id", "threads"]
+                  properties:
+                    instance_id: {type: "string"}
+                    environment_id: {type: "string"}
+                    threads: {type: "array", items: {$ref: "#/components/schemas/T3Thread"}}
     post:
       operationId: "createT3Thread"
       summary: "Start a free thread with no item: text starts the first turn, without it the chat opens empty; an item can be linked later"
@@ -3669,6 +3712,17 @@ components:
           type: "boolean"
         url:
           type: "string"
+        settled_at: {type: "string"}
+        archived_at: {type: "string"}
+        pinned_at: {type: "string"}
+        pin_order_key: {type: "string"}
+        snoozed_until: {type: "string"}
+        last_visited_at: {type: "string"}
+        created_at: {type: "string"}
+        branch: {type: "string"}
+        worktree_path: {type: "string"}
+        parent_id: {type: "string", description: "Thread that spawned this one"}
+        relation: {type: "string", enum: ["subagent", "fork"]}
     T3ThreadContext:
       type: "object"
       required: ["messages", "pending"]
