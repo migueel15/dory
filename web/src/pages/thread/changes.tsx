@@ -1,9 +1,9 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowsIn, ArrowsOutLineVertical, FolderSimple, CaretDown, CaretRight, FileText, GitDiff, X } from "@phosphor-icons/react";
+import { ArrowsIn, ArrowsOutLineVertical, FolderSimple, CaretDown, CaretRight, FileText, GitDiff, SidebarSimple } from "@phosphor-icons/react";
 import { api, type T3ChangedFile, type T3ThreadView, type T3ViewMessage } from "../../api/client";
 import { useVisible } from "../../api/live";
-import { ErrorText, Notice, Select } from "../../components/ui";
+import { ErrorText, Notice, Select, pill } from "../../components/ui";
 import { Diff, type Suggestion } from "../github-diff";
 
 // prOf reads owner/repo and number from a pull request link.
@@ -117,11 +117,11 @@ export function Changes({ v, queryKey, target, onClose }: { v: T3ThreadView; que
   const [tools, setTools] = useState<HTMLSpanElement | null>(null);
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-2">
-      {/* Close sits at the height of the thread's title, above the source picker. */}
+      {/* The panel's toggle sits here while it is open, at the height of the thread's title. */}
       {onClose && (
         <div className="flex h-8 shrink-0 items-center">
-          <button type="button" onClick={onClose} title="Cerrar el panel de cambios" aria-label="Cerrar el panel de cambios"
-            className="grid shrink-0 place-items-center p-0.5 text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white"><X weight="bold" className="size-3.5" /></button>
+          <button type="button" aria-pressed onClick={onClose} title="Ocultar el panel de cambios" aria-label="Panel de cambios"
+            className={`${pill} !px-2 !border-slate-500 !text-slate-900 dark:!text-white`}><SidebarSimple className="size-4 -scale-x-100" /></button>
         </div>
       )}
       <div className="flex shrink-0 flex-wrap items-center gap-2">

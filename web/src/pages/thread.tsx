@@ -79,10 +79,12 @@ export function ThreadView() {
       <div className={`min-h-0 min-w-0 flex-1 flex-col gap-3 ${panel ? "hidden lg:flex" : "flex"}`}>
       <ContextBar v={v}>
         <ThreadDetails v={v} onChanges={() => setPanel("changes")} panelOpen={panel !== ""} />
-        <button type="button" aria-pressed={panel === "changes"} onClick={() => setPanel(panel === "changes" ? "" : "changes")} title="Panel de cambios" aria-label="Panel de cambios"
-          className={`${pill} !px-2 ${panel === "changes" ? "!border-slate-500 !text-slate-900 dark:!text-white" : ""}`}>
-          <SidebarSimple className="size-4 -scale-x-100" />
-        </button>
+        {/* With the panel open, its toggle moves to the panel's own top row. */}
+        {!panel && (
+          <button type="button" aria-pressed={false} onClick={() => setPanel("changes")} title="Panel de cambios" aria-label="Panel de cambios" className={`${pill} !px-2`}>
+            <SidebarSimple className="size-4 -scale-x-100" />
+          </button>
+        )}
       </ContextBar>
         <div className="flex min-h-0 flex-1 flex-col"><OpenTurnContext.Provider value={openTurn}><Chat key={v.id} v={v} queryKey={key} onStop={setStopping} /></OpenTurnContext.Provider></div>
       </div>
