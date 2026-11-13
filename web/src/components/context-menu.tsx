@@ -16,7 +16,12 @@ export function ContextMenu({ x, y, actions, onClose, label = "Acciones del item
     node.style.top = `${Math.max(4, Math.min(y, window.innerHeight - rect.height - 4))}px`;
     node.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     const outside = (e: PointerEvent) => { if (!node.contains(e.target as Node)) onClose(); };
-    const close = () => onClose();
+    // Close when what the menu was opened from scrolls away, not when some
+    // other box scrolls (a chat following a reply scrolls all the time).
+    const close = (e: Event) => {
+      const t = e.target;
+      if (e.type === "resize" || t === document || !(t instanceof Node) || !previous || t.contains(previous)) onClose();
+    };
     document.addEventListener("pointerdown", outside);
     window.addEventListener("scroll", close, true);
     window.addEventListener("resize", close);

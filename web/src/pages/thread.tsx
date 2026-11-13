@@ -45,7 +45,9 @@ function useThreadView(threadId: string) {
 export function ThreadChat({ threadId, notice, beforeSend, insert }: { threadId: string; notice?: React.ReactNode; beforeSend?: () => Promise<unknown>; insert?: Insert }) {
   const { view, v, key, setStopping } = useThreadView(threadId);
   if (view.isPending) return <ChatLoading />;
-  if (view.error || !v) return <ErrorText error={view.error} />;
+  // A failed refresh keeps the conversation on screen (and its scroll, drafts
+  // and open dialogs); only a first load that fails shows the error.
+  if (!v) return <ErrorText error={view.error} />;
   return <Chat key={v.id} v={v} queryKey={key} onStop={setStopping} notice={notice} beforeSend={beforeSend} insert={insert} />;
 }
 
@@ -61,7 +63,9 @@ export function ThreadView() {
   useEffect(() => { if (panel) setOpened(true); }, [panel]);
   const [width, setWidth] = useState(() => { try { return Number(localStorage.getItem("dory.thread-panel-width")) || 560; } catch { return 560; } });
   if (view.isPending) return <div className="flex h-full min-h-0 flex-col"><ChatLoading /></div>;
-  if (view.error || !v) return <ErrorText error={view.error} />;
+  // A failed refresh keeps the conversation on screen (and its scroll, drafts
+  // and open dialogs); only a first load that fails shows the error.
+  if (!v) return <ErrorText error={view.error} />;
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <ContextBar v={v}>
