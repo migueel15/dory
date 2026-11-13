@@ -23,7 +23,9 @@ import "./index.css";
 applyTheme();
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: (n, e) => !(e instanceof ApiError && e.status === 401) && n < 2, refetchOnWindowFocus: false } },
+  // Data counts as fresh for 30 s and stays cached for 30 min: going back to a
+  // page shows it at once, and the live stream invalidates whatever changes.
+  defaultOptions: { queries: { retry: (n, e) => !(e instanceof ApiError && e.status === 401) && n < 2, refetchOnWindowFocus: false, staleTime: 30_000, gcTime: 30 * 60_000 } },
 });
 
 function Login() {

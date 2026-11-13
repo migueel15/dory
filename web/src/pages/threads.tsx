@@ -38,7 +38,7 @@ const running = (s: string) => ["running", "working", "starting", "preparing"].i
 // useThreadRows lists the T3 Code threads Dory knows: live ones and those
 // linked to items, the ones needing the user first, then the working ones.
 function useThreadRows() {
-  const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 15_000 });
+  const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 60_000 });
   const links = useQuery({ queryKey: ["item-threads"], queryFn: () => api.itemThreads.list(), refetchInterval: 60_000 });
   const items = useQuery({ queryKey: ["items", "all"], queryFn: () => api.items.list() });
   const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list(), staleTime: 5 * 60_000 });
@@ -98,6 +98,9 @@ export function Threads() {
 // ThreadList is the side list: new thread, search (or a pasted T3 link), filters and threads.
 function ThreadList({ active, onFold }: { active?: string; onFold?: () => void }) {
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  // Hovering a thread loads its conversation, so opening it is instant.
+  const prefetch = (id: string) => { void qc.prefetchQuery({ queryKey: ["t3-view", id], queryFn: () => api.t3View(id) }); };
   const { rows, loading } = useThreadRows();
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<Tab>("all");
@@ -140,7 +143,7 @@ function ThreadList({ active, onFold }: { active?: string; onFold?: () => void }
           <ul className="space-y-0.5">
             {shown.map((r) => (
               <li key={r.id}>
-                <Link to="/threads/$threadId" params={{ threadId: r.id }} aria-current={r.id === active ? "page" : undefined}
+                <Link to="/threads/$threadId" params={{ threadId: r.id }} aria-current={r.id === active ? "page" : undefined} onMouseEnter={() => prefetch(r.id)} onFocus={() => prefetch(r.id)}
                   className={`flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors ${r.id === active ? "bg-slate-200 dark:bg-raised" : "hover:bg-slate-100 dark:hover:bg-raised/60"}`}>
                   <span className="w-4 shrink-0">{r.status ? <ThreadStatus status={r.status} attention={r.attention} /> : <ChatsCircle className="size-4 text-slate-300 dark:text-muted" />}</span>
                   <span className="min-w-0 flex-1">
