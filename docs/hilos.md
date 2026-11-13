@@ -29,7 +29,7 @@ Con clic derecho o el botón «⋯» de cada fila, y con el botón «⋯» de la
 
 Todas pasan por `POST /api/t3/threads/{id}/actions` con `{action, title?, until?, run_id?}`. La lista se actualiza al momento y se corrige si T3 rechaza la acción.
 
-La cabecera de un subagente enlaza a su hilo padre. La de un hilo con subagentes los lista con su estado.
+La cabecera de un subagente enlaza a su hilo padre. En la tarjeta de detalles del hilo (botón ⓘ), la sección **Subagentes** muestra primero los que trabajan o esperan respuesta, con el logo de su modelo y su estado, y debajo «Finalizados», plegada. El botón ⓘ indica cuántos subagentes están trabajando.
 
 ## Rendimiento
 
