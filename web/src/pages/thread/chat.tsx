@@ -281,7 +281,7 @@ const oneLine = (t = "") => t.replace(/[`*_#>]/g, "").replace(/\s+/g, " ").trim(
 
 // StepLine is a run of steps of one kind, as T3 Code lists them: an icon and a
 // single line with the latest step, cut with an ellipsis. A thought shows its
-// text, a command "Running python3" (then "Ran …"), a tool its name and input,
+// text, a command "Running python3" (then "Ran …"), a tool only its name,
 // a note the model wrote between steps its text (no time or copy: it is not an
 // answer). A click opens every step of the run in full.
 export function StepLine({ run }: { run: T3ViewMessage[] }) {
@@ -294,7 +294,7 @@ export function StepLine({ run }: { run: T3ViewMessage[] }) {
   const line = kind === "think" ? (oneLine(m.text) || "Thinking…")
     : kind === "note" ? oneLine(m.text)
     : kind === "cmd" ? `${running ? "Running" : failed ? "Failed" : "Ran"} ${commandName(m.detail) || "command"}`
-    : `${m.title || "Tool"}${m.detail ? ` ${oneLine(m.detail)}` : ""}`;
+    : m.title || "Tool"; // just the action; its input shows when opened
   const full = (x: T3ViewMessage) => x.role === "tool"
     ? <pre key={x.id} className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-100 p-2 font-mono text-[11px] dark:bg-raised">{x.detail}</pre>
     : <div key={x.id} className="[&_*]:!text-inherit [&_p]:my-0.5"><Md>{x.text}</Md></div>;
