@@ -17,7 +17,8 @@ const duration = (secs: number) => {
 };
 
 const finished: Record<string, string> = {
-  completed: "Completado en", interrupted: "Interrumpido tras", failed: "Falló tras", error: "Falló tras", cancelled: "Cancelado tras",
+  // A native subagent (Claude's Agent tool) ends idle, without runs of its own.
+  completed: "Completado en", idle: "Completado en", interrupted: "Interrumpido tras", failed: "Falló tras", error: "Falló tras", cancelled: "Cancelado tras",
 };
 
 // SubagentBar takes the composer's place in a subagent's thread: its parent
@@ -35,8 +36,10 @@ export function SubagentBar({ v, t, parent }: { v: T3ThreadView; t: T3Thread; pa
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [running]);
-  const start = Date.parse(t.run_started_at ?? "");
-  const end = running ? now : Date.parse(t.run_completed_at ?? "");
+  // Native subagents have no runs: T3 Code times them from creation to their
+  // last change, and so does this bar.
+  const start = Date.parse(t.run_started_at || t.created_at || "");
+  const end = running ? now : Date.parse(t.run_completed_at || t.updated_at || "");
   const took = Number.isFinite(start) && Number.isFinite(end) ? duration((end - start) / 1000) : "";
   const state = running ? `Trabajando${took ? ` · ${took}` : ""}` : finished[t.status] && took ? `${finished[t.status]} ${took}` : statusLabel(t.status, t.attention);
   const parentId = t.parent_id;
