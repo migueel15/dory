@@ -76,7 +76,9 @@ export function ThreadView() {
     // the app sidebar.
     <div ref={setHost} className="relative flex h-full min-h-0">
       <FullscreenHost.Provider value={host}>
-      <div className={`min-h-0 min-w-0 flex-1 flex-col gap-3 ${panel ? "hidden lg:flex" : "flex"}`}>
+      {/* With the panel open, the chat column keeps the same gap to the divider
+          as the panel does (lg:pl-3), so the two header buttons sit symmetric. */}
+      <div className={`min-h-0 min-w-0 flex-1 flex-col gap-3 ${panel ? "hidden lg:flex lg:pr-3" : "flex"}`}>
       <ContextBar v={v}>
         <ThreadDetails v={v} onChanges={() => setPanel("changes")} panelOpen={panel !== ""} />
         {/* With the panel open, its toggle moves to the panel's own top row. */}

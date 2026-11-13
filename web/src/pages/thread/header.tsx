@@ -27,7 +27,8 @@ export function ContextBar({ v, children }: { v: T3ThreadView; children?: React.
   useEffect(() => { if (unread) act.mutate({ id: v.id, action: "read" }); }, [v.id, unread]); // eslint-disable-line react-hooks/exhaustive-deps
   const rename = (title: string) => { setRenaming(false); if (title && title !== v.title) act.mutate({ id: v.id, action: "rename", title }); };
   return (
-    <header className="relative flex flex-wrap items-center gap-2">
+    // Fixed row height (h-8), shared with the changes panel's top row, so their buttons line up.
+    <header className="relative flex min-h-8 flex-wrap items-center gap-2">
       {/* Breadcrumb: the parent (grey) and the open thread (white), same size.
           Clicking the open thread's title opens its actions. */}
       {parent && (
