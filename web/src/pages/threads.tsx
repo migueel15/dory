@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { ArrowRight, ArrowUp, CaretRight, ChatsCircle, DotsThree, GitFork, MagnifyingGlass, PencilSimpleLine, PushPin, SidebarSimple } from "@phosphor-icons/react";
-import { api, type Item, type T3Thread } from "../api/client";
-import { isSnoozed, isUnread, isWorking, threadMenu, useThreadAction } from "../api/thread-actions";
+import { api, type Item, type T3Thread, type T3ThreadView } from "../api/client";
+import { isSnoozed, isUnread, isWorking, subagentStatus, threadMenu, useThreadAction } from "../api/thread-actions";
 import { ContextMenu } from "../components/context-menu";
 import { ErrorText } from "../components/ui";
 import { useLaunchForm } from "./launch-form";
@@ -166,6 +166,13 @@ function ThreadList({ active, onFold }: { active?: string; onFold?: () => void }
   const open = (id: string) => navigate({ to: "/threads/$threadId", params: { threadId: id } });
   const toggle = (id: string) => setExpanded((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
+  // A native subagent is always "idle" in T3's shell; its parent's view, when
+  // loaded, has the real state, else it has finished.
+  const statusOf = (r: Row) => {
+    if (r.relation !== "subagent" || !r.parent_id) return r.status;
+    const run = qc.getQueryData<T3ThreadView>(["t3-view", r.parent_id])?.subagents?.find((a) => a.thread_id === r.id);
+    return run?.status ?? subagentStatus(r);
+  };
   const line = (r: Row, depth = 0): React.ReactNode => {
     const kids = children.get(r.id) ?? [];
     const busyKids = kids.filter((k) => isWorking(k.status) || k.attention).length;
@@ -188,7 +195,7 @@ function ThreadList({ active, onFold }: { active?: string; onFold?: () => void }
             <Link to="/threads/$threadId" params={{ threadId: r.id }} aria-current={r.id === active ? "page" : undefined} onMouseEnter={() => prefetch(r.id)} onFocus={() => prefetch(r.id)}
               onDoubleClick={(e) => { if (!r.known) return; e.preventDefault(); setRenaming(r.id); }}
               className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-2">
-              <span className="w-4 shrink-0">{r.status ? <ThreadStatus status={r.status} attention={r.attention} /> : <ChatsCircle className="size-4 text-slate-300 dark:text-muted" />}</span>
+              <span className="w-4 shrink-0">{r.status ? <ThreadStatus status={statusOf(r)} attention={r.attention} /> : <ChatsCircle className="size-4 text-slate-300 dark:text-muted" />}</span>
               <span className="min-w-0 flex-1">
                 <span className={`flex items-center gap-1 truncate text-sm ${isUnread(r) ? "font-semibold" : ""}`}>
                   {r.relation === "fork" && <GitFork className="size-3 shrink-0 text-slate-400" aria-label="Bifurcación" />}

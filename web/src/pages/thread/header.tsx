@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowBendUpLeft, Cube, Cloud, FolderSimple, GitBranch, GitPullRequest, Info, Kanban, CaretRight, Check, Copy, Robot, GitDiff, GitMerge } from "@phosphor-icons/react";
 import { api, type T3Thread, type T3ThreadView } from "../../api/client";
 import { useVisible } from "../../api/live";
-import { isUnread, isWorking, threadMenu, useThreadAction } from "../../api/thread-actions";
+import { isUnread, isWorking, subagentStatus, threadMenu, useThreadAction } from "../../api/thread-actions";
 import { ContextMenu } from "../../components/context-menu";
 import { copyText, errMsg, StatusPill, pill } from "../../components/ui";
 import { useArm } from "../../components/github-ui";
@@ -266,7 +266,11 @@ export function subagentRows(v: T3ThreadView, all: T3Thread[]): Sub[] {
     if (t.parent_id !== v.id || t.relation !== "subagent") continue;
     const known = out.get(t.id);
     if (known) { out.set(t.id, { ...known, title: known.title || t.title, attention: t.attention, live: known.live || t.attention }); continue; }
-    out.set(t.id, { id: t.id, title: t.title, provider: t.provider ?? "", model: t.model, status: t.status, attention: t.attention, live: liveStatus(t.status) || t.attention,
+    // The parent's projection holds only its latest turns, so older subagents
+    // are known from the shell alone, where a native one is always "idle":
+    // by then it has finished.
+    const status = subagentStatus(t);
+    out.set(t.id, { id: t.id, title: t.title, provider: t.provider ?? "", model: t.model, status, attention: t.attention, live: liveStatus(status) || t.attention,
       started: t.run_started_at || t.created_at || "", ended: t.run_completed_at || (isWorking(t.status) ? "" : t.updated_at), progress: "" });
   }
   return [...out.values()].sort((a, b) => (b.ended || b.started).localeCompare(a.ended || a.started));

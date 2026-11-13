@@ -64,6 +64,11 @@ const inHours = (h: number) => new Date(Date.now() + h * 3_600_000);
 
 export const isWorking = (s = "") => ["running", "working", "starting", "preparing"].includes(s.toLowerCase());
 export const isSnoozed = (t: Pick<T3Thread, "snoozed_until">) => !!t.snoozed_until && Date.parse(t.snoozed_until) > Date.now();
+// subagentStatus reads a subagent's state from T3's shell: a native one has no
+// runs and stays "idle" there, which means finished once it is out of the
+// parent's latest turns (whose projection has the live state).
+export const subagentStatus = (t: Pick<T3Thread, "relation" | "status" | "run_started_at">) =>
+  (t.relation === "subagent" && t.status === "idle" && !t.run_started_at ? "completed" : t.status);
 export const isUnread = (t: Pick<T3Thread, "last_visited_at" | "updated_at">) => !!t.last_visited_at && t.updated_at > t.last_visited_at;
 
 // threadMenu lists what can be done with a thread, as T3 Code's sidebar menu.

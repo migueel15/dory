@@ -7,6 +7,7 @@ import { isWorking } from "../../api/thread-actions";
 import { ModelLogo } from "../../components/model-logo";
 import { statusLabel } from "../../components/thread-status";
 import { detailsOpen, elapsed, rememberDetails } from "./header";
+import { subagentStatus } from "../../api/thread-actions";
 
 
 const live = (s: string) => isWorking(s) || s === "waiting" || s === "pending";
@@ -28,7 +29,7 @@ export function SubagentBar({ v, t, parent }: { v: T3ThreadView; t: T3Thread; pa
   const parentView = useQuery({ queryKey: ["t3-view", t.parent_id], queryFn: () => api.t3View(t.parent_id!), enabled: !!t.parent_id,
     refetchInterval: (q) => (q.state.data?.subagents?.find((a) => a.thread_id === v.id && live(a.status)) ? 3_000 : false) });
   const run = parentView.data?.subagents?.find((a) => a.thread_id === v.id);
-  const status = run?.status ?? t.status;
+  const status = run?.status ?? subagentStatus(t);
   const running = live(status);
   // While it runs, the elapsed time ticks every second.
   const [now, setNow] = useState(() => Date.now());
