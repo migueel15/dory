@@ -33,6 +33,8 @@ La tarjeta de detalles del hilo (botón ⓘ) no se cierra al usar el chat ni al 
 
 La sección **Linaje** de la tarjeta ofrece «Volver a …» en un subagente, lista los subagentes que trabajan o esperan respuesta con el logo de su modelo y su estado, y debajo despliega «Agentes previos»: los ya terminados, con su estado y hace cuánto están inactivos. El botón ⓘ indica cuántos subagentes están trabajando. La cabecera de un subagente también enlaza a su hilo padre.
 
+Un subagente lo maneja su padre y no acepta mensajes: en su hilo, en lugar del compositor aparece una barra, como en T3 Code. Muestra el logo y el nombre del modelo, el esfuerzo, el estado con su duración («Trabajando · 45s», «Completado en 1m 59s»), «Se ejecuta por su cuenta» y «Abrir padre». Los subagentes nativos de Claude no tienen ejecuciones propias en T3, así que su duración va de la creación al último cambio.
+
 ## Rendimiento
 
 - Todas las llamadas RPC a una instancia comparten un WebSocket persistente.
