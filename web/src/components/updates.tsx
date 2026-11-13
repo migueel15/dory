@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowsClockwise, DownloadSimple, Warning } from "@phosphor-icons/react";
+import { ArrowCircleUp, ArrowsClockwise, Warning } from "@phosphor-icons/react";
 import { api, type T3InstanceUpdates, type T3UpdateResult } from "../api/client";
 import { Arrow, Button, ErrorText, Modal } from "./ui";
 import { HoverCard } from "./tooltip";
@@ -125,8 +125,12 @@ export function UpdatesButton({ u, names }: { u: Updates; names: Record<string, 
     <>
       <button ref={setAnchor} type="button" disabled={u.working} aria-label="Actualizar entornos y conectores"
         onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onFocus={() => setHover(true)} onBlur={() => setHover(false)} onClick={() => { setHover(false); u.review(true); }}
-        className="grid size-8 shrink-0 place-items-center rounded-md hover:bg-slate-200 disabled:opacity-70 dark:hover:bg-raised">
-        {u.working ? <ArrowsClockwise className="size-5 animate-spin" aria-hidden="true" /> : <DownloadSimple weight="regular" className="size-5" aria-hidden="true" />}
+        className="relative grid size-8 shrink-0 place-items-center rounded-md hover:bg-slate-200 disabled:opacity-70 dark:hover:bg-raised">
+        {u.working ? <ArrowsClockwise className="size-5 animate-spin" aria-hidden="true" /> : <>
+          <ArrowCircleUp weight="regular" className="size-5" aria-hidden="true" />
+          {/* There is something to update. */}
+          <span className="absolute right-1 top-1 size-2 rounded-full bg-blue-500 ring-2 ring-slate-100 dark:ring-surface" aria-hidden="true" />
+        </>}
       </button>
       {/* What can be updated shows at once on hover: it is information, not a label. */}
       {hover && (
