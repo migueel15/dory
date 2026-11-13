@@ -310,7 +310,6 @@ export function WorkedBlock({ items, secs, live = false, since }: { items: T3Vie
   if (live) {
     return (
       <div role="status" className="flex items-center gap-3 text-xs text-slate-500 dark:text-muted">
-        <span className="size-3 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
         <span className="shrink-0 font-medium tabular-nums">Working for {Number.isFinite(from) ? elapsed((now - from) / 1000) : "…"}</span>
         <span className="h-px flex-1 bg-slate-200 dark:bg-border" />
       </div>
@@ -322,9 +321,7 @@ export function WorkedBlock({ items, secs, live = false, since }: { items: T3Vie
     <div className="text-sm">
       <button type="button" aria-expanded={shown} disabled={live} onClick={() => setOpen(!open)}
         className="flex max-w-full items-center gap-2 rounded-lg py-0.5 text-xs text-slate-500 enabled:hover:text-slate-900 dark:text-muted dark:enabled:hover:text-white">
-        {live ? <span className="size-3 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <Check weight="regular" className="size-3.5 shrink-0" />}
         <span className="font-medium tabular-nums">{label}</span>
-        {!live && (open ? <CaretDown weight="regular" className="size-3 shrink-0" /> : <CaretRight weight="regular" className="size-3 shrink-0" />)}
       </button>
       {shown && items.length > 0 && (
         <div className="mt-1 space-y-1 border-l-2 border-slate-200 pl-3 dark:border-border">
