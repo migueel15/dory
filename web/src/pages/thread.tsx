@@ -5,6 +5,7 @@ import { ArrowUp, SidebarSimple, Paperclip } from "@phosphor-icons/react";
 import { api, type T3ThreadView } from "../api/client";
 import { useThreadLive } from "../api/live";
 import { ErrorText, pill } from "../components/ui";
+import { FullscreenHost } from "./github-diff";
 import { ContextBar, ThreadDetails } from "./thread/header";
 import { Chat, Insert } from "./thread/chat";
 import { Changes, OpenTurnContext, TurnTarget } from "./thread/changes";
@@ -61,6 +62,7 @@ export function ThreadView() {
   const [target, setTarget] = useState<TurnTarget & { seq: number }>();
   const openTurn = useCallback((t: TurnTarget) => { setTarget((p) => ({ ...t, seq: (p?.seq ?? 0) + 1 })); setPanel("changes"); }, []);
   const aside = useRef<HTMLElement>(null);
+  const [host, setHost] = useState<HTMLDivElement | null>(null);
   const [opened, setOpened] = useState(false);
   useEffect(() => { if (panel) setOpened(true); }, [panel]);
   const [width, setWidth] = useState(() => { try { return Number(localStorage.getItem("dory.thread-panel-width")) || 560; } catch { return 560; } });
@@ -77,7 +79,9 @@ export function ThreadView() {
           <SidebarSimple className="size-4 -scale-x-100" />
         </button>
       </ContextBar>
-      <div className="relative flex min-h-0 flex-1">
+      {/* A diff in full screen fills chat and panel, not the thread list or the app sidebar. */}
+      <div ref={setHost} className="relative flex min-h-0 flex-1">
+        <FullscreenHost.Provider value={host}>
         <div className={`min-h-0 min-w-0 flex-1 flex-col ${panel ? "hidden lg:flex" : "flex"}`}><OpenTurnContext.Provider value={openTurn}><Chat key={v.id} v={v} queryKey={key} onStop={setStopping} /></OpenTurnContext.Provider></div>
         {/* Always mounted (its content only once opened): on desktop its width
             slides between 0 and the panel width, with the content pinned right
@@ -92,6 +96,7 @@ export function ThreadView() {
             </div>
           </aside>
         )}
+        </FullscreenHost.Provider>
       </div>
     </div>
   );
