@@ -23,7 +23,7 @@ export type T3InstanceThreads = { instance_id: string; environment_id: string; t
 export type T3ThreadActionName = "rename" | "archive" | "unarchive" | "delete" | "pin" | "unpin" | "settle" | "unsettle" | "snooze" | "unsnooze" | "read" | "unread" | "stop" | "fork";
 export type T3ThreadAction = { action: T3ThreadActionName; title?: string; until?: string; run_id?: string };
 // Reasoning and tool entries are steps of the model between messages.
-export type T3ViewMessage = { id: string; role: "user" | "assistant" | "system" | "reasoning" | "tool" | "interrupt" | "plan" | "handoff" | "html" | "secret" | "changes"; text: string; streaming: boolean; created_at: string; title?: string; detail?: string; status?: string; attachments?: T3Attachment[]; mentions?: string[]; skills?: string[]; from?: string; to?: string; from_provider?: string; to_provider?: string; html?: { attachment_id: string; title: string; height: number }; files?: T3ChangedFile[] };
+export type T3ViewMessage = { id: string; run_id?: string; role: "user" | "assistant" | "system" | "reasoning" | "tool" | "interrupt" | "plan" | "handoff" | "html" | "secret" | "changes"; text: string; streaming: boolean; created_at: string; title?: string; detail?: string; status?: string; attachments?: T3Attachment[]; mentions?: string[]; skills?: string[]; from?: string; to?: string; from_provider?: string; to_provider?: string; html?: { attachment_id: string; title: string; height: number }; files?: T3ChangedFile[] };
 export type T3ChangedFile = { path: string; kind: string; additions: number; deletions: number };
 export type T3QueuedRun = { run_id: string; text: string; position: number; held: boolean };
 export type T3ThreadView = {

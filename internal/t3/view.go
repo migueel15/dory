@@ -14,8 +14,10 @@ import (
 // Title, Detail and Status), a proposed plan in markdown (role "plan") or the
 // point where the user stopped a turn (role "interrupt").
 type ViewMessage struct {
-	ID        string `json:"id"`
-	Role      string `json:"role"`
+	ID   string `json:"id"`
+	Role string `json:"role"`
+	// RunID is the turn the entry belongs to; the chat folds a finished turn's work.
+	RunID     string `json:"run_id,omitempty"`
 	Text      string `json:"text"`
 	Streaming bool   `json:"streaming"`
 	CreatedAt string `json:"created_at"`
@@ -467,6 +469,7 @@ func timeline(in []wireTurnItem, msgs map[string]ViewMessage, runStatus map[stri
 	items := append([]wireTurnItem(nil), in...)
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Ordinal < items[j].Ordinal })
 	for _, it := range items {
+		before := len(out)
 		// Steps left open by a run that already ended did not keep running.
 		if st := runStatus[it.RunID]; it.RunID != "" && st != "" && !activeStatuses[st] && st != "queued" && (it.Streaming || it.Status == "running" || it.Status == "inProgress") {
 			it.Streaming, it.Status = false, st
@@ -563,6 +566,12 @@ func timeline(in []wireTurnItem, msgs map[string]ViewMessage, runStatus map[stri
 				title = strings.ReplaceAll(it.Type, "_", " ")
 			}
 			out = append(out, ViewMessage{ID: it.ID, Role: "tool", Title: title, Detail: toolDetail(it.Input), CreatedAt: it.StartedAt, Status: it.Status})
+		}
+		// Every entry carries its turn, so the chat can fold finished turns.
+		for k := before; k < len(out); k++ {
+			if out[k].RunID == "" {
+				out[k].RunID = it.RunID
+			}
 		}
 	}
 	return out
