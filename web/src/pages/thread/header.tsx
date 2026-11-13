@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Cube, Cloud, FolderSimple, GitBranch, GitPullRequest, Info, Kanban, CaretRight, Check, Copy, DotsThree, Robot, GitDiff } from "@phosphor-icons/react";
+import { ArrowBendUpLeft, Cube, Cloud, FolderSimple, GitBranch, GitPullRequest, Info, Kanban, CaretRight, Check, Copy, DotsThree, Robot, GitDiff } from "@phosphor-icons/react";
 import { api, type T3Thread, type T3ThreadView } from "../../api/client";
 import { useVisible } from "../../api/live";
 import { isUnread, isWorking, threadMenu, useThreadAction } from "../../api/thread-actions";
@@ -28,7 +28,7 @@ export function ContextBar({ v, children }: { v: T3ThreadView; children?: React.
   return (
     <header className="relative flex flex-wrap items-center gap-2">
       {parent && (
-        <Link to="/threads/$threadId" params={{ threadId: parent.id }} title="Hilo padre" className="inline-flex max-w-[12rem] items-center gap-1 truncate text-sm text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
+        <Link to="/threads/$threadId" params={{ threadId: parent.id }} onClick={() => { if (detailsOpen(v.id)) rememberDetails(parent.id, true); }} title="Hilo padre" className="inline-flex max-w-[12rem] items-center gap-1 truncate text-sm text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
           <span className="truncate">{parent.title}</span><CaretRight className="size-3 shrink-0" />
         </Link>
       )}
@@ -69,16 +69,38 @@ export const diffStats = (diff = "") => {
   return { files, add, del };
 };
 
-// ThreadDetails is the header button that drops a card down-left with the
+// Each thread remembers whether its details card is open (per browser).
+const DETAILS_KEY = "dory.thread-details";
+const MAX_REMEMBERED = 300;
+const detailsMap = (): Record<string, number> => { try { return JSON.parse(localStorage.getItem(DETAILS_KEY) ?? "{}") ?? {}; } catch { return {}; } };
+export const detailsOpen = (id: string) => !!detailsMap()[id];
+export function rememberDetails(id: string, open: boolean) {
+  try {
+    const m = detailsMap();
+    if (open) m[id] = Date.now(); else delete m[id];
+    const keep = Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, MAX_REMEMBERED);
+    localStorage.setItem(DETAILS_KEY, JSON.stringify(Object.fromEntries(keep)));
+  } catch { /* per-browser only */ }
+}
+
+// ThreadDetails is the header button that shows a card down-left with the
 // thread's references, styled like T3 Code's: environment, branch, pull
-// requests, items and changes.
+// requests, items, changes and subagents. The card stays open while the chat
+// is used, and each thread remembers it; going to a subagent or to the parent
+// from it keeps it open there too.
 export function ThreadDetails({ v, onChanges }: { v: T3ThreadView; onChanges?: () => void }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(() => detailsOpen(v.id));
+  useEffect(() => { setOpenState(detailsOpen(v.id)); }, [v.id]);
+  const setOpen = (o: boolean) => { rememberDetails(v.id, o); setOpenState(o); };
+  const keepOpenIn = (id: string) => rememberDetails(id, true);
   const [showDone, setShowDone] = useState(false);
   // Subagents of this thread, as T3 Code lists them: the ones at work first,
-  // then the finished ones folded away.
+  // then the finished ones folded away. A subagent leads back to its parent.
   const threads = useQuery({ queryKey: ["t3-threads"], queryFn: api.t3Threads, refetchInterval: 60_000 });
-  const subagents = (threads.data?.flatMap((x) => x.threads) ?? [])
+  const everything = threads.data?.flatMap((x) => x.threads) ?? [];
+  const self = everything.find((x) => x.id === v.id);
+  const parent = self?.parent_id ? everything.find((x) => x.id === self.parent_id) : undefined;
+  const subagents = everything
     .filter((x) => x.parent_id === v.id && x.relation === "subagent")
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
   const live = subagents.filter((x) => isWorking(x.status) || x.attention);
@@ -105,25 +127,17 @@ export function ThreadDetails({ v, onChanges }: { v: T3ThreadView; onChanges?: (
   const worktree = v.worktree_path || git?.worktree || "";
   const local = diffStats(diff.data?.diff);
   const changes = git || !pr ? { add: local.add, del: local.del, base: git?.base ?? "", pending: diff.isPending } : { add: pr.additions, del: pr.deletions, base: pr.base_ref, pending: pull.isPending };
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", away);
-    window.addEventListener("keydown", esc);
-    return () => { document.removeEventListener("mousedown", away); window.removeEventListener("keydown", esc); };
-  }, [open]);
   const ico = "size-[18px] shrink-0 text-slate-500 dark:text-muted";
   const rowCls = "flex min-h-9 items-center gap-3 rounded-md px-2 text-sm";
   return (
     <div ref={box} className="ml-auto">
-      <button type="button" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)} title="Detalles del hilo" aria-label="Detalles del hilo"
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} title="Detalles del hilo" aria-label="Detalles del hilo"
         className={`${pill} !px-2 ${open ? "!border-slate-500 !text-slate-900 dark:!text-white" : ""}`}>
         <Info className="size-4" />
         {live.length > 0 && <span className="text-xs tabular-nums text-blue-600 dark:text-blue-400" title={`${live.length} subagentes trabajando`}>{live.length}</span>}
       </button>
       {open && (
-        <div role="dialog" aria-label="Detalles del hilo" className="notif-in absolute right-0 top-full z-50 mt-1.5 w-80 max-w-[calc(100vw-2rem)] origin-top-right divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl dark:divide-border dark:border-border dark:bg-surface">
+        <div role="region" aria-label="Detalles del hilo" className="notif-in absolute right-0 top-full z-50 mt-1.5 w-80 max-w-[calc(100vw-2rem)] origin-top-right divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl dark:divide-border dark:border-border dark:bg-surface">
           <div className="pb-1.5">
             <div className={rowCls}>
               <Cloud className={ico} />
@@ -142,9 +156,9 @@ export function ThreadDetails({ v, onChanges }: { v: T3ThreadView; onChanges?: (
               {branch ? <span className="min-w-0 flex-1 truncate font-medium" title={branch}>{branch}</span> : <span className="flex-1 text-slate-400 dark:text-muted">Sin rama</span>}
               {branch && <CopyText text={branch} hidden title="Copiar rama" />}
             </div>
-            {v.pull_requests.map((p, i) => <PullRow key={p.url} link={p} pull={i === 0 ? pr ?? undefined : undefined} onOpen={() => setOpen(false)} />)}
+            {v.pull_requests.map((p, i) => <PullRow key={p.url} link={p} pull={i === 0 ? pr ?? undefined : undefined} onOpen={() => {}} />)}
             {v.items.map((it) => (
-              <Link key={it.item_id} to="/items/$id/define" params={{ id: it.item_id }} onClick={() => setOpen(false)} className={`${rowCls} hover:bg-slate-100 dark:hover:bg-raised`}>
+              <Link key={it.item_id} to="/items/$id/define" params={{ id: it.item_id }} className={`${rowCls} hover:bg-slate-100 dark:hover:bg-raised`}>
                 <Kanban className={ico} />
                 <span className="flex-1">Item <span className="font-mono text-xs text-slate-500 dark:text-muted">{it.item_id.slice(0, 8)}</span></span>
                 <CaretRight weight="regular" className="size-3.5 text-slate-400" />
@@ -152,7 +166,7 @@ export function ThreadDetails({ v, onChanges }: { v: T3ThreadView; onChanges?: (
             ))}
           </div>
           <div className="pt-1.5">
-            <button type="button" disabled={!onChanges} onClick={() => { setOpen(false); onChanges?.(); }} title="Abrir el panel de cambios"
+            <button type="button" disabled={!onChanges} onClick={() => onChanges?.()} title="Abrir el panel de cambios"
               className={`${rowCls} w-full text-left enabled:hover:bg-slate-100 dark:enabled:hover:bg-raised`}>
               <GitDiff className={ico} />
               <span className="min-w-0 flex-1 truncate"><span className="font-medium">Cambios</span>{changes.base && <span className="text-slate-500 dark:text-muted"> vs {changes.base}</span>}</span>
@@ -162,22 +176,29 @@ export function ThreadDetails({ v, onChanges }: { v: T3ThreadView; onChanges?: (
               {onChanges && <CaretRight weight="regular" className="size-3.5 text-slate-400" />}
             </button>
           </div>
-          {subagents.length > 0 && (
+          {(subagents.length > 0 || parent) && (
             <div className="pt-1.5">
               <div className={`${rowCls} min-h-8`}>
                 <Robot className={ico} />
                 <span className="flex-1 font-medium">Subagentes</span>
-                <span className="text-xs tabular-nums text-slate-500 dark:text-muted">{live.length ? `${live.length} activos` : "ninguno activo"}</span>
+                {subagents.length > 0 && <span className="text-xs tabular-nums text-slate-500 dark:text-muted">{live.length ? `${live.length} activos` : "ninguno activo"}</span>}
               </div>
+              {parent && (
+                <Link to="/threads/$threadId" params={{ threadId: parent.id }} onClick={() => keepOpenIn(parent.id)} title="Volver al hilo padre"
+                  className="flex min-h-8 items-center gap-2.5 rounded-md px-2 text-sm hover:bg-slate-100 dark:hover:bg-raised">
+                  <ArrowBendUpLeft className="size-4 shrink-0 text-slate-500 dark:text-muted" />
+                  <span className="min-w-0 flex-1 truncate">Volver a <span className="font-medium">{parent.title || parent.id}</span></span>
+                </Link>
+              )}
               <ul className="max-h-72 overflow-y-auto">
-                {live.map((x) => <SubagentRow key={x.id} t={x} onOpen={() => setOpen(false)} />)}
+                {live.map((x) => <SubagentRow key={x.id} t={x} onOpen={() => keepOpenIn(x.id)} />)}
                 {done.length > 0 && (
                   <li>
                     <button type="button" onClick={() => setShowDone(!showDone)} aria-expanded={showDone}
                       className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">
                       <CaretRight weight="bold" className={`size-3 transition-transform ${showDone ? "rotate-90" : ""}`} />Finalizados<span className="tabular-nums">{done.length}</span>
                     </button>
-                    {showDone && <ul>{done.map((x) => <SubagentRow key={x.id} t={x} onOpen={() => setOpen(false)} />)}</ul>}
+                    {showDone && <ul>{done.map((x) => <SubagentRow key={x.id} t={x} onOpen={() => keepOpenIn(x.id)} />)}</ul>}
                   </li>
                 )}
               </ul>
