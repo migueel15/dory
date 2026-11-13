@@ -114,6 +114,7 @@ export function Changes({ v, queryKey, target }: { v: T3ThreadView; queryKey: un
     await api.t3Dispatch(v.id, { text: body, mode: s.steer ? "steer" : "auto" });
     qc.invalidateQueries({ queryKey });
   };
+  const [tools, setTools] = useState<HTMLSpanElement | null>(null);
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -122,11 +123,13 @@ export function Changes({ v, queryKey, target }: { v: T3ThreadView; queryKey: un
           ...(target ? [{ value: `turn:${target.checkpoint}`, label: "Cambios de este turno" }] : []),
           ...prs.map((p) => ({ value: p.url, label: `PR #${p.number} · ${p.repository}` })),
         ]} />
-        {v.worktree_path && <span className="truncate font-mono text-xs text-slate-500 dark:text-muted" title={v.worktree_path}>{v.worktree_path}</span>}
+        {/* The diff's buttons (file explorer, split view, full screen) land here. */}
+        <span ref={setTools} className="flex items-center gap-1.5" />
+        {v.worktree_path && <span className="min-w-0 truncate font-mono text-xs text-slate-500 dark:text-muted" title={v.worktree_path}>{v.worktree_path}</span>}
       </div>
       <ErrorText error={turn ? turnDiff.error : pr ? prDiff.error : local.error} />
       {text === undefined ? <Notice loading /> : text === "" ? <p className="text-sm text-slate-500 dark:text-muted">Sin cambios todavía.</p>
-        : <div className="min-h-0 flex-1"><Diff key={source} text={text} onSuggest={suggest} focus={focus} fill /></div>}
+        : <div className="min-h-0 flex-1"><Diff key={source} text={text} onSuggest={suggest} focus={focus} fill toolsHost={tools} /></div>}
     </section>
   );
 }
