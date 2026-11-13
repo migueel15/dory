@@ -71,7 +71,12 @@ export function ThreadView() {
   // and open dialogs); only a first load that fails shows the error.
   if (!v) return <ErrorText error={view.error} />;
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    // The panel's divider runs the full height: the title belongs to the chat
+    // column. A diff in full screen fills both columns, not the thread list or
+    // the app sidebar.
+    <div ref={setHost} className="relative flex h-full min-h-0">
+      <FullscreenHost.Provider value={host}>
+      <div className={`min-h-0 min-w-0 flex-1 flex-col gap-3 ${panel ? "hidden lg:flex" : "flex"}`}>
       <ContextBar v={v}>
         <ThreadDetails v={v} onChanges={() => setPanel("changes")} panelOpen={panel !== ""} />
         <button type="button" aria-pressed={panel === "changes"} onClick={() => setPanel(panel === "changes" ? "" : "changes")} title="Panel de cambios" aria-label="Panel de cambios"
@@ -79,10 +84,8 @@ export function ThreadView() {
           <SidebarSimple className="size-4 -scale-x-100" />
         </button>
       </ContextBar>
-      {/* A diff in full screen fills chat and panel, not the thread list or the app sidebar. */}
-      <div ref={setHost} className="relative flex min-h-0 flex-1">
-        <FullscreenHost.Provider value={host}>
-        <div className={`min-h-0 min-w-0 flex-1 flex-col ${panel ? "hidden lg:flex" : "flex"}`}><OpenTurnContext.Provider value={openTurn}><Chat key={v.id} v={v} queryKey={key} onStop={setStopping} /></OpenTurnContext.Provider></div>
+        <div className="flex min-h-0 flex-1 flex-col"><OpenTurnContext.Provider value={openTurn}><Chat key={v.id} v={v} queryKey={key} onStop={setStopping} /></OpenTurnContext.Provider></div>
+      </div>
         {/* Always mounted (its content only once opened): on desktop its width
             slides between 0 and the panel width, with the content pinned right
             so it enters from the right edge and leaves the same way. */}
@@ -96,8 +99,7 @@ export function ThreadView() {
             </div>
           </aside>
         )}
-        </FullscreenHost.Provider>
-      </div>
+      </FullscreenHost.Provider>
     </div>
   );
 }
