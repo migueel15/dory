@@ -88,10 +88,18 @@ export function rememberDetails(id: string, open: boolean) {
 // requests, items, changes and subagents. The card stays open while the chat
 // is used, and each thread remembers it; going to a subagent or to the parent
 // from it keeps it open there too.
-export function ThreadDetails({ v, onChanges }: { v: T3ThreadView; onChanges?: () => void }) {
-  const [open, setOpenState] = useState(() => detailsOpen(v.id));
-  useEffect(() => { setOpenState(detailsOpen(v.id)); }, [v.id]);
-  const setOpen = (o: boolean) => { rememberDetails(v.id, o); setOpenState(o); };
+export function ThreadDetails({ v, onChanges, panelOpen = false }: { v: T3ThreadView; onChanges?: () => void; panelOpen?: boolean }) {
+  const [pinnedOpen, setPinnedOpen] = useState(() => detailsOpen(v.id));
+  useEffect(() => { setPinnedOpen(detailsOpen(v.id)); }, [v.id]);
+  // With the side panel open the card steps aside: the button shows it as a
+  // pop-up that a click outside closes, and the remembered state is kept.
+  const [popup, setPopup] = useState(false);
+  useEffect(() => { setPopup(false); }, [panelOpen, v.id]);
+  const open = panelOpen ? popup : pinnedOpen;
+  const setOpen = (o: boolean) => {
+    if (panelOpen) { setPopup(o); return; }
+    rememberDetails(v.id, o); setPinnedOpen(o);
+  };
   const keepOpenIn = (id: string) => rememberDetails(id, true);
   const [showDone, setShowDone] = useState(false);
   // Subagents of this thread, as T3 Code lists them: the ones at work first,
@@ -127,6 +135,14 @@ export function ThreadDetails({ v, onChanges }: { v: T3ThreadView; onChanges?: (
   const worktree = v.worktree_path || git?.worktree || "";
   const local = diffStats(diff.data?.diff);
   const changes = git || !pr ? { add: local.add, del: local.del, base: git?.base ?? "", pending: diff.isPending } : { add: pr.additions, del: pr.deletions, base: pr.base_ref, pending: pull.isPending };
+  useEffect(() => {
+    if (!panelOpen || !popup) return;
+    const away = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setPopup(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setPopup(false); };
+    document.addEventListener("mousedown", away);
+    window.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", away); window.removeEventListener("keydown", esc); };
+  }, [panelOpen, popup]);
   const ico = "size-[18px] shrink-0 text-slate-500 dark:text-muted";
   const rowCls = "flex min-h-9 items-center gap-3 rounded-md px-2 text-sm";
   return (
@@ -165,8 +181,8 @@ export function ThreadDetails({ v, onChanges }: { v: T3ThreadView; onChanges?: (
               </Link>
             ))}
           </div>
-          <div className="pt-1.5">
-            <button type="button" disabled={!onChanges} onClick={() => onChanges?.()} title="Abrir el panel de cambios"
+          <div className="py-1.5">
+            <button type="button" disabled={!onChanges} onClick={() => { setPopup(false); onChanges?.(); }} title="Abrir el panel de cambios"
               className={`${rowCls} w-full text-left enabled:hover:bg-slate-100 dark:enabled:hover:bg-raised`}>
               <GitDiff className={ico} />
               <span className="min-w-0 flex-1 truncate"><span className="font-medium">Cambios</span>{changes.base && <span className="text-slate-500 dark:text-muted"> vs {changes.base}</span>}</span>
@@ -178,11 +194,7 @@ export function ThreadDetails({ v, onChanges }: { v: T3ThreadView; onChanges?: (
           </div>
           {(subagents.length > 0 || parent) && (
             <div className="pt-1.5">
-              <div className={`${rowCls} min-h-8`}>
-                <Robot className={ico} />
-                <span className="flex-1 font-medium">Subagentes</span>
-                {subagents.length > 0 && <span className="text-xs tabular-nums text-slate-500 dark:text-muted">{live.length ? `${live.length} activos` : "ninguno activo"}</span>}
-              </div>
+              <p className="px-2 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-muted">Linaje</p>
               {parent && (
                 <Link to="/threads/$threadId" params={{ threadId: parent.id }} onClick={() => keepOpenIn(parent.id)} title="Volver al hilo padre"
                   className="flex min-h-8 items-center gap-2.5 rounded-md px-2 text-sm hover:bg-slate-100 dark:hover:bg-raised">
@@ -190,15 +202,19 @@ export function ThreadDetails({ v, onChanges }: { v: T3ThreadView; onChanges?: (
                   <span className="min-w-0 flex-1 truncate">Volver a <span className="font-medium">{parent.title || parent.id}</span></span>
                 </Link>
               )}
-              <ul className="max-h-72 overflow-y-auto">
+              <ul className="max-h-80 overflow-y-auto">
                 {live.map((x) => <SubagentRow key={x.id} t={x} onOpen={() => keepOpenIn(x.id)} />)}
+                {subagents.length > 0 && live.length === 0 && <li className="px-2 py-1 text-xs text-slate-400 dark:text-muted">Ningún subagente trabajando.</li>}
                 {done.length > 0 && (
                   <li>
                     <button type="button" onClick={() => setShowDone(!showDone)} aria-expanded={showDone}
-                      className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">
-                      <CaretRight weight="bold" className={`size-3 transition-transform ${showDone ? "rotate-90" : ""}`} />Finalizados<span className="tabular-nums">{done.length}</span>
+                      className={`${rowCls} w-full text-left hover:bg-slate-100 dark:hover:bg-raised`}>
+                      <Robot className={ico} />
+                      <span className="flex-1">Agentes previos</span>
+                      <span className="text-xs tabular-nums text-slate-500 dark:text-muted">{done.length}</span>
+                      <CaretRight weight="regular" className={`size-3.5 text-slate-400 transition-transform ${showDone ? "rotate-90" : ""}`} />
                     </button>
-                    {showDone && <ul>{done.map((x) => <SubagentRow key={x.id} t={x} onOpen={() => keepOpenIn(x.id)} />)}</ul>}
+                    {showDone && <ul>{done.map((x) => <SubagentRow key={x.id} t={x} idle onOpen={() => keepOpenIn(x.id)} />)}</ul>}
                   </li>
                 )}
               </ul>
@@ -210,14 +226,26 @@ export function ThreadDetails({ v, onChanges }: { v: T3ThreadView; onChanges?: (
   );
 }
 
-// SubagentRow is one subagent in the details card: model logo, title and state.
-function SubagentRow({ t, onOpen }: { t: T3Thread; onOpen: () => void }) {
+// idleFor says how long ago a thread last changed: "hace 5 min".
+const idleFor = (iso: string) => {
+  const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+  if (!Number.isFinite(s)) return "";
+  if (s < 60) return "ahora";
+  if (s < 3600) return `hace ${Math.floor(s / 60)} min`;
+  if (s < 86400) return `hace ${Math.floor(s / 3600)} h`;
+  return `hace ${Math.floor(s / 86400)} d`;
+};
+
+// SubagentRow is one subagent in the details card: model logo, title and
+// state; a finished one (idle) also says how long it has been inactive.
+function SubagentRow({ t, onOpen, idle }: { t: T3Thread; onOpen: () => void; idle?: boolean }) {
   return (
     <li>
       <Link to="/threads/$threadId" params={{ threadId: t.id }} onClick={onOpen} title={[t.model, statusLabel(t.status, t.attention)].filter(Boolean).join(" · ")}
         className="flex min-h-8 items-center gap-2.5 rounded-md px-2 text-sm hover:bg-slate-100 dark:hover:bg-raised">
         <span className="grid size-[18px] shrink-0 place-items-center [&_svg]:size-4"><ModelLogo driver={t.provider ?? ""} model={t.model} /></span>
         <span className="min-w-0 flex-1 truncate">{t.title || t.id}</span>
+        {idle && <span className="shrink-0 text-[11px] tabular-nums text-slate-400 dark:text-muted">{idleFor(t.updated_at)}</span>}
         <ThreadStatus status={t.status} attention={t.attention} />
       </Link>
     </li>

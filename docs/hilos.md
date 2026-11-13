@@ -29,7 +29,9 @@ Con clic derecho o el botón «⋯» de cada fila, y con el botón «⋯» de la
 
 Todas pasan por `POST /api/t3/threads/{id}/actions` con `{action, title?, until?, run_id?}`. La lista se actualiza al momento y se corrige si T3 rechaza la acción.
 
-La tarjeta de detalles del hilo (botón ⓘ) no se cierra al usar el chat ni al hacer clic fuera: solo con su botón. Cada hilo recuerda si la tiene abierta (en este navegador), y al ir a un subagente o al padre desde ella sigue abierta. La cabecera de un subagente enlaza a su hilo padre, y en la tarjeta la sección Subagentes ofrece «Volver a …». En la tarjeta, la sección **Subagentes** muestra primero los que trabajan o esperan respuesta, con el logo de su modelo y su estado, y debajo «Finalizados», plegada. El botón ⓘ indica cuántos subagentes están trabajando.
+La tarjeta de detalles del hilo (botón ⓘ) no se cierra al usar el chat ni al hacer clic fuera: solo con su botón. Cada hilo recuerda si la tiene abierta (en este navegador), y al ir a un subagente o al padre desde ella sigue abierta. Con el panel lateral de cambios abierto (por ejemplo, desde la fila «Cambios»), la tarjeta se oculta; su botón la muestra entonces como ventana emergente, que se cierra al hacer clic fuera o con Esc.
+
+La sección **Linaje** de la tarjeta ofrece «Volver a …» en un subagente, lista los subagentes que trabajan o esperan respuesta con el logo de su modelo y su estado, y debajo despliega «Agentes previos»: los ya terminados, con su estado y hace cuánto están inactivos. El botón ⓘ indica cuántos subagentes están trabajando. La cabecera de un subagente también enlaza a su hilo padre.
 
 ## Rendimiento
 

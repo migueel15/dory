@@ -69,7 +69,7 @@ export function ThreadView() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <ContextBar v={v}>
-        <ThreadDetails v={v} onChanges={() => setPanel("changes")} />
+        <ThreadDetails v={v} onChanges={() => setPanel("changes")} panelOpen={panel !== ""} />
         <button type="button" aria-pressed={panel === "changes"} onClick={() => setPanel(panel === "changes" ? "" : "changes")} title="Panel de cambios" aria-label="Panel de cambios"
           className={`${pill} !px-2 ${panel === "changes" ? "!border-slate-500 !text-slate-900 dark:!text-white" : ""}`}>
           <SidebarSimple className="size-4 -scale-x-100" />
