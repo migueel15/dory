@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -45,6 +46,7 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 				writeT3Error(w, err)
 				return
 			}
+			views.forget(id)
 			monitor.RefreshThread(id)
 			audit(r, svc, id, map[string]any{"operation": operation, "run_id": r.PathValue("run_id"), "body": body})
 			w.WriteHeader(http.StatusNoContent)
@@ -58,7 +60,20 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 			writeT3Error(w, err)
 			return
 		}
-		v, err := c.ThreadView(r.Context(), id)
+		read, err := views.get(r.Context(), monitor, id, func(ctx context.Context) (threadRead, error) {
+			// T3 sends only the latest turns; older ones come page by page from
+			// the cursor. Both reads run at once.
+			cursor := make(chan string, 1)
+			go func() {
+				c, _ := c.HistoryCursor(ctx, id)
+				cursor <- c
+			}()
+			v, err := c.ThreadView(ctx, id)
+			if err != nil {
+				return threadRead{}, err
+			}
+			return threadRead{view: v, cursor: <-cursor}, nil
+		})
 		if err != nil {
 			writeT3Error(w, err)
 			return
@@ -68,17 +83,13 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 			writeServiceError(w, err)
 			return
 		}
-		out := threadViewOut{ThreadView: v, Items: links}
-		// T3 sends only the latest turns; older ones come page by page.
-		if cursor, err := c.HistoryCursor(r.Context(), id); err == nil {
-			out.HistoryCursor = cursor
-		}
+		out := threadViewOut{ThreadView: read.view, Items: links, HistoryCursor: read.cursor}
 		if inst, ok := monitor.Locate(id); ok {
 			out.InstanceID = inst
 		} else if len(links) > 0 {
 			out.InstanceID = links[0].InstanceID
 		}
-		writeJSON(w, http.StatusOK, out)
+		writeJSONETag(w, r, out)
 	})
 
 	mux.HandleFunc("GET /api/t3/threads/{id}/diff", func(w http.ResponseWriter, r *http.Request) {
@@ -249,6 +260,7 @@ func mountThreadView(mux *http.ServeMux, svc service.Service, monitor *t3.Monito
 			writeT3Error(w, err)
 			return
 		}
+		views.forget(id)
 		monitor.RefreshThread(id)
 		audit(r, svc, id, map[string]any{"operation": "t3.secret", "item": r.PathValue("item"), "declined": b.Decline})
 		w.WriteHeader(http.StatusNoContent)

@@ -198,9 +198,7 @@ function ThreadDetails({ v }: { v: T3ThreadView }) {
   // Same keys as the PR page and the changes panel, so the fetches are shared.
   const pull = useQuery({ queryKey: ["github-detail", first?.repo, "pulls", first?.number], queryFn: () => api.githubDetail(first!.repo, "pulls", first!.number), enabled: !!first, staleTime: 30_000 });
   const visible = useVisible();
-  // Polled while the tab is on screen: the worktree can change from outside the chat.
-  // The server answers 304 when nothing changed, and equal data keeps its reference.
-  const diff = useQuery({ queryKey: ["t3-diff", v.id], queryFn: () => api.t3Diff(v.id), refetchInterval: visible ? DIFF_POLL_MS : false });
+  const diff = useQuery({ queryKey: ["t3-diff", v.id], queryFn: () => api.t3Diff(v.id), refetchInterval: diffPoll(visible) });
   const envId = t3.data?.find((x) => x.instance_id === v.instance_id)?.environment_id;
   const catalog = useQuery({ queryKey: ["t3-catalog", v.instance_id], queryFn: () => api.t3Catalog(v.instance_id), enabled: !!v.instance_id, staleTime: 60_000 });
   const project = catalog.data?.projects.find((p) => p.id === v.project_id);
@@ -992,6 +990,12 @@ const prOf = (url: string) => {
 };
 
 const DIFF_POLL_MS = 3000;
+// diffPoll polls a local worktree's diff while the tab is on screen: it can
+// change from outside the chat, and Dory's git diff answers 304 when nothing
+// changed. A diff T3 computes changes only with the thread's turns, and the
+// thread's live events already refresh it.
+const diffPoll = (visible: boolean) => (q: { state: { data?: { source?: string } } }) =>
+  visible && q.state.data?.source === "git" ? DIFF_POLL_MS : false;
 
 type TurnTarget = { checkpoint: string; path?: string };
 // OpenTurnContext opens the side panel on a turn's changes; null where the chat has no panel.
@@ -1070,11 +1074,11 @@ function Changes({ v, queryKey, target }: { v: T3ThreadView; queryKey: unknown[]
   // A changes card in the chat switches the panel to its turn each time it is clicked.
   useEffect(() => { if (target) setSource(`turn:${target.checkpoint}`); }, [target]);
   const turn = source.startsWith("turn:") ? source.slice(5) : "";
-  const turnDiff = useQuery({ queryKey: ["t3-diff", v.id, "turn", turn], queryFn: () => api.t3Diff(v.id, turn), enabled: !!turn, staleTime: Infinity });
+  const turnDiff = useQuery({ queryKey: ["t3-turn-diff", v.id, turn], queryFn: () => api.t3Diff(v.id, turn), enabled: !!turn, staleTime: Infinity });
   const focus = useMemo(() => turn && target?.path && target.checkpoint === turn ? { path: target.path, seq: target.seq } : undefined, [turn, target]);
   const pr = prs.find((p) => p.url === source)?.parsed;
   const visible = useVisible();
-  const local = useQuery({ queryKey: ["t3-diff", v.id], queryFn: () => api.t3Diff(v.id), enabled: !pr, refetchInterval: visible ? DIFF_POLL_MS : false });
+  const local = useQuery({ queryKey: ["t3-diff", v.id], queryFn: () => api.t3Diff(v.id), enabled: !pr, refetchInterval: diffPoll(visible) });
   // Refresh in place so new messages keep the mounted diff and its scroll.
   useEffect(() => {
     void qc.invalidateQueries({ queryKey: ["t3-diff", v.id] });
