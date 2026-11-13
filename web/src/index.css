@@ -72,6 +72,10 @@ body { @apply bg-slate-50 text-slate-900 dark:bg-canvas dark:text-text; }
 @keyframes notif-in { from { opacity: 0; translate: 0 8px; } }
 .notif-in { animation: notif-in 0.18s ease-out; }
 @media (prefers-reduced-motion: reduce) { .notif-in { animation: none; } }
+/* Tooltips rise from below into place, centred over their element. */
+@keyframes tip-in { from { opacity: 0; translate: 0 6px; scale: 0.96; } }
+.tip-in { animation: tip-in 0.16s ease-out; }
+@media (prefers-reduced-motion: reduce) { .tip-in { animation: none; } }
 /* A sent message rises from the composer and settles into place. */
 @keyframes msg-in { from { opacity: 0; translate: 0 24px; scale: 0.96; } }
 .msg-in { animation: msg-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); transform-origin: bottom right; }

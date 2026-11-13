@@ -28,7 +28,7 @@ const keys: Record<string, string[]> = {
   itemthread: ["item-threads", "refinement"],
   itemplan: ["refinement", "items"],
   // Signals from the T3 monitor: thread states changed in some instance.
-  t3: ["t3-status", "t3-threads", "item-threads", "issue-threads", "refinement", "t3-context", "notifications"],
+  t3: ["t3-status", "t3-threads", "t3-updates", "item-threads", "issue-threads", "refinement", "t3-context", "notifications"],
 };
 
 // useLiveUpdates subscribes to the audit SSE stream and invalidates the

@@ -1,6 +1,5 @@
 import { Link as RouterLink } from "@tanstack/react-router";
 import { ArrowBendUpLeft, ArrowCounterClockwise, CaretDown, ChatCircle, Check, CheckCircle, Clock, Code, Eye, File, Flag, GitBranch, GitMerge, GitPullRequest, GithubLogo, PencilSimple, Plus, RadioButton, User, X, type Icon as PhosphorIcon, type IconWeight } from "@phosphor-icons/react";
-import { createPortal } from "react-dom";
 import { defaultUrlTransform, Md, Textarea } from "./ui";
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject, type ReactNode, type Ref, type TextareaHTMLAttributes } from "react";
 
@@ -41,37 +40,9 @@ export function GithubMark({ className = "size-5" }: { className?: string }) {
   return <GithubLogo className={className} weight="fill" aria-hidden="true" />;
 }
 
-// Tip shows a styled tooltip above its child on hover or keyboard focus.
-// Tip shows a tooltip over everything else (in a portal), kept inside the
-// viewport: it shifts sideways near the edges and flips below when the top is short.
+// Tip gives its child a tooltip; the text is drawn by the app's TooltipHost.
 export function Tip({ text, children }: { text: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
-  const anchor = useRef<HTMLSpanElement>(null);
-  const tip = useRef<HTMLSpanElement>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const show = () => { clearTimeout(timer.current); timer.current = setTimeout(() => setOpen(true), 150); };
-  const hide = () => { clearTimeout(timer.current); setOpen(false); setPos(null); };
-  useEffect(() => () => clearTimeout(timer.current), []);
-  useLayoutEffect(() => {
-    if (!open || !anchor.current || !tip.current) return;
-    const a = anchor.current.getBoundingClientRect(), t = tip.current.getBoundingClientRect(), m = 8;
-    const left = Math.min(Math.max(m, a.left + a.width / 2 - t.width / 2), window.innerWidth - t.width - m);
-    const top = a.top - t.height - 6 >= m ? a.top - t.height - 6 : a.bottom + 6;
-    setPos({ left, top });
-  }, [open, text]);
-  return (
-    <span ref={anchor} className="inline-flex" onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}>
-      {children}
-      {open && createPortal(
-        <span ref={tip} role="tooltip" style={pos ?? { left: 0, top: 0, visibility: "hidden" }}
-          className="pointer-events-none fixed z-[60] max-w-xs rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white shadow-lg dark:bg-text dark:text-canvas">
-          {text}
-        </span>,
-        document.body,
-      )}
-    </span>
-  );
+  return <span className="inline-flex" title={text}>{children}</span>;
 }
 
 const tones = {

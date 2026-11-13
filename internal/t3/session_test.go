@@ -86,3 +86,33 @@ func TestDeadSocketIsReplaced(t *testing.T) {
 		t.Fatalf("conns=%d", conns.Load())
 	}
 }
+
+func TestDroppedRequestIsNotResent(t *testing.T) {
+	var tickets, conns, requests atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/auth/websocket-ticket/rpc", func(w http.ResponseWriter, r *http.Request) {
+		tickets.Add(1)
+		w.Write([]byte(`{"ticket":"tk"}`))
+	})
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		conns.Add(1)
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		// Like T3 restarting during an update: read the request, then drop.
+		conn.Read(context.Background())
+		requests.Add(1)
+		conn.Close(websocket.StatusGoingAway, "restart")
+	})
+	s := httptest.NewServer(mux)
+	t.Cleanup(s.Close)
+	c := Client{BaseURL: s.URL, Token: "good", HTTP: s.Client()}
+	err := c.call(context.Background(), "server.updateServer", nil, nil)
+	if err == nil || !isClosed(err) {
+		t.Fatalf("err = %v, want a closed connection", err)
+	}
+	if requests.Load() != 1 {
+		t.Fatalf("requests = %d, want 1", requests.Load())
+	}
+}

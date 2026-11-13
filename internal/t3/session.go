@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -163,12 +164,23 @@ func (s *session) fail(err error) {
 	}
 }
 
-// errTransport marks failures of the socket, as opposed to answers from T3:
-// only those are worth retrying on a fresh connection.
+// errTransport marks a request that never reached T3 because the socket was
+// already dead: only those are retried on a fresh connection.
 type errTransport struct{ err error }
 
 func (e errTransport) Error() string { return e.err.Error() }
 func (e errTransport) Unwrap() error { return e.err }
+
+// errDropped marks a request that was sent on a socket that then died. It is
+// retried, except for calls that restart T3 (resending an update would repeat it).
+type errDropped struct{ err error }
+
+func (e errDropped) Error() string { return e.err.Error() }
+func (e errDropped) Unwrap() error { return e.err }
+
+// noResend lists the calls a dropped socket must not repeat: T3 restarts
+// while it runs them, so the drop is their expected answer.
+func noResend(method string) bool { return strings.HasPrefix(method, "server.update") }
 
 // do sends one request and waits for its answer.
 func (s *session) do(ctx context.Context, method string, payload, out any) error {
@@ -204,7 +216,8 @@ func (s *session) do(ctx context.Context, method string, payload, out any) error
 	select {
 	case m, ok := <-ch:
 		if !ok {
-			return errTransport{fmt.Errorf("t3: %s: %w", method, s.err)}
+			// The request went out and the socket died before the answer.
+			return errDropped{fmt.Errorf("t3: %s: %w", method, s.err)}
 		}
 		return finish(method, m.Exit, out)
 	case <-ctx.Done():
@@ -231,7 +244,8 @@ func (c Client) callShared(ctx context.Context, method string, payload, out any)
 		}
 		err = s.do(ctx, method, payload, out)
 		var te errTransport
-		if !errors.As(err, &te) {
+		var dropped errDropped
+		if !errors.As(err, &te) && !(errors.As(err, &dropped) && !noResend(method)) {
 			return err
 		}
 	}

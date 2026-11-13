@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -54,6 +55,32 @@ func Register(mux *http.ServeMux, svc service.Service, monitor *t3.Monitor, gh *
 	})
 	mux.HandleFunc("POST /api/t3/usage/refresh", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, monitor.RefreshUsage(r.Context()))
+	})
+	mux.HandleFunc("GET /api/t3/updates", func(w http.ResponseWriter, r *http.Request) {
+		updates, err := monitor.Updates(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal", err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, updates)
+	})
+	// Updates the connectors and the server of one instance (instance_id) or of all of
+	// them; an instance with running threads waits for restart:true.
+	mux.HandleFunc("POST /api/t3/updates", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			InstanceID string `json:"instance_id"`
+			Restart    bool   `json:"restart"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "invalid body")
+			return
+		}
+		results, err := monitor.ApplyUpdates(r.Context(), body.InstanceID, body.Restart)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, "upstream", err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, results)
 	})
 	mux.HandleFunc("POST /api/t3/instances/{id}/pair", func(w http.ResponseWriter, r *http.Request) {
 		link, err := monitor.PairingLink(r.Context(), r.PathValue("id"))

@@ -9,7 +9,9 @@ import { useLiveUpdates } from "./api/live";
 import { Button, Input, Label, errMsg } from "./components/ui";
 import { Environments, Memories, memorySearch } from "./pages/crud";
 import { CommandPalette, CommandsButton } from "./components/commands";
+import { TooltipHost } from "./components/tooltip";
 import { UsageQuick } from "./components/usage-quick";
+import { UpdateDialog, UpdateReview, UpdatesButton, useUpdates } from "./components/updates";
 import { ProjectSwitcher } from "./components/project-switcher";
 import { Notifications, NotificationItem } from "./components/notifications";
 import { Attention, useAttentionCount } from "./pages/attention";
@@ -89,6 +91,10 @@ function Layout() {
   // The project board needs the full width.
   const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") || l.pathname.startsWith("/items/") || l.pathname.startsWith("/threads") || /^\/github\/[^/]+\/[^/]+\/(pulls|issues)\//.test(l.pathname) || l.pathname === "/tasks" });
   const attention = useAttentionCount(!!me.data);
+  // Environments with outdated T3 or connectors; the footer icon updates them all.
+  const upd = useUpdates(!!me.data);
+  const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list(), enabled: !!me.data });
+  const envNames = Object.fromEntries((upd.updates.data ?? []).map((x) => [x.instance_id, envs.data?.find((e) => e.id === x.environment_id)?.name ?? "Entorno"]));
 
   const path = useLocation({ select: (l) => l.pathname });
   const [menu, setMenu] = useState(false);
@@ -177,6 +183,7 @@ function Layout() {
         <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-3 pb-4">{navLinks(folded)}</nav>
         <div className="shrink-0 px-3 pb-2"><ProjectSwitcher folded={folded} /></div>
         <SidebarFooter folded={folded} username={me.data.username} onLogout={() => logout.mutate()}
+          update={upd.outdated.length > 0 || upd.run.isPending ? <UpdatesButton u={upd} names={envNames} /> : null}
           controls={[desktop && <Notifications key="n" />, <ThemeToggle key="t" />, <SettingsLink key="s" />, <UsageQuick key="u" />].filter(Boolean) as React.ReactElement[]} />
       </aside>
       {/* On desktop the current view is a card framed by the sidebar background. */}
@@ -234,7 +241,7 @@ function Layout() {
           <VersionBadge />
         </div>
       </dialog>
-      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main></div><CommandPalette />
+      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main></div><CommandPalette /><UpdateReview u={upd} names={envNames} /><UpdateDialog u={upd} names={envNames} /><TooltipHost />
     </div>
   );
 }
@@ -312,7 +319,7 @@ function DevBadge() {
 // controls fold into a column one by one (theme under notifications, then
 // settings, then usage), and the user card narrows until only the sign-out
 // button is left, when its frame fades out.
-function SidebarFooter({ folded, username, onLogout, controls }: { folded: boolean; username: string; onLogout: () => void; controls: React.ReactElement[] }) {
+function SidebarFooter({ folded, username, onLogout, controls, update }: { folded: boolean; username: string; onLogout: () => void; controls: React.ReactElement[]; update: React.ReactElement | null }) {
   const box = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(200);
   useLayoutEffect(() => {
@@ -360,7 +367,11 @@ function SidebarFooter({ folded, username, onLogout, controls }: { folded: boole
         <span className={`min-w-0 flex-1 truncate whitespace-nowrap text-sm text-slate-500 transition-opacity duration-150 dark:text-muted ${width < 110 ? "opacity-0" : ""}`}>{username}</span>
         <Button variant="bare" aria-label="Cerrar sesión" title={`Cerrar sesión (${username})`} onClick={onLogout} className="grid size-8 shrink-0 place-items-center !p-0"><SignOut weight="regular" className="size-5" aria-hidden="true" /></Button>
       </div>
-      <div className={`grid transition-[grid-template-rows,opacity] duration-200 ${folded ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]"}`}><div className="overflow-hidden whitespace-nowrap"><VersionBadge /></div></div>
+      {/* Below the account: the running commit and, to its right, the update button. */}
+      <div className="flex items-center gap-2">
+        <div className={`grid min-w-0 flex-1 transition-[grid-template-rows,opacity] duration-200 ${folded ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]"}`}><div className="overflow-hidden whitespace-nowrap"><VersionBadge /></div></div>
+        {update}
+      </div>
     </div>
   );
 }
