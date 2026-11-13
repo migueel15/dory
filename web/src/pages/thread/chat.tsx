@@ -271,8 +271,8 @@ export function layout(ms: T3ViewMessage[], running: boolean): (T3ViewMessage | 
     // The turn at work: a "Working for…" line and a divider, then its steps
     // and notes as usual, as they come. It folds only once the turn ends.
     if (last && running) {
-      out.push({ worked: true, live: true, id: `working:${head?.id ?? seg[0]?.id ?? "turn"}`, items: [], secs: 0, since: head?.created_at || seg[0]?.created_at });
-      out.push(...groups(seg));
+      out.push({ worked: true, live: true, id: `working:${head?.id ?? seg[0]?.id ?? "turn"}`, items: seg.filter(isWork), secs: 0, since: head?.created_at || seg[0]?.created_at });
+      out.push(...groups(seg.filter((m) => !isWork(m))));
       return;
     }
     let answer = -1;
@@ -308,10 +308,17 @@ export function WorkedBlock({ items, secs, live = false, since }: { items: T3Vie
   }, [live]);
   const from = Date.parse(since ?? "");
   if (live) {
+    // The notes the model writes between steps are not answers: no time, no
+    // copy button, and close to the steps around them.
     return (
-      <div role="status" className="flex items-center gap-3 text-xs text-slate-500 dark:text-muted">
-        <span className="shrink-0 font-medium tabular-nums">Working for {Number.isFinite(from) ? elapsed((now - from) / 1000) : "…"}</span>
-        <span className="h-px flex-1 bg-slate-200 dark:bg-border" />
+      <div className="space-y-1.5">
+        <div role="status" className="flex items-center gap-3 text-xs text-slate-500 dark:text-muted">
+          <span className="shrink-0 font-medium tabular-nums">Working for {Number.isFinite(from) ? elapsed((now - from) / 1000) : "…"}</span>
+          <span className="h-px flex-1 bg-slate-200 dark:bg-border" />
+        </div>
+        {groups(items).map((m) => Array.isArray(m) ? <WorkBlock key={m[0].id} steps={m} live={m.includes(items.at(-1)!)} />
+          : m.role === "reasoning" ? <Reasoning key={m.id} m={m} />
+          : <div key={m.id} className="max-w-full pr-6 [&_p]:my-1">{m.text ? <Md>{m.text}</Md> : null}{m.streaming && <Dots />}</div>)}
       </div>
     );
   }
