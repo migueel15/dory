@@ -159,7 +159,7 @@ export function ThreadDetails({ v, onChanges, panelOpen = false }: { v: T3Thread
   const ico = "size-[18px] shrink-0 text-slate-500 dark:text-muted";
   const rowCls = "flex min-h-9 items-center gap-3 rounded-md px-2 text-sm";
   return (
-    <div ref={box} className="ml-auto">
+    <div ref={box} className="ml-auto flex items-center">
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} title="Detalles del hilo" aria-label="Detalles del hilo"
         className={`${pill} !px-2 ${open ? "!border-slate-500 !text-slate-900 dark:!text-white" : ""}`}>
         <Info className="size-4" />
