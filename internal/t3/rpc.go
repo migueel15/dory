@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coder/websocket"
 )
 
 // rpcTimeout bounds one write call, including the WebSocket handshake.
@@ -76,8 +75,7 @@ func (c Client) wsURL(ticket string) (string, error) {
 	return u.String(), nil
 }
 
-// call runs one RPC on its own connection. T3 writes are rare, so holding a
-// socket open per instance would add state without saving anything.
+// call runs one RPC on the instance's shared connection (see session.go).
 func (c Client) call(ctx context.Context, method string, payload, out any) error {
 	return c.callFor(ctx, rpcTimeout, method, payload, out)
 }
@@ -89,52 +87,7 @@ const gitTimeout = 3 * time.Minute
 func (c Client) callFor(ctx context.Context, timeout time.Duration, method string, payload, out any) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	ticket, err := c.ticket(ctx)
-	if err != nil {
-		return err
-	}
-	target, err := c.wsURL(ticket)
-	if err != nil {
-		return err
-	}
-	conn, resp, err := websocket.Dial(ctx, target, &websocket.DialOptions{HTTPClient: c.HTTP})
-	if err != nil {
-		if resp != nil && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) {
-			return errUnauthorized
-		}
-		return fmt.Errorf("t3: websocket: %w", err)
-	}
-	defer conn.CloseNow()
-	conn.SetReadLimit(rpcReadLimit)
-	req, err := json.Marshal(map[string]any{"_tag": "Request", "id": "1", "tag": method, "payload": payload, "headers": []any{}})
-	if err != nil {
-		return err
-	}
-	if err := conn.Write(ctx, websocket.MessageText, req); err != nil {
-		return err
-	}
-	for {
-		_, data, err := conn.Read(ctx)
-		if err != nil {
-			return fmt.Errorf("t3: %s: %w", method, err)
-		}
-		msgs, err := decodeFrame(data)
-		if err != nil {
-			return err
-		}
-		for _, m := range msgs {
-			switch m.Tag {
-			case "Ping":
-				if err := conn.Write(ctx, websocket.MessageText, []byte(`{"_tag":"Pong"}`)); err != nil {
-					return err
-				}
-			case "Exit":
-				return finish(method, m.Exit, out)
-			case "Defect", "ClientProtocolError":
-				return fmt.Errorf("t3: %s: %s", method, data)
-			}
-		}
-	}
+	return c.callShared(ctx, method, payload, out)
 }
 
 // decodeFrame accepts one message or a batch; the server may send either.
