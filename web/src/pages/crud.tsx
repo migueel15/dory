@@ -1,4 +1,5 @@
 import { ThreadLink } from "../components/thread-link";
+import { MachineUpdate } from "../components/updates";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -151,6 +152,8 @@ function Machine({ env, status }: { env: Environment; status: T3Status }) {
           <li key={p.id} className="flex min-w-0 items-center gap-2"><FolderSimple weight="duotone" aria-hidden="true" className="size-4 shrink-0 text-slate-400" /><span className="min-w-0 max-w-[50%] shrink-0 truncate">{p.title}</span><span className="min-w-0 truncate font-mono text-[11px] text-slate-400 dark:text-muted" title={p.root}>{p.root}</span></li>
         ))}</ul>
       </section>
+
+      {up && status.instance_id && <MachineUpdate instanceId={status.instance_id} name={env.name} />}
 
       {env.notes && <p className="whitespace-pre-wrap break-words rounded-md bg-slate-50 p-2 text-xs text-slate-600 dark:bg-raised dark:text-text-secondary">{env.notes}</p>}
 

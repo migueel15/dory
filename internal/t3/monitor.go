@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -44,6 +45,9 @@ type Status struct {
 	Version       string     `json:"version"`
 	LastSeen      *time.Time `json:"last_seen"`
 	Threads       []Thread   `json:"threads"`
+	// All holds every thread of the instance, settled, archived and subagents
+	// included; /api/t3/threads serves it, /api/t3/status keeps the light list.
+	All []Thread `json:"-"`
 }
 
 // Monitor polls every registered instance and keeps the latest status.
@@ -51,6 +55,7 @@ type Monitor struct {
 	Observe func(context.Context, string, []Thread) error
 	svc     service.Service
 	client  *http.Client
+	updates updatesState
 	mu      sync.RWMutex
 	byID    map[string]Status
 	usage   map[string]InstanceUsage
@@ -142,6 +147,12 @@ func sameView(a, b Status) bool {
 	a.LastSeen, b.LastSeen = nil, nil
 	x, _ := json.Marshal(a)
 	y, _ := json.Marshal(b)
+	if string(x) != string(y) {
+		return false
+	}
+	// All is left out of the status JSON, so compare it on its own.
+	x, _ = json.Marshal(a.All)
+	y, _ = json.Marshal(b.All)
 	return string(x) == string(y)
 }
 
@@ -220,23 +231,19 @@ func (m *Monitor) check(ctx context.Context, in service.T3Instance) Status {
 	}
 	now := time.Now()
 	s.LastSeen = &now
-	threads, err := c.Threads(ctx)
+	threads, all, err := c.shell(ctx)
 	switch {
 	case err == nil:
-		s.State, s.Threads = StateAvailable, threads
-		for i := range s.Threads {
-			s.Threads[i].EnvironmentID = d.EnvironmentID
-			s.Threads[i].URL = strings.TrimRight(in.BaseUrl, "/") + "/" + d.EnvironmentID + "/" + s.Threads[i].ID
-		}
-		if m.Observe != nil {
-			all, err := c.threads(ctx, true)
-			if err == nil {
-				for i := range all {
-					all[i].URL = strings.TrimRight(in.BaseUrl, "/") + "/" + d.EnvironmentID + "/" + all[i].ID
-				}
-				err = m.Observe(ctx, in.ID, all)
+		base := strings.TrimRight(in.BaseUrl, "/") + "/" + d.EnvironmentID + "/"
+		for _, list := range [][]Thread{threads, all} {
+			for i := range list {
+				list[i].EnvironmentID = d.EnvironmentID
+				list[i].URL = base + list[i].ID
 			}
-			if err != nil {
+		}
+		s.State, s.Threads, s.All = StateAvailable, threads, all
+		if m.Observe != nil {
+			if err := m.Observe(ctx, in.ID, all); err != nil {
 				log.Printf("t3: notifications: %v", err)
 			}
 		}
@@ -365,6 +372,14 @@ func (m *Monitor) Locate(threadID string) (string, bool) {
 			}
 		}
 	}
+	// Settled, archived and idle subagent threads are reachable as well.
+	for id, s := range m.byID {
+		for _, t := range s.All {
+			if t.ID == threadID {
+				return id, true
+			}
+		}
+	}
 	return "", false
 }
 
@@ -379,7 +394,40 @@ func (m *Monitor) Thread(threadID string) (Thread, bool) {
 			}
 		}
 	}
+	for _, s := range m.byID {
+		for _, t := range s.All {
+			if t.ID == threadID {
+				return t, true
+			}
+		}
+	}
 	return Thread{}, false
+}
+
+// InstanceThreads is every thread of one available instance.
+type InstanceThreads struct {
+	InstanceID    string   `json:"instance_id"`
+	EnvironmentID string   `json:"environment_id"`
+	Threads       []Thread `json:"threads"`
+}
+
+// AllThreads returns every thread of each available instance.
+func (m *Monitor) AllThreads() []InstanceThreads {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]InstanceThreads, 0, len(m.byID))
+	for _, s := range m.byID {
+		if s.State != StateAvailable {
+			continue
+		}
+		list := s.All
+		if list == nil {
+			list = s.Threads
+		}
+		out = append(out, InstanceThreads{InstanceID: s.InstanceID, EnvironmentID: s.EnvironmentID, Threads: list})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].InstanceID < out[j].InstanceID })
+	return out
 }
 
 // ThreadClient returns a client for the instance that reports a thread, so

@@ -1,7 +1,7 @@
 import { createContext, memo, useCallback, useContext, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { createPortal } from "react-dom";
-import { ArrowsIn, CaretDown, ArrowsOut, CaretRight, Columns, Rows, SidebarSimple, ChatCircle, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
+import { ArrowsIn, CaretDown, ArrowsOut, CaretRight, Columns, Rows, SidebarSimple, ChatCircle, TreeView, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { Button, ErrorText, Input, Textarea, keepAboveKeyboard } from "../components/ui";
@@ -286,7 +286,7 @@ export const FullscreenHost = createContext<HTMLElement | null>(null);
 // onAsked runs after a question reaches the pull request's review thread.
 // focus opens a file on a line (or range) and scrolls to it, each time its seq changes.
 // Only the rows near the viewport are in the DOM; search and jumps work on the parsed files.
-export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, onAsked, focus, fill = false }: { repo?: string; pr?: number; text?: string; onSuggest?: (s: Suggestion) => Promise<void>; onAsked?: () => void; focus?: FileRef & { seq: number }; fill?: boolean }) {
+export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, onAsked, focus, fill = false, toolsHost }: { repo?: string; pr?: number; text?: string; onSuggest?: (s: Suggestion) => Promise<void>; onAsked?: () => void; focus?: FileRef & { seq: number }; fill?: boolean; toolsHost?: HTMLElement | null }) {
   const qc = useQueryClient();
   const gh = !onSuggest && !!repo && !!pr;
   const diff = useQuery({ queryKey: ["github-diff", repo, pr], queryFn: () => api.githubDiff(repo, pr), enabled: text === undefined });
@@ -556,8 +556,8 @@ export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, onA
   const toolBtn = "grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-300 bg-white hover:bg-slate-100 dark:border-border dark:bg-surface dark:hover:bg-raised";
   const tools = (
     <>
-      <button type="button" onClick={() => setPanelOpen((v) => !v)} title={panelOpen ? "Ocultar panel" : "Mostrar panel"} aria-label={panelOpen ? "Ocultar panel" : "Mostrar panel"} aria-expanded={panelOpen} className={toolBtn}>
-        {panelOpen ? <SidebarSimple aria-hidden="true" weight="fill" className="size-4" /> : <SidebarSimple aria-hidden="true" className="size-4" />}
+      <button type="button" onClick={() => setPanelOpen((v) => !v)} title={panelOpen ? "Ocultar explorador de archivos" : "Mostrar explorador de archivos"} aria-label={panelOpen ? "Ocultar explorador de archivos" : "Mostrar explorador de archivos"} aria-expanded={panelOpen} className={toolBtn}>
+        <TreeView aria-hidden="true" weight={panelOpen ? "fill" : "regular"} className="size-4" />
       </button>
       <button type="button" onClick={() => setSplit((v) => !v)} title={split ? "Vista unificada" : "Vista dividida"} aria-label={split ? "Vista unificada" : "Vista dividida"} aria-pressed={split} className={toolBtn}>
         {split ? <Rows aria-hidden="true" className="size-4" /> : <Columns aria-hidden="true" className="size-4" />}
@@ -573,18 +573,20 @@ export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, onA
   const host = useContext(FullscreenHost);
   const view = (
     <div className={full ? `${host ? "absolute" : "fixed h-dvh"} inset-0 z-50 overflow-hidden overscroll-none bg-slate-50 p-3 dark:bg-canvas` : fill ? "h-full min-h-0" : ""}>
-    <div className={`grid gap-3 ${panelOpen ? "md:grid-cols-[16rem_1fr]" : "md:grid-cols-[2.25rem_1fr]"} ${full || fill ? "h-full grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1" : ""}`}>
+    {/* A host (the thread's changes panel) can take the buttons into its own header. */}
+    {toolsHost && !full && createPortal(tools, toolsHost)}
+    <div className={`grid gap-3 ${panelOpen ? "md:grid-cols-[16rem_1fr]" : toolsHost && !full ? "" : "md:grid-cols-[2.25rem_1fr]"} ${full || fill ? "h-full grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1" : ""}`}>
       {panelOpen ? (
       <aside className={`${full || fill ? "h-[30vh] md:h-auto" : "h-[30vh] md:h-[80vh]"} ${panel} flex min-h-0 flex-col overflow-hidden`}>
           <div className="flex shrink-0 gap-1.5 p-2">
             <Input aria-label="Buscar fichero o texto" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && jump(shown[0].path)} placeholder="Buscar fichero o texto…" className="min-w-0 flex-1 py-1" />
-            {tools}
+            {(!toolsHost || full) && tools}
           </div>
           {!loading && gh && <div className="shrink-0 px-3 pb-1 text-xs text-slate-500 dark:text-muted">{files.filter((f) => reviewed.has(f.path)).length}/{files.length} revisados</div>}
           <div className="min-h-0 flex-1 overflow-auto overscroll-contain px-2 pb-2">{loading ? treeSkeleton : treeEl}</div>
       </aside>
       ) : (
-      <aside className="flex gap-1.5 md:flex-col">{tools}</aside>
+      (!toolsHost || full) && <aside className="flex gap-1.5 md:flex-col">{tools}</aside>
       )}
       <div className={`flex min-h-0 min-w-0 flex-col gap-3 ${full || fill ? "" : "h-[80vh]"}`}>
         <ErrorText error={diff.error ?? comment.error ?? ask.error ?? suggest.error ?? mark.error} />

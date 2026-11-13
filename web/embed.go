@@ -25,6 +25,13 @@ func Handler() http.Handler {
 			name = "index.html"
 		}
 		if st, err := fs.Stat(root, name); err == nil && !st.IsDir() {
+			// Vite names built assets by content hash, so they never change;
+			// the rest (index.html, sw.js, icons) is revalidated each time.
+			if strings.HasPrefix(name, "assets/") {
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			} else {
+				w.Header().Set("Cache-Control", "no-cache")
+			}
 			files.ServeHTTP(w, r)
 			return
 		}
@@ -36,6 +43,7 @@ func Handler() http.Handler {
 			http.Error(w, "web assets not built (run npm run build in web/)", http.StatusNotFound)
 			return
 		}
+		w.Header().Set("Cache-Control", "no-cache")
 		r.URL.Path = "/"
 		files.ServeHTTP(w, r)
 	})

@@ -2,6 +2,7 @@ package t3
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 )
 
@@ -142,5 +143,49 @@ func TestTimelineShowsCheckpointChanges(t *testing.T) {
 	}, map[string]ViewMessage{}, nil, map[string]bool{}, false)
 	if len(out) != 1 || out[0].Role != "changes" || out[0].ID != "cp1" || len(out[0].Files) != 1 || out[0].Files[0].Additions != 3 {
 		t.Fatalf("got %+v", out)
+	}
+}
+
+func TestViewKeepsSubagentsState(t *testing.T) {
+	var p wireViewProjection
+	raw := `{"subagents":[{"childThreadId":"c1","title":"Hora","model":"claude-haiku-5-5","status":"running","progress":"Running sleep",
+		"startedAt":"2026-11-13T02:43:31Z","completedAt":null,"modelSelection":{"instanceId":"claudeAgent","options":[{"id":"effort","value":"high"}]}},
+		{"childThreadId":"","status":"completed"}]}`
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		t.Fatal(err)
+	}
+	v := p.view("parent")
+	if len(v.Subagents) != 1 {
+		t.Fatalf("subagents = %+v", v.Subagents)
+	}
+	s := v.Subagents[0]
+	if s.ThreadID != "c1" || s.Status != "running" || s.Provider != "claudeAgent" || s.Effort != "high" || s.StartedAt == "" || s.CompletedAt != "" {
+		t.Errorf("subagent = %+v", s)
+	}
+}
+
+func TestViewHidesTaskNotifications(t *testing.T) {
+	var p wireViewProjection
+	raw := `{"messages":[
+		{"id":"m1","role":"user","text":"hola"},
+		{"id":"m2","role":"user","text":"<task-notification>\n<task-id>x</task-id>\n</task-notification>"},
+		{"id":"m3","role":"user","text":"<task-notification>pendiente</task-notification>"}],
+		"turnItems":[
+		{"id":"i1","type":"user_message","messageId":"m1","ordinal":1},
+		{"id":"turn-item:message:m2","type":"notification","ordinal":2,"summary":"Subagent finished"}]}`
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(raw), &p.wireProjection); err != nil {
+		t.Fatal(err)
+	}
+	v := p.view("th")
+	for _, m := range v.Messages {
+		if m.ID != "m1" {
+			t.Errorf("shown %+v", m)
+		}
+	}
+	if len(v.Messages) != 1 {
+		t.Errorf("messages = %+v", v.Messages)
 	}
 }

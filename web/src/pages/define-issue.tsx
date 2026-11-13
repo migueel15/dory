@@ -20,7 +20,7 @@ export function DefineIssueDialog({ repo, number, onClose, resolve = false }: { 
       {form.fields}
       <p className="text-xs text-slate-500 dark:text-muted">{resolve ? "El agente resuelve los conflictos en un worktree, valida y empuja la rama de la PR. Si hay dudas, las plantea en el hilo." : "El agente analiza la issue y el repositorio y crea los items en Dory; no implementa nada."}</p>
       <ErrorText error={form.error ?? launch.error} />
-      {launch.isSuccess ? <Link to="/jobs" onClick={onClose} className="text-blue-600 underline">Ver hilo en Trabajos</Link> : <Button disabled={!form.ready || launch.isPending} onClick={() => launch.mutate()}>Lanzar</Button>}
+      {launch.isSuccess ? <Link to="/threads" search={{ f: "jobs" } as never} onClick={onClose} className="text-blue-600 underline">Ver en Hilos</Link> : <Button disabled={!form.ready || launch.isPending} onClick={() => launch.mutate()}>Lanzar</Button>}
     </Modal>
   );
 }

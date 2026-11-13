@@ -3,6 +3,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSPropert
 import { createPortal } from "react-dom";
 import { ArrowClockwise, PushPin } from "@phosphor-icons/react";
 import { Arrow } from "./ui";
+import { HoverCard } from "./tooltip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { api, type T3InstanceUsage } from "../api/client";
@@ -92,8 +93,8 @@ export function UsageQuick() {
   const lines = rows.map((r) => `${r.label}: ${r.left}${r.reset ? `, se reinicia en ${r.reset}` : ""}`);
   const summary = shown ? `${shown.name}. ${lines.join(". ")}` : "Límites restantes";
   // Hover shows the dial's numbers at once (a native title takes a second and is easy to miss).
-  const [hover, setHover] = useState<CSSProperties | null>(null);
-  const showHover = () => { const t = trigger.current?.getBoundingClientRect(); if (t && !open) setHover({ left: t.left, bottom: window.innerHeight - t.top + 6 }); };
+  const [hover, setHover] = useState(false);
+  const showHover = () => setHover(true);
 
   useLayoutEffect(() => {
     if (!open || !trigger.current) return;
@@ -112,15 +113,14 @@ export function UsageQuick() {
 
   return (
     <>
-      <button ref={trigger} type="button" aria-haspopup="dialog" aria-expanded={open} aria-label={summary} onMouseEnter={showHover} onMouseLeave={() => setHover(null)} onFocus={showHover} onBlur={() => setHover(null)} onClick={() => { setHover(null); setOpen(!open); }}
+      <button ref={trigger} type="button" aria-haspopup="dialog" aria-expanded={open} aria-label={summary} onMouseEnter={showHover} onMouseLeave={() => setHover(false)} onFocus={showHover} onBlur={() => setHover(false)} onClick={() => { setHover(false); setOpen(!open); }}
         className={`grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-slate-200 sm:min-h-0 sm:min-w-0 sm:px-3 sm:py-1.5 dark:hover:bg-raised ${open ? "bg-slate-200 dark:bg-raised" : ""}`}>
         <Dial short={inner?.used_percent} long={outer?.used_percent} />
       </button>
-      {hover && !open && createPortal(
-        <div role="tooltip" style={hover} className="notif-in pointer-events-none fixed z-[100] rounded-md bg-slate-900 px-2.5 py-1.5 text-xs text-white shadow-lg dark:bg-raised dark:text-text">
+      {hover && !open && (
+        <HoverCard anchor={trigger.current}>
           {shown ? <><div className="font-medium">{shown.name}</div><div className="grid grid-cols-[auto_auto_auto] gap-x-3 tabular-nums">{rows.map((r) => <Fragment key={r.label}><span>{r.label}</span><span>{r.left}</span><span className="text-right opacity-70">{r.reset && `↻ ${r.reset}`}</span></Fragment>)}</div></> : "Sin datos de límites"}
-        </div>,
-        trigger.current?.closest("dialog") ?? document.body,
+        </HoverCard>
       )}
       {open && createPortal(
         <div ref={panel} role="dialog" aria-label="Límites restantes" style={pos} className="notif-in fixed z-[100] space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-xl dark:border-border dark:bg-surface">

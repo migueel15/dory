@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 
 export type ContextAction = { label: string; run?: () => void; content?: ReactNode; children?: ContextAction[] };
 
-export function ContextMenu({ x, y, actions, onClose }: { x: number; y: number; actions: ContextAction[]; onClose: () => void }) {
+export function ContextMenu({ x, y, actions, onClose, label = "Acciones del item", submenuLabel = "Mover a estado" }: { x: number; y: number; actions: ContextAction[]; onClose: () => void; label?: string; submenuLabel?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [submenu, setSubmenu] = useState<ContextAction[] | null>(null);
   const entries = submenu ?? actions;
@@ -16,7 +16,12 @@ export function ContextMenu({ x, y, actions, onClose }: { x: number; y: number; 
     node.style.top = `${Math.max(4, Math.min(y, window.innerHeight - rect.height - 4))}px`;
     node.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     const outside = (e: PointerEvent) => { if (!node.contains(e.target as Node)) onClose(); };
-    const close = () => onClose();
+    // Close when what the menu was opened from scrolls away, not when some
+    // other box scrolls (a chat following a reply scrolls all the time).
+    const close = (e: Event) => {
+      const t = e.target;
+      if (e.type === "resize" || t === document || !(t instanceof Node) || !previous || t.contains(previous)) onClose();
+    };
     document.addEventListener("pointerdown", outside);
     window.addEventListener("scroll", close, true);
     window.addEventListener("resize", close);
@@ -27,7 +32,7 @@ export function ContextMenu({ x, y, actions, onClose }: { x: number; y: number; 
       if (node.contains(document.activeElement)) previous?.focus();
     };
   }, [x, y, onClose, entries]);
-  return createPortal(<div ref={ref} role="menu" aria-label={submenu ? "Mover a estado" : "Acciones del item"}
+  return createPortal(<div ref={ref} role="menu" aria-label={submenu ? submenuLabel : label}
     style={{ left: x, top: y }} className="fixed z-[100] max-h-[calc(100vh-8px)] w-64 max-w-[calc(100vw-8px)] overflow-auto rounded-md border border-slate-200 bg-white p-1 text-sm shadow-lg dark:border-border dark:bg-surface"
     onContextMenu={(e) => e.preventDefault()} onKeyDown={(e) => {
       const nodes = Array.from(ref.current!.querySelectorAll<HTMLElement>('[role="menuitem"]'));

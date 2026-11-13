@@ -17,7 +17,7 @@ Dory debe mostrar y manejar las instancias de T3 Code de infra, Arch Linux y Arc
 - Dory comprueba `orchestrationProtocolVersion` y, si no la admite, marca la instancia como incompatible en lugar de fallar.
 - Una instancia inaccesible se muestra como desconectada y no afecta a las demás.
 
-- Las escrituras usan `orchestration.dispatchCommand` por WebSocket (`/ws` con `wsTicket`), con una conexión por llamada (las lecturas en vivo usan la suscripción de ADR-005). Dory solo actúa sobre hilos que ya reporta una instancia y deja registro en `events`. Las aprobaciones se limitan a aceptar o rechazar una sola petición.
+- Las escrituras usan `orchestration.dispatchCommand` por WebSocket (`/ws` con `wsTicket`). Desde 2026-11-13 todas las llamadas RPC (lecturas y escrituras) comparten una conexión persistente por instancia y token, con id propio por petición; se cierra tras 10 min sin uso y se reabre sola si cae. Una llamada que pierde la conexión se repite en una nueva, salvo las que actualizan el servidor o un proveedor de T3 (`server.update*`), que reinician T3 a propósito. Antes se abría una conexión por llamada, y cada lectura de un hilo pagaba el ticket y el handshake. Las lecturas en vivo siguen usando la suscripción de ADR-005. Dory solo actúa sobre hilos que ya reporta una instancia y deja registro en `events`. Las aprobaciones se limitan a aceptar o rechazar una sola petición.
 - Dory busca instancias nuevas en el rango `DORY_T3_DISCOVERY_CIDR`, por el puerto 3773 y la ruta pública, y crea su entorno e instancia. Archivar un entorno impide que reaparezca. Los enlaces de T3 no son la fuente porque pueden estar vacíos.
 
 ## Consequences

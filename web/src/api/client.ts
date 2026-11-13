@@ -14,12 +14,20 @@ export type Memory = S["Memory"];
 export type MemoryInput = S["MemoryInput"];
 export type User = S["User"];
 export type T3Status = S["T3Status"];
+// What each T3 can update, read live from the instance (see internal/t3/update.go).
+export type T3ProviderUpdate = { instance_id: string; driver: string; name: string; current: string; latest: string; available: boolean; state: string; message: string };
+export type T3InstanceUpdates = { instance_id: string; environment_id: string; server: { current: string; latest: string; available: boolean; state?: "updating" }; providers: T3ProviderUpdate[]; active_threads: number; updating?: boolean; error?: string };
+export type T3UpdateResult = { instance_id: string; status: "current" | "updated" | "needs_confirmation" | "failed" | "missing_scope"; active_threads?: number; error?: string };
 export type T3InstanceUsage = S["T3InstanceUsage"];
 export type T3InstanceHistory = S["T3InstanceHistory"];
 export type T3DayUsage = S["T3DayUsage"];
 export type T3ThreadContext = S["T3ThreadContext"];
+export type T3Thread = S["T3Thread"];
+export type T3InstanceThreads = { instance_id: string; environment_id: string; threads: T3Thread[] };
+export type T3ThreadActionName = "rename" | "archive" | "unarchive" | "delete" | "pin" | "unpin" | "settle" | "unsettle" | "snooze" | "unsnooze" | "read" | "unread" | "stop" | "fork";
+export type T3ThreadAction = { action: T3ThreadActionName; title?: string; until?: string; run_id?: string };
 // Reasoning and tool entries are steps of the model between messages.
-export type T3ViewMessage = { id: string; role: "user" | "assistant" | "system" | "reasoning" | "tool" | "interrupt" | "plan" | "handoff" | "html" | "secret" | "changes"; text: string; streaming: boolean; created_at: string; title?: string; detail?: string; status?: string; attachments?: T3Attachment[]; mentions?: string[]; skills?: string[]; from?: string; to?: string; from_provider?: string; to_provider?: string; html?: { attachment_id: string; title: string; height: number }; files?: T3ChangedFile[] };
+export type T3ViewMessage = { id: string; run_id?: string; role: "user" | "assistant" | "system" | "reasoning" | "tool" | "interrupt" | "plan" | "handoff" | "html" | "secret" | "changes"; text: string; streaming: boolean; created_at: string; title?: string; detail?: string; status?: string; attachments?: T3Attachment[]; mentions?: string[]; skills?: string[]; from?: string; to?: string; from_provider?: string; to_provider?: string; html?: { attachment_id: string; title: string; height: number }; files?: T3ChangedFile[] };
 export type T3ChangedFile = { path: string; kind: string; additions: number; deletions: number };
 export type T3QueuedRun = { run_id: string; text: string; position: number; held: boolean };
 export type T3ThreadView = {
@@ -30,7 +38,10 @@ export type T3ThreadView = {
   messages: T3ViewMessage[]; queue: T3QueuedRun[]; pending: T3ThreadContext["pending"];
   items: { item_id: string; role: string }[];
   history_cursor: string;
+  // Agents this thread launched, with their live state (from the parent's projection).
+  subagents?: T3SubagentRun[];
 };
+export type T3SubagentRun = { thread_id: string; title: string; provider: string; model: string; effort: string; status: string; progress?: string; started_at?: string; completed_at?: string };
 export type T3Attachment = { type: "image" | "file"; id: string; name: string; mime_type: string; size_bytes: number };
 export type T3SendInput = { text: string; mode: "auto" | "steer"; provider_id?: string; model?: string; effort_option?: string; effort?: string; attachments?: T3Attachment[]; skills?: string[]; mentions?: string[] };
 export type GithubIssue = S["GithubIssue"];
@@ -106,21 +117,21 @@ export const api = {
   askPullAgent: (repo: string, number: number, body: { path: string; start: number; end: number; snippet: string; question: string; launch?: { instance_id: string; project_id: string; provider: string; model: string; effort_option?: string; effort?: string } }) =>
     req<PullAgent>("POST", `/github/repos/${repo}/pulls/${number}/ask`, body),
   t3Pair: (id: string) => req<{ url: string }>("POST", `/t3/instances/${id}/pair`),
-  t3Context: (id: string) => req<T3ThreadContext>("GET", `/t3/threads/${id}/context`),
-  t3Send: (id: string, text: string) => req<void>("POST", `/t3/threads/${id}/messages`, { text }),
-  t3View: (id: string) => req<T3ThreadView>("GET", `/t3/threads/${id}/view`),
-  t3History: (id: string, cursor: string) => req<{ messages: T3ViewMessage[]; next_cursor: string; has_more: boolean }>("GET", `/t3/threads/${id}/history?cursor=${encodeURIComponent(cursor)}`),
-  t3Diff: (id: string, checkpoint?: string) => req<{ diff: string; source: "t3" | "git"; branch?: string; worktree?: string; base?: string }>("GET", `/t3/threads/${id}/diff${checkpoint ? `?checkpoint=${encodeURIComponent(checkpoint)}` : ""}`),
+  t3Context: (id: string) => req<T3ThreadContext>("GET", `/t3/threads/${encodeURIComponent(id)}/context`),
+  t3Send: (id: string, text: string) => req<void>("POST", `/t3/threads/${encodeURIComponent(id)}/messages`, { text }),
+  t3View: (id: string) => req<T3ThreadView>("GET", `/t3/threads/${encodeURIComponent(id)}/view`),
+  t3History: (id: string, cursor: string) => req<{ messages: T3ViewMessage[]; next_cursor: string; has_more: boolean }>("GET", `/t3/threads/${encodeURIComponent(id)}/history?cursor=${encodeURIComponent(cursor)}`),
+  t3Diff: (id: string, checkpoint?: string) => req<{ diff: string; source: "t3" | "git"; branch?: string; worktree?: string; base?: string }>("GET", `/t3/threads/${encodeURIComponent(id)}/diff${checkpoint ? `?checkpoint=${encodeURIComponent(checkpoint)}` : ""}`),
   githubPullRefs: (repo: string, q: string) => req<{ pulls: { number: number; title: string; state: "open" | "draft" | "merged" | "closed" }[] }>("GET", `/github/repos/${repo}/pull-refs?q=${encodeURIComponent(q)}`),
-  t3Composer: (id: string, provider: string) => req<{ commands: T3ComposerEntry[]; skills: T3ComposerEntry[] }>("GET", `/t3/threads/${id}/composer?provider=${encodeURIComponent(provider)}`),
-  t3Entries: (id: string, q: string) => req<{ entries: { path: string; kind: string }[] }>("GET", `/t3/threads/${id}/entries?q=${encodeURIComponent(q)}`),
-  t3Dispatch: (id: string, body: T3SendInput) => req<void>("POST", `/t3/threads/${id}/send`, body),
-  t3QueueEdit: (id: string, run: string, text: string) => req<void>("PATCH", `/t3/threads/${id}/queue/${run}`, { text }),
-  t3QueueReorder: (id: string, run: string, before: string) => req<void>("POST", `/t3/threads/${id}/queue/${run}/reorder`, { before_run_id: before }),
-  t3QueueSteer: (id: string, run: string) => req<void>("POST", `/t3/threads/${id}/queue/${run}/steer`),
+  t3Composer: (id: string, provider: string) => req<{ commands: T3ComposerEntry[]; skills: T3ComposerEntry[] }>("GET", `/t3/threads/${encodeURIComponent(id)}/composer?provider=${encodeURIComponent(provider)}`),
+  t3Entries: (id: string, q: string) => req<{ entries: { path: string; kind: string }[] }>("GET", `/t3/threads/${encodeURIComponent(id)}/entries?q=${encodeURIComponent(q)}`),
+  t3Dispatch: (id: string, body: T3SendInput) => req<void>("POST", `/t3/threads/${encodeURIComponent(id)}/send`, body),
+  t3QueueEdit: (id: string, run: string, text: string) => req<void>("PATCH", `/t3/threads/${encodeURIComponent(id)}/queue/${encodeURIComponent(run)}`, { text }),
+  t3QueueReorder: (id: string, run: string, before: string) => req<void>("POST", `/t3/threads/${encodeURIComponent(id)}/queue/${encodeURIComponent(run)}/reorder`, { before_run_id: before }),
+  t3QueueSteer: (id: string, run: string) => req<void>("POST", `/t3/threads/${encodeURIComponent(id)}/queue/${encodeURIComponent(run)}/steer`),
   // t3Upload sends one file as the raw body; the result goes in t3Dispatch.
   t3Upload: async (id: string, file: File): Promise<T3Attachment> => {
-    const res = await fetch(`/api/t3/threads/${id}/attachments?name=${encodeURIComponent(file.name || "adjunto")}`, {
+    const res = await fetch(`/api/t3/threads/${encodeURIComponent(id)}/attachments?name=${encodeURIComponent(file.name || "adjunto")}`, {
       method: "POST", credentials: "same-origin", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file,
     });
     if (!res.ok) {
@@ -129,12 +140,12 @@ export const api = {
     }
     return res.json();
   },
-  t3Interrupt: (id: string) => req<void>("POST", `/t3/threads/${id}/interrupt`),
-  t3QueueResume: (id: string) => req<void>("POST", `/t3/threads/${id}/queue/resume`),
-  t3QueueCancel: (id: string, run: string) => req<void>("DELETE", `/t3/threads/${id}/queue/${run}`),
-  t3Settings: (id: string, body: { interaction_mode?: string; runtime_mode?: string }) => req<void>("PATCH", `/t3/threads/${id}/settings`, body),
+  t3Interrupt: (id: string) => req<void>("POST", `/t3/threads/${encodeURIComponent(id)}/interrupt`),
+  t3QueueResume: (id: string) => req<void>("POST", `/t3/threads/${encodeURIComponent(id)}/queue/resume`),
+  t3QueueCancel: (id: string, run: string) => req<void>("DELETE", `/t3/threads/${encodeURIComponent(id)}/queue/${encodeURIComponent(run)}`),
+  t3Settings: (id: string, body: { interaction_mode?: string; runtime_mode?: string }) => req<void>("PATCH", `/t3/threads/${encodeURIComponent(id)}/settings`, body),
   t3Respond: (id: string, requestId: string, body: { decision?: "accept" | "decline"; answers?: Record<string, unknown> }) =>
-    req<void>("POST", `/t3/threads/${id}/requests/${encodeURIComponent(requestId)}`, body),
+    req<void>("POST", `/t3/threads/${encodeURIComponent(id)}/requests/${encodeURIComponent(requestId)}`, body),
   titleSettings: () => req<TitleSettings>("GET", "/settings/titles"),
   saveTitleSettings: (body: TitleSettings) => req<TitleSettings>("PUT", "/settings/titles", body),
   t3Catalog: (id: string) => req<T3Catalog>("GET", `/t3/instances/${id}/catalog`),
@@ -145,7 +156,7 @@ export const api = {
   plans: (id: string) => req<ItemPlan[]>("GET", `/items/${id}/plans`),
   createPlan: (id: string, body: { sections: PlanSections; open_questions: string[] }) => req<ItemPlan>("POST", `/items/${id}/plans`, body),
   acceptPlan: (id: string) => req<{ item: Item; plan: ItemPlan }>("POST", `/items/${id}/plan/accept`),
-  t3AnswerSecret: (threadId: string, itemId: string, body: { secret: string } | { decline: true }) => req<void>("POST", `/t3/threads/${threadId}/secrets/${encodeURIComponent(itemId)}`, body),
+  t3AnswerSecret: (threadId: string, itemId: string, body: { secret: string } | { decline: true }) => req<void>("POST", `/t3/threads/${encodeURIComponent(threadId)}/secrets/${encodeURIComponent(itemId)}`, body),
   t3CreateThread: (body: { instance_id: string; project_id: string; provider: string; model: string; effort_option?: string; effort?: string; text?: string }) => req<{ thread_id: string }>("POST", "/t3/threads", body),
   t3Launch: (itemId: string, body: T3LaunchInput) => req<{ thread_id: string }>("POST", `/items/${itemId}/launch`, body),
   resolveConflicts: (repo: string, number: number, body: IssueDefineInput) => req<{ thread_id: string }>("POST", `/github/repos/${repo}/pulls/${number}/resolve-conflicts`, body),
@@ -154,6 +165,10 @@ export const api = {
   issueThreads: () => req<IssueThread[]>("GET", "/issue-threads?limit=200"),
   version: () => req<S["Version"]>("GET", "/version"),
   t3Status: () => req<T3Status[]>("GET", "/t3/status"),
+  t3Threads: () => req<T3InstanceThreads[]>("GET", "/t3/threads"),
+  t3ThreadAction: (id: string, body: T3ThreadAction) => req<{ thread_id: string } | undefined>("POST", `/t3/threads/${encodeURIComponent(id)}/actions`, body),
+  t3Updates: () => req<T3InstanceUpdates[]>("GET", "/t3/updates"),
+  t3Update: (instance_id: string, restart: boolean) => req<T3UpdateResult[]>("POST", "/t3/updates", { instance_id, restart }),
   t3Usage: () => req<T3InstanceUsage[]>("GET", "/t3/usage"),
   t3UsageRefresh: () => req<T3InstanceUsage[]>("POST", "/t3/usage/refresh"),
   t3UsageHistory: (days: number) => req<T3InstanceHistory[]>("GET", `/t3/usage/history?days=${days}`),

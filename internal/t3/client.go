@@ -35,37 +35,68 @@ type Discovery struct {
 
 // Thread keeps only the fields of a T3 thread that Dory shows.
 type Thread struct {
-	ID          string `json:"id"`
-	ProjectID   string `json:"project_id"`
-	Title       string `json:"title"`
-	Status      string `json:"status"`
-	Model       string `json:"model"`
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
+	Title     string `json:"title"`
+	Status    string `json:"status"`
+	Model     string `json:"model"`
+	// Provider is the T3 provider instance running the thread (codex, claudeAgent…).
+	Provider    string `json:"provider,omitempty"`
 	Effort      string `json:"effort"`
 	UpdatedAt   string `json:"updated_at"`
 	Attention   bool   `json:"attention"`
-	SettledAt   string `json:"-"`
+	SettledAt   string `json:"settled_at,omitempty"`
 	RunID       string `json:"-"`
-	CompletedAt string `json:"-"`
-	RequestID   string `json:"-"`
-	URL         string `json:"url"`
+	CompletedAt string `json:"run_completed_at,omitempty"`
+	// RunStartedAt is when the latest run started; with CompletedAt it gives its duration.
+	RunStartedAt string `json:"run_started_at,omitempty"`
+	RequestID    string `json:"-"`
+	URL          string `json:"url"`
 	// EnvironmentID is the T3 environment, used for app deep links.
 	EnvironmentID string `json:"t3_environment_id"`
+	// Organization of the thread in T3 Code's sidebar.
+	ArchivedAt    string `json:"archived_at,omitempty"`
+	PinnedAt      string `json:"pinned_at,omitempty"`
+	PinOrderKey   string `json:"pin_order_key,omitempty"`
+	SnoozedUntil  string `json:"snoozed_until,omitempty"`
+	LastVisitedAt string `json:"last_visited_at,omitempty"`
+	CreatedAt     string `json:"created_at,omitempty"`
+	Branch        string `json:"branch,omitempty"`
+	WorktreePath  string `json:"worktree_path,omitempty"`
+	// ParentID is the thread that spawned this one; Relation says how
+	// ("subagent" or "fork").
+	ParentID string `json:"parent_id,omitempty"`
+	Relation string `json:"relation,omitempty"`
 }
 
 type wireThread struct {
-	LatestRunID          string          `json:"latestRunId"`
-	LatestRunCompletedAt string          `json:"latestRunCompletedAt"`
-	ID                   string          `json:"id"`
-	ProjectID            string          `json:"projectId"`
-	Title                string          `json:"title"`
-	Status               string          `json:"status"`
-	UpdatedAt            string          `json:"updatedAt"`
-	SettledAt            *string         `json:"settledAt"`
-	SnoozedUntil         *string         `json:"snoozedUntil"`
-	PendingRequest       json.RawMessage `json:"pendingRuntimeRequest"`
-	ModelSelection       struct {
-		Model   string `json:"model"`
-		Options []struct {
+	LatestRunID          string  `json:"latestRunId"`
+	LatestRunCompletedAt string  `json:"latestRunCompletedAt"`
+	LatestRunStartedAt   string  `json:"latestRunStartedAt"`
+	ID                   string  `json:"id"`
+	ProjectID            string  `json:"projectId"`
+	Title                string  `json:"title"`
+	Status               string  `json:"status"`
+	UpdatedAt            string  `json:"updatedAt"`
+	SettledAt            *string `json:"settledAt"`
+	SnoozedUntil         *string `json:"snoozedUntil"`
+	ArchivedAt           *string `json:"archivedAt"`
+	DeletedAt            *string `json:"deletedAt"`
+	PinnedAt             *string `json:"pinnedAt"`
+	PinOrderKey          *string `json:"pinOrderKey"`
+	LastVisitedAt        *string `json:"lastVisitedAt"`
+	CreatedAt            string  `json:"createdAt"`
+	Branch               *string `json:"branch"`
+	WorktreePath         *string `json:"worktreePath"`
+	Lineage              struct {
+		ParentThreadID       *string `json:"parentThreadId"`
+		RelationshipToParent *string `json:"relationshipToParent"`
+	} `json:"lineage"`
+	PendingRequest json.RawMessage `json:"pendingRuntimeRequest"`
+	ModelSelection struct {
+		InstanceID string `json:"instanceId"`
+		Model      string `json:"model"`
+		Options    []struct {
 			ID    string          `json:"id"`
 			Value json.RawMessage `json:"value"`
 		} `json:"options"`
@@ -136,35 +167,72 @@ func (c Client) Discover(ctx context.Context) (Discovery, error) {
 }
 
 // Threads returns the threads that are not settled or need attention.
-func (c Client) Threads(ctx context.Context) ([]Thread, error) { return c.threads(ctx, false) }
+// Threads returns the threads T3 Code shows as active: neither settled nor
+// archived, and subagents only while they work or need the user.
+func (c Client) Threads(ctx context.Context) ([]Thread, error) {
+	active, _, err := c.shell(ctx)
+	return active, err
+}
 
-func (c Client) threads(ctx context.Context, all bool) ([]Thread, error) {
+// shell reads every thread of the instance in one request (settled, archived
+// and subagents included) and also returns the active ones.
+func (c Client) shell(ctx context.Context) (active, all []Thread, err error) {
 	var snap struct {
+		Threads  []wireThread `json:"threads"`
+		Archived []wireThread `json:"archivedThreads"`
+	}
+	if err := c.get(ctx, "/api/orchestration/shell?omitIdleSubagents=false&omitOlderSettled=false", true, &snap); err != nil {
+		return nil, nil, err
+	}
+	// The shell leaves archived threads out (its archivedThreads stays empty);
+	// T3 Code reads them with their own RPC. Without them the list still works.
+	var archived struct {
 		Threads []wireThread `json:"threads"`
 	}
-	path := "/api/orchestration/shell?omitIdleSubagents=true&omitOlderSettled=true"
-	if all {
-		path = "/api/orchestration/shell?omitIdleSubagents=false&omitOlderSettled=false"
+	if err := c.call(ctx, "orchestration.getArchivedShellSnapshot", map[string]any{}, &archived); err == nil {
+		snap.Archived = append(snap.Archived, archived.Threads...)
 	}
-	if err := c.get(ctx, path, true, &snap); err != nil {
-		return nil, err
-	}
-	out := make([]Thread, 0, len(snap.Threads))
-	for _, w := range snap.Threads {
-		if w.SettledAt != nil && !all {
+	all = make([]Thread, 0, len(snap.Threads)+len(snap.Archived))
+	seen := map[string]bool{}
+	for _, w := range append(snap.Threads, snap.Archived...) {
+		if w.DeletedAt != nil || seen[w.ID] {
 			continue
 		}
-		settled := ""
-		if w.SettledAt != nil {
-			settled = *w.SettledAt
+		seen[w.ID] = true
+		t := w.thread()
+		all = append(all, t)
+		if t.SettledAt != "" || t.ArchivedAt != "" || t.Relation == "subagent" && !t.Attention && !working(t.Status) {
+			continue
 		}
-		var pending struct {
-			ID string `json:"id"`
-		}
-		_ = json.Unmarshal(w.PendingRequest, &pending)
-		out = append(out, Thread{RunID: w.LatestRunID, CompletedAt: w.LatestRunCompletedAt, RequestID: pending.ID, SettledAt: settled, ID: w.ID, ProjectID: w.ProjectID, Title: w.Title, Status: w.Status, Model: w.ModelSelection.Model, Effort: w.effort(), UpdatedAt: w.UpdatedAt, Attention: w.attention()})
+		active = append(active, t)
 	}
-	return out, nil
+	if active == nil {
+		active = []Thread{}
+	}
+	return active, all, nil
+}
+
+func working(status string) bool {
+	switch status {
+	case "running", "starting", "preparing", "waiting":
+		return true
+	}
+	return false
+}
+
+func (w wireThread) thread() Thread {
+	var pending struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(w.PendingRequest, &pending)
+	return Thread{
+		RunID: w.LatestRunID, CompletedAt: w.LatestRunCompletedAt, RunStartedAt: w.LatestRunStartedAt, RequestID: pending.ID, SettledAt: str(w.SettledAt),
+		ID: w.ID, ProjectID: w.ProjectID, Title: w.Title, Status: w.Status, Model: w.ModelSelection.Model, Provider: w.ModelSelection.InstanceID, Effort: w.effort(),
+		UpdatedAt: w.UpdatedAt, Attention: w.attention(),
+		ArchivedAt: str(w.ArchivedAt), PinnedAt: str(w.PinnedAt), PinOrderKey: str(w.PinOrderKey), SnoozedUntil: str(w.SnoozedUntil),
+		LastVisitedAt: str(w.LastVisitedAt), CreatedAt: w.CreatedAt, Branch: str(w.Branch), WorktreePath: str(w.WorktreePath),
+		ParentID: str(w.Lineage.ParentThreadID), Relation: str(w.Lineage.RelationshipToParent),
+	}
 }
 
 // requestTimeout bounds each call so one dead machine cannot stall a poll.

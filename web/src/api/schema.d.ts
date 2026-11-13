@@ -519,7 +519,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/t3/threads": {
+    "/t3/threads/{id}/actions": {
         parameters: {
             query?: never;
             header?: never;
@@ -527,6 +527,24 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        put?: never;
+        /** Organize a thread as T3 Code's sidebar does: rename, archive, unarchive, delete, pin, unpin, settle, unsettle, snooze, unsnooze, read, unread, stop or fork (from run_id, or the latest run) */
+        post: operations["actOnT3Thread"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/t3/threads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every thread of each available instance (settled, archived and subagents included) from the monitor's last read */
+        get: operations["listAllT3Threads"];
         put?: never;
         /** Start a free thread with no item: text starts the first turn, without it the chat opens empty; an item can be linked later */
         post: operations["createT3Thread"];
@@ -1735,6 +1753,25 @@ export interface components {
             updated_at: string;
             attention: boolean;
             url: string;
+            settled_at?: string;
+            archived_at?: string;
+            pinned_at?: string;
+            pin_order_key?: string;
+            snoozed_until?: string;
+            last_visited_at?: string;
+            created_at?: string;
+            branch?: string;
+            worktree_path?: string;
+            /** @description T3 provider instance running the thread (codex, claudeAgent…) */
+            provider?: string;
+            /** @description Start of the latest run */
+            run_started_at?: string;
+            /** @description End of the latest run, empty while it runs */
+            run_completed_at?: string;
+            /** @description Thread that spawned this one */
+            parent_id?: string;
+            /** @enum {string} */
+            relation?: "subagent" | "fork";
         };
         T3ThreadContext: {
             messages: {
@@ -3581,6 +3618,77 @@ export interface operations {
                         worktree?: string;
                         base?: string;
                     };
+                };
+            };
+        };
+    };
+    actOnT3Thread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    action: "rename" | "archive" | "unarchive" | "delete" | "pin" | "unpin" | "settle" | "unsettle" | "snooze" | "unsnooze" | "read" | "unread" | "stop" | "fork";
+                    /** @description New title (rename) or title of the fork */
+                    title?: string;
+                    /**
+                     * Format: date-time
+                     * @description End of the snooze
+                     */
+                    until?: string;
+                    /** @description Run the fork copies up to */
+                    run_id?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The forked thread */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        thread_id: string;
+                    };
+                };
+            };
+            /** @description Done */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listAllT3Threads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Threads per instance */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        instance_id: string;
+                        environment_id: string;
+                        threads: components["schemas"]["T3Thread"][];
+                    }[];
                 };
             };
         };

@@ -435,10 +435,9 @@ export function GithubView() {
             className={`${pill} !px-2 absolute right-3 top-0 z-30 hidden bg-white shadow-sm lg:inline-flex dark:bg-surface`}><Robot className="size-4" /></button>
         )}
         <div className="h-full overflow-y-auto pr-2"><FullscreenHost.Provider value={column}><div
-          // Closed, the PR is centred at its usual width; opening the chat slides it
-          // left and widens it at the same pace as the panel (margins in % animate, auto ones don't).
-          style={{ maxWidth: chat ? "100%" : "72rem", marginLeft: chat ? "0px" : "max(0px, calc((100% - 72rem) / 2))" }}
-          className="transition-[max-width,margin-left] duration-300 ease-out motion-reduce:transition-none">{page}</div></FullscreenHost.Provider></div>
+          // Same as a thread's chat: centred at its usual width inside the column, so the
+          // column shrinking under the panel slides it left and narrows it only when it no longer fits.
+          className="mx-auto max-w-6xl">{page}</div></FullscreenHost.Provider></div>
       </div>
       <aside ref={side} aria-label="Hilo de revisión" aria-hidden={!chat} style={{ "--panel-w": `${panelW}px` } as React.CSSProperties}
         className={`hidden min-h-0 overflow-hidden lg:flex lg:shrink-0 lg:transition-[width] lg:duration-300 lg:ease-out ${chat ? "lg:w-[var(--panel-w)]" : "lg:w-0"}`}>

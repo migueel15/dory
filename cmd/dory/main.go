@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/migueel15/dory/internal/api"
 	"github.com/migueel15/dory/internal/auth"
+	"github.com/migueel15/dory/internal/compress"
 	"github.com/migueel15/dory/internal/config"
 	"github.com/migueel15/dory/internal/dictation"
 	"github.com/migueel15/dory/internal/github"
@@ -102,7 +103,7 @@ func run() error {
 		auth.Register(mux, svc, cfg)
 		mux.Handle("/mcp", mcp.Handler(titleGen.Wrap(svc), monitor.Locate))
 		mux.Handle("/", web.Handler())
-		server := &http.Server{Addr: cfg.Listen, Handler: auth.Middleware(svc, cfg)(mux), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+		server := &http.Server{Addr: cfg.Listen, Handler: compress.Middleware(auth.Middleware(svc, cfg)(mux)), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 		done := make(chan error, 1)
 		go func() { done <- server.ListenAndServe() }()
 		select {

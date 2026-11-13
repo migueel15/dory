@@ -14,8 +14,10 @@ import (
 // Title, Detail and Status), a proposed plan in markdown (role "plan") or the
 // point where the user stopped a turn (role "interrupt").
 type ViewMessage struct {
-	ID        string `json:"id"`
-	Role      string `json:"role"`
+	ID   string `json:"id"`
+	Role string `json:"role"`
+	// RunID is the turn the entry belongs to; the chat folds a finished turn's work.
+	RunID     string `json:"run_id,omitempty"`
 	Text      string `json:"text"`
 	Streaming bool   `json:"streaming"`
 	CreatedAt string `json:"created_at"`
@@ -162,6 +164,12 @@ func htmlRenderOf(it wireTurnItem) *HTMLRender {
 	return walk(v, 0)
 }
 
+// systemNotice reports a message T3 wrote in the user's name to wake the
+// thread when a background task (a subagent, a command) finishes.
+func systemNotice(text string) bool {
+	return strings.HasPrefix(strings.TrimSpace(text), "<task-notification>")
+}
+
 // hiddenItems are turn items the chat does not show as steps.
 var hiddenItems = map[string]bool{"checkpoint": true, "user_message": true, "assistant_message": true, "run_interrupt_request": true}
 
@@ -218,6 +226,37 @@ type ThreadView struct {
 	Messages     []ViewMessage     `json:"messages"`
 	Queue        []QueuedRun       `json:"queue"`
 	Pending      *Pending          `json:"pending"`
+	// Subagents are the agents this thread launched, with their live state.
+	// Native ones (Claude's Agent tool) only have their state here: their own
+	// thread stays idle and without runs in T3's shell.
+	Subagents []SubagentRun `json:"subagents"`
+}
+
+// SubagentRun is one agent a thread launched, as T3 tracks it in the parent.
+type SubagentRun struct {
+	ThreadID    string `json:"thread_id"`
+	Title       string `json:"title"`
+	Provider    string `json:"provider"`
+	Model       string `json:"model"`
+	Effort      string `json:"effort"`
+	Status      string `json:"status"`
+	Progress    string `json:"progress,omitempty"`
+	StartedAt   string `json:"started_at,omitempty"`
+	CompletedAt string `json:"completed_at,omitempty"`
+}
+
+type wireSubagent struct {
+	ChildThreadID  string  `json:"childThreadId"`
+	Title          string  `json:"title"`
+	Model          string  `json:"model"`
+	Status         string  `json:"status"`
+	Progress       *string `json:"progress"`
+	StartedAt      *string `json:"startedAt"`
+	CompletedAt    *string `json:"completedAt"`
+	ModelSelection struct {
+		InstanceID string       `json:"instanceId"`
+		Options    []wireOption `json:"options"`
+	} `json:"modelSelection"`
 }
 
 type wireOption struct {
@@ -243,7 +282,8 @@ type wireViewProjection struct {
 		BranchPullRequest *PullRequestLink  `json:"branchPullRequest"`
 		PullRequests      []json.RawMessage `json:"pullRequests"`
 	} `json:"thread"`
-	Runs []struct {
+	Subagents []wireSubagent `json:"subagents"`
+	Runs      []struct {
 		ID            string `json:"id"`
 		Status        string `json:"status"`
 		QueuePosition *int   `json:"queuePosition"`
@@ -306,7 +346,23 @@ func (p wireViewProjection) view(threadID string) ThreadView {
 		ID: threadID, Title: t.Title, ProviderID: t.ModelSelection.InstanceID, Model: t.ModelSelection.Model,
 		InteractionMode: t.InteractionMode, RuntimeMode: t.RuntimeMode,
 		Branch: str(t.Branch), WorktreePath: str(t.WorktreePath), ProjectID: t.ProjectID,
-		PullRequests: []PullRequestLink{}, Messages: []ViewMessage{}, Queue: []QueuedRun{},
+		PullRequests: []PullRequestLink{}, Messages: []ViewMessage{}, Queue: []QueuedRun{}, Subagents: []SubagentRun{},
+	}
+	for _, a := range p.Subagents {
+		if a.ChildThreadID == "" {
+			continue
+		}
+		r := SubagentRun{ThreadID: a.ChildThreadID, Title: a.Title, Provider: a.ModelSelection.InstanceID, Model: a.Model, Status: a.Status,
+			Progress: str(a.Progress), StartedAt: str(a.StartedAt), CompletedAt: str(a.CompletedAt)}
+		for _, id := range effortOptionIDs {
+			for _, o := range a.ModelSelection.Options {
+				var e string
+				if r.Effort == "" && o.ID == id && json.Unmarshal(o.Value, &e) == nil {
+					r.Effort = e
+				}
+			}
+		}
+		v.Subagents = append(v.Subagents, r)
 	}
 	for _, id := range effortOptionIDs {
 		for _, o := range t.ModelSelection.Options {
@@ -353,6 +409,9 @@ func (p wireViewProjection) view(threadID string) ThreadView {
 			if r.QueuePosition != nil {
 				pos = *r.QueuePosition
 			}
+			if systemNotice(text[r.UserMessageID]) {
+				break
+			}
 			v.Queue = append(v.Queue, QueuedRun{RunID: r.ID, Text: text[r.UserMessageID], Position: pos, Held: r.QueueHeld})
 			queued[r.UserMessageID] = true
 		case activeStatuses[r.Status]:
@@ -368,8 +427,9 @@ func (p wireViewProjection) view(threadID string) ThreadView {
 	sort.SliceStable(v.Queue, func(i, j int) bool { return v.Queue[i].Position < v.Queue[j].Position })
 	msgs := map[string]ViewMessage{}
 	for _, m := range p.FullMessages {
-		// Queued messages show in the queue, not in the conversation.
-		if !queued[m.ID] {
+		// Queued messages show in the queue, not in the conversation; T3's
+		// notices of finished background tasks are not the user's and stay out.
+		if !queued[m.ID] && !(m.Role == "user" && systemNotice(m.Text)) {
 			msgs[m.ID] = ViewMessage{ID: m.ID, Role: m.Role, Text: m.Text, Streaming: m.Streaming, CreatedAt: m.CreatedAt, Attachments: attachmentsOf(m.Attachments)}
 			if m.Context != nil {
 				for _, rec := range m.Context.Records {
@@ -409,6 +469,7 @@ func timeline(in []wireTurnItem, msgs map[string]ViewMessage, runStatus map[stri
 	items := append([]wireTurnItem(nil), in...)
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Ordinal < items[j].Ordinal })
 	for _, it := range items {
+		before := len(out)
 		// Steps left open by a run that already ended did not keep running.
 		if st := runStatus[it.RunID]; it.RunID != "" && st != "" && !activeStatuses[st] && st != "queued" && (it.Streaming || it.Status == "running" || it.Status == "inProgress") {
 			it.Streaming, it.Status = false, st
@@ -418,6 +479,12 @@ func timeline(in []wireTurnItem, msgs map[string]ViewMessage, runStatus map[stri
 			it.Streaming, it.Status = false, "completed"
 		}
 		switch {
+		case it.Type == "notification":
+			// A background task (a subagent) finished and woke the thread. T3 sends
+			// it as a user message, which T3 Code never shows: hide both.
+			if id, err := url.PathUnescape(strings.TrimPrefix(it.ID, "turn-item:message:")); err == nil && id != it.ID {
+				shown[id] = true
+			}
 		case it.Type == "user_input_request":
 			// A question to the user shows as a step, like Claude's AskUserQuestion.
 			var qs []string
@@ -447,7 +514,7 @@ func timeline(in []wireTurnItem, msgs map[string]ViewMessage, runStatus map[stri
 			if !ok && fromItems && (it.Type == "user_message" || it.Type == "assistant_message") {
 				m, ok = ViewMessage{ID: *it.MessageID, Role: strings.TrimSuffix(it.Type, "_message"), Text: str(it.Text), CreatedAt: it.StartedAt}, true
 			}
-			if ok && !shown[m.ID] {
+			if ok && !shown[m.ID] && !(m.Role == "user" && systemNotice(m.Text)) {
 				shown[m.ID] = true
 				out = append(out, m)
 			}
@@ -499,6 +566,12 @@ func timeline(in []wireTurnItem, msgs map[string]ViewMessage, runStatus map[stri
 				title = strings.ReplaceAll(it.Type, "_", " ")
 			}
 			out = append(out, ViewMessage{ID: it.ID, Role: "tool", Title: title, Detail: toolDetail(it.Input), CreatedAt: it.StartedAt, Status: it.Status})
+		}
+		// Every entry carries its turn, so the chat can fold finished turns.
+		for k := before; k < len(out); k++ {
+			if out[k].RunID == "" {
+				out[k].RunID = it.RunID
+			}
 		}
 	}
 	return out

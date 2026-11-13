@@ -42,7 +42,7 @@ export function CommandPalette() {
     { id: "home", group: nav, label: "Inicio", icon: House, run: go("/") },
     { id: "inbox", group: nav, label: "Inbox", icon: Tray, run: go("/inbox") },
     { id: "attention", group: nav, label: "Atención", icon: Kanban, run: go("/attention") },
-    { id: "jobs", group: nav, label: "Trabajos", icon: Robot, run: go("/jobs") },
+    { id: "threads", group: nav, label: "Hilos", icon: Robot, run: go("/threads") },
     { id: "projects", group: nav, label: "Proyectos", icon: FolderSimple, run: go("/projects") },
     { id: "usage", group: nav, label: "Uso", icon: ChartBar, run: go("/usage") },
     { id: "github", group: nav, label: "GitHub", icon: GithubLogo, run: go("/github") },

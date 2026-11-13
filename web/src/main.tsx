@@ -1,35 +1,33 @@
-import { ThreadView } from "./pages/thread";
 import { Threads, ThreadsHome } from "./pages/threads";
 import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Brain, ChartBar, ChatsCircle, FolderSimple, Gear, GithubLogo, HardDrives, House, IconContext, Kanban, List, Moon, Robot, SidebarSimple, SignOut, Sun, Tray, BellRinging, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect } from "@tanstack/react-router";
 import { ApiError, api } from "./api/client";
 import { useLiveUpdates } from "./api/live";
 import { Button, Input, Label, errMsg } from "./components/ui";
 import { Environments, Memories, memorySearch } from "./pages/crud";
 import { CommandPalette, CommandsButton } from "./components/commands";
+import { TooltipHost } from "./components/tooltip";
 import { UsageQuick } from "./components/usage-quick";
+import { UpdateDialog, UpdateReview, UpdatesButton, useUpdates } from "./components/updates";
 import { ProjectSwitcher } from "./components/project-switcher";
-import { GithubView } from "./pages/github-detail";
-import { Github } from "./pages/github";
 import { Notifications, NotificationItem } from "./components/notifications";
 import { Attention, useAttentionCount } from "./pages/attention";
-import { Jobs } from "./pages/jobs";
 import { Home } from "./pages/home";
-import { Usage } from "./pages/usage";
-import { Settings } from "./pages/settings";
+// Home and the attention page already need these two, so they stay in the main chunk.
+import { Github } from "./pages/github";
 import { Inbox } from "./pages/items";
-import { Define } from "./pages/define";
-import { ProjectDetail, Projects, Tasks } from "./pages/projects";
 import { applyTheme, useTheme } from "./theme";
 import "./index.css";
 
 applyTheme();
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: (n, e) => !(e instanceof ApiError && e.status === 401) && n < 2, refetchOnWindowFocus: false } },
+  // Data counts as fresh for 30 s and stays cached for 30 min: going back to a
+  // page shows it at once, and the live stream invalidates whatever changes.
+  defaultOptions: { queries: { retry: (n, e) => !(e instanceof ApiError && e.status === 401) && n < 2, refetchOnWindowFocus: false, staleTime: 30_000, gcTime: 30 * 60_000 } },
 });
 
 function Login() {
@@ -93,6 +91,10 @@ function Layout() {
   // The project board needs the full width.
   const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") || l.pathname.startsWith("/items/") || l.pathname.startsWith("/threads") || /^\/github\/[^/]+\/[^/]+\/(pulls|issues)\//.test(l.pathname) || l.pathname === "/tasks" });
   const attention = useAttentionCount(!!me.data);
+  // Environments with outdated T3 or connectors; the footer icon updates them all.
+  const upd = useUpdates(!!me.data);
+  const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list(), enabled: !!me.data });
+  const envNames = Object.fromEntries((upd.updates.data ?? []).map((x) => [x.instance_id, envs.data?.find((e) => e.id === x.environment_id)?.name ?? "Entorno"]));
 
   const path = useLocation({ select: (l) => l.pathname });
   const [menu, setMenu] = useState(false);
@@ -156,7 +158,6 @@ function Layout() {
       {group("Agentes", small)}
       <Link to="/tasks" className={link} title={small ? "Tareas" : undefined}><Kanban weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Tareas</span></Link>
       <Link to="/attention" className={`${link} relative`} title={small ? "Atención" : undefined}><BellRinging weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Atención</span>{attention > 0 && (small ? <span className="absolute right-1.5 top-1 size-2 rounded-full bg-amber-500" /> : <span className={`ml-1.5 rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-white transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>{attention}</span>)}</Link>
-      <Link to="/jobs" className={link} title={small ? "Trabajos" : undefined}><Robot weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Trabajos</span></Link>
       <Link to="/threads" className={link} title={small ? "Hilos" : undefined}><ChatsCircle weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Hilos</span></Link>
       <Link to="/usage" className={link} title={small ? "Uso" : undefined}><ChartBar weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Uso</span></Link>
       {group("Sistema", small)}
@@ -182,6 +183,7 @@ function Layout() {
         <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-3 pb-4">{navLinks(folded)}</nav>
         <div className="shrink-0 px-3 pb-2"><ProjectSwitcher folded={folded} /></div>
         <SidebarFooter folded={folded} username={me.data.username} onLogout={() => logout.mutate()}
+          update={upd.outdated.length > 0 || upd.run.isPending ? <UpdatesButton u={upd} names={envNames} /> : null}
           controls={[desktop && <Notifications key="n" />, <ThemeToggle key="t" />, <SettingsLink key="s" />, <UsageQuick key="u" />].filter(Boolean) as React.ReactElement[]} />
       </aside>
       {/* On desktop the current view is a card framed by the sidebar background. */}
@@ -239,10 +241,32 @@ function Layout() {
           <VersionBadge />
         </div>
       </dialog>
-      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main></div><CommandPalette />
+      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main></div><CommandPalette /><UpdateReview u={upd} names={envNames} /><UpdateDialog u={upd} names={envNames} /><TooltipHost />
     </div>
   );
 }
+
+// Pages other than home, the thread list and attention load on demand, so the
+// first paint downloads only what it shows; the rest is fetched when the
+// browser is idle (and on hover, see defaultPreload) to keep navigation instant.
+const pages = {
+  thread: () => import("./pages/thread"),
+  githubDetail: () => import("./pages/github-detail"),
+  usage: () => import("./pages/usage"),
+  settings: () => import("./pages/settings"),
+  define: () => import("./pages/define"),
+  projects: () => import("./pages/projects"),
+};
+const ThreadView = lazyRouteComponent(pages.thread, "ThreadView");
+const GithubView = lazyRouteComponent(pages.githubDetail, "GithubView");
+const Usage = lazyRouteComponent(pages.usage, "Usage");
+const Settings = lazyRouteComponent(pages.settings, "Settings");
+const Define = lazyRouteComponent(pages.define, "Define");
+const Projects = lazyRouteComponent(pages.projects, "Projects");
+const ProjectDetail = lazyRouteComponent(pages.projects, "ProjectDetail");
+const Tasks = lazyRouteComponent(pages.projects, "Tasks");
+const idle = (fn: () => void) => ("requestIdleCallback" in window ? window.requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 1500));
+idle(() => { for (const load of Object.values(pages)) load().catch(() => {}); });
 
 const root = createRootRoute({ component: Layout });
 // The threads section keeps its list on the left; home and each thread fill the middle.
@@ -251,7 +275,8 @@ const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/", component: Home }),
   createRoute({ getParentRoute: () => root, path: "/inbox", component: Inbox }),
   createRoute({ getParentRoute: () => root, path: "/attention", component: Attention }),
-  createRoute({ getParentRoute: () => root, path: "/jobs", component: Jobs }),
+  // Jobs became the "Lanzados" filter of the thread list.
+  createRoute({ getParentRoute: () => root, path: "/jobs", beforeLoad: () => { throw redirect({ to: "/threads", search: { f: "jobs" } as never }); } }),
   createRoute({ getParentRoute: () => root, path: "/usage", component: Usage }),
   createRoute({ getParentRoute: () => root, path: "/settings", component: Settings }),
   createRoute({ getParentRoute: () => root, path: "/github", component: Github }),
@@ -267,7 +292,7 @@ const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/environments", component: Environments }),
   createRoute({ getParentRoute: () => root, path: "/memories", component: Memories, validateSearch: memorySearch }),
 ]);
-const router = createRouter({ routeTree });
+const router = createRouter({ routeTree, defaultPreload: "intent", defaultPreloadStaleTime: 0 });
 declare module "@tanstack/react-router" {
   interface Register { router: typeof router }
 }
@@ -294,7 +319,7 @@ function DevBadge() {
 // controls fold into a column one by one (theme under notifications, then
 // settings, then usage), and the user card narrows until only the sign-out
 // button is left, when its frame fades out.
-function SidebarFooter({ folded, username, onLogout, controls }: { folded: boolean; username: string; onLogout: () => void; controls: React.ReactElement[] }) {
+function SidebarFooter({ folded, username, onLogout, controls, update }: { folded: boolean; username: string; onLogout: () => void; controls: React.ReactElement[]; update: React.ReactElement | null }) {
   const box = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(200);
   useLayoutEffect(() => {
@@ -342,7 +367,11 @@ function SidebarFooter({ folded, username, onLogout, controls }: { folded: boole
         <span className={`min-w-0 flex-1 truncate whitespace-nowrap text-sm text-slate-500 transition-opacity duration-150 dark:text-muted ${width < 110 ? "opacity-0" : ""}`}>{username}</span>
         <Button variant="bare" aria-label="Cerrar sesión" title={`Cerrar sesión (${username})`} onClick={onLogout} className="grid size-8 shrink-0 place-items-center !p-0"><SignOut weight="regular" className="size-5" aria-hidden="true" /></Button>
       </div>
-      <div className={`grid transition-[grid-template-rows,opacity] duration-200 ${folded ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]"}`}><div className="overflow-hidden whitespace-nowrap"><VersionBadge /></div></div>
+      {/* Below the account: the running commit and, to its right, the update button. */}
+      <div className="flex items-center gap-2">
+        <div className={`grid min-w-0 flex-1 transition-[grid-template-rows,opacity] duration-200 ${folded ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]"}`}><div className="overflow-hidden whitespace-nowrap"><VersionBadge /></div></div>
+        {update}
+      </div>
     </div>
   );
 }

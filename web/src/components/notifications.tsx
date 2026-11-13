@@ -57,15 +57,16 @@ export function Notifications() {
   const [expanded, setExpanded] = useState(false);
   const since = useRef<string | null>(null);
   const seen = useRef(new Set<number>());
-  const feed = useQuery({ queryKey: ["notifications", "feed"], queryFn: () => request<{ items: Notice[]; unread: number; server_time: string }>(""), refetchInterval: 3000, refetchOnWindowFocus: true });
+  const feed = useQuery({ queryKey: ["notifications", "feed"], queryFn: () => request<{ items: Notice[]; unread: number; server_time: string }>(""), staleTime: 0, refetchInterval: 60_000, refetchOnWindowFocus: true });
+  // The live stream refreshes the feed when items or T3 threads change (see api/live.ts); polling is a fallback.
   const history = useInfiniteQuery({
     queryKey: ["notifications", "history"], initialPageParam: 0,
     queryFn: ({ pageParam }) => request<{ items: Notice[] }>("?before=" + pageParam),
     getNextPageParam: page => page.items.length === 100 ? page.items[page.items.length - 1].id : undefined,
-    enabled: open, refetchInterval: open ? 5000 : false,
+    enabled: open, staleTime: 0, refetchInterval: open ? 30_000 : false,
   });
   const notices = history.data?.pages.flatMap(p => p.items) ?? [];
-  const prefs = useQuery({ queryKey: ["notification-preferences"], queryFn: () => request<{ settings: Settings; public_key: string }>("/preferences"), refetchInterval: 5000 });
+  const prefs = useQuery({ queryKey: ["notification-preferences"], queryFn: () => request<{ settings: Settings; public_key: string }>("/preferences"), staleTime: 5 * 60_000 });
   const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
   useEffect(() => {
     if (supported) navigator.serviceWorker.ready.then(r => r.pushManager.getSubscription()).then(s => setSubscribed(!!s)).catch(() => {});
