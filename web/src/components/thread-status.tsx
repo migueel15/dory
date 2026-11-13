@@ -14,6 +14,13 @@ const looks: [string[], Look][] = [
   [["idle", "settled", "ready"], { label: "En reposo", color: "text-slate-400 dark:text-slate-500", Glyph: Circle }],
 ];
 
+/** statusLabel names a thread's state in words, as the icon's tooltip does. */
+export function statusLabel(status: string, attention = false) {
+  if (attention) return "Te necesita";
+  const s = status.toLowerCase();
+  return looks.find(([keys]) => keys.includes(s))?.[1].label ?? (status || "Estado desconocido");
+}
+
 /** Status as an icon only; the name shows as a tooltip and to screen readers. */
 export function ThreadStatus({ status, attention = false }: Props) {
   const s = status.toLowerCase();

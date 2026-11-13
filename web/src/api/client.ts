@@ -18,6 +18,10 @@ export type T3InstanceUsage = S["T3InstanceUsage"];
 export type T3InstanceHistory = S["T3InstanceHistory"];
 export type T3DayUsage = S["T3DayUsage"];
 export type T3ThreadContext = S["T3ThreadContext"];
+export type T3Thread = S["T3Thread"];
+export type T3InstanceThreads = { instance_id: string; environment_id: string; threads: T3Thread[] };
+export type T3ThreadActionName = "rename" | "archive" | "unarchive" | "delete" | "pin" | "unpin" | "settle" | "unsettle" | "snooze" | "unsnooze" | "read" | "unread" | "stop" | "fork";
+export type T3ThreadAction = { action: T3ThreadActionName; title?: string; until?: string; run_id?: string };
 // Reasoning and tool entries are steps of the model between messages.
 export type T3ViewMessage = { id: string; role: "user" | "assistant" | "system" | "reasoning" | "tool" | "interrupt" | "plan" | "handoff" | "html" | "secret" | "changes"; text: string; streaming: boolean; created_at: string; title?: string; detail?: string; status?: string; attachments?: T3Attachment[]; mentions?: string[]; skills?: string[]; from?: string; to?: string; from_provider?: string; to_provider?: string; html?: { attachment_id: string; title: string; height: number }; files?: T3ChangedFile[] };
 export type T3ChangedFile = { path: string; kind: string; additions: number; deletions: number };
@@ -154,6 +158,8 @@ export const api = {
   issueThreads: () => req<IssueThread[]>("GET", "/issue-threads?limit=200"),
   version: () => req<S["Version"]>("GET", "/version"),
   t3Status: () => req<T3Status[]>("GET", "/t3/status"),
+  t3Threads: () => req<T3InstanceThreads[]>("GET", "/t3/threads"),
+  t3ThreadAction: (id: string, body: T3ThreadAction) => req<{ thread_id: string } | undefined>("POST", `/t3/threads/${encodeURIComponent(id)}/actions`, body),
   t3Usage: () => req<T3InstanceUsage[]>("GET", "/t3/usage"),
   t3UsageRefresh: () => req<T3InstanceUsage[]>("POST", "/t3/usage/refresh"),
   t3UsageHistory: (days: number) => req<T3InstanceHistory[]>("GET", `/t3/usage/history?days=${days}`),

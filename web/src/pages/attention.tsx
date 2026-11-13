@@ -85,11 +85,11 @@ const ago = (iso?: string | null) => {
 };
 const prOf = (refs: string[]) => refs.map((r) => r.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/)).find(Boolean);
 
-function Section({ icon: Icon, title, count, tone, children }: { icon: PhIcon; title: string; count: number; tone: string; children: ReactNode }) {
+function Section({ icon: Icon, title, count, tone, children, threads }: { icon: PhIcon; title: string; count: number; tone: string; children: ReactNode; threads?: boolean }) {
   if (count === 0) return null;
   return (
     <section className="space-y-2">
-      <h2 className="flex items-center gap-2 text-sm font-semibold"><Icon weight="duotone" aria-hidden="true" className={`size-5 ${tone}`} />{title}<span className="rounded-md bg-slate-100 px-1.5 text-xs font-medium tabular-nums text-slate-600 dark:bg-raised dark:text-text-secondary">{count}</span></h2>
+      <h2 className="flex items-center gap-2 text-sm font-semibold"><Icon weight="duotone" aria-hidden="true" className={`size-5 ${tone}`} />{title}<span className="rounded-md bg-slate-100 px-1.5 text-xs font-medium tabular-nums text-slate-600 dark:bg-raised dark:text-text-secondary">{count}</span>{threads && <Link to="/threads" search={{ f: "attention" } as never} className="ml-auto text-xs font-normal text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">Ver en Hilos</Link>}</h2>
       <div className="space-y-2">{children}</div>
     </section>
   );
@@ -131,7 +131,7 @@ export function Attention() {
       {down.length > 0 && <p className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-muted"><WarningCircle aria-hidden="true" className="size-4 text-amber-500" />Sin datos de {down.map((s) => envName(s.environment_id) || s.base_url).join(", ")}: no disponible.</p>}
       {(t3.isPending || blocked.isPending) && <div className="space-y-2">{[0, 1, 2].map((i) => <div key={i} className="h-24 rounded-lg bg-slate-100 motion-safe:animate-pulse dark:bg-raised" />)}</div>}
 
-      <Section icon={Robot} title="Agentes esperándote" count={threads.length} tone="text-amber-500">
+      <Section icon={Robot} title="Agentes esperándote" count={threads.length} tone="text-amber-500" threads>
         {threads.map((t) => {
           const link = linkOf(t.status_.instance_id, t.id);
           const item = itemOf(link?.item_id);

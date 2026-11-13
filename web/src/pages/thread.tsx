@@ -1,12 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
-import { ArrowDown, ArrowRight, ArrowSquareOut, ArrowUp, ArrowsIn, ArrowsOut, ArrowsOutLineVertical, Browser, Cube, LinkSimple, Eye, EyeSlash, Key, Cloud, FolderSimple, GitBranch, GitPullRequest, Info, Kanban, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, GitDiff, SidebarSimple, Paperclip, Lightning, ListBullets, PencilSimple, Play, Question, Quotes, Stop, Trash, Wrench, X } from "@phosphor-icons/react";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import { ArrowDown, ArrowRight, ArrowSquareOut, ArrowUp, ArrowsIn, ArrowsOut, ArrowsOutLineVertical, Browser, Cube, LinkSimple, Eye, EyeSlash, Key, Cloud, FolderSimple, GitBranch, GitPullRequest, Info, Kanban, Brain, CaretDown, CaretRight, Check, Copy, DotsThree, Robot, FileText, ListChecks, GitDiff, SidebarSimple, Paperclip, Lightning, ListBullets, PencilSimple, Play, Question, Quotes, Stop, Trash, Wrench, X } from "@phosphor-icons/react";
 import { api, type T3Attachment, type T3ChangedFile, type T3QueuedRun, type T3ThreadView, type T3ViewMessage } from "../api/client";
 import { useThreadLive, useVisible } from "../api/live";
+import { isUnread, threadMenu, useThreadAction } from "../api/thread-actions";
+import { ContextMenu } from "../components/context-menu";
 import { Button, copyText, ErrorText, Input, Md, errMsg, uuid, Notice, Select, StatusPill, pill } from "../components/ui";
 import { OpenInT3 } from "../components/thread-link";
+import { statusLabel } from "../components/thread-status";
 import { PendingRequest, type QuestionControl } from "../components/pending-request";
 import { SelectionMenu } from "../components/selection-menu";
 import { RefLink, ThreadMediaContext } from "../components/refs";
@@ -158,14 +161,55 @@ export function ResizeHandle({ panel, width, onResize, storageKey = "dory.thread
 }
 
 function ContextBar({ v, children }: { v: T3ThreadView; children?: React.ReactNode }) {
-  const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 60_000 });
-  const t = t3.data?.flatMap((x) => x.threads).find((x) => x.id === v.id);
+  const threads = useQuery({ queryKey: ["t3-threads"], queryFn: api.t3Threads, refetchInterval: 60_000 });
+  const t = threads.data?.flatMap((x) => x.threads).find((x) => x.id === v.id);
+  const all = threads.data?.flatMap((x) => x.threads) ?? [];
+  const parent = t?.parent_id ? all.find((x) => x.id === t.parent_id) : undefined;
+  const subagents = all.filter((x) => x.parent_id === v.id && x.relation === "subagent");
+  const working = subagents.filter((x) => ["running", "working", "starting", "preparing"].includes(x.status)).length;
+  const navigate = useNavigate();
+  const [subMenu, setSubMenu] = useState<{ x: number; y: number }>();
+  const act = useThreadAction();
+  const [renaming, setRenaming] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number }>();
+  // Opening a thread marks it read, as in T3 Code.
+  const unread = !!t && isUnread(t);
+  useEffect(() => { if (unread) act.mutate({ id: v.id, action: "read" }); }, [v.id, unread]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rename = (title: string) => { setRenaming(false); if (title && title !== v.title) act.mutate({ id: v.id, action: "rename", title }); };
   return (
     <header className="relative flex flex-wrap items-center gap-2">
-      <h1 className="min-w-0 truncate text-lg font-semibold">{v.title || v.id}</h1>
+      {parent && (
+        <Link to="/threads/$threadId" params={{ threadId: parent.id }} title="Hilo padre" className="inline-flex max-w-[12rem] items-center gap-1 truncate text-sm text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
+          <span className="truncate">{parent.title}</span><CaretRight className="size-3 shrink-0" />
+        </Link>
+      )}
+      {renaming ? (
+        <input autoFocus defaultValue={v.title} aria-label="Nuevo título" onBlur={(e) => rename(e.currentTarget.value.trim())}
+          onKeyDown={(e) => { if (e.key === "Enter") rename(e.currentTarget.value.trim()); if (e.key === "Escape") setRenaming(false); }}
+          className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-0.5 text-lg font-semibold dark:border-border-strong dark:bg-surface" />
+      ) : (
+        <h1 className="min-w-0 cursor-text truncate text-lg font-semibold" title="Doble clic para renombrar" onDoubleClick={() => t && setRenaming(true)}>{v.title || v.id}</h1>
+      )}
+      {t?.relation === "subagent" && <StatusPill tone="slate">Subagente</StatusPill>}
+      {t?.relation === "fork" && <StatusPill tone="slate">Bifurcación</StatusPill>}
+      {t?.archived_at && <StatusPill tone="slate">Archivado</StatusPill>}
       {t?.url && <OpenInT3 url={t.url} environmentId={t.t3_environment_id} threadId={v.id} className="mr-1" />}
       {v.pending && <StatusPill tone="amber">Espera tu respuesta</StatusPill>}
+      {subagents.length > 0 && (
+        <button type="button" className={pill} title="Subagentes de este hilo"
+          onClick={(e) => { const b = e.currentTarget.getBoundingClientRect(); setSubMenu({ x: b.left, y: b.bottom + 4 }); }}>
+          <Robot className="size-4" />{subagents.length}{working > 0 && <span className="text-blue-600 dark:text-blue-400">· {working} activos</span>}
+        </button>
+      )}
+      {subMenu && <ContextMenu x={subMenu.x} y={subMenu.y} label="Subagentes" onClose={() => setSubMenu(undefined)}
+        actions={subagents.map((x) => ({ label: `${x.title || x.id} · ${statusLabel(x.status, x.attention)}`, run: () => navigate({ to: "/threads/$threadId", params: { threadId: x.id } }) }))} />}
+      {t && (
+        <button type="button" title="Acciones del hilo" aria-label="Acciones del hilo" className={`${pill} !px-2`}
+          onClick={(e) => { const b = e.currentTarget.getBoundingClientRect(); setMenu({ x: b.left, y: b.bottom + 4 }); }}><DotsThree weight="bold" className="size-4" /></button>
+      )}
       {children}
+      {menu && t && <ContextMenu x={menu.x} y={menu.y} label="Acciones del hilo" submenuLabel="Posponer hasta" onClose={() => setMenu(undefined)}
+        actions={threadMenu(t, (a) => act.mutate({ id: v.id, ...a }), { onRename: () => setRenaming(true) })} />}
     </header>
   );
 }

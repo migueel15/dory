@@ -18,11 +18,11 @@ const muted = "text-sm text-slate-500 dark:text-muted";
 
 
 type Source = { name: string; error: unknown };
-type Section = "/attention" | "/github" | "/inbox" | "/environments" | "/tasks" | "/jobs";
+type Section = "/attention" | "/github" | "/inbox" | "/environments" | "/tasks" | "/threads";
 
 // Block is one home panel: icon, title, count, a link to its section and the
 // sources that failed, so one source being down never hides the rest.
-function Block({ icon: Icon, title, count, to, sources, pending, empty, emptyText = "Nada que mostrar.", className = "", children }: { icon: PhIcon; title: string; count?: number; to: Section; sources: Source[]; pending: boolean; empty: boolean; emptyText?: string; className?: string; children: ReactNode }) {
+function Block({ icon: Icon, title, count, to, search, sources, pending, empty, emptyText = "Nada que mostrar.", className = "", children }: { icon: PhIcon; title: string; count?: number; to: Section; search?: Record<string, string>; sources: Source[]; pending: boolean; empty: boolean; emptyText?: string; className?: string; children: ReactNode }) {
   const failed = sources.filter((s) => s.error);
   return (
     <Card className={`min-w-0 space-y-3 ${className}`}>
@@ -30,7 +30,7 @@ function Block({ icon: Icon, title, count, to, sources, pending, empty, emptyTex
         <Icon weight="duotone" aria-hidden="true" className="size-5 shrink-0 text-slate-500 dark:text-muted" />
         <h2 className="font-semibold">{title}</h2>
         {count !== undefined && <span className="rounded-md bg-slate-100 px-1.5 text-xs font-medium tabular-nums text-slate-600 dark:bg-raised dark:text-text-secondary">{count}</span>}
-        <Link to={to} className="ml-auto inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">Ver todo <Arrow /></Link>
+        <Link to={to} search={search as never} className="ml-auto inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">Ver todo <Arrow /></Link>
       </div>
       {failed.map((s) => <p key={s.name} className="break-words text-xs text-amber-700 dark:text-amber-400">Sin datos de {s.name}: {errMsg(s.error)}</p>)}
       {pending ? <div className="space-y-2">{[0, 1, 2].map((i) => <div key={i} className="h-9 rounded-md bg-slate-100 motion-safe:animate-pulse dark:bg-raised" />)}</div>
@@ -129,7 +129,7 @@ export function Home() {
           ))}
         </Block>
 
-        <Block icon={Robot} title="Agentes trabajando" count={busy.length} to="/jobs" emptyText="Ningún agente trabajando ahora."
+        <Block icon={Robot} title="Agentes trabajando" count={busy.length} to="/threads" search={{ f: "running" }} emptyText="Ningún agente trabajando ahora."
           sources={[{ name: "T3", error: t3.error }, ...projectSources]} pending={t3.isPending || linked.pending} empty={busy.length === 0}>
           {busy.slice(0, LIMIT).map((t) => (
             <li key={`${t.instance_id}:${t.id}`}><ThreadLink url={t.url} environmentId={t.t3_environment_id} threadId={t.id} className={row}>

@@ -3,7 +3,7 @@ import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Brain, ChartBar, ChatsCircle, FolderSimple, Gear, GithubLogo, HardDrives, House, IconContext, Kanban, List, Moon, Robot, SidebarSimple, SignOut, Sun, Tray, BellRinging, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter, lazyRouteComponent } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect } from "@tanstack/react-router";
 import { ApiError, api } from "./api/client";
 import { useLiveUpdates } from "./api/live";
 import { Button, Input, Label, errMsg } from "./components/ui";
@@ -152,7 +152,6 @@ function Layout() {
       {group("Agentes", small)}
       <Link to="/tasks" className={link} title={small ? "Tareas" : undefined}><Kanban weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Tareas</span></Link>
       <Link to="/attention" className={`${link} relative`} title={small ? "Atención" : undefined}><BellRinging weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Atención</span>{attention > 0 && (small ? <span className="absolute right-1.5 top-1 size-2 rounded-full bg-amber-500" /> : <span className={`ml-1.5 rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-white transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>{attention}</span>)}</Link>
-      <Link to="/jobs" className={link} title={small ? "Trabajos" : undefined}><Robot weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Trabajos</span></Link>
       <Link to="/threads" className={link} title={small ? "Hilos" : undefined}><ChatsCircle weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Hilos</span></Link>
       <Link to="/usage" className={link} title={small ? "Uso" : undefined}><ChartBar weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Uso</span></Link>
       {group("Sistema", small)}
@@ -246,7 +245,6 @@ function Layout() {
 const pages = {
   thread: () => import("./pages/thread"),
   githubDetail: () => import("./pages/github-detail"),
-  jobs: () => import("./pages/jobs"),
   usage: () => import("./pages/usage"),
   settings: () => import("./pages/settings"),
   define: () => import("./pages/define"),
@@ -254,7 +252,6 @@ const pages = {
 };
 const ThreadView = lazyRouteComponent(pages.thread, "ThreadView");
 const GithubView = lazyRouteComponent(pages.githubDetail, "GithubView");
-const Jobs = lazyRouteComponent(pages.jobs, "Jobs");
 const Usage = lazyRouteComponent(pages.usage, "Usage");
 const Settings = lazyRouteComponent(pages.settings, "Settings");
 const Define = lazyRouteComponent(pages.define, "Define");
@@ -271,7 +268,8 @@ const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/", component: Home }),
   createRoute({ getParentRoute: () => root, path: "/inbox", component: Inbox }),
   createRoute({ getParentRoute: () => root, path: "/attention", component: Attention }),
-  createRoute({ getParentRoute: () => root, path: "/jobs", component: Jobs }),
+  // Jobs became the "Lanzados" filter of the thread list.
+  createRoute({ getParentRoute: () => root, path: "/jobs", beforeLoad: () => { throw redirect({ to: "/threads", search: { f: "jobs" } as never }); } }),
   createRoute({ getParentRoute: () => root, path: "/usage", component: Usage }),
   createRoute({ getParentRoute: () => root, path: "/settings", component: Settings }),
   createRoute({ getParentRoute: () => root, path: "/github", component: Github }),
