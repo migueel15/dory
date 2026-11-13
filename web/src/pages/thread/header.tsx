@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowSquareOut, Cube, Cloud, FolderSimple, GitBranch, GitPullRequest, Info, Kanban, CaretRight, Check, Copy, DotsThree, Robot, GitDiff } from "@phosphor-icons/react";
+import { Cube, Cloud, FolderSimple, GitBranch, GitPullRequest, Info, Kanban, CaretRight, Check, Copy, DotsThree, Robot, GitDiff } from "@phosphor-icons/react";
 import { api, type T3Thread, type T3ThreadView } from "../../api/client";
 import { useVisible } from "../../api/live";
 import { isUnread, isWorking, threadMenu, useThreadAction } from "../../api/thread-actions";
@@ -72,7 +72,7 @@ export const diffStats = (diff = "") => {
 // ThreadDetails is the header button that drops a card down-left with the
 // thread's references, styled like T3 Code's: environment, branch, pull
 // requests, items and changes.
-export function ThreadDetails({ v }: { v: T3ThreadView }) {
+export function ThreadDetails({ v, onChanges }: { v: T3ThreadView; onChanges?: () => void }) {
   const [open, setOpen] = useState(false);
   const [showDone, setShowDone] = useState(false);
   // Subagents of this thread, as T3 Code lists them: the ones at work first,
@@ -152,13 +152,15 @@ export function ThreadDetails({ v }: { v: T3ThreadView }) {
             ))}
           </div>
           <div className="pt-1.5">
-            <div className={rowCls}>
+            <button type="button" disabled={!onChanges} onClick={() => { setOpen(false); onChanges?.(); }} title="Abrir el panel de cambios"
+              className={`${rowCls} w-full text-left enabled:hover:bg-slate-100 dark:enabled:hover:bg-raised`}>
               <GitDiff className={ico} />
               <span className="min-w-0 flex-1 truncate"><span className="font-medium">Cambios</span>{changes.base && <span className="text-slate-500 dark:text-muted"> vs {changes.base}</span>}</span>
               {changes.pending ? <span className="text-xs text-slate-400">…</span> : (
                 <span className="font-mono text-xs tabular-nums"><span className="text-emerald-600 dark:text-emerald-400">+{changes.add}</span> <span className="text-red-600 dark:text-red-400">−{changes.del}</span></span>
               )}
-            </div>
+              {onChanges && <CaretRight weight="regular" className="size-3.5 text-slate-400" />}
+            </button>
           </div>
           {subagents.length > 0 && (
             <div className="pt-1.5">
@@ -230,8 +232,6 @@ export function PullRow({ link, pull, onOpen }: { link: { url: string; number: n
     <div className="flex items-start gap-0.5">
       {p ? <Link to="/github/$owner/$repo/$kind/$number" params={{ owner, repo, kind: "pulls", number: String(p.number) }} onClick={onOpen} className={cls} title="Abrir la PR en Dory">{body}</Link>
         : <a href={link.url} target="_blank" rel="noreferrer" className={cls}>{body}</a>}
-      <a href={link.url} target="_blank" rel="noreferrer" title="Abrir en GitHub" aria-label="Abrir en GitHub"
-        className="mt-1 grid size-7 shrink-0 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-raised dark:hover:text-white"><ArrowSquareOut className="size-4" /></a>
     </div>
   );
 }
