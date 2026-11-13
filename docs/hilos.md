@@ -13,11 +13,11 @@ La sección **Hilos** (`/threads`) es la bandeja única de los hilos de T3 Code 
 
 ## Acciones
 
-Con clic derecho o el botón «⋯» de cada fila, y con el botón «⋯» de la cabecera del hilo:
+Con clic derecho o el botón «⋯» de cada fila de la lista, y haciendo clic en el título del hilo abierto:
 
 | Acción | Comando de T3 |
 |---|---|
-| Renombrar (también con doble clic en el título) | `thread.metadata.update` |
+| Renombrar (en la lista, también con doble clic) | `thread.metadata.update` |
 | Fijar arriba / Desfijar | `thread.pin` / `thread.unpin` |
 | Marcar como leído / no leído | `thread.visit` / `thread.mark-unread` (solo con algún turno terminado) |
 | Posponer 1 h, 3 h, mañana o el lunes a las 9:00 / Despertar ahora | `thread.snooze` / `thread.unsnooze` |
@@ -31,7 +31,7 @@ Todas pasan por `POST /api/t3/threads/{id}/actions` con `{action, title?, until?
 
 La tarjeta de detalles del hilo (botón ⓘ) no se cierra al usar el chat ni al hacer clic fuera: solo con su botón. Cada hilo recuerda si la tiene abierta (en este navegador), y al ir a un subagente o al padre desde ella sigue abierta. Con el panel lateral de cambios abierto (por ejemplo, desde la fila «Cambios»), la tarjeta se oculta; su botón la muestra entonces como ventana emergente, que se cierra al hacer clic fuera o con Esc.
 
-La sección **Linaje** de la tarjeta ofrece «Volver a …» en un subagente, lista los subagentes que trabajan o esperan respuesta con el logo de su modelo y su estado, y debajo despliega «Agentes previos»: los ya terminados, con su estado y hace cuánto están inactivos. El botón ⓘ indica cuántos subagentes están trabajando. La cabecera de un subagente también enlaza a su hilo padre.
+La sección **Linaje** de la tarjeta ofrece «Volver a …» en un subagente, lista los subagentes que trabajan o esperan respuesta con el logo de su modelo y su estado, y debajo despliega «Agentes previos»: los ya terminados, con su estado y hace cuánto están inactivos. El botón ⓘ indica cuántos subagentes están trabajando. La cabecera de un subagente muestra la ruta «padre › subagente» con el mismo tamaño: el padre en gris (enlaza a él) y el hilo abierto resaltado. Junto al título, el botón con el logo de T3 y una flecha abre el hilo en T3 Code.
 
 Un subagente lo maneja su padre y no acepta mensajes: en su hilo, en lugar del compositor aparece una barra, como en T3 Code. Muestra el logo y el nombre del modelo, el esfuerzo, el estado con su duración («Trabajando · 45s», «Completado en 1m 59s»), «Se ejecuta por su cuenta» y «Abrir padre». Los subagentes nativos de Claude no tienen ejecuciones propias en T3, así que su duración va de la creación al último cambio.
 
