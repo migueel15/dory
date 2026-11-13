@@ -35,11 +35,13 @@ type Discovery struct {
 
 // Thread keeps only the fields of a T3 thread that Dory shows.
 type Thread struct {
-	ID          string `json:"id"`
-	ProjectID   string `json:"project_id"`
-	Title       string `json:"title"`
-	Status      string `json:"status"`
-	Model       string `json:"model"`
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
+	Title     string `json:"title"`
+	Status    string `json:"status"`
+	Model     string `json:"model"`
+	// Provider is the T3 provider instance running the thread (codex, claudeAgent…).
+	Provider    string `json:"provider,omitempty"`
 	Effort      string `json:"effort"`
 	UpdatedAt   string `json:"updated_at"`
 	Attention   bool   `json:"attention"`
@@ -89,8 +91,9 @@ type wireThread struct {
 	} `json:"lineage"`
 	PendingRequest json.RawMessage `json:"pendingRuntimeRequest"`
 	ModelSelection struct {
-		Model   string `json:"model"`
-		Options []struct {
+		InstanceID string `json:"instanceId"`
+		Model      string `json:"model"`
+		Options    []struct {
 			ID    string          `json:"id"`
 			Value json.RawMessage `json:"value"`
 		} `json:"options"`
@@ -221,7 +224,7 @@ func (w wireThread) thread() Thread {
 	_ = json.Unmarshal(w.PendingRequest, &pending)
 	return Thread{
 		RunID: w.LatestRunID, CompletedAt: w.LatestRunCompletedAt, RequestID: pending.ID, SettledAt: str(w.SettledAt),
-		ID: w.ID, ProjectID: w.ProjectID, Title: w.Title, Status: w.Status, Model: w.ModelSelection.Model, Effort: w.effort(),
+		ID: w.ID, ProjectID: w.ProjectID, Title: w.Title, Status: w.Status, Model: w.ModelSelection.Model, Provider: w.ModelSelection.InstanceID, Effort: w.effort(),
 		UpdatedAt: w.UpdatedAt, Attention: w.attention(),
 		ArchivedAt: str(w.ArchivedAt), PinnedAt: str(w.PinnedAt), PinOrderKey: str(w.PinOrderKey), SnoozedUntil: str(w.SnoozedUntil),
 		LastVisitedAt: str(w.LastVisitedAt), CreatedAt: w.CreatedAt, Branch: str(w.Branch), WorktreePath: str(w.WorktreePath),

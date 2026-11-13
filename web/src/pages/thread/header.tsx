@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { ArrowSquareOut, Cube, Cloud, FolderSimple, GitBranch, GitPullRequest, Info, Kanban, CaretRight, Check, Copy, DotsThree, Robot, GitDiff } from "@phosphor-icons/react";
-import { api, type T3ThreadView } from "../../api/client";
+import { api, type T3Thread, type T3ThreadView } from "../../api/client";
 import { useVisible } from "../../api/live";
-import { isUnread, threadMenu, useThreadAction } from "../../api/thread-actions";
+import { isUnread, isWorking, threadMenu, useThreadAction } from "../../api/thread-actions";
 import { ContextMenu } from "../../components/context-menu";
 import { copyText, StatusPill, pill } from "../../components/ui";
 import { OpenInT3 } from "../../components/thread-link";
-import { statusLabel } from "../../components/thread-status";
+import { statusLabel, ThreadStatus } from "../../components/thread-status";
+import { ModelLogo } from "../../components/model-logo";
 import { Draft } from "./composer";
 import { diffPoll, prOf } from "./changes";
 
@@ -17,10 +18,6 @@ export function ContextBar({ v, children }: { v: T3ThreadView; children?: React.
   const t = threads.data?.flatMap((x) => x.threads).find((x) => x.id === v.id);
   const all = threads.data?.flatMap((x) => x.threads) ?? [];
   const parent = t?.parent_id ? all.find((x) => x.id === t.parent_id) : undefined;
-  const subagents = all.filter((x) => x.parent_id === v.id && x.relation === "subagent");
-  const working = subagents.filter((x) => ["running", "working", "starting", "preparing"].includes(x.status)).length;
-  const navigate = useNavigate();
-  const [subMenu, setSubMenu] = useState<{ x: number; y: number }>();
   const act = useThreadAction();
   const [renaming, setRenaming] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number }>();
@@ -47,14 +44,6 @@ export function ContextBar({ v, children }: { v: T3ThreadView; children?: React.
       {t?.archived_at && <StatusPill tone="slate">Archivado</StatusPill>}
       {t?.url && <OpenInT3 url={t.url} environmentId={t.t3_environment_id} threadId={v.id} className="mr-1" />}
       {v.pending && <StatusPill tone="amber">Espera tu respuesta</StatusPill>}
-      {subagents.length > 0 && (
-        <button type="button" className={pill} title="Subagentes de este hilo"
-          onClick={(e) => { const b = e.currentTarget.getBoundingClientRect(); setSubMenu({ x: b.left, y: b.bottom + 4 }); }}>
-          <Robot className="size-4" />{subagents.length}{working > 0 && <span className="text-blue-600 dark:text-blue-400">· {working} activos</span>}
-        </button>
-      )}
-      {subMenu && <ContextMenu x={subMenu.x} y={subMenu.y} label="Subagentes" onClose={() => setSubMenu(undefined)}
-        actions={subagents.map((x) => ({ label: `${x.title || x.id} · ${statusLabel(x.status, x.attention)}`, run: () => navigate({ to: "/threads/$threadId", params: { threadId: x.id } }) }))} />}
       {t && (
         <button type="button" title="Acciones del hilo" aria-label="Acciones del hilo" className={`${pill} !px-2`}
           onClick={(e) => { const b = e.currentTarget.getBoundingClientRect(); setMenu({ x: b.left, y: b.bottom + 4 }); }}><DotsThree weight="bold" className="size-4" /></button>
@@ -85,6 +74,15 @@ export const diffStats = (diff = "") => {
 // requests, items and changes.
 export function ThreadDetails({ v }: { v: T3ThreadView }) {
   const [open, setOpen] = useState(false);
+  const [showDone, setShowDone] = useState(false);
+  // Subagents of this thread, as T3 Code lists them: the ones at work first,
+  // then the finished ones folded away.
+  const threads = useQuery({ queryKey: ["t3-threads"], queryFn: api.t3Threads, refetchInterval: 60_000 });
+  const subagents = (threads.data?.flatMap((x) => x.threads) ?? [])
+    .filter((x) => x.parent_id === v.id && x.relation === "subagent")
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  const live = subagents.filter((x) => isWorking(x.status) || x.attention);
+  const done = subagents.filter((x) => !live.includes(x));
   const box = useRef<HTMLDivElement>(null);
   // Everything loads in the background as the thread opens, so the card is ready
   // when opened; the chat never waits for it.
@@ -122,6 +120,7 @@ export function ThreadDetails({ v }: { v: T3ThreadView }) {
       <button type="button" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)} title="Detalles del hilo" aria-label="Detalles del hilo"
         className={`${pill} !px-2 ${open ? "!border-slate-500 !text-slate-900 dark:!text-white" : ""}`}>
         <Info className="size-4" />
+        {live.length > 0 && <span className="text-xs tabular-nums text-blue-600 dark:text-blue-400" title={`${live.length} subagentes trabajando`}>{live.length}</span>}
       </button>
       {open && (
         <div role="dialog" aria-label="Detalles del hilo" className="notif-in absolute right-0 top-full z-50 mt-1.5 w-80 max-w-[calc(100vw-2rem)] origin-top-right divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl dark:divide-border dark:border-border dark:bg-surface">
@@ -161,9 +160,44 @@ export function ThreadDetails({ v }: { v: T3ThreadView }) {
               )}
             </div>
           </div>
+          {subagents.length > 0 && (
+            <div className="pt-1.5">
+              <div className={`${rowCls} min-h-8`}>
+                <Robot className={ico} />
+                <span className="flex-1 font-medium">Subagentes</span>
+                <span className="text-xs tabular-nums text-slate-500 dark:text-muted">{live.length ? `${live.length} activos` : "ninguno activo"}</span>
+              </div>
+              <ul className="max-h-72 overflow-y-auto">
+                {live.map((x) => <SubagentRow key={x.id} t={x} onOpen={() => setOpen(false)} />)}
+                {done.length > 0 && (
+                  <li>
+                    <button type="button" onClick={() => setShowDone(!showDone)} aria-expanded={showDone}
+                      className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">
+                      <CaretRight weight="bold" className={`size-3 transition-transform ${showDone ? "rotate-90" : ""}`} />Finalizados<span className="tabular-nums">{done.length}</span>
+                    </button>
+                    {showDone && <ul>{done.map((x) => <SubagentRow key={x.id} t={x} onOpen={() => setOpen(false)} />)}</ul>}
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+// SubagentRow is one subagent in the details card: model logo, title and state.
+function SubagentRow({ t, onOpen }: { t: T3Thread; onOpen: () => void }) {
+  return (
+    <li>
+      <Link to="/threads/$threadId" params={{ threadId: t.id }} onClick={onOpen} title={[t.model, statusLabel(t.status, t.attention)].filter(Boolean).join(" · ")}
+        className="flex min-h-8 items-center gap-2.5 rounded-md px-2 text-sm hover:bg-slate-100 dark:hover:bg-raised">
+        <span className="grid size-[18px] shrink-0 place-items-center [&_svg]:size-4"><ModelLogo driver={t.provider ?? ""} model={t.model} /></span>
+        <span className="min-w-0 flex-1 truncate">{t.title || t.id}</span>
+        <ThreadStatus status={t.status} attention={t.attention} />
+      </Link>
+    </li>
   );
 }
 

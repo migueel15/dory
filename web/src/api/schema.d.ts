@@ -1762,6 +1762,8 @@ export interface components {
             created_at?: string;
             branch?: string;
             worktree_path?: string;
+            /** @description T3 provider instance running the thread (codex, claudeAgent…) */
+            provider?: string;
             /** @description Thread that spawned this one */
             parent_id?: string;
             /** @enum {string} */
