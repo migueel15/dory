@@ -34,7 +34,10 @@ export type T3ThreadView = {
   messages: T3ViewMessage[]; queue: T3QueuedRun[]; pending: T3ThreadContext["pending"];
   items: { item_id: string; role: string }[];
   history_cursor: string;
+  // Agents this thread launched, with their live state (from the parent's projection).
+  subagents?: T3SubagentRun[];
 };
+export type T3SubagentRun = { thread_id: string; title: string; provider: string; model: string; effort: string; status: string; progress?: string; started_at?: string; completed_at?: string };
 export type T3Attachment = { type: "image" | "file"; id: string; name: string; mime_type: string; size_bytes: number };
 export type T3SendInput = { text: string; mode: "auto" | "steer"; provider_id?: string; model?: string; effort_option?: string; effort?: string; attachments?: T3Attachment[]; skills?: string[]; mentions?: string[] };
 export type GithubIssue = S["GithubIssue"];

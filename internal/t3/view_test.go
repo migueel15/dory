@@ -2,6 +2,7 @@ package t3
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 )
 
@@ -142,5 +143,23 @@ func TestTimelineShowsCheckpointChanges(t *testing.T) {
 	}, map[string]ViewMessage{}, nil, map[string]bool{}, false)
 	if len(out) != 1 || out[0].Role != "changes" || out[0].ID != "cp1" || len(out[0].Files) != 1 || out[0].Files[0].Additions != 3 {
 		t.Fatalf("got %+v", out)
+	}
+}
+
+func TestViewKeepsSubagentsState(t *testing.T) {
+	var p wireViewProjection
+	raw := `{"subagents":[{"childThreadId":"c1","title":"Hora","model":"claude-haiku-5-5","status":"running","progress":"Running sleep",
+		"startedAt":"2026-11-13T02:43:31Z","completedAt":null,"modelSelection":{"instanceId":"claudeAgent","options":[{"id":"effort","value":"high"}]}},
+		{"childThreadId":"","status":"completed"}]}`
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		t.Fatal(err)
+	}
+	v := p.view("parent")
+	if len(v.Subagents) != 1 {
+		t.Fatalf("subagents = %+v", v.Subagents)
+	}
+	s := v.Subagents[0]
+	if s.ThreadID != "c1" || s.Status != "running" || s.Provider != "claudeAgent" || s.Effort != "high" || s.StartedAt == "" || s.CompletedAt != "" {
+		t.Errorf("subagent = %+v", s)
 	}
 }

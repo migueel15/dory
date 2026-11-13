@@ -20,7 +20,9 @@ export type { Insert } from "./thread/chat";
 function useThreadView(threadId: string) {
   const key = ["t3-view", threadId];
   // Safety net for a stalled live stream: while a turn runs, reload every 15 s.
-  const view = useQuery({ queryKey: key, queryFn: () => api.t3View(threadId), refetchInterval: (q) => q.state.data?.active_run_id ? 15_000 : false });
+  // Subagents can keep working after the parent's turn ends: poll while any does.
+  const view = useQuery({ queryKey: key, queryFn: () => api.t3View(threadId), refetchInterval: (q) =>
+    q.state.data?.subagents?.some((a) => ["running", "starting", "preparing", "waiting", "pending"].includes(a.status)) ? 4_000 : q.state.data?.active_run_id ? 15_000 : false });
   // The agent edits the worktree during a turn: refresh its diff with each thread event.
   useThreadLive(threadId, key, [["t3-diff", threadId]]);
   const [stopping, setStopping] = useState("");

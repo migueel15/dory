@@ -113,11 +113,9 @@ export function ThreadDetails({ v, onChanges, panelOpen = false }: { v: T3Thread
   const everything = threads.data?.flatMap((x) => x.threads) ?? [];
   const self = everything.find((x) => x.id === v.id);
   const parent = self?.parent_id ? everything.find((x) => x.id === self.parent_id) : undefined;
-  const subagents = everything
-    .filter((x) => x.parent_id === v.id && x.relation === "subagent")
-    .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
-  const live = subagents.filter((x) => isWorking(x.status) || x.attention);
-  const done = subagents.filter((x) => !live.includes(x));
+  const subagents = subagentRows(v, everything);
+  const live = subagents.filter((x) => x.live);
+  const done = subagents.filter((x) => !x.live);
   const box = useRef<HTMLDivElement>(null);
   // Everything loads in the background as the thread opens, so the card is ready
   // when opened; the chat never waits for it.
@@ -216,7 +214,7 @@ export function ThreadDetails({ v, onChanges, panelOpen = false }: { v: T3Thread
                       <span className="text-xs tabular-nums text-slate-500 dark:text-muted">{done.length}</span>
                       <CaretRight weight="regular" className={`size-3.5 text-slate-400 transition-transform ${showDone ? "rotate-90" : ""}`} />
                     </button>
-                    {showDone && <ul>{done.map((x) => <SubagentRow key={x.id} t={x} idle onOpen={() => keepOpenIn(x.id)} />)}</ul>}
+                    {showDone && <ul>{done.map((x) => <SubagentRow key={x.id} t={x} onOpen={() => keepOpenIn(x.id)} />)}</ul>}
                   </li>
                 )}
               </ul>
@@ -238,16 +236,54 @@ const idleFor = (iso: string) => {
   return `hace ${Math.floor(s / 86400)} d`;
 };
 
-// SubagentRow is one subagent in the details card: model logo, title and
-// state; a finished one (idle) also says how long it has been inactive.
-function SubagentRow({ t, onOpen, idle }: { t: T3Thread; onOpen: () => void; idle?: boolean }) {
+// Sub is a subagent as the details card shows it. The parent's projection
+// has the live state of every agent it launched (native ones included, which
+// T3's shell lists as idle); the shell adds the ones it does not track.
+export type Sub = { id: string; title: string; provider: string; model: string; status: string; attention: boolean; live: boolean; started: string; ended: string; progress: string };
+const liveStatus = (s: string) => isWorking(s) || s === "waiting" || s === "pending";
+export function subagentRows(v: T3ThreadView, all: T3Thread[]): Sub[] {
+  const out = new Map<string, Sub>();
+  for (const a of v.subagents ?? []) {
+    out.set(a.thread_id, { id: a.thread_id, title: a.title, provider: a.provider, model: a.model, status: a.status, attention: false, live: liveStatus(a.status),
+      started: a.started_at ?? "", ended: a.completed_at ?? "", progress: a.progress ?? "" });
+  }
+  for (const t of all) {
+    if (t.parent_id !== v.id || t.relation !== "subagent") continue;
+    const known = out.get(t.id);
+    if (known) { out.set(t.id, { ...known, title: known.title || t.title, attention: t.attention, live: known.live || t.attention }); continue; }
+    out.set(t.id, { id: t.id, title: t.title, provider: t.provider ?? "", model: t.model, status: t.status, attention: t.attention, live: liveStatus(t.status) || t.attention,
+      started: t.run_started_at || t.created_at || "", ended: t.run_completed_at || (isWorking(t.status) ? "" : t.updated_at), progress: "" });
+  }
+  return [...out.values()].sort((a, b) => (b.ended || b.started).localeCompare(a.ended || a.started));
+}
+
+// elapsed writes a duration the short way: "45s", "1m 59s", "1h 3m".
+export const elapsed = (secs: number) => {
+  const s = Math.max(0, Math.round(secs));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+};
+
+// SubagentRow is one subagent in the details card: model logo, title, what it
+// is doing and its state. A working one says for how long; a finished one,
+// since when it is inactive.
+function SubagentRow({ t, onOpen }: { t: Sub; onOpen: () => void }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!t.live) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [t.live]);
+  const start = Date.parse(t.started);
+  const note = t.live ? (t.attention ? "Te necesita" : `Trabajando${Number.isFinite(start) ? ` · ${elapsed((now - start) / 1000)}` : ""}`) : t.ended ? idleFor(t.ended) : "";
   return (
     <li>
-      <Link to="/threads/$threadId" params={{ threadId: t.id }} onClick={onOpen} title={[t.model, statusLabel(t.status, t.attention)].filter(Boolean).join(" · ")}
+      <Link to="/threads/$threadId" params={{ threadId: t.id }} onClick={onOpen} title={[t.model, t.progress || statusLabel(t.status, t.attention)].filter(Boolean).join(" · ")}
         className="flex min-h-8 items-center gap-2.5 rounded-md px-2 text-sm hover:bg-slate-100 dark:hover:bg-raised">
-        <span className="grid size-[18px] shrink-0 place-items-center [&_svg]:size-4"><ModelLogo driver={t.provider ?? ""} model={t.model} /></span>
+        <span className="grid size-[18px] shrink-0 place-items-center [&_svg]:size-4"><ModelLogo driver={t.provider} model={t.model} /></span>
         <span className="min-w-0 flex-1 truncate">{t.title || t.id}</span>
-        {idle && <span className="shrink-0 text-[11px] tabular-nums text-slate-400 dark:text-muted">{idleFor(t.updated_at)}</span>}
+        {note && <span className={`shrink-0 text-[11px] tabular-nums ${t.live ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-muted"}`}>{note}</span>}
         <ThreadStatus status={t.status} attention={t.attention} />
       </Link>
     </li>

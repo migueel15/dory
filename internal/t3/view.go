@@ -218,6 +218,37 @@ type ThreadView struct {
 	Messages     []ViewMessage     `json:"messages"`
 	Queue        []QueuedRun       `json:"queue"`
 	Pending      *Pending          `json:"pending"`
+	// Subagents are the agents this thread launched, with their live state.
+	// Native ones (Claude's Agent tool) only have their state here: their own
+	// thread stays idle and without runs in T3's shell.
+	Subagents []SubagentRun `json:"subagents"`
+}
+
+// SubagentRun is one agent a thread launched, as T3 tracks it in the parent.
+type SubagentRun struct {
+	ThreadID    string `json:"thread_id"`
+	Title       string `json:"title"`
+	Provider    string `json:"provider"`
+	Model       string `json:"model"`
+	Effort      string `json:"effort"`
+	Status      string `json:"status"`
+	Progress    string `json:"progress,omitempty"`
+	StartedAt   string `json:"started_at,omitempty"`
+	CompletedAt string `json:"completed_at,omitempty"`
+}
+
+type wireSubagent struct {
+	ChildThreadID  string  `json:"childThreadId"`
+	Title          string  `json:"title"`
+	Model          string  `json:"model"`
+	Status         string  `json:"status"`
+	Progress       *string `json:"progress"`
+	StartedAt      *string `json:"startedAt"`
+	CompletedAt    *string `json:"completedAt"`
+	ModelSelection struct {
+		InstanceID string       `json:"instanceId"`
+		Options    []wireOption `json:"options"`
+	} `json:"modelSelection"`
 }
 
 type wireOption struct {
@@ -243,7 +274,8 @@ type wireViewProjection struct {
 		BranchPullRequest *PullRequestLink  `json:"branchPullRequest"`
 		PullRequests      []json.RawMessage `json:"pullRequests"`
 	} `json:"thread"`
-	Runs []struct {
+	Subagents []wireSubagent `json:"subagents"`
+	Runs      []struct {
 		ID            string `json:"id"`
 		Status        string `json:"status"`
 		QueuePosition *int   `json:"queuePosition"`
@@ -306,7 +338,23 @@ func (p wireViewProjection) view(threadID string) ThreadView {
 		ID: threadID, Title: t.Title, ProviderID: t.ModelSelection.InstanceID, Model: t.ModelSelection.Model,
 		InteractionMode: t.InteractionMode, RuntimeMode: t.RuntimeMode,
 		Branch: str(t.Branch), WorktreePath: str(t.WorktreePath), ProjectID: t.ProjectID,
-		PullRequests: []PullRequestLink{}, Messages: []ViewMessage{}, Queue: []QueuedRun{},
+		PullRequests: []PullRequestLink{}, Messages: []ViewMessage{}, Queue: []QueuedRun{}, Subagents: []SubagentRun{},
+	}
+	for _, a := range p.Subagents {
+		if a.ChildThreadID == "" {
+			continue
+		}
+		r := SubagentRun{ThreadID: a.ChildThreadID, Title: a.Title, Provider: a.ModelSelection.InstanceID, Model: a.Model, Status: a.Status,
+			Progress: str(a.Progress), StartedAt: str(a.StartedAt), CompletedAt: str(a.CompletedAt)}
+		for _, id := range effortOptionIDs {
+			for _, o := range a.ModelSelection.Options {
+				var e string
+				if r.Effort == "" && o.ID == id && json.Unmarshal(o.Value, &e) == nil {
+					r.Effort = e
+				}
+			}
+		}
+		v.Subagents = append(v.Subagents, r)
 	}
 	for _, id := range effortOptionIDs {
 		for _, o := range t.ModelSelection.Options {

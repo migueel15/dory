@@ -62,6 +62,15 @@ func busy(status string) bool {
 	return false
 }
 
+func liveSubagents(v t3.ThreadView) bool {
+	for _, s := range v.Subagents {
+		if busy(s.Status) || s.Status == "waiting" || s.Status == "pending" {
+			return true
+		}
+	}
+	return false
+}
+
 // get returns the thread's read, from the cache when it is still valid.
 func (c *viewCache) get(ctx context.Context, monitor *t3.Monitor, id string, fetch func(context.Context) (threadRead, error)) (threadRead, error) {
 	live, listed := monitor.Thread(id)
@@ -71,7 +80,8 @@ func (c *viewCache) get(ctx context.Context, monitor *t3.Monitor, id string, fet
 	c.mu.Unlock()
 	if ok && e.gen == gen {
 		age := time.Since(e.at)
-		if listed && !busy(live.Status) && live.UpdatedAt == e.updated && age < viewTTL || !listed && age < viewUnlistedTTL {
+		// Subagents change state without touching the parent's update time.
+		if !liveSubagents(e.read.view) && (listed && !busy(live.Status) && live.UpdatedAt == e.updated && age < viewTTL || !listed && age < viewUnlistedTTL) {
 			return e.read, nil
 		}
 	}
