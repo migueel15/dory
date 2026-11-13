@@ -1,10 +1,9 @@
-import { ThreadView } from "./pages/thread";
 import { Threads, ThreadsHome } from "./pages/threads";
 import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Brain, ChartBar, ChatsCircle, FolderSimple, Gear, GithubLogo, HardDrives, House, IconContext, Kanban, List, Moon, Robot, SidebarSimple, SignOut, Sun, Tray, BellRinging, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter, lazyRouteComponent } from "@tanstack/react-router";
 import { ApiError, api } from "./api/client";
 import { useLiveUpdates } from "./api/live";
 import { Button, Input, Label, errMsg } from "./components/ui";
@@ -12,17 +11,12 @@ import { Environments, Memories, memorySearch } from "./pages/crud";
 import { CommandPalette, CommandsButton } from "./components/commands";
 import { UsageQuick } from "./components/usage-quick";
 import { ProjectSwitcher } from "./components/project-switcher";
-import { GithubView } from "./pages/github-detail";
-import { Github } from "./pages/github";
 import { Notifications, NotificationItem } from "./components/notifications";
 import { Attention, useAttentionCount } from "./pages/attention";
-import { Jobs } from "./pages/jobs";
 import { Home } from "./pages/home";
-import { Usage } from "./pages/usage";
-import { Settings } from "./pages/settings";
+// Home and the attention page already need these two, so they stay in the main chunk.
+import { Github } from "./pages/github";
 import { Inbox } from "./pages/items";
-import { Define } from "./pages/define";
-import { ProjectDetail, Projects, Tasks } from "./pages/projects";
 import { applyTheme, useTheme } from "./theme";
 import "./index.css";
 
@@ -244,6 +238,30 @@ function Layout() {
   );
 }
 
+// Pages other than home, the thread list and attention load on demand, so the
+// first paint downloads only what it shows; the rest is fetched when the
+// browser is idle (and on hover, see defaultPreload) to keep navigation instant.
+const pages = {
+  thread: () => import("./pages/thread"),
+  githubDetail: () => import("./pages/github-detail"),
+  jobs: () => import("./pages/jobs"),
+  usage: () => import("./pages/usage"),
+  settings: () => import("./pages/settings"),
+  define: () => import("./pages/define"),
+  projects: () => import("./pages/projects"),
+};
+const ThreadView = lazyRouteComponent(pages.thread, "ThreadView");
+const GithubView = lazyRouteComponent(pages.githubDetail, "GithubView");
+const Jobs = lazyRouteComponent(pages.jobs, "Jobs");
+const Usage = lazyRouteComponent(pages.usage, "Usage");
+const Settings = lazyRouteComponent(pages.settings, "Settings");
+const Define = lazyRouteComponent(pages.define, "Define");
+const Projects = lazyRouteComponent(pages.projects, "Projects");
+const ProjectDetail = lazyRouteComponent(pages.projects, "ProjectDetail");
+const Tasks = lazyRouteComponent(pages.projects, "Tasks");
+const idle = (fn: () => void) => ("requestIdleCallback" in window ? window.requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 1500));
+idle(() => { for (const load of Object.values(pages)) load().catch(() => {}); });
+
 const root = createRootRoute({ component: Layout });
 // The threads section keeps its list on the left; home and each thread fill the middle.
 const threadsRoute = createRoute({ getParentRoute: () => root, path: "/threads", component: Threads });
@@ -267,7 +285,7 @@ const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/environments", component: Environments }),
   createRoute({ getParentRoute: () => root, path: "/memories", component: Memories, validateSearch: memorySearch }),
 ]);
-const router = createRouter({ routeTree });
+const router = createRouter({ routeTree, defaultPreload: "intent", defaultPreloadStaleTime: 0 });
 declare module "@tanstack/react-router" {
   interface Register { router: typeof router }
 }
