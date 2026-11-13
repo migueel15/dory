@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { ArrowRight, ArrowUp, CaretRight, ChatsCircle, DotsThree, GitFork, MagnifyingGlass, PencilSimpleLine, PushPin, SidebarSimple } from "@phosphor-icons/react";
-import { api, type Item, type T3Thread, type T3ThreadView } from "../api/client";
-import { isSnoozed, isUnread, isWorking, subagentStatus, threadMenu, useThreadAction } from "../api/thread-actions";
+import { ArrowRight, ArrowUp, ChatsCircle, DotsThree, GitFork, MagnifyingGlass, PencilSimpleLine, PushPin, SidebarSimple } from "@phosphor-icons/react";
+import { api, type Item, type T3Thread } from "../api/client";
+import { isSnoozed, isUnread, isWorking, threadMenu, useThreadAction } from "../api/thread-actions";
 import { ContextMenu } from "../components/context-menu";
 import { ErrorText } from "../components/ui";
 import { useLaunchForm } from "./launch-form";
@@ -146,64 +146,40 @@ function ThreadList({ active, onFold }: { active?: string; onFold?: () => void }
   const [tab, setTab] = useTab();
   const [renaming, setRenaming] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number; row: Row }>();
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const pasted = threadIdFrom(query);
   const q = query.trim().toLowerCase();
-  const children = useMemo(() => {
-    const m = new Map<string, Row[]>();
-    for (const r of rows) if (r.relation === "subagent" && r.parent_id) m.set(r.parent_id, [...(m.get(r.parent_id) ?? []), r]);
-    return m;
-  }, [rows]);
+  // Subagents stay out of the list: each thread shows its own in its details.
+  const listed = useMemo(() => rows.filter((r) => r.relation !== "subagent"), [rows]);
   // A search looks through every thread, whatever the filter.
   const matches = (r: Row) => pasted === r.id || [r.title, r.item?.title, r.project, r.model, r.env, r.job, r.branch, r.id].some((x) => x?.toLowerCase().includes(q));
-  const shown = q ? rows.filter((r) => !r.archived_at || tab === "archived").filter(matches) : rows.filter((r) => inTab(r, tab));
-  const ids = new Set(shown.map((r) => r.id));
-  // Subagents show under their parent when the parent is listed too.
-  const top = shown.filter((r) => !(r.relation === "subagent" && r.parent_id && ids.has(r.parent_id)));
+  const top = q ? listed.filter((r) => !r.archived_at || tab === "archived").filter(matches) : listed.filter((r) => inTab(r, tab));
   const pinned = tab === "active" && !q ? top.filter((r) => r.pinned_at).sort((a, b) => (a.pin_order_key ?? a.pinned_at ?? "").localeCompare(b.pin_order_key ?? b.pinned_at ?? "")) : [];
   const rest = pinned.length ? top.filter((r) => !r.pinned_at) : top;
-  const count = (t: Tab) => rows.filter((r) => inTab(r, t)).length;
+  const count = (t: Tab) => listed.filter((r) => inTab(r, t)).length;
   const open = (id: string) => navigate({ to: "/threads/$threadId", params: { threadId: id } });
-  const toggle = (id: string) => setExpanded((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-
-  // A native subagent is always "idle" in T3's shell; its parent's view, when
-  // loaded, has the real state, else it has finished.
-  const statusOf = (r: Row) => {
-    if (r.relation !== "subagent" || !r.parent_id) return r.status;
-    const run = qc.getQueryData<T3ThreadView>(["t3-view", r.parent_id])?.subagents?.find((a) => a.thread_id === r.id);
-    return run?.status ?? subagentStatus(r);
-  };
-  const line = (r: Row, depth = 0): React.ReactNode => {
-    const kids = children.get(r.id) ?? [];
-    const busyKids = kids.filter((k) => isWorking(k.status) || k.attention).length;
-    const isOpen = expanded.has(r.id) || kids.some((k) => k.id === active);
+  const line = (r: Row): React.ReactNode => {
     return (
       <li key={r.id}>
         <div className={`group relative flex items-center rounded-lg transition-colors ${r.id === active ? "bg-slate-200 dark:bg-raised" : "hover:bg-slate-100 dark:hover:bg-raised/60"}`}
-          style={depth ? { marginLeft: depth * 14 } : undefined}
           onContextMenu={(e) => { if (!r.known) return; e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, row: r }); }}>
-          {kids.length > 0 ? (
-            <button type="button" onClick={() => toggle(r.id)} aria-expanded={isOpen} aria-label={`${isOpen ? "Ocultar" : "Mostrar"} ${kids.length} subagentes`} title={`${kids.length} subagentes`}
-              className="grid size-5 shrink-0 place-items-center text-slate-400 hover:text-slate-700 dark:hover:text-white"><CaretRight className={`size-3 transition-transform ${isOpen ? "rotate-90" : ""}`} weight="bold" /></button>
-          ) : <span className="w-5 shrink-0" />}
           {renaming === r.id ? (
-            <form className="min-w-0 flex-1 py-1 pr-2" onSubmit={(e) => { e.preventDefault(); const t = new FormData(e.currentTarget).get("t")?.toString().trim(); setRenaming(""); if (t && t !== r.title) act.mutate({ id: r.id, action: "rename", title: t }); }}>
+            <form className="min-w-0 flex-1 px-2 py-1" onSubmit={(e) => { e.preventDefault(); const t = new FormData(e.currentTarget).get("t")?.toString().trim(); setRenaming(""); if (t && t !== r.title) act.mutate({ id: r.id, action: "rename", title: t }); }}>
               <input name="t" autoFocus defaultValue={r.title} aria-label="Nuevo título" onBlur={(e) => e.currentTarget.form?.requestSubmit()} onKeyDown={(e) => { if (e.key === "Escape") setRenaming(""); }}
                 className="w-full rounded border border-slate-300 bg-white px-1.5 py-0.5 text-sm dark:border-border-strong dark:bg-surface" />
             </form>
           ) : (
             <Link to="/threads/$threadId" params={{ threadId: r.id }} aria-current={r.id === active ? "page" : undefined} onMouseEnter={() => prefetch(r.id)} onFocus={() => prefetch(r.id)}
               onDoubleClick={(e) => { if (!r.known) return; e.preventDefault(); setRenaming(r.id); }}
-              className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-2">
-              <span className="w-4 shrink-0">{r.status ? <ThreadStatus status={statusOf(r)} attention={r.attention} /> : <ChatsCircle className="size-4 text-slate-300 dark:text-muted" />}</span>
+              className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5">
+              <span className="w-4 shrink-0">{r.status ? <ThreadStatus status={r.status} attention={r.attention} /> : <ChatsCircle className="size-4 text-slate-300 dark:text-muted" />}</span>
               <span className="min-w-0 flex-1">
                 <span className={`flex items-center gap-1 truncate text-sm ${isUnread(r) ? "font-semibold" : ""}`}>
                   {r.relation === "fork" && <GitFork className="size-3 shrink-0 text-slate-400" aria-label="Bifurcación" />}
                   <span className="truncate">{r.title}</span>
                 </span>
-                {(r.item || r.project || r.env || r.job || busyKids > 0) && (
+                {(r.item || r.project || r.env || r.job) && (
                   <span className="block truncate text-[11px] text-slate-500 dark:text-muted">
-                    {[busyKids > 0 ? `${busyKids} subagente${busyKids === 1 ? "" : "s"} activo${busyKids === 1 ? "" : "s"}` : "", r.job, r.item?.title, r.project, r.env].filter(Boolean).join(" · ")}
+                    {[r.job, r.item?.title, r.project, r.env].filter(Boolean).join(" · ")}
                   </span>
                 )}
               </span>
@@ -218,7 +194,6 @@ function ThreadList({ active, onFold }: { active?: string; onFold?: () => void }
               className="absolute right-1 grid size-6 place-items-center rounded text-slate-500 opacity-0 hover:bg-slate-200 focus:opacity-100 group-hover:opacity-100 dark:hover:bg-border"><DotsThree weight="bold" className="size-4" /></button>
           )}
         </div>
-        {kids.length > 0 && isOpen && <ul className="space-y-0.5">{kids.map((k) => line(k, depth + 1))}</ul>}
       </li>
     );
   };
