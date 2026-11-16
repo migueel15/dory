@@ -140,3 +140,58 @@ func TestCompositeKeyAndRefusals(t *testing.T) {
 		t.Fatal("missing parent accepted")
 	}
 }
+
+func slugs(t *testing.T, db *sql.DB) map[string]string {
+	t.Helper()
+	rows, err := db.Query(`SELECT id, slug FROM projects`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	got := map[string]string{}
+	for rows.Next() {
+		var id, slug string
+		rows.Scan(&id, &slug)
+		got[id] = slug
+	}
+	return got
+}
+
+func TestDuplicateSlugsRenameTheSameOnEveryNode(t *testing.T) {
+	dbA, a := node(t)
+	dbB, b := node(t)
+	now := "2026-11-16T00:00:00Z"
+	// b's project has the larger id, so it is the one renamed, whichever arrives first.
+	write(t, b, "project", "pb", map[string]any{"slug": "dory", "name": "B", "created_at": now, "updated_at": now})
+	write(t, a, "project", "pa", map[string]any{"slug": "dory", "name": "A", "created_at": now, "updated_at": now})
+	sync(t, a, b)
+	sync(t, b, a)
+	want := map[string]string{"pa": "dory", "pb": "dory-pb"}
+	for name, db := range map[string]*sql.DB{"a": dbA, "b": dbB} {
+		if got := slugs(t, db); got["pa"] != want["pa"] || got["pb"] != want["pb"] {
+			t.Fatalf("node %s: %v", name, got)
+		}
+	}
+}
+
+func TestSameRepositoryFromTwoNodesIsOneRow(t *testing.T) {
+	dbA, a := node(t)
+	_, b := node(t)
+	now := "2026-11-16T00:00:00Z"
+	for _, n := range []struct {
+		log    *Log
+		remote string
+	}{{a, "https://github.com/migueel15/dory.git"}, {b, "git@github.com:migueel15/dory"}} {
+		write(t, n.log, "project", "p1", map[string]any{"slug": "dory", "name": "Dory", "created_at": now, "updated_at": now})
+		write(t, n.log, "repository", RepositoryID(n.remote), map[string]any{"project_id": "p1", "remote_url": n.remote, "created_at": now, "updated_at": now})
+	}
+	sync(t, b, a)
+	var n int
+	dbA.QueryRow(`SELECT count(*) FROM repositories`).Scan(&n)
+	if n != 1 {
+		t.Fatalf("got %d repositories", n)
+	}
+	if _, err := a.Write(context.Background(), "repository", "other", map[string]any{"remote_url": "https://github.com/x/y"}); err == nil {
+		t.Fatal("repository id not derived from remote accepted")
+	}
+}

@@ -3,6 +3,7 @@ package oplog
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -20,15 +21,19 @@ type table struct {
 	name    string
 	key     []string
 	columns []string
+	// unique is a column that must not repeat. When two nodes pick the same
+	// value offline, the row with the smallest id keeps it and the others get
+	// a suffix, the same on every node.
+	unique string
 }
 
 var tables = map[string]table{
-	"project":         {"projects", []string{"id"}, []string{"slug", "name", "description", "created_at", "updated_at", "archived_at"}},
-	"repository":      {"repositories", []string{"id"}, []string{"project_id", "remote_url", "default_branch", "created_at", "updated_at", "archived_at"}},
-	"task":            {"tasks", []string{"id"}, []string{"project_id", "repository_id", "title", "description", "stage", "branch", "issue_number", "pr_number", "position", "created_at", "updated_at", "archived_at"}},
-	"task_dependency": {"task_dependencies", []string{"task_id", "depends_on_id"}, []string{"created_at", "archived_at"}},
-	"plan":            {"plans", []string{"id"}, []string{"task_id", "version", "sections", "open_questions", "author", "accepted_at", "created_at", "updated_at", "archived_at"}},
-	"memory":          {"memories", []string{"id"}, []string{"scope", "scope_id", "kind", "title", "content", "labels", "created_at", "updated_at", "archived_at"}},
+	"project":         {"projects", []string{"id"}, []string{"slug", "name", "description", "created_at", "updated_at", "archived_at"}, "slug"},
+	"repository":      {"repositories", []string{"id"}, []string{"project_id", "remote_url", "default_branch", "created_at", "updated_at", "archived_at"}, ""},
+	"task":            {"tasks", []string{"id"}, []string{"project_id", "repository_id", "title", "description", "stage", "branch", "issue_number", "pr_number", "position", "created_at", "updated_at", "archived_at"}, ""},
+	"task_dependency": {"task_dependencies", []string{"task_id", "depends_on_id"}, []string{"created_at", "archived_at"}, ""},
+	"plan":            {"plans", []string{"id"}, []string{"task_id", "version", "sections", "open_questions", "author", "accepted_at", "created_at", "updated_at", "archived_at"}, ""},
+	"memory":          {"memories", []string{"id"}, []string{"scope", "scope_id", "kind", "title", "content", "labels", "created_at", "updated_at", "archived_at"}, ""},
 }
 
 // Write records a local change and applies it to its table in one
@@ -42,6 +47,9 @@ func (l *Log) Write(ctx context.Context, entity, id string, fields map[string]an
 		if !slices.Contains(t.columns, name) {
 			return Op{}, fmt.Errorf("oplog: %s has no column %q", entity, name)
 		}
+	}
+	if remote, ok := fields["remote_url"].(string); ok && entity == "repository" && id != RepositoryID(remote) {
+		return Op{}, fmt.Errorf("oplog: repository id must be RepositoryID(%q)", remote)
 	}
 	tx, err := l.begin(ctx)
 	if err != nil {
@@ -170,6 +178,11 @@ func materialize(ctx context.Context, tx *sql.Tx, entity, id string) error {
 		if err != nil {
 			return err
 		}
+		if name == t.unique {
+			if v, err = claim(ctx, tx, entity, id, v); err != nil {
+				return err
+			}
+		}
 		cols = append(cols, name)
 		args = append(args, v)
 		set = append(set, name+" = excluded."+name)
@@ -205,4 +218,63 @@ func column(v any) (any, error) {
 	default:
 		return x, nil
 	}
+}
+
+// claim resolves the unique column of a row. The smallest id among the rows
+// whose latest wish is value keeps it; the rest get value plus a suffix of
+// their own id. If this row owns value, rows already holding it are renamed.
+func claim(ctx context.Context, tx *sql.Tx, entity, id string, value any) (any, error) {
+	t := tables[entity]
+	path := "$." + t.unique
+	var owner string
+	err := tx.QueryRowContext(ctx, `SELECT MIN(o.entity_id) FROM ops o
+		WHERE o.entity = ? AND json_extract(o.fields, ?) = ?
+		AND NOT EXISTS (SELECT 1 FROM ops p WHERE p.entity = o.entity AND p.entity_id = o.entity_id
+			AND p.hlc > o.hlc AND json_extract(p.fields, ?) IS NOT NULL)`,
+		entity, path, value, path).Scan(&owner)
+	if err != nil {
+		return nil, err
+	}
+	if owner != id {
+		return suffixed(value, id), nil
+	}
+	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT id FROM %s WHERE %s = ? AND id <> ?`, t.name, t.unique), value, id)
+	if err != nil {
+		return nil, err
+	}
+	var holders []string
+	for rows.Next() {
+		var other string
+		if err = rows.Scan(&other); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		holders = append(holders, other)
+	}
+	rows.Close()
+	for _, other := range holders {
+		if _, err = tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET %s = ? WHERE id = ?`, t.name, t.unique), suffixed(value, other), other); err != nil {
+			return nil, err
+		}
+	}
+	return value, nil
+}
+
+func suffixed(value any, id string) string {
+	return fmt.Sprintf("%v-%s", value, id[:min(8, len(id))])
+}
+
+// RepositoryID derives the id of a repository from its remote, so two nodes
+// that add the same repository offline create the same row.
+func RepositoryID(remote string) string {
+	u := strings.TrimSpace(remote)
+	if rest, ok := strings.CutPrefix(u, "git@"); ok {
+		u = "https://" + strings.Replace(rest, ":", "/", 1)
+	}
+	u = strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
+	u = strings.ToLower(strings.TrimSuffix(strings.TrimSuffix(u, "/"), ".git"))
+	sum := sha1.Sum([]byte("dory-repository:" + u))
+	sum[6] = sum[6]&0x0f | 0x50 // version 5
+	sum[8] = sum[8]&0x3f | 0x80 // RFC 4122 variant
+	return fmt.Sprintf("%x-%x-%x-%x-%x", sum[0:4], sum[4:6], sum[6:8], sum[8:10], sum[10:16])
 }
