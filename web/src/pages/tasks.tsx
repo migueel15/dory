@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { CaretDown, CaretRight, CircleNotch, ClipboardText, GitBranch, GitMerge, GitPullRequest, Plus, Rocket, X } from "@phosphor-icons/react";
+import { ChatCircle, CircleNotch, ClipboardText, GitBranch, GitMerge, GitPullRequest, Plus, Rocket, X } from "@phosphor-icons/react";
 import { api, COLUMN_LABELS, repoName, type Card, type Column, type Plan, type Stage } from "../api/client";
-import { Button, ErrorText, Input, Label, Md, Modal, Select, Textarea } from "../components/ui";
+import { Button, Card as UiCard, ErrorText, Input, Label, Md, Modal, Select, Textarea } from "../components/ui";
 import { useLaunchForm } from "../components/launch-picker";
 import { useProject } from "../project";
 import { StatusDot } from "./thread";
@@ -55,22 +55,26 @@ export function Tasks() {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <h1 className="text-lg font-semibold">Tareas</h1>
+        <h2 className="font-semibold">Kanban <span className="hidden text-xs font-normal text-slate-500 dark:text-muted sm:inline">(clic para abrir · arrastra para cambiar de estado)</span></h2>
         <Button className="ml-auto" onClick={() => setAdding(true)}><Plus className="size-4" />Nueva tarea</Button>
       </div>
       <ErrorText error={board.error ?? move.error} />
-      <div className="flex gap-3 overflow-x-auto pb-4">
+      <div className="flex flex-col gap-3 pb-2 sm:flex-row sm:overflow-x-auto">
         {(board.data?.columns ?? []).map((col) => {
           const list = cards.filter((c) => c.column === col);
           const folded = fold[col] ?? false;
           const shown = folded ? list.slice(0, 0) : col === "done" || col === "cancelled" ? list.slice(-10) : list;
           return (
-            <section key={col} className={`flex w-72 shrink-0 flex-col rounded-lg bg-slate-100 p-2 dark:bg-surface ${drag && MANUAL[col] ? "outline-dashed outline-1 outline-slate-400" : ""}`}
+            <section key={col} className={`w-full space-y-2 rounded-lg p-2 sm:shrink-0 ${folded ? "sm:w-40" : "min-h-24 sm:min-h-48 sm:w-64"} ${drag && MANUAL[col] ? "bg-blue-100 dark:bg-accent-subtle" : "bg-slate-100 dark:bg-raised"}`}
               onDragOver={(e) => { if (MANUAL[col]) e.preventDefault(); }}
               onDrop={() => { if (drag && MANUAL[col]) move.mutate({ id: drag, stage: MANUAL[col]! }); setDrag(undefined); }}>
-              <button type="button" onClick={() => setFold({ ...fold, [col]: !folded })} className="mb-2 flex items-center gap-1.5 px-1 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-muted">
-                {folded ? <CaretRight className="size-3" /> : <CaretDown className="size-3" />}{COLUMN_LABELS[col]}<span className="ml-auto font-mono">{list.length}</span>
-              </button>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-slate-700 dark:text-text-secondary">{COLUMN_LABELS[col]}</h3>
+                <div className="flex items-center gap-1">
+                  <span className={`rounded-full px-2 text-xs font-medium ${COLUMN_TONE[col]}`}>{list.length}</span>
+                  <button type="button" aria-expanded={!folded} aria-label={folded ? `Mostrar ${COLUMN_LABELS[col]}` : `Ocultar ${COLUMN_LABELS[col]}`} onClick={() => setFold({ ...fold, [col]: !folded })} className="rounded px-1 text-xs text-slate-500 hover:bg-slate-200 dark:text-muted dark:hover:bg-hover">{folded ? "▸" : "▾"}</button>
+                </div>
+              </div>
               <div className="space-y-2">
                 {shown.map((c) => <TaskCard key={c.id} c={c} onOpen={() => open(c.id)} onDrag={() => setDrag(c.id)} />)}
               </div>
@@ -84,32 +88,64 @@ export function Tasks() {
   );
 }
 
+const chip = "inline-flex max-w-full items-center gap-1.5 rounded-md border border-slate-200 px-2 py-0.5 text-xs text-slate-600 no-underline hover:bg-slate-100 dark:border-border dark:text-muted dark:hover:bg-white/5";
+
+// TaskCard keeps the v1 card: title and state icon, then chips for the latest
+// thread and the pull request.
 function TaskCard({ c, onOpen, onDrag }: { c: Card; onOpen: () => void; onDrag: () => void }) {
   const s = slot(c);
+  const t = c.threads.length ? c.threads.reduce((a, b) => ((b.last_activity_at ?? b.updated_at) >= (a.last_activity_at ?? a.updated_at) ? b : a)) : undefined;
   return (
-    <button type="button" draggable onDragStart={onDrag} onClick={onOpen}
-      className="block w-full rounded-md border border-slate-200 bg-white p-2.5 text-left text-sm hover:border-slate-400 dark:border-border dark:bg-canvas dark:hover:border-border-strong">
-      <div className="flex items-start gap-2">
-        <span className="min-w-0 flex-1 font-medium leading-snug">{c.title}</span>
-        <span className="mt-0.5 grid size-4 shrink-0 place-items-center" title={s.label} aria-label={s.label}>{s.icon}</span>
-      </div>
-      {(c.branch || c.pr_number) && (
-        <div className="mt-1.5 flex min-w-0 items-center gap-2 font-mono text-[11px] text-slate-500 dark:text-muted">
-          {c.branch && <span className="flex min-w-0 items-center gap-1"><GitBranch className="size-3 shrink-0" /><span className="truncate">{c.branch}</span></span>}
-          {c.pr_number && (c.pull?.url
-            ? <a href={c.pull.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="shrink-0 hover:underline">#{c.pr_number}</a>
-            : <span className="shrink-0">#{c.pr_number}</span>)}
+    <div draggable onDragStart={onDrag} onClick={onOpen} className="cursor-grab">
+      <UiCard>
+        <div className="text-sm">
+          <div className="flex items-start justify-between gap-2">
+            <span className="min-w-0 font-medium">{c.title}</span>
+            <span className="mt-0.5 grid size-4 shrink-0 place-items-center" title={s.label} aria-label={s.label}>{s.icon}</span>
+          </div>
+          {c.blockers.length > 0 && <p className="mt-1.5 rounded-md bg-slate-50 px-2 py-1.5 text-xs text-slate-600 dark:bg-raised dark:text-text-secondary"><span className="font-medium text-red-600 dark:text-red-400">Bloqueada: </span>depende de tareas sin terminar</p>}
+          {(t || c.pr_number || c.issue_number || c.has_plan) && (
+            <div className="mt-1 flex flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
+              {t && (
+                <Link to="/threads/$threadId" params={{ threadId: t.id }} title={t.title} className={chip}>
+                  <ChatCircle aria-hidden="true" className="size-3 shrink-0" />
+                  <span className="min-w-0 truncate">{t.model || t.provider}</span>
+                  {t.effort && <span className="shrink-0 opacity-60">· {t.effort}</span>}
+                  <ThreadDot status={t.status} />
+                </Link>
+              )}
+              {c.pr_number && (c.pull?.url
+                ? <a href={c.pull.url} target="_blank" rel="noreferrer" title={`Pull request #${c.pr_number}`} className={chip}><GitPullRequest aria-hidden="true" className="size-3 shrink-0" /><span>#{c.pr_number}</span></a>
+                : <span className={chip}><GitPullRequest aria-hidden="true" className="size-3 shrink-0" /><span>#{c.pr_number}</span></span>)}
+              {c.issue_number && <span className={chip}>issue #{c.issue_number}</span>}
+              {c.has_plan && <span className={chip} title="Tiene plan"><ClipboardText aria-hidden="true" className="size-3 shrink-0" />plan</span>}
+            </div>
+          )}
         </div>
-      )}
-      <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-muted">
-        {c.issue_number && <span className="font-mono">issue #{c.issue_number}</span>}
-        {c.has_plan && <span className="flex items-center gap-0.5" title="Tiene plan"><ClipboardText className="size-3" />plan</span>}
-        {c.blockers.length > 0 && <span className="text-orange-600" title="Depende de tareas sin terminar">bloqueada</span>}
-        {c.threads.length > 0 && <span className="ml-auto">{c.threads.length} hilo{c.threads.length > 1 ? "s" : ""}</span>}
-      </div>
-    </button>
+      </UiCard>
+    </div>
   );
 }
+
+// ThreadDot is the v1 colored dot of a thread's state.
+function ThreadDot({ status }: { status: string }) {
+  const d = status === "error" ? { label: "Error", color: "bg-red-500", pulse: false }
+    : status === "waiting" ? { label: "Te necesita", color: "bg-amber-500", pulse: true }
+    : status === "working" ? { label: "Trabajando", color: "bg-blue-500", pulse: true }
+    : { label: "Inactivo", color: "bg-slate-400", pulse: false };
+  return <span role="img" title={d.label} aria-label={d.label} className={`size-2 shrink-0 rounded-full ${d.color} ${d.pulse ? "motion-safe:animate-pulse" : ""}`} />;
+}
+
+const COLUMN_TONE: Record<Column, string> = {
+  inbox: "bg-slate-100 text-slate-700 dark:bg-raised dark:text-text-secondary",
+  ready: "bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300",
+  working: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+  needs_you: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
+  in_review: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300",
+  ready_to_merge: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
+  done: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+  cancelled: "bg-slate-100 text-slate-500 dark:bg-raised dark:text-muted",
+};
 
 function NewTask({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const current = useProject();

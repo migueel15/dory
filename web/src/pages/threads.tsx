@@ -49,15 +49,16 @@ export function Threads() {
   return (
     <div className="flex h-[calc(100dvh-4rem-1px)] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
       <aside className={`min-h-0 w-full shrink-0 flex-col border-slate-200 sm:w-80 sm:border-r dark:border-border ${threadId ? "hidden sm:flex" : "flex"}`}>
-        <div className="space-y-2 border-b border-slate-200 p-2 dark:border-border">
-          <div className="relative">
-            <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar hilo…" aria-label="Buscar hilo"
-              className="w-full rounded-md border border-slate-300 bg-transparent py-1.5 pl-8 pr-2 text-sm dark:border-border" />
+        <div className="space-y-2 p-2">
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 focus-within:border-slate-400 dark:border-border dark:bg-surface dark:focus-within:border-muted">
+            <MagnifyingGlass className="size-4 shrink-0 text-slate-400" />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar hilo…" aria-label="Buscar hilos"
+              className="min-h-9 w-full bg-transparent text-sm !outline-none placeholder:text-slate-400" />
           </div>
-          <div className="flex flex-wrap gap-1">
+          <div role="tablist" className="flex flex-wrap gap-1">
             {(Object.keys(FILTERS) as Filter[]).map((f) => (
-              <button key={f} type="button" onClick={() => setFilter(f)} className={`rounded-full px-2.5 py-0.5 text-xs ${filter === f ? "bg-slate-900 text-white dark:bg-accent" : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-raised dark:text-muted"}`}>{FILTERS[f]}</button>
+              <button key={f} type="button" role="tab" aria-selected={filter === f} onClick={() => setFilter(f)}
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-colors ${filter === f ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "text-slate-600 hover:bg-slate-200 dark:text-text-secondary dark:hover:bg-raised"}`}>{FILTERS[f]}</button>
             ))}
           </div>
         </div>
@@ -79,24 +80,44 @@ export function Threads() {
               </Link>
             ))}
           {filter === "external" && external.isPending && <p className="p-3 text-sm text-slate-500">Leyendo las conversaciones…</p>}
-          {filter !== "external" && shown.map((t) => (
-            <Link key={t.id} to="/threads/$threadId" params={{ threadId: t.id }}
-              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-slate-100 dark:hover:bg-raised [&.active]:bg-slate-200 dark:[&.active]:bg-raised">
-              <ProviderIcon driver={t.provider} model={t.model} />
-              <span className="min-w-0 flex-1">
-                <span className={`block truncate ${isUnread(t) ? "font-semibold" : ""}`}>{t.title || "Hilo"}</span>
-                <span className="block truncate font-mono text-[11px] text-slate-500 dark:text-muted">{t.branch || (t.node_id !== local ? "otro nodo" : "")}</span>
-              </span>
-              {t.pinned_at && <PushPin className="size-3.5 shrink-0 text-amber-500" weight="fill" />}
-              <StatusDot status={t.status} />
-            </Link>
-          ))}
+          {filter !== "external" && <ul className="space-y-0.5">{shown.map((t) => (
+            <li key={t.id}>
+              <Link to="/threads/$threadId" params={{ threadId: t.id }}
+                className="group flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-100 dark:hover:bg-raised/60 [&.active]:bg-slate-200 dark:[&.active]:bg-raised">
+                <span className="grid w-4 shrink-0 place-items-center"><ListDot status={t.status} /></span>
+                <span className="min-w-0 flex-1">
+                  <span className={`block truncate text-sm ${isUnread(t) ? "font-semibold" : ""}`}>{t.title || "Hilo"}</span>
+                  {(t.branch || t.node_id !== local) && <span className="block truncate text-[11px] text-slate-500 dark:text-muted">{[t.model, t.branch, t.node_id !== local ? "otro nodo" : ""].filter(Boolean).join(" · ")}</span>}
+                </span>
+                {isUnread(t) && <span className="size-2 shrink-0 rounded-full bg-blue-500" aria-label="Sin leer" />}
+                {t.pinned_at && <PushPin weight="fill" className="size-3 shrink-0 text-slate-400" aria-label="Fijado" />}
+                <span className="shrink-0 text-[11px] tabular-nums text-slate-400">{ago(t.last_activity_at ?? t.created_at)}</span>
+              </Link>
+            </li>
+          ))}</ul>}
           {filter !== "external" && threads.isSuccess && shown.length === 0 && <p className="p-3 text-sm text-slate-500 dark:text-muted">No hay hilos aquí.</p>}
         </div>
       </aside>
       <section className={`min-h-0 min-w-0 flex-1 ${threadId ? "flex flex-col" : "hidden sm:flex sm:flex-col"}`}><Outlet /></section>
     </div>
   );
+}
+
+// ListDot is the v1 state of a thread in the list.
+function ListDot({ status }: { status: string }) {
+  if (status === "working") return <span className="size-3 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" aria-label="Trabajando" />;
+  if (status === "waiting") return <span className="size-2 rounded-full bg-amber-500 motion-safe:animate-pulse" aria-label="Te necesita" />;
+  if (status === "error") return <span className="size-2 rounded-full bg-red-500" aria-label="Error" />;
+  return <ChatsCircle className="size-4 text-slate-300 dark:text-muted" aria-label="Inactivo" />;
+}
+
+// ago writes how long ago something happened: "ahora", "5m", "3h", "2d".
+function ago(iso: string) {
+  const s = (Date.now() - Date.parse(iso)) / 1000;
+  if (!Number.isFinite(s) || s < 60) return "ahora";
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
 }
 
 // ThreadsHome fills the right side when no thread is open: a new chat.

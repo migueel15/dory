@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { ArrowUp, Brain, CaretRight, CheckCircle, Circle, CircleNotch, GitBranch, GitDiff, Kanban, PencilSimpleLine, PushPin, Stop, Trash, Warning, WarningCircle, Wrench, XCircle } from "@phosphor-icons/react";
-import { api, type Message, type ThreadView as View } from "../api/client";
+import { ArrowUp, Circle, CircleNotch, GitBranch, GitDiff, Kanban, ListBullets, PencilSimpleLine, PushPin, Stop, Trash, WarningCircle, XCircle } from "@phosphor-icons/react";
+import { api, type ThreadView as View } from "../api/client";
 import { useThreadLive } from "../api/live";
-import { Button, ErrorText, Md, Textarea, pill } from "../components/ui";
+import { Button, ErrorText, pill } from "../components/ui";
+import { Messages, ToEnd, useFollow } from "./chat";
 import { ProviderIcon } from "../components/launch-picker";
 import { Diff } from "./github-diff";
 
@@ -77,89 +78,41 @@ export function StatusDot({ status }: { status: string }) {
 // ThreadChat is the conversation and its composer; the PR page embeds it too.
 export function ThreadChat({ threadId }: { threadId?: string }) {
   const view = useThread(threadId);
-  const scroller = useRef<HTMLDivElement>(null);
-  const stick = useRef(true);
   const t = view.data;
-  // Follow the end of the conversation unless the user scrolled up.
-  useLayoutEffect(() => {
-    const el = scroller.current;
-    if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [t?.messages]);
+  const { scroller, onScroll, follow, away } = useFollow([t?.messages, t?.queue]);
   if (!threadId) return null;
   if (view.error) return <div className="p-4"><ErrorText error={view.error} /></div>;
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div ref={scroller} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}
-        className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl space-y-3 px-3 py-4">
-          {t?.messages.map((m) => <Entry key={m.id} m={m} />)}
-          {t?.status === "working" && !t.messages.some((m) => m.streaming) && <p className="flex items-center gap-2 text-sm text-slate-500 dark:text-muted"><CircleNotch className="size-4 animate-spin" />Trabajando…</p>}
+    <section className="relative flex min-h-0 flex-1 flex-col">
+      <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto py-3">
+        <div className="mx-auto w-full max-w-3xl space-y-4 px-3 sm:px-6">
+          {t && t.messages.length === 0 && <p className="py-10 text-center text-sm text-slate-500 dark:text-muted">Sin mensajes todavía. Escribe abajo para empezar.</p>}
+          {t && <Messages key={t.id} messages={t.messages} running={t.running} />}
+          {t && t.queue.length > 0 && (
+            <section aria-label="Mensajes en cola" className="space-y-3 border-t border-dashed border-slate-300 pt-3 dark:border-border">
+              {t.queue.map((q) => (
+                <div key={q.run_id} className="msg-in flex flex-col items-end gap-1">
+                  <div className="w-fit max-w-[85%] rounded-2xl rounded-br-md border border-dashed border-slate-400 px-4 py-2.5 text-slate-700 dark:border-border-strong dark:text-text-secondary">
+                    <p className="whitespace-pre-wrap break-words text-sm">{q.text}</p>
+                  </div>
+                </div>
+              ))}
+            </section>
+          )}
           {t && !t.local && <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">Este hilo corre en otro nodo.</p>}
         </div>
       </div>
-      {t && <Composer t={t} onSent={() => { stick.current = true; }} />}
-    </div>
+      <ToEnd away={away} follow={follow} />
+      {t && <Composer t={t} onSent={follow} />}
+    </section>
   );
 }
 
-export function Entry({ m }: { m: Message }) {
-  switch (m.role) {
-    case "user":
-      return <div className="ml-auto w-fit max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-slate-200 px-3.5 py-2 text-sm dark:bg-raised">{m.text}</div>;
-    case "assistant":
-      return <div className="prose-sm text-sm"><Md>{m.text}</Md>{m.streaming && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-slate-400 align-middle" />}</div>;
-    case "reasoning":
-      return <Fold icon={<Brain className="size-4" />} title={m.streaming ? "Pensando…" : "Razonamiento"} body={m.text} muted />;
-    case "tool":
-      return <Fold icon={toolIcon(m.status)} title={m.title || "Herramienta"} detail={m.detail} body={m.text} mono />;
-    case "plan":
-      return (
-        <div className="rounded-lg border border-slate-200 p-3 text-sm dark:border-border">
-          <p className="mb-1 font-medium">Plan</p>
-          {(m.detail || m.text).split("\n").map((l, i) => <p key={i} className={l.startsWith("[x]") ? "text-slate-400 line-through" : ""}>{l.replace(/^\[.\]\s*/, l.startsWith("[~]") ? "▸ " : "· ")}</p>)}
-        </div>
-      );
-    case "interrupt":
-      return <p className="text-center text-xs text-slate-500 dark:text-muted">— {m.text} —</p>;
-    default:
-      return (
-        <div className={`rounded-md px-3 py-2 text-sm ${m.status === "failed" ? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300" : "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"}`}>
-          {m.title && <p className="font-medium">{m.title}</p>}
-          <Md>{m.text}</Md>
-        </div>
-      );
-  }
-}
-
-function toolIcon(status?: string) {
-  if (status === "running") return <CircleNotch className="size-4 animate-spin text-blue-500" />;
-  if (status === "failed") return <Warning className="size-4 text-red-500" />;
-  if (status === "completed") return <CheckCircle className="size-4 text-emerald-600" />;
-  return <Wrench className="size-4" />;
-}
-
-function Fold({ icon, title, detail, body, muted, mono }: { icon: React.ReactNode; title: string; detail?: string; body?: string; muted?: boolean; mono?: boolean }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className={`text-sm ${muted ? "text-slate-500 dark:text-muted" : ""}`}>
-      <button type="button" onClick={() => setOpen(!open)} className="flex w-full min-w-0 items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-slate-100 dark:hover:bg-raised" disabled={!body}>
-        {icon}
-        <span className="shrink-0 font-medium">{title}</span>
-        {detail && <span className="min-w-0 truncate font-mono text-xs text-slate-500 dark:text-muted">{detail.split("\n")[0]}</span>}
-        {body && <CaretRight className={`ml-auto size-3.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />}
-      </button>
-      {open && body && (mono
-        ? <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap rounded bg-slate-100 p-2 font-mono text-xs dark:bg-raised">{detail && detail.includes("\n") ? `${detail}\n\n` : ""}{body}</pre>
-        : <div className="mt-1 border-l-2 border-slate-200 pl-3 dark:border-border"><Md>{body}</Md></div>)}
-    </div>
-  );
-}
-
+// Composer keeps the v1 look: a rounded box with the text on top and the
+// send or stop button at its bottom right.
 function Composer({ t, onSent }: { t: View; onSent: () => void }) {
   const qc = useQueryClient();
   const [text, setText] = useState("");
-  const box = useRef<HTMLTextAreaElement>(null);
-  useLayoutEffect(() => { const el = box.current; if (el) { el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 320)}px`; } }, [text]);
   const send = useMutation({
     mutationFn: (body: string) => api.send(t.id, body),
     onSuccess: () => { setText(""); onSent(); qc.invalidateQueries({ queryKey: ["thread", t.id] }); },
@@ -167,24 +120,40 @@ function Composer({ t, onSent }: { t: View; onSent: () => void }) {
   const stop = useMutation({ mutationFn: () => api.interrupt(t.id) });
   const submit = () => { if (text.trim() && !send.isPending) send.mutate(text.trim()); };
   if (!t.local) return null;
+  const busy = t.running;
   return (
-    <div className="shrink-0 border-t border-slate-200 p-3 dark:border-border">
-      <div className="mx-auto max-w-3xl">
-        {t.queue.length > 0 && (
-          <div className="mb-2 space-y-1">
-            {t.queue.map((q) => <p key={q.run_id} className="truncate rounded bg-slate-100 px-2 py-1 text-xs text-slate-600 dark:bg-raised dark:text-muted">En cola: {q.text}</p>)}
+    <div className="mx-auto w-full max-w-3xl px-3 pb-4 pt-2 sm:px-6">
+      <form onSubmit={(e) => { e.preventDefault(); submit(); }} className="relative z-10 rounded-3xl border border-slate-200 bg-white shadow-md dark:border-border-strong dark:bg-surface">
+        <TextareaAutosize value={text} onChange={setText} onEnter={submit} />
+        <div className="flex items-center gap-0.5 px-2 pb-2">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 px-2 text-xs text-slate-500 dark:text-text-secondary">
+            <ProviderIcon driver={t.provider} model={t.model} /><span className="truncate">{t.model || t.provider}{t.effort && <span className="text-slate-400"> · {t.effort}</span>}</span>
           </div>
-        )}
-        <div className="flex items-end gap-2 rounded-xl border border-slate-300 bg-white p-2 focus-within:border-slate-500 dark:border-border dark:bg-surface">
-          <Textarea bare ref={box} rows={1} value={text} onChange={(e) => setText(e.target.value)} placeholder={t.running ? "Escribe; se enviará al terminar el turno" : "Escribe un mensaje"} aria-label="Mensaje"
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia("(min-width: 640px)").matches) { e.preventDefault(); submit(); } }}
-            className="max-h-80 min-h-9 flex-1 resize-none" />
-          {t.running && <Button type="button" variant="ghost" title="Interrumpir" onClick={() => stop.mutate()} disabled={stop.isPending}><Stop className="size-4" weight="fill" /></Button>}
-          <Button type="button" title="Enviar" onClick={submit} disabled={!text.trim() || send.isPending}><ArrowUp className="size-4" weight="bold" /></Button>
+          {busy && !text.trim() ? (
+            <button type="button" onClick={() => stop.mutate()} disabled={stop.isPending} title="Parar el turno en curso" aria-label="Parar"
+              className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-900 text-white transition hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200">
+              <Stop weight="fill" className="size-3.5" />
+            </button>
+          ) : (
+            <button type="submit" disabled={!text.trim() || send.isPending} title={busy ? "Encolar (Enter)" : "Enviar (Enter)"} aria-label="Enviar"
+              className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-900 p-0 text-white transition hover:bg-slate-700 disabled:bg-slate-200 disabled:text-slate-400 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 dark:disabled:bg-raised dark:disabled:text-muted">
+              {send.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : busy ? <ListBullets weight="bold" className="block size-4" /> : <ArrowUp weight="bold" className="block size-4" />}
+            </button>
+          )}
         </div>
-        <ErrorText error={send.error ?? stop.error} />
-      </div>
+        {(send.error || stop.error) && <div className="px-4 pb-2"><ErrorText error={send.error ?? stop.error} /></div>}
+      </form>
     </div>
+  );
+}
+
+function TextareaAutosize({ value, onChange, onEnter }: { value: string; onChange: (v: string) => void; onEnter: () => void }) {
+  const area = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => { const el = area.current; if (el) { el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 240)}px`; } }, [value]);
+  return (
+    <textarea ref={area} rows={1} value={value} onChange={(e) => onChange(e.target.value)} aria-label="Mensaje" placeholder="Escribe al hilo…"
+      onKeyDown={(e) => { if (e.nativeEvent.isComposing) return; if (e.key === "Enter" && !e.shiftKey && window.matchMedia("(min-width: 640px)").matches) { e.preventDefault(); onEnter(); } }}
+      className="block max-h-60 w-full resize-none break-words bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 !outline-none placeholder:text-slate-400" />
   );
 }
 
@@ -238,10 +207,10 @@ export function ExternalView() {
         <Button onClick={() => adopt.mutate()} disabled={adopt.isPending}>Continuar en Dory</Button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl space-y-3 px-3 py-4">
+        <div className="mx-auto w-full max-w-3xl space-y-4 px-3 py-3 sm:px-6">
           <ErrorText error={view.error ?? adopt.error} />
           <p className="rounded-md bg-slate-100 px-3 py-2 text-xs text-slate-600 dark:bg-raised dark:text-muted">Conversación iniciada en {provider === "claude" ? "Claude Code" : "Codex"}. Se muestra en solo lectura; al continuarla en Dory, el agente retoma la misma sesión en su carpeta.</p>
-          {view.data?.messages.map((m) => <Entry key={m.id} m={m} />)}
+          {view.data && <Messages messages={view.data.messages} running={false} />}
         </div>
       </div>
     </div>
