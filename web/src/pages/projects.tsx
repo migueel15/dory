@@ -1,10 +1,113 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { FolderSimple, GithubLogo, HardDrive, Plus } from "@phosphor-icons/react";
+import { ArrowUp, Desktop, FolderSimple, GitBranch, GithubLogo, HardDrive, House, Plus } from "@phosphor-icons/react";
 import { api, repoName, type Project } from "../api/client";
 import { Arrow, Button, Card, ErrorText, Input, Label, Modal, PageHeader, Textarea, pill } from "../components/ui";
 import { setProject } from "../project";
+
+const slugify = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+// NewProject creates a project from a folder: first the environment, then the
+// folder on that machine; name, remote, branch and path are detected.
+function NewProject({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const node = useQuery({ queryKey: ["node"], queryFn: api.node });
+  const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh });
+  const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list() });
+  const [env, setEnv] = useState<{ id: string; name: string }>();
+  const [dir, setDir] = useState("");
+  const [hidden, setHidden] = useState(false);
+  const [picked, setPicked] = useState<string>();
+  const envs = [
+    ...(node.data ? [{ id: "local", name: `${node.data.node.name} (este equipo)`, online: true }] : []),
+    ...(mesh.data?.peers ?? []).filter((p) => !p.revoked).map((p) => ({ id: p.id, name: p.name, online: p.connected })),
+  ];
+  const folders = useQuery({ queryKey: ["folders", env?.id, dir, hidden], queryFn: () => api.folders(env!.id, dir, hidden), enabled: !!env && !picked });
+  const found = useQuery({ queryKey: ["checkout", env?.id, picked], queryFn: () => api.checkout(env!.id, picked!), enabled: !!env && !!picked });
+  const [form, setForm] = useState<{ name: string; slug: string; description: string; remote: string; branch: string }>();
+  const c = found.data;
+  const existing = c?.remote ? repos.data?.find((r) => repoName(r.remote_url).toLowerCase() === repoName(c.remote).toLowerCase()) : undefined;
+  if (c && !form) setForm({ name: c.name, slug: slugify(c.name), description: "", remote: c.remote, branch: c.default_branch || "main" });
+  const save = useMutation({
+    mutationFn: async () => {
+      let projectId = existing?.project_id;
+      if (!projectId) {
+        const p = await api.projects.create({ name: form!.name.trim(), slug: form!.slug || slugify(form!.name), description: form!.description });
+        projectId = p.id;
+      }
+      if (form!.remote.trim()) {
+        const r = existing ?? (await api.repositories.create({ project_id: projectId, remote_url: form!.remote.trim(), default_branch: form!.branch || "main" }));
+        await api.setNodeRepositoryPath(env!.id, r.id, c!.path);
+      }
+      return projectId;
+    },
+    onSuccess: (id) => { qc.invalidateQueries({ queryKey: ["projects"] }); qc.invalidateQueries({ queryKey: ["repositories"] }); setProject(id); onClose(); },
+  });
+  const row = "flex w-full min-h-11 sm:min-h-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised";
+  return (
+    <Modal title="Nuevo proyecto" onClose={onClose} wide>
+      {!env ? (
+        <div className="space-y-1">
+          <p className="mb-2 text-sm text-slate-500 dark:text-muted">¿En qué entorno está el proyecto?</p>
+          {envs.map((e) => (
+            <button key={e.id} type="button" disabled={!e.online} onClick={() => setEnv(e)} className={`${row} disabled:opacity-40`}>
+              <Desktop className="size-4" /><span className="flex-1">{e.name}</span>{!e.online && <span className="text-xs">desconectado</span>}
+            </button>
+          ))}
+        </div>
+      ) : !picked ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1 text-sm">
+            <button type="button" className="rounded px-1.5 py-1 hover:bg-slate-100 dark:hover:bg-raised" onClick={() => setEnv(undefined)}>{env.name}</button>
+            <span className="text-slate-400">/</span>
+            <span className="min-w-0 flex-1 truncate font-mono text-xs text-slate-600 dark:text-muted" title={folders.data?.path}>{folders.data?.path}</span>
+            <button type="button" title="Inicio" className="rounded p-1.5 hover:bg-slate-100 dark:hover:bg-raised" onClick={() => setDir(folders.data?.home ?? "")}><House className="size-4" /></button>
+            <button type="button" title="Subir" disabled={!folders.data?.parent} className="rounded p-1.5 hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-raised" onClick={() => setDir(folders.data!.parent)}><ArrowUp className="size-4" /></button>
+          </div>
+          <ErrorText error={folders.error} />
+          <div className="max-h-[50vh] overflow-y-auto rounded-md border border-slate-200 p-1 dark:border-border">
+            {(folders.data?.folders ?? []).map((f) => (
+              <div key={f.path} className="flex items-center gap-1">
+                <button type="button" onClick={() => setDir(f.path)} className={`${row} flex-1`}>
+                  {f.git ? <GitBranch className="size-4 text-emerald-600" /> : <FolderSimple className="size-4 text-slate-400" />}
+                  <span className="truncate">{f.name}</span>
+                </button>
+                {f.git && <Button variant="ghost" className="!py-0.5 text-xs" onClick={() => setPicked(f.path)}>Elegir</Button>}
+              </div>
+            ))}
+            {folders.isSuccess && folders.data.folders.length === 0 && <p className="p-2 text-sm text-slate-500">Carpeta vacía.</p>}
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-slate-500"><input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} />Mostrar ocultas</label>
+            <Button variant="ghost" className="ml-auto" disabled={!folders.data} onClick={() => setPicked(folders.data!.path)}>Usar esta carpeta</Button>
+          </div>
+        </div>
+      ) : (
+        <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (form?.name.trim()) save.mutate(); }}>
+          <p className="flex items-center gap-2 font-mono text-xs text-slate-500"><HardDrive className="size-4" />{env.name}: {c?.path ?? picked}
+            <button type="button" className="ml-auto text-slate-500 underline" onClick={() => { setPicked(undefined); setForm(undefined); }}>cambiar</button></p>
+          <ErrorText error={found.error} />
+          {c && !c.git && <p className="text-sm text-amber-700 dark:text-amber-300">No es un repositorio de Git: el proyecto se crea sin repositorio y no podrás lanzar hilos con worktree.</p>}
+          {existing && <p className="text-sm text-slate-600 dark:text-muted">Este repositorio ya está en Dory: se guarda la ruta en este entorno y se usa su proyecto.</p>}
+          {form && !existing && <>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Label text="Nombre"><Input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value, slug: slugify(e.target.value) })} /></Label>
+              <Label text="Slug"><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} className="font-mono" /></Label>
+            </div>
+            <Label text="Descripción"><Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Label>
+            {c?.git && <div className="grid gap-2 sm:grid-cols-[1fr_10rem]">
+              <Label text="Remoto"><Input value={form.remote} onChange={(e) => setForm({ ...form, remote: e.target.value })} className="font-mono !text-xs" placeholder="Sin remoto" /></Label>
+              <Label text="Rama principal"><Input value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })} className="font-mono !text-xs" /></Label>
+            </div>}
+          </>}
+          <ErrorText error={save.error} />
+          <Button disabled={!form?.name.trim() || save.isPending}>{existing ? "Guardar ruta" : "Crear proyecto"}</Button>
+        </form>
+      )}
+    </Modal>
+  );
+}
 
 // Projects lists the projects and creates new ones.
 export function Projects() {
@@ -25,7 +128,7 @@ export function Projects() {
         ))}
       </div>
       {projects.isSuccess && projects.data.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">Crea tu primer proyecto y asócialo a un repositorio de Git.</p>}
-      {adding && <ProjectForm onClose={() => setAdding(false)} />}
+      {adding && <NewProject onClose={() => setAdding(false)} />}
     </div>
   );
 }
