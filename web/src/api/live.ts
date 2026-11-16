@@ -25,7 +25,7 @@ const keys: Record<string, string[]> = {
   thread: ["threads", "board", "card", "thread"],
 };
 
-type Update = { thread_id: string; message?: Message; status?: string; error?: string; queue?: Queued[] };
+type Update = { thread_id: string; message?: Message; status?: string; error?: string; queue?: Queued[]; reload?: boolean };
 
 // useLiveUpdates subscribes to the node event stream and invalidates the
 // affected queries, batching bursts so a sync triggers one refetch.
@@ -66,6 +66,8 @@ export function useThreadLive(threadId: string | undefined) {
     source.addEventListener("thread", (e) => {
       const u = JSON.parse((e as MessageEvent).data) as Update;
       if (u.thread_id !== threadId) return;
+      // The history was rebuilt from the harness file: fetch it whole.
+      if (u.reload) { qc.invalidateQueries({ queryKey: key }); return; }
       qc.setQueryData<ThreadView>(key, (v) => {
         if (!v) return v;
         const next = { ...v };

@@ -135,6 +135,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		notices.Changed(entity, id)
 	}
 	go reconciler.Run(ctx)
+	go rt.Follow(ctx, home)
 	gh := github.New(func(ctx context.Context) (map[string]string, error) { return followed(ctx, store) }, githubToken())
 	srv := &api.Server{
 		Store: store, Runtime: rt, GitHub: gh, Dictation: dictationManager(), Events: events,

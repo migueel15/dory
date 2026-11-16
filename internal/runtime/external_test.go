@@ -1,9 +1,11 @@
 package runtime
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestExternalSessions(t *testing.T) {
@@ -45,5 +47,47 @@ func TestExternalSessions(t *testing.T) {
 	msgs, _ = ExternalMessages(byProvider["codex"])
 	if len(msgs) != 3 || msgs[0].Text != "Hola codex" || msgs[1].Text != "b.go" || msgs[2].Text != "hola" {
 		t.Fatalf("codex messages %+v", msgs)
+	}
+}
+
+func TestFollowPicksUpTerminalTurns(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	m, _ := manager(t, 0)
+	m.providers["claude"] = Claude{}
+	home := t.TempDir()
+	dir := filepath.Join(home, ".claude", "projects", "-repo")
+	os.MkdirAll(dir, 0o755)
+	file := filepath.Join(dir, "s9.jsonl")
+	os.WriteFile(file, []byte(`{"type":"user","uuid":"u1","sessionId":"s9","cwd":"/repo","timestamp":"2026-11-16T00:00:00Z","message":{"content":"Primera"}}
+`+"\n"), 0o644)
+	e, err := ExternalSession(home, "claude", "s9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, err := m.Adopt(ctx, e, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updates, stop := m.Subscribe(th.ID)
+	defer stop()
+	go m.Follow(ctx, home)
+	time.Sleep(2500 * time.Millisecond) // first pass records the file
+	f, _ := os.OpenFile(file, os.O_APPEND|os.O_WRONLY, 0)
+	f.WriteString(`{"type":"user","uuid":"u2","sessionId":"s9","timestamp":"2026-11-16T00:01:00Z","message":{"content":"Desde la terminal"}}` + "\n")
+	f.Close()
+	for {
+		select {
+		case <-ctx.Done():
+			t.Fatal("terminal turn never reached Dory")
+		case u := <-updates:
+			if !u.Reload {
+				continue
+			}
+			msgs, _ := m.Messages(ctx, th.ID)
+			if len(msgs) == 2 && msgs[1].Text == "Desde la terminal" {
+				return
+			}
+		}
 	}
 }

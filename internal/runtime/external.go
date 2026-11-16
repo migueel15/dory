@@ -355,3 +355,21 @@ func codexRecord(line []byte, emit func(Message), out []Message, index map[strin
 		}
 	}
 }
+
+// sessionFile finds the file where a harness keeps a session.
+func sessionFile(home, provider, id string) string {
+	var pattern string
+	switch provider {
+	case "claude":
+		pattern = filepath.Join(home, ".claude", "projects", "*", id+".jsonl")
+	case "codex":
+		pattern = filepath.Join(home, ".codex", "sessions", "*", "*", "*", "rollout-*"+id+".jsonl")
+	default:
+		return ""
+	}
+	files, _ := filepath.Glob(pattern)
+	if len(files) == 0 {
+		return ""
+	}
+	return files[0]
+}

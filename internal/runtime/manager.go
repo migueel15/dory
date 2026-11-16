@@ -31,6 +31,8 @@ type Update struct {
 	Status   string   `json:"status,omitempty"`
 	Error    string   `json:"error,omitempty"`
 	Queue    []Queued `json:"queue,omitempty"`
+	// Reload asks clients to fetch the whole conversation again.
+	Reload bool `json:"reload,omitempty"`
 }
 
 // Queued is a message waiting for the running turn to end.
@@ -549,4 +551,92 @@ func (m *Manager) Adopt(ctx context.Context, e External, projectID *string) (dat
 		m.save(ctx, msg)
 	}
 	return t, nil
+}
+
+// Follow keeps the threads of this node in step with the session files of
+// their harness: what is written from the harness's own terminal shows up in
+// Dory, and after each turn the history is the one the harness saved.
+func (m *Manager) Follow(ctx context.Context, home string) {
+	seen := map[string]time.Time{}
+	tick := time.NewTicker(2 * time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+		rows, err := m.db.QueryContext(ctx, `SELECT r.thread_id, r.session_id, t.provider FROM thread_runtime r JOIN threads t ON t.id = r.thread_id
+			WHERE r.session_id <> '' AND t.archived_at IS NULL AND t.provider IN ('claude', 'codex')`)
+		if err != nil {
+			continue
+		}
+		type link struct{ thread, session, provider string }
+		var links []link
+		for rows.Next() {
+			var l link
+			if rows.Scan(&l.thread, &l.session, &l.provider) == nil {
+				links = append(links, l)
+			}
+		}
+		rows.Close()
+		for _, l := range links {
+			if m.Running(l.thread) {
+				continue
+			}
+			path := sessionFile(home, l.provider, l.session)
+			st, err := os.Stat(path)
+			if path == "" || err != nil {
+				continue
+			}
+			if prev, ok := seen[l.thread]; ok && prev.Equal(st.ModTime()) {
+				continue
+			}
+			first := seen[l.thread].IsZero()
+			seen[l.thread] = st.ModTime()
+			// On start, only threads whose file changed after their last activity are rebuilt.
+			if first {
+				var last sql.NullString
+				m.db.QueryRowContext(ctx, `SELECT MAX(updated_at) FROM thread_messages WHERE thread_id = ?`, l.thread).Scan(&last)
+				if t, err := time.Parse(time.RFC3339Nano, last.String); err == nil && !st.ModTime().After(t) {
+					continue
+				}
+			}
+			if err := m.resync(ctx, l.thread, External{Provider: l.provider, ID: l.session, path: path}); err != nil {
+				log.Printf("runtime: sync %s: %v", l.thread, err)
+			}
+		}
+	}
+}
+
+// resync replaces the conversation of a thread with the one in its file.
+func (m *Manager) resync(ctx context.Context, thread string, e External) error {
+	msgs, err := ExternalMessages(e)
+	if err != nil || len(msgs) == 0 {
+		return err
+	}
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, `DELETE FROM thread_messages WHERE thread_id = ?`, thread); err != nil {
+		return err
+	}
+	at := now()
+	for _, msg := range msgs {
+		if msg.CreatedAt == "" {
+			msg.CreatedAt = at
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO thread_messages(id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, updated_at)
+			VALUES (?, ?, '', ?, ?, ?, ?, ?, 0, ?, ?) ON CONFLICT(id) DO NOTHING`,
+			thread+":"+msg.ID, thread, msg.Role, msg.Text, msg.Title, msg.Detail, msg.Status, msg.CreatedAt, at); err != nil {
+			return err
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	m.publish(Update{ThreadID: thread, Reload: true})
+	return nil
 }
