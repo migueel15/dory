@@ -341,8 +341,13 @@ func pair(base, dataDir string, args []string) error {
 	if len(args) != 0 && len(args) != 2 {
 		return errors.New("usage: dory pair            muestra un código para emparejar este nodo\n       dory pair DIRECCIÓN CÓDIGO   empareja con otro nodo")
 	}
-	if _, err := health(base); err != nil {
+	h, err := health(base)
+	if err != nil {
 		return errors.New("el núcleo no está en marcha: ejecuta `dory start`")
+	}
+	// The running core may use another data folder than this shell's config.
+	if d, ok := h["data_dir"].(string); ok && d != "" {
+		dataDir = d
 	}
 	token, err := os.ReadFile(filepath.Join(dataDir, "control.token"))
 	if err != nil {

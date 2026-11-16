@@ -55,7 +55,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// health answers without a session: the CLI and the desktop app use it to
 	// know whether the core of this machine is running.
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"app": "dory", "node_id": s.Node.ID, "name": s.Node.Name, "version": s.Node.Version, "pid": os.Getpid()})
+		writeJSON(w, http.StatusOK, map[string]any{"app": "dory", "node_id": s.Node.ID, "name": s.Node.Name, "version": s.Node.Version, "pid": os.Getpid(), "data_dir": s.Node.DataDir})
 	})
 	mux.HandleFunc("GET /api/search", s.search)
 	mux.HandleFunc("GET /api/events", func(w http.ResponseWriter, r *http.Request) {
