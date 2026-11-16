@@ -14,8 +14,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/migueel15/dory/internal/service"
 )
 
 const (
@@ -48,7 +46,8 @@ type Client struct {
 	Token string
 	Base  string
 	HTTP  *http.Client
-	svc   service.Service
+	// repos lists the followed repositories as owner/name -> project id.
+	listRepos func(context.Context) (map[string]string, error)
 
 	mu         sync.Mutex
 	byRepo     map[string]repoData
@@ -58,8 +57,9 @@ type Client struct {
 	viewer     string
 }
 
-func New(svc service.Service, token string) *Client {
-	return &Client{Token: token, Base: apiBase, HTTP: &http.Client{Timeout: 15 * time.Second}, svc: svc, byRepo: map[string]repoData{}, rules: map[string]ruleEntry{}}
+// New follows the repositories that repos returns, as remote URL -> project id.
+func New(repos func(context.Context) (map[string]string, error), token string) *Client {
+	return &Client{Token: token, Base: apiBase, HTTP: &http.Client{Timeout: 15 * time.Second}, listRepos: repos, byRepo: map[string]repoData{}, rules: map[string]ruleEntry{}}
 }
 
 func (c *Client) get(ctx context.Context, path, accept string) ([]byte, error) {
@@ -82,26 +82,14 @@ func (c *Client) get(ctx context.Context, path, accept string) ([]byte, error) {
 }
 
 func (c *Client) repos(ctx context.Context) (map[string]string, error) {
-	repos, err := c.svc.Repositories().List(ctx, service.Filter{Limit: 1000})
+	remotes, err := c.listRepos(ctx)
 	if err != nil {
 		return nil, err
 	}
-	// Repositories of an archived project stay stored but are no longer followed.
-	projects, err := c.svc.Projects().List(ctx, service.Filter{Limit: 1000})
-	if err != nil {
-		return nil, err
-	}
-	active := make(map[string]bool, len(projects))
-	for _, p := range projects {
-		active[p.ID] = true
-	}
-	out := make(map[string]string, len(repos))
-	for _, r := range repos {
-		if !active[r.ProjectID] {
-			continue
-		}
-		if name, ok := ParseRemote(r.RemoteUrl); ok {
-			out[name] = r.ProjectID
+	out := make(map[string]string, len(remotes))
+	for remote, project := range remotes {
+		if name, ok := ParseRemote(remote); ok {
+			out[name] = project
 		}
 	}
 	return out, nil

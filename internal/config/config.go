@@ -12,8 +12,10 @@ import (
 )
 
 type Config struct {
-	Listen         string        `toml:"listen"`
-	DatabaseURL    string        `toml:"database_url"`
+	Listen  string `toml:"listen"`
+	DataDir string `toml:"data_dir"`
+	// Name shown for this node in the mesh; defaults to the host name.
+	NodeName       string        `toml:"node_name"`
 	CookieSecure   bool          `toml:"cookie_secure"`
 	PublicOrigin   string        `toml:"public_origin"`
 	SessionTTL     time.Duration `toml:"-"`
@@ -23,7 +25,9 @@ type Config struct {
 // Load uses DORY_CONFIG, or ~/.config/dory/config.toml. An explicitly selected
 // missing file is an error; the implicit default file is optional.
 func Load() (Config, error) {
-	c := Config{Listen: "127.0.0.1:8080", CookieSecure: true, SessionTTLText: "168h"}
+	// A desktop node serves plain HTTP on loopback; a server behind TLS sets
+	// cookie_secure.
+	c := Config{Listen: "127.0.0.1:7700", SessionTTLText: "168h"}
 	path := os.Getenv("DORY_CONFIG")
 	explicit := path != ""
 	if !explicit {
@@ -41,7 +45,7 @@ func Load() (Config, error) {
 	} else if explicit || !os.IsNotExist(err) {
 		return c, err
 	}
-	for key, target := range map[string]*string{"DORY_LISTEN": &c.Listen, "DORY_DATABASE_URL": &c.DatabaseURL, "DORY_SESSION_TTL": &c.SessionTTLText, "DORY_PUBLIC_ORIGIN": &c.PublicOrigin} {
+	for key, target := range map[string]*string{"DORY_LISTEN": &c.Listen, "DORY_DATA_DIR": &c.DataDir, "DORY_NODE_NAME": &c.NodeName, "DORY_SESSION_TTL": &c.SessionTTLText, "DORY_PUBLIC_ORIGIN": &c.PublicOrigin} {
 		if v, ok := os.LookupEnv(key); ok {
 			*target = v
 		}
@@ -56,8 +60,19 @@ func Load() (Config, error) {
 			return c, fmt.Errorf("DORY_COOKIE_SECURE must be true or false")
 		}
 	}
-	if c.DatabaseURL == "" {
-		return c, fmt.Errorf("database_url or DORY_DATABASE_URL is required")
+	if c.DataDir == "" {
+		dir := os.Getenv("XDG_DATA_HOME")
+		if dir == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return c, err
+			}
+			dir = filepath.Join(home, ".local", "share")
+		}
+		c.DataDir = filepath.Join(dir, "dory")
+	}
+	if c.NodeName == "" {
+		c.NodeName, _ = os.Hostname()
 	}
 	if _, _, err = net.SplitHostPort(c.Listen); err != nil {
 		return c, fmt.Errorf("listen: %w", err)

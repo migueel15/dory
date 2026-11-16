@@ -40,6 +40,7 @@ func (s *Store) Dependencies() Resource[Dependency] {
 }
 func (s *Store) Plans() Resource[Plan]      { return Resource[Plan]{s, "plan"} }
 func (s *Store) Memories() Resource[Memory] { return Resource[Memory]{s, "memory"} }
+func (s *Store) Threads() Resource[Thread]  { return Resource[Thread]{s, "thread"} }
 
 // jsonColumns are stored as JSON text and read back as JSON values.
 var jsonColumns = []string{"sections", "open_questions", "labels"}
@@ -50,6 +51,7 @@ var defaults = map[string]map[string]any{
 	"task":       {"stage": "inbox"},
 	"plan":       {"author": "agent", "sections": map[string]any{}, "open_questions": []any{}},
 	"memory":     {"kind": "context", "labels": []any{}},
+	"thread":     {"runtime_mode": "full-access", "status": "idle"},
 }
 
 // Filter matches columns exactly. Limit defaults to 100 (maximum 1000).
@@ -241,7 +243,7 @@ func (s *Store) query(ctx context.Context, entity string, f Filter) ([]json.RawM
 		args = append(args, v)
 	}
 	table := map[string]string{"project": "projects", "repository": "repositories", "task": "tasks",
-		"task_dependency": "task_dependencies", "plan": "plans", "memory": "memories"}[entity]
+		"task_dependency": "task_dependencies", "plan": "plans", "memory": "memories", "thread": "threads"}[entity]
 	query := fmt.Sprintf("SELECT json_object(%s) FROM %s WHERE %s ORDER BY created_at, %s LIMIT ? OFFSET ?",
 		strings.Join(pairs, ", "), table, strings.Join(where, " AND "), strings.Join(key, ", "))
 	rows, err := s.db.QueryContext(ctx, query, append(args, f.Limit, f.Offset)...)
@@ -295,3 +297,6 @@ func newID() string {
 	b[8] = b[8]&0x3f | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
+
+// DB returns the database of the node, for the local tables of other packages.
+func (s *Store) DB() *sql.DB { return s.db }

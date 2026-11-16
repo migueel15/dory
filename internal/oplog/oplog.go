@@ -33,6 +33,8 @@ type Log struct {
 	db    *sql.DB
 	node  string
 	clock *hlc.Clock
+	// OnChange is called after a write, local or received, commits.
+	OnChange func(entity, id string)
 }
 
 // Open resumes the clock of this node from its stored state.

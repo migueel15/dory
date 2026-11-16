@@ -37,6 +37,7 @@ var tables = map[string]table{
 	"task_dependency": {"task_dependencies", []string{"task_id", "depends_on_id"}, []string{"created_at", "archived_at"}, "", ""},
 	"plan":            {"plans", []string{"id"}, []string{"task_id", "version", "sections", "open_questions", "author", "accepted_at", "created_at", "updated_at", "archived_at"}, "", ""},
 	"memory":          {"memories", []string{"id"}, []string{"scope", "scope_id", "kind", "title", "content", "labels", "created_at", "updated_at", "archived_at"}, "", "content"},
+	"thread":          {"threads", []string{"id"}, []string{"node_id", "project_id", "task_id", "parent_id", "provider", "model", "effort", "runtime_mode", "title", "branch", "status", "pinned_at", "read_at", "last_activity_at", "snoozed_until", "settled_at", "created_at", "updated_at", "archived_at"}, "", ""},
 }
 
 // Write records a local change and applies it to its table in one
@@ -65,6 +66,9 @@ func (l *Log) Write(ctx context.Context, entity, id string, fields map[string]an
 	}
 	if err == nil {
 		err = tx.Commit()
+	}
+	if err == nil && l.OnChange != nil {
+		l.OnChange(entity, id)
 	}
 	return op, err
 }
@@ -111,7 +115,15 @@ func (l *Log) Apply(ctx context.Context, ops []Op) error {
 			return err
 		}
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	if l.OnChange != nil {
+		for key := range touched {
+			l.OnChange(key[0], key[1])
+		}
+	}
+	return nil
 }
 
 // begin defers foreign key checks to commit, because ops from several nodes

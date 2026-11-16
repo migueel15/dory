@@ -9,18 +9,51 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/migueel15/dory/internal/config"
-	"github.com/migueel15/dory/internal/service"
 	"golang.org/x/crypto/argon2"
 )
 
+// ErrNotFound is returned by a Store lookup that matches nothing.
+var ErrNotFound = errors.New("auth: not found")
+
+// User, Session and Token live only on this node; they never replicate.
+type User struct {
+	ID           string
+	Username     string
+	PasswordHash string
+}
+type Session struct {
+	ID, UserID string
+	ExpiresAt  time.Time
+}
+type Token struct {
+	ID, UserID, Name, SecretHash string
+	Permissions                  []string
+	ExpiresAt                    *time.Time
+}
+
+// Store keeps the local accounts. Lookups by hash ignore expired and
+// revoked entries.
+type Store interface {
+	FindUser(ctx context.Context, username string) (User, error)
+	GetUser(ctx context.Context, id string) (User, error)
+	CountUsers(ctx context.Context) (int, error)
+	CreateUser(ctx context.Context, username, passwordHash string) (User, error)
+	FindSession(ctx context.Context, secretHash string) (Session, error)
+	CreateSession(ctx context.Context, userID, secretHash string, expires time.Time) error
+	EndSession(ctx context.Context, id string) error
+	FindToken(ctx context.Context, secretHash string) (Token, error)
+	CreateToken(ctx context.Context, t Token) error
+}
+
 type identity struct {
-	user    service.User
+	user    User
 	session string
 	scopes  []string
 }
@@ -44,6 +77,9 @@ func Allowed(ctx context.Context, scope string) bool {
 	}
 	return false
 }
+
+// Secret returns a new random secret.
+func Secret() string { return secret() }
 func secret() string { return base64.RawURLEncoding.EncodeToString(randBytes(32)) }
 func randBytes(n int) []byte {
 	b := make([]byte, n)
@@ -84,20 +120,22 @@ func reply(w http.ResponseWriter, status int, value any) {
 func failure(w http.ResponseWriter, status int) {
 	reply(w, status, map[string]any{"error": map[string]string{"code": http.StatusText(status), "message": http.StatusText(status)}})
 }
-func publicUser(u service.User) any {
+func publicUser(u User) any {
 	return struct {
 		ID       string `json:"id"`
 		Username string `json:"username"`
 	}{u.ID, u.Username}
 }
 
-func Middleware(svc service.Service, cfg config.Config) func(http.Handler) http.Handler {
+// Middleware authenticates /api and /mcp. agentToken, when set, is the
+// secret this node hands to its own agents: it grants write access to /mcp.
+func Middleware(svc Store, cfg config.Config, agentToken string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
 			mcp := path == "/mcp" || strings.HasPrefix(path, "/mcp/")
 			api := path == "/api" || strings.HasPrefix(path, "/api/")
-			if !mcp && (!api || path == "/api/auth/login") {
+			if !mcp && (!api || path == "/api/auth/login" || path == "/api/auth/setup") {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -109,20 +147,26 @@ func Middleware(svc service.Service, cfg config.Config) func(http.Handler) http.
 					failure(w, 401)
 					return
 				}
-				var t service.Token
+				var t Token
+				if mcp && agentToken != "" && subtle.ConstantTimeCompare([]byte(fields[1]), []byte(agentToken)) == 1 {
+					v.user, v.scopes = User{ID: "agent", Username: "agent"}, []string{"write"}
+					ctx := context.WithValue(r.Context(), identityKey{}, v)
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
 				t, err = svc.FindToken(r.Context(), digest(fields[1]))
 				if err == nil {
-					v.user, err = svc.Users().Get(r.Context(), t.UserID)
+					v.user, err = svc.GetUser(r.Context(), t.UserID)
 					v.scopes = t.Permissions
 				}
 			} else if !mcp {
 				var c *http.Cookie
 				c, err = r.Cookie("dory_session")
 				if err == nil {
-					var s service.Session
+					var s Session
 					s, err = svc.FindSession(r.Context(), digest(c.Value))
 					if err == nil {
-						v.user, err = svc.Users().Get(r.Context(), s.UserID)
+						v.user, err = svc.GetUser(r.Context(), s.UserID)
 						v.session = s.ID
 						v.scopes = []string{"admin"}
 					}

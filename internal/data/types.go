@@ -78,6 +78,31 @@ type Memory struct {
 	ArchivedAt *string  `json:"archived_at"`
 }
 
+// Thread is the replicated part of a conversation with an agent. NodeID is
+// the node that runs it; only that node holds its messages and processes.
+type Thread struct {
+	ID             string  `json:"id"`
+	NodeID         string  `json:"node_id"`
+	ProjectID      *string `json:"project_id"`
+	TaskID         *string `json:"task_id"`
+	ParentID       *string `json:"parent_id"`
+	Provider       string  `json:"provider"`
+	Model          string  `json:"model"`
+	Effort         string  `json:"effort"`
+	RuntimeMode    string  `json:"runtime_mode"`
+	Title          string  `json:"title"`
+	Branch         string  `json:"branch"`
+	Status         string  `json:"status"`
+	PinnedAt       *string `json:"pinned_at"`
+	ReadAt         *string `json:"read_at"`
+	LastActivityAt *string `json:"last_activity_at"`
+	SnoozedUntil   *string `json:"snoozed_until"`
+	SettledAt      *string `json:"settled_at"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
+	ArchivedAt     *string `json:"archived_at"`
+}
+
 // Hit is a search result: a task or a memory, best match first.
 type Hit struct {
 	Entity string          `json:"entity"`
