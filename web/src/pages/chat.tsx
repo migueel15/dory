@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, Stop, TerminalWindow, Wrench } from "@phosphor-icons/react";
 import { api, type Attachment, type Message } from "../api/client";
 import { copyText, Md } from "../components/ui";
+import { rehypeFade, useSmoothText } from "../components/stream";
 
 // The look of the conversation, kept from Dory v1 (as in T3 Code): user
 // bubbles, answers as plain markdown, and each finished turn's work folded
@@ -42,8 +43,8 @@ export function Entry({ m, threadId = "", fresh = false }: { m: Message; threadI
     case "assistant":
       return (
         <div data-message className="group max-w-full pr-6">
-          {m.text ? <Md>{m.text}</Md> : null}
-          {m.streaming ? <Dots /> : <MessageMeta m={m} />}
+          <Answer m={m} />
+          {m.streaming && !m.text ? <Dots /> : !m.streaming && <MessageMeta m={m} />}
         </div>
       );
     case "reasoning":
@@ -66,6 +67,19 @@ export function Entry({ m, threadId = "", fresh = false }: { m: Message; threadI
         </div>
       );
   }
+}
+
+// Answer is the model's reply, rendered as in Claude: serif prose that, while
+// it is written, comes in at a steady pace with each word fading in. Replies
+// already finished when the chat opened show at once.
+function Answer({ m }: { m: Message }) {
+  const live = useRef(m.streaming);
+  if (m.streaming) live.current = true;
+  const text = useSmoothText(m.text, m.streaming);
+  const seen = useRef<number[]>([]);
+  const fade = useMemo(() => (live.current ? [rehypeFade(seen.current)] : []), [live.current]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!text) return null;
+  return <Md serif rehypePlugins={fade}>{text}</Md>;
 }
 
 // SentFiles shows the files sent with a message, above its bubble.
@@ -130,7 +144,7 @@ export function PlanCard({ m }: { m: Message }) {
         </button>
       </header>
       <div className={`relative px-5 py-4 ${long && !open ? "max-h-96 overflow-hidden" : ""}`}>
-        <Md>{planMarkdown(text)}</Md>
+        <Md serif>{planMarkdown(text)}</Md>
         {long && !open && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white dark:from-surface" />}
       </div>
       {long && (
@@ -221,8 +235,10 @@ function layout(ms: Message[], live: boolean): (Message | Worked)[] {
     let head: Message | undefined;
     if (seg[0]?.role === "user") { head = seg[0]; out.push(seg.shift()!); }
     if (last && live) {
-      out.push({ worked: true, live: true, id: `working:${head?.id ?? seg[0]?.id ?? "turn"}`, items: seg.filter(isWork), secs: 0, since: head?.created_at || seg[0]?.created_at });
-      out.push(...seg.filter((m) => !isWork(m)));
+      // The text the model is writing last reads as the answer, as in Claude.
+      const tail = seg.at(-1)?.role === "assistant" ? seg.at(-1) : undefined;
+      out.push({ worked: true, live: true, id: `working:${head?.id ?? seg[0]?.id ?? "turn"}`, items: seg.filter((m) => isWork(m) && m !== tail), secs: 0, since: head?.created_at || seg[0]?.created_at });
+      out.push(...seg.filter((m) => !isWork(m) || m === tail));
       return;
     }
     let answer = -1;

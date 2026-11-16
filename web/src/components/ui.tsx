@@ -210,7 +210,26 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   );
 }
 
-export function Md({ children, components, urlTransform, onToggle }: { children: string; onToggle?: (line: number) => void } & Pick<Options, "components" | "urlTransform">) {
+// Formulas load the first time a message has one: remark-math, rehype-katex
+// and KaTeX's styles stay out of the main bundle.
+type MathPlugins = { remark: NonNullable<Options["remarkPlugins"]>[number]; rehype: NonNullable<Options["rehypePlugins"]>[number] };
+let math: MathPlugins | undefined;
+let mathLoading: Promise<MathPlugins> | undefined;
+const loadMath = () => (mathLoading ??= Promise.all([import("remark-math"), import("rehype-katex"), import("katex/dist/katex.min.css")])
+  .then(([rm, rk]) => (math = { remark: rm.default, rehype: rk.default })));
+const hasMath = (t: string) => /\$[^$\n]+\$|\$\$|\\\(|\\\[/.test(t);
+// The harnesses write formulas as \( \) and \[ \]; remark-math reads $ and $$.
+// A $$…$$ alone on its line is a centered formula, as Claude shows it.
+const dollars = (t: string) => t.replace(/\\\[([\s\S]+?)\\\]/g, (_, x) => `$$${x}$$`).replace(/\\\(([\s\S]+?)\\\)/g, (_, x) => `$${x}$`)
+  .replace(/^[ \t]*\$\$([^\n]+?)\$\$[ \t]*$/gm, (_, x) => `$$\n${x}\n$$`);
+
+// Md renders GitHub-flavored markdown with formulas. serif gives an answer the
+// reading look of Claude; with onToggle, task checkboxes can be clicked and
+// report the source line of their item.
+export function Md({ children, components, urlTransform, onToggle, serif = false, rehypePlugins = [] }: { children: string; onToggle?: (line: number) => void; serif?: boolean } & Pick<Options, "components" | "urlTransform" | "rehypePlugins">) {
+  const wantsMath = hasMath(children);
+  const [, setLoaded] = useState(!!math);
+  useEffect(() => { if (wantsMath && !math) loadMath().then(() => setLoaded(true), () => {}); }, [wantsMath]);
   const tasks: Options["components"] = onToggle && {
     li: ({ node, children: content, ...rest }) => {
       const line = node?.position?.start.line;
@@ -218,12 +237,18 @@ export function Md({ children, components, urlTransform, onToggle }: { children:
     },
     input: ({ node: _, disabled: __, ...rest }) => <input {...rest} readOnly className="cursor-pointer" />,
   };
+  const withMath = wantsMath && math;
   return (
-    <div className={prose}>
-      <Markdown remarkPlugins={[remarkGfm]} components={{ a: RefLink, code: RefCode, pre: CodeBlock, img: RefImg, ...tasks, ...components }} urlTransform={urlTransform ?? keepLocal}>{children}</Markdown>
+    <div className={serif ? `${prose} ${reading}` : prose}>
+      <Markdown remarkPlugins={withMath ? [remarkGfm, math!.remark] : [remarkGfm]} rehypePlugins={withMath ? [math!.rehype, ...(rehypePlugins ?? [])] : rehypePlugins ?? []}
+        components={{ a: RefLink, code: RefCode, pre: CodeBlock, img: RefImg, ...tasks, ...components }} urlTransform={urlTransform ?? keepLocal}>{withMath ? dollars(children) : children}</Markdown>
     </div>
   );
 }
+
+// reading is the look of an answer, as in Claude: a serif at a comfortable
+// size and line height, with sans-serif code.
+const reading = "font-reading !text-[16px] !leading-[1.7] text-slate-800 dark:text-[#e8e6e3] [&_h1]:!border-0 [&_h2]:!border-0 [&_h1]:!text-[1.5em] [&_h2]:!text-[1.25em] [&_h3]:!text-[1.1em] [&_h1,&_h2,&_h3,&_h4]:!font-semibold [&_li]:!my-1 [&_strong]:font-semibold [&_pre]:!text-[13px] [&_table]:text-[15px] [&_.katex-display]:my-3 [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden";
 
 export function Modal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   useEffect(() => {
