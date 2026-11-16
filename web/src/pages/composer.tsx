@@ -6,6 +6,7 @@ import { Button, ErrorText, Input, errMsg, uuid } from "../components/ui";
 import { ProviderIcon } from "../components/launch-picker";
 import { saveEffort, savedEffort } from "../effort";
 import { iconBtn } from "./chat";
+import { paintTokens, quoteBlock, tokenRanges, type Token, type Tokens } from "../components/composer-tokens";
 
 // The composer of a thread, kept from Dory v1: attachments, @ mentions of
 // files, model, effort and permissions, and send, queue or stop.
@@ -18,7 +19,7 @@ export const runtimeModes = [
 export type MenuOption = { value: string; label: string; group?: string; icon?: React.ReactNode };
 
 // Insert adds text to the composer from outside it, such as a quoted selection.
-export type Insert = { text: string; seq: number };
+export type Insert = { text: string; seq: number; quote?: { label: string; body: string } };
 
 // Chip is a compact dropdown for the composer toolbar; the menu opens upwards.
 export function Chip({ value, options, onChange, title, icon }: { value: string; options: MenuOption[]; onChange: (v: string) => void; title: string; icon?: React.ReactNode }) {
@@ -123,12 +124,80 @@ export function Composer({ t, onSent, insert }: { t: ThreadView; onSent: () => v
   const [files, setFiles] = useState<Draft[]>([]);
   const uploading = files.some((f) => !f.done && !f.error);
   useLayoutEffect(() => { const el = area.current; if (el) { el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 240)}px`; } }, [text]);
-  // Text sent from outside, such as a quoted selection, goes before the cursor.
+  // Picked /commands, $skills, @files and quotes live in the text as tokens:
+  // the text holds their characters, tokens their reference (a file's full
+  // path, a quote's text). The composer shows each one as an object.
+  const [tokens, setTokens] = useState<Tokens>({});
+  const addToken = (insert: string, tk: Token) => {
+    // Two files with the same name: the second one is written with its path.
+    const k = tk.kind === "path" && tokens[insert] && tokens[insert].value !== tk.value ? `@${tk.value}` : insert;
+    setTokens((ts) => ({ ...ts, [k]: tk }));
+    return k;
+  };
+  // Text sent from outside, such as a quoted selection, goes at the end.
   useEffect(() => {
     if (!insert) return;
-    setText((x) => (x && !x.endsWith("\n") ? `${x}\n` : x) + insert.text);
-    area.current?.focus();
+    let add = insert.text;
+    if (insert.quote) {
+      // The quote shows as one object; a repeated label gets a number.
+      let k = `«${insert.quote.label}»`;
+      for (let n = 2; tokens[k] && tokens[k].value !== insert.quote.body; n++) k = `«${insert.quote.label} (${n})»`;
+      setTokens((ts) => ({ ...ts, [k]: { kind: "quote", value: insert.quote!.body, title: insert.quote!.label } }));
+      add = `${k} ${insert.text}`;
+    }
+    setText((x) => (x.trim() ? `${x.trimEnd()}\n${add}` : add));
+    setTimeout(() => { const el = area.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0);
   }, [insert?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ranges = tokenRanges(text, tokens);
+  // The harness gets each @file with its full path and each quote as a block
+  // quote; the other tokens go as written.
+  const outgoing = ranges.reduceRight((x, r) => {
+    const tk = tokens[r.text];
+    if (tk.kind === "path") return `${x.slice(0, r.start)}@${tk.value}${x.slice(r.end)}`;
+    if (tk.kind === "quote") return `${x.slice(0, r.start)}${quoteBlock(tk.title ?? "", tk.value)}${x.slice(r.end).replace(/^ /, "")}`;
+    return x;
+  }, text).trim();
+  const paint = useRef<HTMLDivElement>(null);
+  // A selection never splits a token: an edge inside one grows to cover it,
+  // and a caret inside one jumps past it in the direction it was moving.
+  const lastCaret = useRef(0);
+  const snapSelection = () => {
+    const el = area.current;
+    if (!el) return;
+    const { selectionStart: s0, selectionEnd: e0, selectionDirection: dir } = el;
+    let a = s0, b = e0;
+    for (const r of ranges) {
+      if (s0 === e0) {
+        if (s0 > r.start && s0 < r.end) {
+          const prev = lastCaret.current;
+          a = b = prev <= r.start ? r.end : prev >= r.end ? r.start : s0 - r.start < r.end - s0 ? r.start : r.end;
+        }
+      } else {
+        if (a > r.start && a < r.end) a = r.start;
+        if (b > r.start && b < r.end) b = r.end;
+      }
+    }
+    if (a !== s0 || b !== e0) el.setSelectionRange(a, b, dir ?? undefined);
+    lastCaret.current = a === b ? a : dir === "backward" ? a : b;
+  };
+  // A token deletes as a whole: Backspace at its end or inside, Delete at its start or inside.
+  const deleteToken = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    if ((e.key !== "Backspace" && e.key !== "Delete") || el.selectionStart !== el.selectionEnd) return false;
+    const at = el.selectionStart;
+    const word = e.ctrlKey || e.altKey || e.metaKey;
+    const reach = (r: { start: number; end: number }) => e.key === "Backspace"
+      ? (at > r.start && at <= r.end) || (word && at > r.end && !text.slice(r.end, at).trim())
+      : (at >= r.start && at < r.end) || (word && at < r.start && !text.slice(at, r.start).trim());
+    const hit = ranges.find(reach);
+    if (!hit) return false;
+    e.preventDefault();
+    const from = e.key === "Backspace" ? hit.start : Math.min(at, hit.start);
+    const to = e.key === "Backspace" ? Math.max(at, hit.end) : hit.end;
+    setText(text.slice(0, from) + text.slice(to));
+    requestAnimationFrame(() => el.setSelectionRange(from, from));
+    return true;
+  };
   // Each file uploads as soon as it is added; the message carries the results.
   const addFiles = (list: FileList | File[]) => {
     for (const file of Array.from(list)) {
@@ -144,15 +213,15 @@ export function Composer({ t, onSent, insert }: { t: ThreadView; onSent: () => v
   };
   const removeFile = (k: string) => setFiles((fs) => fs.filter((f) => { if (f.key === k) URL.revokeObjectURL(f.preview); return f.key !== k; }));
   const send = useMutation({
-    mutationFn: () => api.send(t.id, text.trim(), files.flatMap((f) => (f.done ? [f.done.id] : []))),
-    onSuccess: () => { setText(""); files.forEach((f) => URL.revokeObjectURL(f.preview)); setFiles([]); onSent(); qc.invalidateQueries({ queryKey: key }); },
+    mutationFn: () => api.send(t.id, outgoing, files.flatMap((f) => (f.done ? [f.done.id] : []))),
+    onSuccess: () => { setText(""); setTokens({}); files.forEach((f) => URL.revokeObjectURL(f.preview)); setFiles([]); onSent(); qc.invalidateQueries({ queryKey: key }); },
   });
   const stop = useMutation({ mutationFn: () => api.interrupt(t.id) });
   const settings = useMutation({
     mutationFn: (body: Parameters<typeof api.threadSettings>[1]) => api.threadSettings(t.id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
   });
-  const suggest = useSuggest(t.id, text, area, setText);
+  const suggest = useSuggest(t.id, text, area, setText, addToken);
   const canSend = (!!text.trim() || files.some((f) => f.done)) && !uploading && !send.isPending;
   const submit = () => { if (canSend) send.mutate(); };
   if (!t.local) return null;
@@ -185,10 +254,17 @@ export function Composer({ t, onSent, insert }: { t: ThreadView; onSent: () => v
             ))}
           </div>
         )}
-        <textarea ref={area} rows={1} value={text} onChange={(e) => setText(e.target.value)} onSelect={suggest.track} onClick={suggest.track} aria-label="Mensaje"
-          placeholder={t.status === "waiting" ? "Escribe tu respuesta…" : "Escribe al hilo…"}
-          onKeyDown={(e) => { if (e.nativeEvent.isComposing || suggest.onKeyDown(e)) return; if (e.key === "Enter" && !e.shiftKey && window.matchMedia("(min-width: 640px)").matches) { e.preventDefault(); submit(); } }}
-          className="block max-h-60 w-full resize-none break-words bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 !outline-none placeholder:text-slate-400" />
+        <div className="relative">
+          {/* Tokens show as objects: this layer paints the text under a see-through textarea, glyph for glyph, so the caret stays aligned. */}
+          {ranges.length > 0 && <div ref={paint} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-4 pb-1 pt-3.5 text-[15px] leading-6">
+            {paintTokens(text, tokens)}{"\u200b"}
+          </div>}
+          <textarea ref={area} rows={1} value={text} onChange={(e) => setText(e.target.value)} onSelect={() => { snapSelection(); suggest.track(); }} onClick={suggest.track} aria-label="Mensaje"
+            onScroll={(e) => { if (paint.current) paint.current.scrollTop = e.currentTarget.scrollTop; }}
+            placeholder={t.status === "waiting" ? "Escribe tu respuesta…" : "Escribe al hilo…"}
+            onKeyDown={(e) => { if (e.nativeEvent.isComposing || suggest.onKeyDown(e) || deleteToken(e)) return; if (e.key === "Enter" && !e.shiftKey && window.matchMedia("(min-width: 640px)").matches) { e.preventDefault(); submit(); } }}
+            className={`relative block max-h-60 w-full resize-none break-words bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 !outline-none placeholder:text-slate-400 ${ranges.length ? "text-transparent caret-slate-900 dark:caret-white" : ""}`} />
+        </div>
         <div className="flex items-center gap-0.5 px-2 pb-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
             <input ref={picker} type="file" multiple hidden onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
@@ -219,25 +295,25 @@ export function Composer({ t, onSent, insert }: { t: ThreadView; onSent: () => v
   );
 }
 
-type Suggestion = { key: string; label: string; hint?: string; insert: string; icon: React.ReactNode };
+type Suggestion = { key: string; label: string; hint?: string; insert: string; icon: React.ReactNode; token: Token };
 const titles = { "/": "Comandos", $: "Skills", "@": "Ficheros" } as const;
 
 // useSuggest autocompletes the composer as in v1: /command (only at the
 // start), $skill and @file of the thread's folder. A pick replaces the typed
 // word with how the harness invokes it.
-function useSuggest(threadId: string, text: string, area: React.RefObject<HTMLTextAreaElement | null>, setText: (t: string) => void) {
+function useSuggest(threadId: string, text: string, area: React.RefObject<HTMLTextAreaElement | null>, setText: (t: string) => void, onToken: (insert: string, t: Token) => string) {
   const [word, setWord] = useState<{ start: number; sigil: "/" | "$" | "@"; q: string } | null>(null);
   const [index, setIndex] = useState(0);
   const catalog = useQuery({ queryKey: ["thread-commands", threadId], queryFn: () => api.threadCommands(threadId), enabled: word?.sigil === "/" || word?.sigil === "$", staleTime: 60_000 });
   const files = useQuery({ queryKey: ["thread-files", threadId, word?.q], queryFn: () => api.threadFiles(threadId, word!.q), enabled: word?.sigil === "@", staleTime: 30_000 });
   const q = word?.q.toLowerCase() ?? "";
   const hit = (e: { name: string; description: string }) => !q || e.name.toLowerCase().includes(q) || e.description.toLowerCase().includes(q);
-  const entry = (e: { name: string; description: string; insert: string }, icon: React.ReactNode): Suggestion => ({ key: e.insert, label: e.insert, hint: e.description, insert: e.insert, icon });
+  const entry = (e: { name: string; description: string; insert: string }, icon: React.ReactNode, kind: "command" | "skill"): Suggestion => ({ key: e.insert, label: e.insert, hint: e.description, insert: e.insert, icon, token: { kind, value: e.name, title: e.description } });
   const list: Suggestion[] = !word ? []
-    : word.sigil === "@" ? (files.data ?? []).map((f) => ({ key: f, label: f.split("/").pop()!, hint: f, insert: `@${f}`, icon: <FileIcon className="size-4 shrink-0 text-slate-400" /> }))
-    : word.sigil === "/" ? [...(catalog.data?.commands ?? []).filter(hit).map((e) => entry(e, <TerminalWindow className="size-4 shrink-0 text-slate-400" />)),
-      ...(catalog.data?.skills ?? []).filter((e) => e.insert.startsWith("/") && hit(e)).map((e) => entry(e, <Lightning className="size-4 shrink-0 text-slate-400" />))]
-    : (catalog.data?.skills ?? []).filter(hit).map((e) => entry(e, <Lightning className="size-4 shrink-0 text-slate-400" />));
+    : word.sigil === "@" ? (files.data ?? []).map((f) => ({ key: f, label: f.split("/").pop()!, hint: f, insert: `@${f.split("/").pop()}`, icon: <FileIcon className="size-4 shrink-0 text-slate-400" />, token: { kind: "path", value: f } }))
+    : word.sigil === "/" ? [...(catalog.data?.commands ?? []).filter(hit).map((e) => entry(e, <TerminalWindow className="size-4 shrink-0 text-slate-400" />, "command")),
+      ...(catalog.data?.skills ?? []).filter((e) => e.insert.startsWith("/") && hit(e)).map((e) => entry(e, <Lightning className="size-4 shrink-0 text-slate-400" />, "skill"))]
+    : (catalog.data?.skills ?? []).filter(hit).map((e) => entry(e, <Lightning className="size-4 shrink-0 text-slate-400" />, "skill"));
   const shown = list.slice(0, 50);
   const track = () => {
     const el = area.current;
@@ -254,10 +330,11 @@ function useSuggest(threadId: string, text: string, area: React.RefObject<HTMLTe
   const pick = (s: Suggestion) => {
     if (!word) return;
     const end = word.start + 1 + word.q.length;
-    const next = `${text.slice(0, word.start)}${s.insert} ${text.slice(end)}`;
+    const written = onToken(s.insert, s.token);
+    const next = `${text.slice(0, word.start)}${written} ${text.slice(end).replace(/^ /, "")}`;
     setText(next);
     setWord(null);
-    requestAnimationFrame(() => { const el = area.current; if (el) { const at = word.start + s.insert.length + 1; el.focus(); el.setSelectionRange(at, at); } });
+    requestAnimationFrame(() => { const el = area.current; if (el) { const at = word.start + written.length + 1; el.focus(); el.setSelectionRange(at, at); } });
   };
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!shown.length) return false;

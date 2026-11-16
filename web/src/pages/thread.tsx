@@ -7,6 +7,7 @@ import { useThreadLive } from "../api/live";
 import { Button, ErrorText, pill } from "../components/ui";
 import { Messages, ToEnd, useFollow } from "./chat";
 import { Composer, Queue, type Insert } from "./composer";
+import { quoteLabel } from "../components/composer-tokens";
 import { ProviderIcon } from "../components/launch-picker";
 import { Diff } from "./github-diff";
 
@@ -82,7 +83,7 @@ export function ThreadChat({ threadId }: { threadId?: string }) {
   const t = view.data;
   const { scroller, onScroll, follow, away } = useFollow([t?.messages, t?.queue]);
   const [insert, setInsert] = useState<Insert>();
-  const quote = (text: string) => setInsert((p) => ({ text: `${text.split("\n").map((l) => `> ${l}`).join("\n")}\n\n`, seq: (p?.seq ?? 0) + 1 }));
+  const quote = (text: string) => setInsert((p) => ({ text: "", quote: { label: quoteLabel(text), body: text }, seq: (p?.seq ?? 0) + 1 }));
   if (!threadId) return null;
   if (view.error) return <div className="p-4"><ErrorText error={view.error} /></div>;
   return (

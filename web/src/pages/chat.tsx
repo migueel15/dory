@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, Stop, TerminalWindow, Wrench } from "@phosphor-icons/react";
 import { api, type Attachment, type Message } from "../api/client";
-import { copyText, Md } from "../components/ui";
+import { copyText, defaultUrlTransform, Md } from "../components/ui";
+import { TokenChip, tokenize, type TokenKind } from "../components/composer-tokens";
 import { rehypeFade, useSmoothText } from "../components/stream";
 
 // The look of the conversation, kept from Dory v1 (as in T3 Code): user
@@ -36,7 +37,7 @@ export function Entry({ m, threadId = "", fresh = false }: { m: Message; threadI
       return (
         <div data-message className={`group flex flex-col items-end ${fresh ? "msg-in" : ""}`}>
           {threadId && <SentFiles threadId={threadId} detail={m.detail} />}
-          {m.text && <div className="max-w-[85%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-2.5 text-white shadow-sm dark:bg-accent [&_*]:!text-inherit [&_code]:!bg-white/15 [&_pre]:!border-white/15 [&_pre]:!bg-white/10 [&_pre_code]:!bg-transparent"><Md>{m.text}</Md></div>}
+          {m.text && <div className="max-w-[85%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-2.5 text-white shadow-sm dark:bg-accent [&_*]:!text-inherit [&_code]:!bg-white/15 [&_pre]:!border-white/15 [&_pre]:!bg-white/10 [&_pre_code]:!bg-transparent"><Md urlTransform={keepToken} components={tokenLinks}>{tokenize(m.text)}</Md></div>}
           <MessageMeta m={m} />
         </div>
       );
@@ -81,6 +82,22 @@ function Answer({ m }: { m: Message }) {
   if (!text) return null;
   return <Md serif rehypePlugins={fade}>{text}</Md>;
 }
+
+// Objects of a sent message (quotes, files, skills, commands) show as chips.
+const keepToken = (url: string) => (url.startsWith("tok:") || url.startsWith("file://") ? url : defaultUrlTransform(url));
+const tokenLinks = {
+  a: ({ href, children, node: _n, ...rest }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) => {
+    if (!href?.startsWith("tok:")) return <a href={href} target="_blank" rel="noreferrer" {...rest}>{children}</a>;
+    const [, kind, raw] = href.split(":");
+    const value = decodeURIComponent(raw ?? "");
+    if (kind === "quote") {
+      const q = (() => { try { return JSON.parse(value) as { label: string; body: string }; } catch { return { label: value, body: value }; } })();
+      return <TokenChip kind="quote" label={q.label} title={q.body} />;
+    }
+    const label = kind === "path" ? value.replace(/\/+$/, "").split("/").pop() || value : value;
+    return <TokenChip kind={kind as TokenKind} label={label} title={value} />;
+  },
+};
 
 // SentFiles shows the files sent with a message, above its bubble.
 function SentFiles({ threadId, detail }: { threadId: string; detail?: string }) {
