@@ -35,6 +35,10 @@ import (
 const usage = `usage: dory <command>
 
   serve                  run the node: API, MCP, web interface and agents
+  status | start | stop | restart   control the core of this machine
+  open                   start the core if needed and open the interface
+  service install|uninstall         run the core as a user service
+  update [--channel stable|nightly] install the latest release
   user create --username NAME   create a local user (password in DORY_PASSWORD)
   token create --username NAME --name N [--scopes read,write]
   version                print the version`

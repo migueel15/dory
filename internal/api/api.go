@@ -51,6 +51,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mountResource(mux, "memories", s.Store.Memories())
 	mux.HandleFunc("GET /api/version", version.Handler())
 	mux.HandleFunc("GET /api/node", s.node)
+	// health answers without a session: the CLI and the desktop app use it to
+	// know whether the core of this machine is running.
+	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"app": "dory", "node_id": s.Node.ID, "name": s.Node.Name, "version": s.Node.Version})
+	})
 	mux.HandleFunc("GET /api/search", s.search)
 	mux.HandleFunc("GET /api/events", func(w http.ResponseWriter, r *http.Request) {
 		// The live stream of another node's thread comes from that node.

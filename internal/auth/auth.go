@@ -135,7 +135,7 @@ func Middleware(svc Store, cfg config.Config, agentToken string) func(http.Handl
 			path := r.URL.Path
 			mcp := path == "/mcp" || strings.HasPrefix(path, "/mcp/")
 			api := path == "/api" || strings.HasPrefix(path, "/api/")
-			if !mcp && (!api || path == "/api/auth/login" || path == "/api/auth/setup") {
+			if !mcp && (!api || path == "/api/auth/login" || path == "/api/auth/setup" || path == "/api/health") {
 				next.ServeHTTP(w, r)
 				return
 			}

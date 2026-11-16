@@ -9,7 +9,6 @@ import (
 	"io"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -110,8 +109,7 @@ func detect(ctx context.Context, bin string) (string, bool) {
 // stream starts cmd and feeds each stdout line to parse, which turns it into
 // events. Cancelling ctx interrupts the process gently, then kills it.
 func stream(ctx context.Context, cmd *exec.Cmd, stdin string, parse func(line []byte, emit func(Event))) (<-chan Event, error) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGINT) }
+	interruptible(cmd)
 	cmd.WaitDelay = 10 * time.Second
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
