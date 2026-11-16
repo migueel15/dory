@@ -199,7 +199,10 @@ func stop(base string) error {
 func serviceCtl(action string) error {
 	switch runtime.GOOS {
 	case "linux":
-		if exec.Command("systemctl", "--user", "cat", unitName).Run() != nil {
+		// Another program, such as an older Dory, may own a unit of the same name.
+		out, err := exec.Command("systemctl", "--user", "cat", unitName).Output()
+		self, _ := os.Executable()
+		if err != nil || !strings.Contains(string(out), "ExecStart="+self+" serve") {
 			return errors.New("el servicio no está instalado: dory service install")
 		}
 		return exec.Command("systemctl", "--user", action, unitName).Run()
