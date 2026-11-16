@@ -22,7 +22,7 @@ jobs:
         with: { go-version-file: go.mod }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: cd web && npm ci && npm run build
+      - run: cd web && npm ci --include=dev && npm run build
       - run: go test ./...
       - name: Build
         run: |

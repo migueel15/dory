@@ -10,7 +10,7 @@ export DORY_MESH_PORT="${DORY_MESH_PORT:-0}"
 export DORY_REPLAY_FILE="${DORY_REPLAY_FILE:-$PWD/internal/runtime/testdata/claude.jsonl}"
 WEB_PORT="${DORY_DEV_WEB_PORT:-5173}"
 
-[ -d web/node_modules ] || (cd web && npm ci)
+[ -d web/node_modules ] || (cd web && npm ci --include=dev)
 [ -f web/dist/index.html ] || (cd web && npm run build)
 go run ./cmd/dory serve &
 trap 'kill %1 2>/dev/null' EXIT

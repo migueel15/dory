@@ -12,7 +12,7 @@ need go
 need npm
 
 cd "$REPO"
-(cd web && npm ci && npm run build)
+(cd web && npm ci --include=dev && npm run build)
 go build -o dory ./cmd/dory
 mkdir -p "$BIN_DIR"
 install -m 755 dory "$BIN_DIR/dory"
