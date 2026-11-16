@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, CaretDown, Check, File as FileIcon, FileText, Lightning, ListBullets, Paperclip, PencilSimple, Stop, Trash, X } from "@phosphor-icons/react";
+import { ArrowUp, CaretDown, Check, File as FileIcon, FileText, Lightning, ListBullets, Paperclip, PencilSimple, Stop, TerminalWindow, Trash, X } from "@phosphor-icons/react";
 import { api, type Attachment, type ThreadView } from "../api/client";
 import { Button, ErrorText, Input, errMsg, uuid } from "../components/ui";
 import { ProviderIcon } from "../components/launch-picker";
@@ -80,7 +80,7 @@ export function ModelPicker({ models, selected, effort, effortsOf, onChange }: {
       <button type="button" title="Modelo y esfuerzo" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}
         onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
         className="inline-flex h-8 max-w-[15rem] items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white">
-        {current?.icon}<span className="truncate">{current?.label ?? selected}</span>
+        {current?.icon}<span className="truncate">{current?.label ?? (selected || "Modelo por defecto")}</span>
         {effort && <span className="shrink-0 text-slate-400">· {effort}</span>}<CaretDown weight="regular" className="size-3 shrink-0 opacity-60" />
       </button>
       {open && (
@@ -152,7 +152,7 @@ export function Composer({ t, onSent, insert }: { t: ThreadView; onSent: () => v
     mutationFn: (body: Parameters<typeof api.threadSettings>[1]) => api.threadSettings(t.id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
   });
-  const suggest = useFileSuggest(t.id, text, area, setText);
+  const suggest = useSuggest(t.id, text, area, setText);
   const canSend = (!!text.trim() || files.some((f) => f.done)) && !uploading && !send.isPending;
   const submit = () => { if (canSend) send.mutate(); };
   if (!t.local) return null;
@@ -219,49 +219,71 @@ export function Composer({ t, onSent, insert }: { t: ThreadView; onSent: () => v
   );
 }
 
-// useFileSuggest opens a list of the thread's files after an @ and replaces
-// the typed word with the chosen path.
-function useFileSuggest(threadId: string, text: string, area: React.RefObject<HTMLTextAreaElement | null>, setText: (t: string) => void) {
-  const [word, setWord] = useState<{ start: number; q: string } | null>(null);
+type Suggestion = { key: string; label: string; hint?: string; insert: string; icon: React.ReactNode };
+const titles = { "/": "Comandos", $: "Skills", "@": "Ficheros" } as const;
+
+// useSuggest autocompletes the composer as in v1: /command (only at the
+// start), $skill and @file of the thread's folder. A pick replaces the typed
+// word with how the harness invokes it.
+function useSuggest(threadId: string, text: string, area: React.RefObject<HTMLTextAreaElement | null>, setText: (t: string) => void) {
+  const [word, setWord] = useState<{ start: number; sigil: "/" | "$" | "@"; q: string } | null>(null);
   const [index, setIndex] = useState(0);
-  const files = useQuery({ queryKey: ["thread-files", threadId, word?.q], queryFn: () => api.threadFiles(threadId, word!.q), enabled: !!word, staleTime: 30_000 });
-  const list = word ? files.data ?? [] : [];
+  const catalog = useQuery({ queryKey: ["thread-commands", threadId], queryFn: () => api.threadCommands(threadId), enabled: word?.sigil === "/" || word?.sigil === "$", staleTime: 60_000 });
+  const files = useQuery({ queryKey: ["thread-files", threadId, word?.q], queryFn: () => api.threadFiles(threadId, word!.q), enabled: word?.sigil === "@", staleTime: 30_000 });
+  const q = word?.q.toLowerCase() ?? "";
+  const hit = (e: { name: string; description: string }) => !q || e.name.toLowerCase().includes(q) || e.description.toLowerCase().includes(q);
+  const entry = (e: { name: string; description: string; insert: string }, icon: React.ReactNode): Suggestion => ({ key: e.insert, label: e.insert, hint: e.description, insert: e.insert, icon });
+  const list: Suggestion[] = !word ? []
+    : word.sigil === "@" ? (files.data ?? []).map((f) => ({ key: f, label: f.split("/").pop()!, hint: f, insert: `@${f}`, icon: <FileIcon className="size-4 shrink-0 text-slate-400" /> }))
+    : word.sigil === "/" ? [...(catalog.data?.commands ?? []).filter(hit).map((e) => entry(e, <TerminalWindow className="size-4 shrink-0 text-slate-400" />)),
+      ...(catalog.data?.skills ?? []).filter((e) => e.insert.startsWith("/") && hit(e)).map((e) => entry(e, <Lightning className="size-4 shrink-0 text-slate-400" />))]
+    : (catalog.data?.skills ?? []).filter(hit).map((e) => entry(e, <Lightning className="size-4 shrink-0 text-slate-400" />));
+  const shown = list.slice(0, 50);
   const track = () => {
     const el = area.current;
     if (!el) return;
     const before = text.slice(0, el.selectionStart);
-    const m = /(^|\s)@([^\s@]*)$/.exec(before);
-    setWord(m ? { start: before.length - m[2].length - 1, q: m[2] } : null);
+    const m = /(^|\s)([/$@])([^\s/$@]*)$/.exec(before);
+    const start = m ? before.length - m[3].length - 1 : -1;
+    // A command only makes sense at the start of the message.
+    if (!m || (m[2] === "/" && start !== 0)) { setWord(null); return; }
+    setWord((w) => (w && w.start === start && w.q === m[3] ? w : { start, sigil: m[2] as "/" | "$" | "@", q: m[3] }));
     setIndex(0);
   };
   useEffect(track, [text]); // eslint-disable-line react-hooks/exhaustive-deps
-  const pick = (path: string) => {
+  const pick = (s: Suggestion) => {
     if (!word) return;
     const end = word.start + 1 + word.q.length;
-    const next = `${text.slice(0, word.start)}@${path} ${text.slice(end)}`;
+    const next = `${text.slice(0, word.start)}${s.insert} ${text.slice(end)}`;
     setText(next);
     setWord(null);
-    requestAnimationFrame(() => { const el = area.current; if (el) { const at = word.start + path.length + 2; el.focus(); el.setSelectionRange(at, at); } });
+    requestAnimationFrame(() => { const el = area.current; if (el) { const at = word.start + s.insert.length + 1; el.focus(); el.setSelectionRange(at, at); } });
   };
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (!list.length) return false;
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); setIndex((i) => (i + (e.key === "ArrowDown" ? 1 : list.length - 1)) % list.length); return true; }
-    if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pick(list[index]); return true; }
+    if (!shown.length) return false;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); setIndex((i) => (i + (e.key === "ArrowDown" ? 1 : shown.length - 1)) % shown.length); return true; }
+    if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pick(shown[index]); return true; }
     if (e.key === "Escape") { e.preventDefault(); setWord(null); return true; }
     return false;
   };
-  const menu = list.length > 0 && (
-    <ul role="listbox" aria-label="Ficheros" className="absolute bottom-full left-3 z-30 mb-2 max-h-64 w-[min(28rem,calc(100%-1.5rem))] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-border dark:bg-surface">
-      {list.map((f, i) => (
-        <li key={f}>
-          <button type="button" role="option" aria-selected={i === index} onMouseDown={(e) => { e.preventDefault(); pick(f); }}
-            className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm ${i === index ? "bg-slate-100 dark:bg-raised" : "hover:bg-slate-100 dark:hover:bg-raised"}`}>
-            <FileIcon className="size-4 shrink-0 text-slate-400" />
-            <span className="min-w-0 truncate"><span className="font-medium">{f.split("/").pop()}</span> <span className="text-xs text-slate-500 dark:text-muted">{f}</span></span>
-          </button>
-        </li>
-      ))}
-    </ul>
+  const loading = word && (word.sigil === "@" ? files.isPending : catalog.isPending);
+  const menu = word && (shown.length > 0 || loading || word.sigil !== "@") && (
+    <div className="absolute bottom-full left-3 z-30 mb-2 w-[min(32rem,calc(100%-1.5rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-border dark:bg-surface">
+      <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{titles[word.sigil]}</p>
+      <ul role="listbox" aria-label={titles[word.sigil]} className="max-h-64 overflow-y-auto p-1">
+        {shown.map((s, i) => (
+          <li key={s.key}>
+            <button type="button" role="option" aria-selected={i === index} onMouseDown={(e) => { e.preventDefault(); pick(s); }} onMouseEnter={() => setIndex(i)}
+              className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm ${i === index ? "bg-slate-100 dark:bg-raised" : ""}`}>
+              {s.icon}
+              <span className="shrink-0 font-medium">{s.label}</span>
+              {s.hint && <span className="min-w-0 truncate text-xs text-slate-500 dark:text-muted">{s.hint}</span>}
+            </button>
+          </li>
+        ))}
+        {!shown.length && <li className="px-2 py-1.5 text-xs text-slate-400">{loading ? "Cargando…" : word.sigil === "/" ? "Este harness no tiene comandos." : "No hay skills que coincidan."}</li>}
+      </ul>
+    </div>
   );
   return { menu, track, onKeyDown };
 }

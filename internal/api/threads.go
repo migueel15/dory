@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/migueel15/dory/internal/data"
@@ -168,6 +169,17 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
+	}))
+	// Slash commands and skills of the thread's harness, for / and $ in the composer.
+	mux.HandleFunc("GET /api/threads/{id}/commands", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
+		dir, err := s.Runtime.Dir(r.Context(), t.ID)
+		if err != nil {
+			writeDataError(w, err)
+			return
+		}
+		home, _ := os.UserHomeDir()
+		commands, skills := runtime.Commands(home, dir, t.Provider)
+		writeJSON(w, http.StatusOK, map[string]any{"commands": commands, "skills": skills})
 	}))
 	// Files of the thread's folder, for @ mentions in the composer.
 	mux.HandleFunc("GET /api/threads/{id}/files", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {

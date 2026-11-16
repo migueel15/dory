@@ -25,6 +25,8 @@ export type Thread = {
 };
 export type Role = "user" | "assistant" | "reasoning" | "tool" | "plan" | "system" | "interrupt";
 export type Message = { id: string; thread_id?: string; run_id?: string; role: Role; text: string; title?: string; detail?: string; status?: string; streaming: boolean; created_at: string };
+// Entry is a slash command or skill of a harness; insert is how it is invoked.
+export type Entry = { name: string; description: string; insert: string };
 export type Attachment = { id: string; name: string; mime: string; path: string };
 export type Queued = { run_id: string; text: string; files?: Attachment[] };
 export type ThreadView = Thread & { messages: Message[]; queue: Queued[]; running: boolean; worktree: string; local: boolean };
@@ -143,6 +145,7 @@ export const api = {
   attachmentUrl: (id: string, file: string) => `/api/threads/${id}/attachments/${file}`,
   queue: (id: string, run: string, action: "edit" | "cancel" | "steer", text?: string) => req<void>("POST", `/threads/${id}/queue/${run}`, { action, text }),
   threadSettings: (id: string, body: { model?: string; effort?: string; runtime_mode?: Thread["runtime_mode"] }) => req<Thread>("POST", `/threads/${id}/settings`, body),
+  threadCommands: (id: string) => req<{ commands: Entry[]; skills: Entry[] }>("GET", `/threads/${id}/commands`),
   threadFiles: (id: string, q: string) => req<string[]>("GET", `/threads/${id}/files?q=${encodeURIComponent(q)}`),
   interrupt: (id: string) => req<void>("POST", `/threads/${id}/interrupt`),
   threadDiff: (id: string) => req<{ diff: string; branch: string }>("GET", `/threads/${id}/diff`),
