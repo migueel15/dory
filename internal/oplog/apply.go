@@ -307,3 +307,9 @@ func merged(versions []version) string {
 	}
 	return out
 }
+
+// Columns returns the key and the replicated columns of an entity.
+func Columns(entity string) (key, columns []string, ok bool) {
+	t, ok := tables[entity]
+	return t.key, t.columns, ok
+}
