@@ -28,7 +28,7 @@ Comprobación: `curl 127.0.0.1:8178/inference -F file=@audio.wav -F language=es 
 - `POST /api/dictation` crea una sesión.
 - `POST /api/dictation/{id}/chunks?seq=n` sube un lote WAV (16 kHz mono, máx. 2 MiB), en orden desde 0.
 - `GET /api/dictation/{id}` devuelve el texto parcial y los lotes pendientes.
-- `POST /api/dictation/{id}/finish` con `{"mode":"insert"}` espera y devuelve el texto; con `{"mode":"send","target":{"kind":"capture","project_id":"…"}}` o `{"kind":"define","item_id":"…"}` el backend lo entrega al terminar.
+- `POST /api/dictation/{id}/finish` con `{"mode":"insert"}` espera y devuelve el texto; con `{"mode":"send","target":{"kind":"capture","project_id":"…"}}` o `{"kind":"thread","thread_id":"…"}` el backend lo entrega al terminar: crea una tarea en el inbox o envía el texto al hilo.
 
 ## Troceado
 

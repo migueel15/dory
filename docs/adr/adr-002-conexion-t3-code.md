@@ -1,6 +1,6 @@
 # ADR-002: Conexión directa con las instancias de T3 Code
 
-- Status: accepted
+- Status: superseded by ADR-008
 - Date: 2026-10-31
 
 ## Context

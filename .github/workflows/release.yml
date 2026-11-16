@@ -1,0 +1,83 @@
+# Binaries and desktop apps for every channel (requirement 4.6):
+# - a tag v* publishes a stable release,
+# - each push to main refreshes the "nightly" release,
+# - each push to a pull request branch leaves the builds as workflow artifacts.
+name: release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  binaries:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: go.mod }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: cd web && npm ci && npm run build
+      - run: go test ./...
+      - name: Build
+        run: |
+          mkdir -p out
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            os=${target%/*}; arch=${target#*/}; ext=""; [ "$os" = windows ] && ext=.exe
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -o out/dory-$os-$arch$ext ./cmd/dory
+          done
+      - uses: actions/upload-artifact@v4
+        with: { name: binaries, path: out/ }
+
+  desktop:
+    needs: binaries
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, bin: dory-linux-amd64, name: dory, flag: --linux }
+          - { os: macos-latest, bin: dory-darwin-arm64, name: dory, flag: --mac }
+          - { os: windows-latest, bin: dory-windows-amd64.exe, name: dory.exe, flag: --win }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/download-artifact@v4
+        with: { name: binaries, path: out }
+      - name: Bundle the core
+        shell: bash
+        run: mkdir -p desktop/bin && cp out/${{ matrix.bin }} desktop/bin/${{ matrix.name }} && chmod +x desktop/bin/${{ matrix.name }}
+      - run: cd desktop && npm ci && npx electron-builder ${{ matrix.flag }} --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            desktop/dist/*.AppImage
+            desktop/dist/*.pacman
+            desktop/dist/*.deb
+            desktop/dist/*.dmg
+            desktop/dist/*.exe
+
+  publish:
+    if: github.event_name == 'push'
+    needs: [binaries, desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: assets, merge-multiple: true }
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            gh release create "$GITHUB_REF_NAME" assets/* --title "$GITHUB_REF_NAME" --generate-notes
+          else
+            gh release delete nightly --yes --cleanup-tag || true
+            gh release create nightly assets/* --prerelease --title "Nightly" --notes "Build de $(git rev-parse --short HEAD) en main." --target "$GITHUB_SHA"
+          fi

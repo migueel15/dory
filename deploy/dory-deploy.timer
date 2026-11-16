@@ -1,8 +1,0 @@
-[Unit]
-Description=Comprueba cada minuto si hay cambios en main de dory
-
-[Timer]
-OnCalendar=minutely
-
-[Install]
-WantedBy=timers.target

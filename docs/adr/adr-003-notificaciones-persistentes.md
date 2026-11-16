@@ -1,6 +1,6 @@
 # ADR-003: Notificaciones persistentes por usuario
 
-- Status: accepted
+- Status: superseded by ADR-009
 - Date: 2026-11-03
 
 ## Contexto
