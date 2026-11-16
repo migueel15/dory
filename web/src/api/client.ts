@@ -32,6 +32,8 @@ export type Pull = { repo: string; number: number; title: string; url: string; d
 export type Card = Task & { column: Column; repo?: string; threads: Thread[]; pull?: Pull; pr_state?: "open" | "draft" | "merged" | "closed"; blockers: string[]; has_plan: boolean };
 export type Model = { slug: string; name: string; efforts?: string[] };
 export type Provider = { id: string; name: string; installed: boolean; version: string; models: Model[]; capabilities: string[]; logged_in?: boolean; account?: string };
+// External is a conversation started in a harness, outside Dory.
+export type External = { provider: string; id: string; title: string; dir: string; branch?: string; updated_at: string; project_id: string | null; thread_id?: string };
 export type Job = { id: string; provider: string; kind: "login" | "update"; output: string; done: boolean; error?: string };
 export type Skill = { id: string; name: string; description: string; body_md: string; files: Record<string, string>; version: number; targets: { nodes: string[] | null; harnesses: string[] | null }; created_at: string; updated_at: string; archived_at: string | null };
 export type SkillState = { skill_id: string; node_id: string; status: "synced" | "pending" | "error" | "conflict" | "removed"; version: number; message: string; updated_at: string };
@@ -94,6 +96,9 @@ export const api = {
   folders: (node: string, path = "", hidden = false) => req<{ path: string; parent: string; home: string; folders: { name: string; path: string; git: boolean }[] }>("GET", `/nodes/${node}/folders?${new URLSearchParams({ path, ...(hidden && { hidden: "true" }) })}`),
   checkout: (node: string, path: string) => req<{ path: string; name: string; git: boolean; remote: string; default_branch: string }>("GET", `/nodes/${node}/checkout?path=${encodeURIComponent(path)}`),
   setNodeRepositoryPath: (node: string, id: string, path: string) => req<void>("PUT", `/nodes/${node}/repositories/${id}/path`, { path }),
+  externalSessions: (node: string) => req<External[]>("GET", `/nodes/${node}/external`),
+  externalSession: (node: string, provider: string, id: string) => req<{ session: External; messages: Message[] }>("GET", `/nodes/${node}/external/${provider}/${id}`),
+  adoptSession: (node: string, provider: string, id: string) => req<{ thread_id: string }>("POST", `/nodes/${node}/external/${provider}/${id}/adopt`),
   nodeProviders: (node: string) => req<Provider[]>("GET", `/nodes/${node}/providers`),
   providerJob: (node: string, provider: string, kind: Job["kind"]) => req<Job>("POST", `/nodes/${node}/providers/${provider}/${kind}`),
   job: (node: string, id: string) => req<Job>("GET", `/nodes/${node}/jobs/${id}`),

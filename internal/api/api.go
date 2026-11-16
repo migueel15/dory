@@ -75,6 +75,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	s.mountProviders(mux)
 	s.mountSkills(mux)
 	s.mountFolders(mux)
+	s.mountExternal(mux)
 	s.mountDictation(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "route not found")

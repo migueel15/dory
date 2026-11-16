@@ -504,3 +504,49 @@ func (m *Manager) mcpURL(thread string) string {
 	}
 	return m.MCPURL + "?thread=" + thread
 }
+
+// Adopted returns the harness sessions that already are Dory threads.
+func (m *Manager) Adopted(ctx context.Context) (map[string]string, error) {
+	rows, err := m.db.QueryContext(ctx, `SELECT session_id, thread_id FROM thread_runtime WHERE session_id <> ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var session, thread string
+		if err = rows.Scan(&session, &thread); err != nil {
+			return nil, err
+		}
+		out[session] = thread
+	}
+	return out, rows.Err()
+}
+
+// Adopt turns a harness session into a Dory thread: its history is copied
+// and the next message resumes the same session in its folder.
+func (m *Manager) Adopt(ctx context.Context, e External, projectID *string) (data.Thread, error) {
+	if adopted, err := m.Adopted(ctx); err == nil && adopted[e.ID] != "" {
+		return m.store.Threads().Get(ctx, adopted[e.ID])
+	}
+	if _, ok := m.providers[e.Provider]; !ok {
+		return data.Thread{}, fmt.Errorf("%w: %s", ErrProvider, e.Provider)
+	}
+	msgs, err := ExternalMessages(e)
+	if err != nil {
+		return data.Thread{}, err
+	}
+	t, err := m.store.Threads().Put(ctx, data.Thread{NodeID: m.node, ProjectID: projectID, Provider: e.Provider, Title: e.Title, Branch: e.Branch})
+	if err != nil {
+		return t, err
+	}
+	if _, err = m.db.ExecContext(ctx, `INSERT INTO thread_runtime(thread_id, session_id, worktree_path) VALUES (?, ?, ?)`, t.ID, e.ID, e.Dir); err != nil {
+		return t, err
+	}
+	for _, msg := range msgs {
+		msg.ThreadID = t.ID
+		msg.ID = t.ID + ":" + msg.ID
+		m.save(ctx, msg)
+	}
+	return t, nil
+}

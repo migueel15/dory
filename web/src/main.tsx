@@ -239,6 +239,7 @@ const pages = {
   skills: () => import("./pages/skills"),
 };
 const ThreadView = lazyRouteComponent(pages.thread, "ThreadView");
+const ExternalView = lazyRouteComponent(pages.thread, "ExternalView");
 const GithubView = lazyRouteComponent(pages.githubDetail, "GithubView");
 const Usage = lazyRouteComponent(pages.usage, "Usage");
 const Projects = lazyRouteComponent(pages.projects, "Projects");
@@ -261,6 +262,7 @@ const routeTree = root.addChildren([
   threadsRoute.addChildren([
     createRoute({ getParentRoute: () => threadsRoute, path: "/", component: ThreadsHome }),
     createRoute({ getParentRoute: () => threadsRoute, path: "$threadId", component: ThreadView }),
+    createRoute({ getParentRoute: () => threadsRoute, path: "external/$node/$provider/$id", component: ExternalView }),
   ]),
   createRoute({ getParentRoute: () => root, path: "/projects", component: Projects }),
   createRoute({ getParentRoute: () => root, path: "/projects/$id", component: ProjectDetail }),

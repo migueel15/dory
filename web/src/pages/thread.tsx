@@ -102,7 +102,7 @@ export function ThreadChat({ threadId }: { threadId?: string }) {
   );
 }
 
-function Entry({ m }: { m: Message }) {
+export function Entry({ m }: { m: Message }) {
   switch (m.role) {
     case "user":
       return <div className="ml-auto w-fit max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-slate-200 px-3.5 py-2 text-sm dark:bg-raised">{m.text}</div>;
@@ -214,5 +214,36 @@ export function ResizeHandle({ panel, width, onResize, min = 320, rest = 420 }: 
         window.addEventListener("pointermove", move);
         window.addEventListener("pointerup", up);
       }} />
+  );
+}
+
+// ExternalView shows a conversation started in a harness, read-only, and
+// continues it as a Dory thread that resumes the same session.
+export function ExternalView() {
+  const { node, provider, id } = useParams({ strict: false }) as { node: string; provider: string; id: string };
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const view = useQuery({ queryKey: ["external", node, provider, id], queryFn: () => api.externalSession(node, provider, id) });
+  const adopt = useMutation({
+    mutationFn: () => api.adoptSession(node, provider, id),
+    onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["threads"] }); qc.invalidateQueries({ queryKey: ["external"] }); navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } }); },
+  });
+  const s = view.data?.session;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 px-3 py-2 dark:border-border">
+        <ProviderIcon driver={provider} />
+        <h1 className="min-w-0 flex-1 truncate font-semibold">{s?.title ?? "Conversación"}</h1>
+        {s?.dir && <span className="hidden truncate font-mono text-xs text-slate-500 sm:block">{s.dir}</span>}
+        <Button onClick={() => adopt.mutate()} disabled={adopt.isPending}>Continuar en Dory</Button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-3xl space-y-3 px-3 py-4">
+          <ErrorText error={view.error ?? adopt.error} />
+          <p className="rounded-md bg-slate-100 px-3 py-2 text-xs text-slate-600 dark:bg-raised dark:text-muted">Conversación iniciada en {provider === "claude" ? "Claude Code" : "Codex"}. Se muestra en solo lectura; al continuarla en Dory, el agente retoma la misma sesión en su carpeta.</p>
+          {view.data?.messages.map((m) => <Entry key={m.id} m={m} />)}
+        </div>
+      </div>
+    </div>
   );
 }

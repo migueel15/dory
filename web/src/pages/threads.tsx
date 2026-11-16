@@ -10,7 +10,7 @@ import { StatusDot } from "./thread";
 import { NewThread } from "./home";
 
 // Filters of the single inbox of threads (requirement RF-19).
-const FILTERS = { active: "Activos", needs: "Te necesitan", working: "Trabajando", archived: "Archivados" } as const;
+const FILTERS = { active: "Activos", needs: "Te necesitan", working: "Trabajando", archived: "Archivados", external: "En los agentes" } as const;
 type Filter = keyof typeof FILTERS;
 
 export const isUnread = (t: Thread) => !t.read_at && t.status !== "working" && !!t.last_activity_at;
@@ -28,6 +28,8 @@ export function Threads() {
     refetchInterval: 15_000,
   });
   const nodes = useQuery({ queryKey: ["node"], queryFn: api.node, staleTime: 60_000 });
+  // Conversations started in the harnesses of this node, outside Dory.
+  const external = useQuery({ queryKey: ["external", "local"], queryFn: () => api.externalSessions("local"), enabled: filter === "external", refetchInterval: 30_000 });
   const local = nodes.data?.node.id;
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -61,7 +63,23 @@ export function Threads() {
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-1">
           <ErrorText error={threads.error} />
-          {shown.map((t) => (
+          {filter === "external" && <ErrorText error={external.error} />}
+          {filter === "external" && (external.data ?? []).filter((e) => !project || e.project_id === project)
+            .filter((e) => !query.trim() || e.title.toLowerCase().includes(query.trim().toLowerCase()) || e.dir.toLowerCase().includes(query.trim().toLowerCase()))
+            .map((e) => (
+              <Link key={`${e.provider}:${e.id}`} to={e.thread_id ? "/threads/$threadId" : "/threads/external/$node/$provider/$id"}
+                params={(e.thread_id ? { threadId: e.thread_id } : { node: "local", provider: e.provider, id: e.id }) as never}
+                className="flex items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-slate-100 dark:hover:bg-raised [&.active]:bg-slate-200 dark:[&.active]:bg-raised">
+                <ProviderIcon driver={e.provider} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{e.title}</span>
+                  <span className="block truncate font-mono text-[11px] text-slate-500 dark:text-muted">{e.dir.replace(/^\/home\/[^/]+/, "~")}</span>
+                </span>
+                {e.thread_id && <span className="shrink-0 text-[10px] text-slate-500">en Dory</span>}
+              </Link>
+            ))}
+          {filter === "external" && external.isPending && <p className="p-3 text-sm text-slate-500">Leyendo las conversaciones…</p>}
+          {filter !== "external" && shown.map((t) => (
             <Link key={t.id} to="/threads/$threadId" params={{ threadId: t.id }}
               className="flex items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-slate-100 dark:hover:bg-raised [&.active]:bg-slate-200 dark:[&.active]:bg-raised">
               <ProviderIcon driver={t.provider} model={t.model} />
@@ -73,7 +91,7 @@ export function Threads() {
               <StatusDot status={t.status} />
             </Link>
           ))}
-          {threads.isSuccess && shown.length === 0 && <p className="p-3 text-sm text-slate-500 dark:text-muted">No hay hilos aquí.</p>}
+          {filter !== "external" && threads.isSuccess && shown.length === 0 && <p className="p-3 text-sm text-slate-500 dark:text-muted">No hay hilos aquí.</p>}
         </div>
       </aside>
       <section className={`min-h-0 min-w-0 flex-1 ${threadId ? "flex flex-col" : "hidden sm:flex sm:flex-col"}`}><Outlet /></section>
