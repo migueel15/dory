@@ -57,6 +57,9 @@ type Manager struct {
 	usage   map[string][]Window
 	// asked marks threads whose agent asked the user something this turn.
 	asked map[string]bool
+	// detected caches what Providers found.
+	detected   []Status
+	detectedAt time.Time
 }
 
 func NewManager(db *sql.DB, store *data.Store, node, dataDir string, providers ...Provider) *Manager {
@@ -85,15 +88,40 @@ func (m *Manager) Recover(ctx context.Context) error {
 	return nil
 }
 
-// Providers reports the harnesses of this machine.
+// Providers reports the harnesses of this machine, with their session. The
+// answer is cached for a minute: detecting runs each harness.
 func (m *Manager) Providers(ctx context.Context) []Status {
-	out := make([]Status, 0, len(m.providers))
-	for _, id := range []string{"claude", "codex", "replay"} {
-		if p, ok := m.providers[id]; ok {
-			out = append(out, p.Detect(ctx))
-		}
+	m.mu.Lock()
+	if m.detected != nil && time.Since(m.detectedAt) < time.Minute {
+		out := m.detected
+		m.mu.Unlock()
+		return out
 	}
+	m.mu.Unlock()
+	out := make([]Status, 0, len(m.providers))
+	for _, id := range []string{"claude", "codex", "opencode", "replay"} {
+		p, ok := m.providers[id]
+		if !ok {
+			continue
+		}
+		st := p.Detect(ctx)
+		if a, ok := p.(Admin); ok && st.Installed {
+			st.LoggedIn, st.Account = a.Session(ctx)
+			st.Capabilities = append(st.Capabilities, "login", "update")
+		}
+		out = append(out, st)
+	}
+	m.mu.Lock()
+	m.detected, m.detectedAt = out, time.Now()
+	m.mu.Unlock()
 	return out
+}
+
+// invalidate forgets the cached harness state after a login or update.
+func (m *Manager) invalidate() {
+	m.mu.Lock()
+	m.detected = nil
+	m.mu.Unlock()
 }
 
 // Usage returns the latest usage windows each provider reported.

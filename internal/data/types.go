@@ -103,6 +103,38 @@ type Thread struct {
 	ArchivedAt     *string `json:"archived_at"`
 }
 
+// Skill is a package of instructions for the harnesses. Targets says on which
+// nodes and for which harnesses it is installed; empty lists mean all.
+type Skill struct {
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	BodyMD      string            `json:"body_md"`
+	Files       map[string]string `json:"files"`
+	Version     int64             `json:"version"`
+	Targets     SkillTargets      `json:"targets"`
+	CreatedAt   string            `json:"created_at"`
+	UpdatedAt   string            `json:"updated_at"`
+	ArchivedAt  *string           `json:"archived_at"`
+}
+
+type SkillTargets struct {
+	Nodes     []string `json:"nodes"`
+	Harnesses []string `json:"harnesses"`
+}
+
+// SkillState is what one node really has of a skill, published by that node.
+type SkillState struct {
+	SkillID    string  `json:"skill_id"`
+	NodeID     string  `json:"node_id"`
+	Status     string  `json:"status"`
+	Version    int64   `json:"version"`
+	Message    string  `json:"message"`
+	CreatedAt  string  `json:"created_at"`
+	UpdatedAt  string  `json:"updated_at"`
+	ArchivedAt *string `json:"archived_at"`
+}
+
 // Hit is a search result: a task or a memory, best match first.
 type Hit struct {
 	Entity string          `json:"entity"`

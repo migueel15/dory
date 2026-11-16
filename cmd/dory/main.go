@@ -27,6 +27,7 @@ import (
 	"github.com/migueel15/dory/internal/mesh"
 	"github.com/migueel15/dory/internal/oplog"
 	"github.com/migueel15/dory/internal/runtime"
+	"github.com/migueel15/dory/internal/skills"
 	"github.com/migueel15/dory/internal/version"
 	"github.com/migueel15/dory/web"
 )
@@ -87,7 +88,7 @@ func run() error {
 }
 
 func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplog.Log) error {
-	providers := []runtime.Provider{runtime.Claude{}, runtime.Codex{}}
+	providers := []runtime.Provider{runtime.Claude{}, runtime.Codex{}, runtime.OpenCode{}}
 	if file := os.Getenv("DORY_REPLAY_FILE"); file != "" {
 		providers = append(providers, runtime.Replay{File: file, Delay: 30 * time.Millisecond})
 	}
@@ -104,10 +105,26 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		return err
 	}
 	net := mesh.New(store.DB(), log_, id, cfg.NodeName, cfg.MeshPort)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	reconciler := &skills.Reconciler{Store: store, Node: log_.Node(), Home: home, Manifest: filepath.Join(cfg.DataDir, "skills-manifest.json"),
+		Installed: func(ctx context.Context) []string {
+			var ids []string
+			for _, p := range rt.Providers(ctx) {
+				if p.Installed && p.ID != "replay" {
+					ids = append(ids, p.ID)
+				}
+			}
+			return ids
+		}}
 	log_.OnChange = func(entity, id string) {
 		events.Changed(entity, id)
 		net.Changed()
+		reconciler.Changed(entity)
 	}
+	go reconciler.Run(ctx)
 	gh := github.New(func(ctx context.Context) (map[string]string, error) { return followed(ctx, store) }, githubToken())
 	srv := &api.Server{
 		Store: store, Runtime: rt, GitHub: gh, Dictation: dictationManager(), Events: events,

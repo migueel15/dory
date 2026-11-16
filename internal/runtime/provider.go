@@ -78,6 +78,8 @@ type Status struct {
 	Models    []Model `json:"models"`
 	// Capabilities lists what the interface may offer for this provider.
 	Capabilities []string `json:"capabilities"`
+	LoggedIn     bool     `json:"logged_in"`
+	Account      string   `json:"account,omitempty"`
 }
 
 // Provider is the adapter of one harness.

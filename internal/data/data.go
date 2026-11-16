@@ -41,9 +41,13 @@ func (s *Store) Dependencies() Resource[Dependency] {
 func (s *Store) Plans() Resource[Plan]      { return Resource[Plan]{s, "plan"} }
 func (s *Store) Memories() Resource[Memory] { return Resource[Memory]{s, "memory"} }
 func (s *Store) Threads() Resource[Thread]  { return Resource[Thread]{s, "thread"} }
+func (s *Store) Skills() Resource[Skill]    { return Resource[Skill]{s, "skill"} }
+func (s *Store) SkillStates() Resource[SkillState] {
+	return Resource[SkillState]{s, "skill_state"}
+}
 
 // jsonColumns are stored as JSON text and read back as JSON values.
-var jsonColumns = []string{"sections", "open_questions", "labels"}
+var jsonColumns = []string{"sections", "open_questions", "labels", "files", "targets"}
 
 // defaults fill columns left empty by a Put.
 var defaults = map[string]map[string]any{
@@ -52,6 +56,7 @@ var defaults = map[string]map[string]any{
 	"plan":       {"author": "agent", "sections": map[string]any{}, "open_questions": []any{}},
 	"memory":     {"kind": "context", "labels": []any{}},
 	"thread":     {"runtime_mode": "full-access", "status": "idle"},
+	"skill":      {"files": map[string]any{}, "targets": map[string]any{}},
 }
 
 // Filter matches columns exactly. Limit defaults to 100 (maximum 1000).
@@ -243,7 +248,7 @@ func (s *Store) query(ctx context.Context, entity string, f Filter) ([]json.RawM
 		args = append(args, v)
 	}
 	table := map[string]string{"project": "projects", "repository": "repositories", "task": "tasks",
-		"task_dependency": "task_dependencies", "plan": "plans", "memory": "memories", "thread": "threads"}[entity]
+		"task_dependency": "task_dependencies", "plan": "plans", "memory": "memories", "thread": "threads", "skill": "skills", "skill_state": "skill_states"}[entity]
 	query := fmt.Sprintf("SELECT json_object(%s) FROM %s WHERE %s ORDER BY created_at, %s LIMIT ? OFFSET ?",
 		strings.Join(pairs, ", "), table, strings.Join(where, " AND "), strings.Join(key, ", "))
 	rows, err := s.db.QueryContext(ctx, query, append(args, f.Limit, f.Offset)...)

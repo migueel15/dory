@@ -37,6 +37,8 @@ var tables = map[string]table{
 	"task_dependency": {"task_dependencies", []string{"task_id", "depends_on_id"}, []string{"created_at", "archived_at"}, "", ""},
 	"plan":            {"plans", []string{"id"}, []string{"task_id", "version", "sections", "open_questions", "author", "accepted_at", "created_at", "updated_at", "archived_at"}, "", ""},
 	"memory":          {"memories", []string{"id"}, []string{"scope", "scope_id", "kind", "title", "content", "labels", "created_at", "updated_at", "archived_at"}, "", "content"},
+	"skill":           {"skills", []string{"id"}, []string{"name", "description", "body_md", "files", "version", "targets", "created_at", "updated_at", "archived_at"}, "name", ""},
+	"skill_state":     {"skill_states", []string{"skill_id", "node_id"}, []string{"status", "version", "message", "created_at", "updated_at", "archived_at"}, "", ""},
 	"thread":          {"threads", []string{"id"}, []string{"node_id", "project_id", "task_id", "parent_id", "provider", "model", "effort", "runtime_mode", "title", "branch", "status", "pinned_at", "read_at", "last_activity_at", "snoozed_until", "settled_at", "created_at", "updated_at", "archived_at"}, "", ""},
 }
 

@@ -66,6 +66,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	s.mountThreads(mux)
 	s.mountGitHub(mux)
 	s.mountPulls(mux)
+	s.mountProviders(mux)
+	s.mountSkills(mux)
 	s.mountDictation(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "route not found")

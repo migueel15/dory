@@ -1,6 +1,6 @@
 import { Threads, ThreadsHome } from "./pages/threads";
 import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Brain, ChartBar, ChatsCircle, FolderSimple, GithubLogo, HardDrives, House, IconContext, Kanban, List, Moon, SidebarSimple, SignOut, Sun, X } from "@phosphor-icons/react";
+import { Brain, ChartBar, ChatsCircle, FolderSimple, GithubLogo, HardDrives, House, IconContext, Kanban, Lightning, List, Moon, SidebarSimple, SignOut, Sun, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect } from "@tanstack/react-router";
@@ -147,6 +147,7 @@ function Layout() {
       <Link to="/github" className={link} title={small ? "GitHub" : undefined}><GithubLogo weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>GitHub</span></Link>
       {group("Sistema", small)}
       <Link to="/memories" className={link} title={small ? "Memorias" : undefined}><Brain weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Memorias</span></Link>
+      <Link to="/skills" className={link} title={small ? "Skills" : undefined}><Lightning weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Skills</span></Link>
       <Link to="/environments" className={link} title={small ? "Entornos" : undefined}><HardDrives weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Entornos</span></Link>
       <Link to="/usage" className={link} title={small ? "Uso" : undefined}><ChartBar weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Uso</span></Link>
     </>
@@ -233,12 +234,14 @@ const pages = {
   githubDetail: () => import("./pages/github-detail"),
   usage: () => import("./pages/usage"),
   projects: () => import("./pages/projects"),
+  skills: () => import("./pages/skills"),
 };
 const ThreadView = lazyRouteComponent(pages.thread, "ThreadView");
 const GithubView = lazyRouteComponent(pages.githubDetail, "GithubView");
 const Usage = lazyRouteComponent(pages.usage, "Usage");
 const Projects = lazyRouteComponent(pages.projects, "Projects");
 const ProjectDetail = lazyRouteComponent(pages.projects, "ProjectDetail");
+const Skills = lazyRouteComponent(pages.skills, "Skills");
 const idle = (fn: () => void) => ("requestIdleCallback" in window ? window.requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 1500));
 idle(() => { for (const load of Object.values(pages)) load().catch(() => {}); });
 
@@ -249,6 +252,7 @@ const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/", component: Home }),
   createRoute({ getParentRoute: () => root, path: "/inbox", beforeLoad: () => { throw redirect({ to: "/tasks" }); } }),
   createRoute({ getParentRoute: () => root, path: "/usage", component: Usage }),
+  createRoute({ getParentRoute: () => root, path: "/skills", component: Skills }),
   createRoute({ getParentRoute: () => root, path: "/github", component: Github }),
   createRoute({ getParentRoute: () => root, path: "/github/$owner/$repo/$kind/$number", component: GithubView }),
   createRoute({ getParentRoute: () => root, path: "/tasks", component: Tasks }),
