@@ -17,7 +17,7 @@ export function Button({ variant = "default", className, ...p }: ButtonHTMLAttri
     bare: "hover:bg-slate-200 dark:hover:bg-raised",
     danger: "border border-red-300 dark:border-red-800 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950",
   }[variant];
-  return <button {...p} className={cx("min-h-11 sm:min-h-0 rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-50", v, className)} />;
+  return <button {...p} className={cx("inline-flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap sm:min-h-0 rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-50", v, className)} />;
 }
 
 // pill styles links that act as secondary buttons (navigation, external links).

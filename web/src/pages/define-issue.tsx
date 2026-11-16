@@ -1,26 +1,54 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { api } from "../api/client";
-import { Button, ErrorText, Modal } from "../components/ui";
-import { useLaunchForm } from "./launch-form";
+import { useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import { api, repoName } from "../api/client";
+import { Button, ErrorText, Input, Label, Modal, Textarea } from "../components/ui";
+import { useLaunchForm } from "../components/launch-picker";
 
-// Shared dialog for issue definition and pull request conflict resolution.
-export function DefineIssueDialog({ repo, number, onClose, resolve = false }: { repo: string; number: number; onClose: () => void; resolve?: boolean }) {
-  const qc = useQueryClient();
-  const form = useLaunchForm({ section: resolve ? "resolve-conflicts" : "issue-define", repo });
-  const launch = useMutation({
-    mutationFn: () => resolve ? api.resolveConflicts(repo, number, form.value) : api.issueDefine(repo, number, form.value),
-    onSuccess: () => {
+// DefineIssueDialog turns an issue into tasks, by hand or with an agent that
+// splits it with the MCP, or asks an agent to resolve a pull request's
+// conflicts (resolve).
+export function DefineIssueDialog({ resolve = false, repo, number, onClose }: { resolve?: boolean; repo: string; number: number; onClose: () => void }) {
+  const navigate = useNavigate();
+  const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list() });
+  const registered = repos.data?.find((r) => repoName(r.remote_url).toLowerCase() === repo.toLowerCase());
+  const form = useLaunchForm({ section: resolve ? "resolve" : "define-issue" });
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const manual = useMutation({
+    mutationFn: () => api.issueTask(repo, number, { title, description }),
+    onSuccess: (t) => navigate({ to: "/tasks", search: { task: t.id } as never }),
+  });
+  const agent = useMutation({
+    mutationFn: () => {
       form.remember();
-      qc.invalidateQueries({ queryKey: ["issue-threads"] });
+      const text = resolve
+        ? `Resuelve los conflictos de merge de la pull request #${number} de ${repo}. Usa \`gh pr checkout ${number}\` en un worktree aparte, fusiona la rama base, resuelve los conflictos, ejecuta los tests y sube la rama.`
+        : `Analiza la issue #${number} de ${repo} (\`gh issue view ${number} --repo ${repo}\`) y el repositorio. Pártela en tareas pequeñas y bien definidas con la herramienta save_task del MCP de Dory: cada una con qué cambiar y cómo probarlo, issue_number ${number}, el project_id del proyecto y depends_on cuando una deba ir antes que otra. No implementes nada.`;
+      return api.createThread({ ...form.value, project_id: registered?.project_id ?? null, repository_id: registered?.id, title: resolve ? `Conflictos de ${repo}#${number}` : `Tareas de ${repo}#${number}`, text });
     },
+    onSuccess: (r) => navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } }),
   });
   return (
-    <Modal title={`${resolve ? "Resolver conflictos de" : "Definir tareas de"} #${number}`} onClose={onClose}>
-      {form.fields}
-      <p className="text-xs text-slate-500 dark:text-muted">{resolve ? "El agente resuelve los conflictos en un worktree, valida y empuja la rama de la PR. Si hay dudas, las plantea en el hilo." : "El agente analiza la issue y el repositorio y crea los items en Dory; no implementa nada."}</p>
-      <ErrorText error={form.error ?? launch.error} />
-      {launch.isSuccess ? <Link to="/threads" search={{ f: "jobs" } as never} onClick={onClose} className="text-blue-600 underline">Ver en Hilos</Link> : <Button disabled={!form.ready || launch.isPending} onClick={() => launch.mutate()}>Lanzar</Button>}
+    <Modal title={resolve ? `Resolver conflictos de #${number}` : `Tareas de la issue #${number}`} onClose={onClose}>
+      <div className="space-y-4">
+        {!registered && repos.isSuccess && <p className="text-sm text-amber-700 dark:text-amber-300">El repositorio no está en ningún proyecto de Dory: añádelo para que las tareas queden ligadas.</p>}
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold">{resolve ? "Con un agente" : "Que un agente la parta en tareas"}</h3>
+          {form.fields}
+          <Button onClick={() => agent.mutate()} disabled={!form.ready || agent.isPending}>{resolve ? "Lanzar" : "Definir tareas"}</Button>
+          <ErrorText error={agent.error ?? form.error} />
+        </section>
+        {!resolve && registered && (
+          <section className="space-y-2 border-t border-slate-200 pt-3 dark:border-border">
+            <h3 className="text-sm font-semibold">O crea una tarea a mano</h3>
+            <Label text="Título"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={`Issue #${number}`} /></Label>
+            <Label text="Descripción"><Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} /></Label>
+            <Button variant="ghost" onClick={() => manual.mutate()} disabled={manual.isPending}>Crear tarea</Button>
+            <ErrorText error={manual.error} />
+          </section>
+        )}
+      </div>
     </Modal>
   );
 }

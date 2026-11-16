@@ -1,162 +1,218 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useParams } from "@tanstack/react-router";
-import { ArrowUp, SidebarSimple, Paperclip } from "@phosphor-icons/react";
-import { api, type T3ThreadView } from "../api/client";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import { ArrowUp, Brain, CaretRight, CheckCircle, Circle, CircleNotch, GitBranch, GitDiff, Kanban, PencilSimpleLine, PushPin, Stop, Trash, Warning, WarningCircle, Wrench, XCircle } from "@phosphor-icons/react";
+import { api, type Message, type ThreadView as View } from "../api/client";
 import { useThreadLive } from "../api/live";
-import { ErrorText, pill } from "../components/ui";
-import { FullscreenHost } from "./github-diff";
-import { ContextBar, ThreadDetails } from "./thread/header";
-import { Chat, Insert } from "./thread/chat";
-import { Changes, OpenTurnContext, TurnTarget } from "./thread/changes";
+import { Button, ErrorText, Md, Textarea, pill } from "../components/ui";
+import { ProviderIcon } from "../components/launch-picker";
+import { Diff } from "./github-diff";
 
-// The thread page is split in ./thread/: header, chat, composer, queue and changes.
-export type { Insert } from "./thread/chat";
-
-// ThreadView shows one T3 Code thread: conversation and composer on the left,
-// changed files on the right.
-// useThreadView loads a thread's view live and tracks the run the user just
-// stopped: the view shows it stopped until T3 confirms, and goes back if T3
-// keeps it running.
-function useThreadView(threadId: string) {
-  const key = ["t3-view", threadId];
-  // Safety net for a stalled live stream: while a turn runs, reload every 15 s.
-  // Subagents can keep working after the parent's turn ends: poll while any does.
-  const view = useQuery({ queryKey: key, queryFn: () => api.t3View(threadId), refetchInterval: (q) =>
-    q.state.data?.subagents?.some((a) => ["running", "starting", "preparing", "waiting", "pending"].includes(a.status)) ? 4_000 : q.state.data?.active_run_id ? 15_000 : false });
-  // The agent edits the worktree during a turn: refresh its diff with each thread event.
-  useThreadLive(threadId, key, [["t3-diff", threadId]]);
-  const [stopping, setStopping] = useState("");
-  const running = view.data?.active_run_id ?? "";
-  useEffect(() => {
-    if (!stopping) return;
-    if (running !== stopping) { setStopping(""); return; }
-    const t = setTimeout(() => setStopping(""), 15_000);
-    return () => clearTimeout(t);
-  }, [stopping, running]);
-  const v: T3ThreadView | undefined = view.data && stopping && view.data.active_run_id === stopping
-    ? { ...view.data, active_run_id: "", active_status: "", interrupted: true }
-    : view.data;
-  return { view, v, key, setStopping };
-}
-
-// ThreadChat is the thread's chat (messages, questions, queue and composer),
-// shared by the thread page and other views that embed a thread. notice shows
-// above the composer; beforeSend runs before each message and, if it fails,
-// the message is not sent.
-// insert adds text to the composer each time its seq changes.
-export function ThreadChat({ threadId, notice, beforeSend, insert }: { threadId: string; notice?: React.ReactNode; beforeSend?: () => Promise<unknown>; insert?: Insert }) {
-  const { view, v, key, setStopping } = useThreadView(threadId);
-  if (view.isPending) return <ChatLoading />;
-  // A failed refresh keeps the conversation on screen (and its scroll, drafts
-  // and open dialogs); only a first load that fails shows the error.
-  if (!v) return <ErrorText error={view.error} />;
-  return <Chat key={v.id} v={v} queryKey={key} onStop={setStopping} notice={notice} beforeSend={beforeSend} insert={insert} />;
-}
-
+// ThreadView is a whole thread page: header, chat and, on demand, its changes.
 export function ThreadView() {
-  const { threadId } = useParams({ from: "/threads/$threadId" });
-  const { view, v, key, setStopping } = useThreadView(threadId);
-  const [panel, setPanel] = useState<"" | "changes">("");
-  // The turn (and file) a changes card asked the panel to show.
-  const [target, setTarget] = useState<TurnTarget & { seq: number }>();
-  const openTurn = useCallback((t: TurnTarget) => { setTarget((p) => ({ ...t, seq: (p?.seq ?? 0) + 1 })); setPanel("changes"); }, []);
-  const aside = useRef<HTMLElement>(null);
-  const [host, setHost] = useState<HTMLDivElement | null>(null);
-  const [opened, setOpened] = useState(false);
-  useEffect(() => { if (panel) setOpened(true); }, [panel]);
-  const [width, setWidth] = useState(() => { try { return Number(localStorage.getItem("dory.thread-panel-width")) || 560; } catch { return 560; } });
-  if (view.isPending) return <div className="flex h-full min-h-0 flex-col"><ChatLoading /></div>;
-  // A failed refresh keeps the conversation on screen (and its scroll, drafts
-  // and open dialogs); only a first load that fails shows the error.
-  if (!v) return <ErrorText error={view.error} />;
+  const { threadId } = useParams({ strict: false }) as { threadId: string };
+  const [diff, setDiff] = useState(false);
   return (
-    // The panel's divider runs the full height: the title belongs to the chat
-    // column. A diff in full screen fills both columns, not the thread list or
-    // the app sidebar.
-    <div ref={setHost} className="relative flex h-full min-h-0">
-      <FullscreenHost.Provider value={host}>
-      {/* With the panel open, the chat column keeps the same gap to the divider
-          as the panel does (lg:pl-1), so the two header buttons sit symmetric. */}
-      <div className={`min-h-0 min-w-0 flex-1 flex-col gap-3 ${panel ? "hidden lg:flex lg:pr-1" : "flex"}`}>
-      <ContextBar v={v}>
-        <ThreadDetails v={v} onChanges={() => setPanel("changes")} panelOpen={panel !== ""} />
-        {/* With the panel open, its toggle moves to the panel's own top row. */}
-        {!panel && (
-          <button type="button" aria-pressed={false} onClick={() => setPanel("changes")} title="Panel de cambios" aria-label="Panel de cambios" className={`${pill} !px-2`}>
-            <SidebarSimple className="size-4 -scale-x-100" />
-          </button>
-        )}
-      </ContextBar>
-        <div className="flex min-h-0 flex-1 flex-col"><OpenTurnContext.Provider value={openTurn}><Chat key={v.id} v={v} queryKey={key} onStop={setStopping} /></OpenTurnContext.Provider></div>
+    <div className="flex h-[calc(100dvh-4rem-1px)] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <Header threadId={threadId} diff={diff} toggleDiff={() => setDiff(!diff)} />
+        <ThreadChat threadId={threadId} />
       </div>
-        {/* Always mounted (its content only once opened): on desktop its width
-            slides between 0 and the panel width, with the content pinned right
-            so it enters from the right edge and leaves the same way. */}
-        {(
-          <aside ref={aside} aria-hidden={!panel}
-            className={`min-h-0 flex-col overflow-hidden lg:flex lg:shrink-0 lg:transition-[width] lg:duration-300 lg:ease-out ${panel ? "flex w-full lg:w-[var(--panel-w)]" : "hidden lg:w-0"}`}
-            style={{ "--panel-w": `${width}px` } as React.CSSProperties}>
-            <div className="ml-auto flex min-h-0 w-full flex-1 lg:w-[var(--panel-w)]">
-              <ResizeHandle panel={aside} width={width} onResize={setWidth} />
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col pb-4 lg:pl-1">{opened && <Changes v={v} queryKey={key} target={target} onClose={() => setPanel("")} />}</div>
-            </div>
-          </aside>
-        )}
-      </FullscreenHost.Provider>
+      {diff && <Changes threadId={threadId} />}
     </div>
   );
 }
 
-// ChatLoading keeps the chat's frame while the conversation loads: a notice in
-// the middle and the composer's shape at the bottom, so nothing jumps after.
-function ChatLoading() {
+function useThread(threadId?: string) {
+  useThreadLive(threadId);
+  return useQuery({ queryKey: ["thread", threadId], queryFn: () => api.thread(threadId!), enabled: !!threadId, staleTime: 5_000 });
+}
+
+function Header({ threadId, diff, toggleDiff }: { threadId: string; diff: boolean; toggleDiff: () => void }) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const t = useThread(threadId).data;
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState("");
+  const act = useMutation({
+    mutationFn: (body: Parameters<typeof api.threadAction>[1]) => api.threadAction(threadId, body),
+    onSuccess: (_, body) => {
+      qc.invalidateQueries({ queryKey: ["thread", threadId] });
+      qc.invalidateQueries({ queryKey: ["threads"] });
+      if (body.action === "archive") navigate({ to: "/threads" });
+    },
+  });
+  // Opening a thread marks it as read.
+  useEffect(() => { if (t && !t.read_at && t.status !== "working") act.mutate({ action: "read" }); }, [t?.id, t?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!t) return <div className="h-12 shrink-0" />;
   return (
-    <section aria-busy="true" className="relative flex min-h-0 flex-1 flex-col">
-      <div className="grid min-h-0 flex-1 place-items-center">
-        <p className="flex items-center gap-2 text-sm text-slate-500 motion-safe:animate-pulse dark:text-muted">Cargando conversación…</p>
-      </div>
-      <div className="mx-auto w-full max-w-3xl px-3 pb-4 pt-2 sm:px-6">
-        <div className="rounded-3xl border border-slate-200 bg-white shadow-md dark:border-border-strong dark:bg-surface">
-          <textarea disabled rows={1} aria-label="Mensaje" placeholder="Escribe al hilo…" className="block w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 placeholder:text-slate-400" />
-          <div className="flex items-center gap-0.5 px-2 pb-2">
-            <span className="grid size-8 place-items-center text-slate-300 dark:text-muted"><Paperclip className="size-4" /></span>
-            <span className="ml-auto grid size-8 place-items-center rounded-full bg-slate-200 text-white dark:bg-raised"><ArrowUp weight="bold" className="size-4" /></span>
-          </div>
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 px-3 py-2 dark:border-border">
+      <ProviderIcon driver={t.provider} model={t.model} />
+      {editing ? (
+        <form className="min-w-0 flex-1" onSubmit={(e) => { e.preventDefault(); setEditing(false); if (title.trim()) act.mutate({ action: "rename", title: title.trim() }); }}>
+          <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => setEditing(false)} className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-sm dark:border-border-strong" />
+        </form>
+      ) : (
+        <h1 className="min-w-0 flex-1 truncate font-semibold" title={t.title}>{t.title || "Hilo"}</h1>
+      )}
+      <StatusDot status={t.status} />
+      {t.branch && <span className="hidden items-center gap-1 font-mono text-xs text-slate-500 sm:flex dark:text-muted"><GitBranch className="size-3.5" />{t.branch}</span>}
+      {t.task_id && <Link to="/tasks" search={{ task: t.task_id } as never} className={`${pill} !px-2`} title="Ver la tarea"><Kanban className="size-4" /></Link>}
+      <button type="button" className={`${pill} !px-2`} title="Renombrar" onClick={() => { setTitle(t.title); setEditing(true); }}><PencilSimpleLine className="size-4" /></button>
+      <button type="button" className={`${pill} !px-2 ${t.pinned_at ? "!text-amber-600" : ""}`} title={t.pinned_at ? "Desfijar" : "Fijar"} onClick={() => act.mutate({ action: t.pinned_at ? "unpin" : "pin" })}><PushPin className="size-4" weight={t.pinned_at ? "fill" : "duotone"} /></button>
+      {t.local && <button type="button" className={`${pill} !px-2 ${diff ? "!border-slate-500" : ""}`} title="Cambios del hilo" onClick={toggleDiff}><GitDiff className="size-4" /></button>}
+      <button type="button" className={`${pill} !px-2`} title="Archivar (borra su worktree)" onClick={() => confirm("¿Archivar el hilo? Se borra su worktree.") && act.mutate({ action: "archive" })}><Trash className="size-4" /></button>
+      <ErrorText error={act.error} />
+    </div>
+  );
+}
+
+export function StatusDot({ status }: { status: string }) {
+  if (status === "working") return <CircleNotch className="size-4 shrink-0 animate-spin text-blue-500" aria-label="Trabajando" />;
+  if (status === "waiting") return <WarningCircle className="size-4 shrink-0 text-orange-500" weight="fill" aria-label="Te necesita" />;
+  if (status === "error") return <XCircle className="size-4 shrink-0 text-red-500" weight="fill" aria-label="Error" />;
+  return <Circle className="size-3 shrink-0 text-slate-400" weight="fill" aria-label="Inactivo" />;
+}
+
+// ThreadChat is the conversation and its composer; the PR page embeds it too.
+export function ThreadChat({ threadId }: { threadId?: string }) {
+  const view = useThread(threadId);
+  const scroller = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+  const t = view.data;
+  // Follow the end of the conversation unless the user scrolled up.
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  }, [t?.messages]);
+  if (!threadId) return null;
+  if (view.error) return <div className="p-4"><ErrorText error={view.error} /></div>;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div ref={scroller} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}
+        className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-3xl space-y-3 px-3 py-4">
+          {t?.messages.map((m) => <Entry key={m.id} m={m} />)}
+          {t?.status === "working" && !t.messages.some((m) => m.streaming) && <p className="flex items-center gap-2 text-sm text-slate-500 dark:text-muted"><CircleNotch className="size-4 animate-spin" />Trabajando…</p>}
+          {t && !t.local && <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">Este hilo corre en otro nodo.</p>}
         </div>
       </div>
-    </section>
+      {t && <Composer t={t} onSent={() => { stick.current = true; }} />}
+    </div>
   );
 }
 
-// ResizeHandle drags the side panel's left edge. While dragging it only moves
-// a CSS variable on the panel, once per frame, so React does not re-render the
-// chat and the diff on every pointer move; the width is saved on release.
-export function ResizeHandle({ panel, width, onResize, storageKey = "dory.thread-panel-width", min = 320, rest = 420 }: { panel: React.RefObject<HTMLElement | null>; width: number; onResize: (w: number) => void; storageKey?: string | null; min?: number; rest?: number }) {
-  const start = (e: React.PointerEvent) => {
-    e.preventDefault();
-    const x0 = e.clientX, w0 = width;
-    let last = w0, frame = 0;
-    const move = (ev: PointerEvent) => {
-      last = Math.min(Math.max(min, w0 + x0 - ev.clientX), window.innerWidth - rest);
-      if (!frame) frame = requestAnimationFrame(() => { frame = 0; panel.current?.style.setProperty("--panel-w", `${last}px`); });
-    };
-    const up = () => {
-      cancelAnimationFrame(frame);
-      panel.current?.style.removeProperty("transition");
-      onResize(last);
-      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
-      document.body.style.cursor = ""; document.body.style.userSelect = "";
-      if (storageKey) try { localStorage.setItem(storageKey, String(Math.round(last))); } catch { /* per-browser only */ }
-    };
-    document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none";
-    panel.current?.style.setProperty("transition", "none");
-    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
-  };
+function Entry({ m }: { m: Message }) {
+  switch (m.role) {
+    case "user":
+      return <div className="ml-auto w-fit max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-slate-200 px-3.5 py-2 text-sm dark:bg-raised">{m.text}</div>;
+    case "assistant":
+      return <div className="prose-sm text-sm"><Md>{m.text}</Md>{m.streaming && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-slate-400 align-middle" />}</div>;
+    case "reasoning":
+      return <Fold icon={<Brain className="size-4" />} title={m.streaming ? "Pensando…" : "Razonamiento"} body={m.text} muted />;
+    case "tool":
+      return <Fold icon={toolIcon(m.status)} title={m.title || "Herramienta"} detail={m.detail} body={m.text} mono />;
+    case "plan":
+      return (
+        <div className="rounded-lg border border-slate-200 p-3 text-sm dark:border-border">
+          <p className="mb-1 font-medium">Plan</p>
+          {(m.detail || m.text).split("\n").map((l, i) => <p key={i} className={l.startsWith("[x]") ? "text-slate-400 line-through" : ""}>{l.replace(/^\[.\]\s*/, l.startsWith("[~]") ? "▸ " : "· ")}</p>)}
+        </div>
+      );
+    case "interrupt":
+      return <p className="text-center text-xs text-slate-500 dark:text-muted">— {m.text} —</p>;
+    default:
+      return (
+        <div className={`rounded-md px-3 py-2 text-sm ${m.status === "failed" ? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300" : "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"}`}>
+          {m.title && <p className="font-medium">{m.title}</p>}
+          <Md>{m.text}</Md>
+        </div>
+      );
+  }
+}
+
+function toolIcon(status?: string) {
+  if (status === "running") return <CircleNotch className="size-4 animate-spin text-blue-500" />;
+  if (status === "failed") return <Warning className="size-4 text-red-500" />;
+  if (status === "completed") return <CheckCircle className="size-4 text-emerald-600" />;
+  return <Wrench className="size-4" />;
+}
+
+function Fold({ icon, title, detail, body, muted, mono }: { icon: React.ReactNode; title: string; detail?: string; body?: string; muted?: boolean; mono?: boolean }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div role="separator" aria-orientation="vertical" aria-label="Redimensionar panel" onPointerDown={start}
-      className="group hidden w-2 shrink-0 cursor-col-resize items-stretch justify-center lg:flex">
-      <span className="w-px bg-slate-200 transition-colors group-hover:w-0.5 group-hover:bg-slate-400 dark:bg-border dark:group-hover:bg-muted" />
+    <div className={`text-sm ${muted ? "text-slate-500 dark:text-muted" : ""}`}>
+      <button type="button" onClick={() => setOpen(!open)} className="flex w-full min-w-0 items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-slate-100 dark:hover:bg-raised" disabled={!body}>
+        {icon}
+        <span className="shrink-0 font-medium">{title}</span>
+        {detail && <span className="min-w-0 truncate font-mono text-xs text-slate-500 dark:text-muted">{detail.split("\n")[0]}</span>}
+        {body && <CaretRight className={`ml-auto size-3.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />}
+      </button>
+      {open && body && (mono
+        ? <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap rounded bg-slate-100 p-2 font-mono text-xs dark:bg-raised">{detail && detail.includes("\n") ? `${detail}\n\n` : ""}{body}</pre>
+        : <div className="mt-1 border-l-2 border-slate-200 pl-3 dark:border-border"><Md>{body}</Md></div>)}
     </div>
+  );
+}
+
+function Composer({ t, onSent }: { t: View; onSent: () => void }) {
+  const qc = useQueryClient();
+  const [text, setText] = useState("");
+  const box = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => { const el = box.current; if (el) { el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 320)}px`; } }, [text]);
+  const send = useMutation({
+    mutationFn: (body: string) => api.send(t.id, body),
+    onSuccess: () => { setText(""); onSent(); qc.invalidateQueries({ queryKey: ["thread", t.id] }); },
+  });
+  const stop = useMutation({ mutationFn: () => api.interrupt(t.id) });
+  const submit = () => { if (text.trim() && !send.isPending) send.mutate(text.trim()); };
+  if (!t.local) return null;
+  return (
+    <div className="shrink-0 border-t border-slate-200 p-3 dark:border-border">
+      <div className="mx-auto max-w-3xl">
+        {t.queue.length > 0 && (
+          <div className="mb-2 space-y-1">
+            {t.queue.map((q) => <p key={q.run_id} className="truncate rounded bg-slate-100 px-2 py-1 text-xs text-slate-600 dark:bg-raised dark:text-muted">En cola: {q.text}</p>)}
+          </div>
+        )}
+        <div className="flex items-end gap-2 rounded-xl border border-slate-300 bg-white p-2 focus-within:border-slate-500 dark:border-border dark:bg-surface">
+          <Textarea bare ref={box} rows={1} value={text} onChange={(e) => setText(e.target.value)} placeholder={t.running ? "Escribe; se enviará al terminar el turno" : "Escribe un mensaje"} aria-label="Mensaje"
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia("(min-width: 640px)").matches) { e.preventDefault(); submit(); } }}
+            className="max-h-80 min-h-9 flex-1 resize-none" />
+          {t.running && <Button type="button" variant="ghost" title="Interrumpir" onClick={() => stop.mutate()} disabled={stop.isPending}><Stop className="size-4" weight="fill" /></Button>}
+          <Button type="button" title="Enviar" onClick={submit} disabled={!text.trim() || send.isPending}><ArrowUp className="size-4" weight="bold" /></Button>
+        </div>
+        <ErrorText error={send.error ?? stop.error} />
+      </div>
+    </div>
+  );
+}
+
+function Changes({ threadId }: { threadId: string }) {
+  const diff = useQuery({ queryKey: ["thread-diff", threadId], queryFn: () => api.threadDiff(threadId), refetchInterval: 5000 });
+  return (
+    <aside className="hidden w-[45%] min-w-[360px] shrink-0 flex-col border-l border-slate-200 lg:flex dark:border-border" aria-label="Cambios">
+      <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 px-3 py-2 text-sm font-medium dark:border-border"><GitDiff className="size-4" />Cambios{diff.data?.branch && <span className="font-mono text-xs text-slate-500">{diff.data.branch}</span>}</div>
+      <div className="min-h-0 flex-1 overflow-auto">
+        <ErrorText error={diff.error} />
+        {diff.data && (diff.data.diff ? <Diff text={diff.data.diff} fill /> : <p className="p-4 text-sm text-slate-500 dark:text-muted">Sin cambios todavía.</p>)}
+      </div>
+    </aside>
+  );
+}
+
+// ResizeHandle lets a side panel be dragged wider or narrower.
+export function ResizeHandle({ panel, width, onResize, min = 320, rest = 420 }: { panel: RefObject<HTMLElement | null>; width: number; onResize: (w: number) => void; storageKey?: string | null; min?: number; rest?: number }) {
+  return (
+    <div role="separator" aria-orientation="vertical" tabIndex={0}
+      className="w-1.5 shrink-0 cursor-col-resize bg-transparent hover:bg-slate-300 dark:hover:bg-border"
+      onPointerDown={(e) => {
+        const start = e.clientX, from = width;
+        const right = panel.current?.getBoundingClientRect().right ?? window.innerWidth;
+        const move = (ev: PointerEvent) => onResize(Math.max(min, Math.min(from + start - ev.clientX, right - rest)));
+        const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+      }} />
   );
 }

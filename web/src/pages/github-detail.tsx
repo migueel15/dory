@@ -3,12 +3,13 @@ import { Robot } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { api, type GithubDetail, type GithubPull, type GithubThread } from "../api/client";
-import { Badge, Button, Card, Input, Select, ErrorText, Md, Arrow, pill, toggleTask, Textarea, keepAboveKeyboard } from "../components/ui";
+import { Badge, Button, Card, Input, Select, ErrorText, Md, Arrow, pill, toggleTask, Textarea, keepAboveKeyboard, Modal } from "../components/ui";
 import { Avatar, PullStatus, StackBar } from "./github";
-import { Diff, FullscreenHost, ReviewLaunch } from "./github-diff";
+import { Diff, FullscreenHost } from "./github-diff";
 import { DefineIssueDialog } from "./define-issue";
 import { ResizeHandle, ThreadChat } from "./thread";
 import { FileRefContext, type FileRef } from "../components/refs";
+import { useLaunchForm } from "../components/launch-picker";
 import { GithubMark, Icon, IconButton, Menu, MenuItem, RefContext, RefMd, Tip, UserPicker, icons, useArm, MentionArea } from "../components/github-ui";
 
 const labels: Record<string, string> = {
@@ -388,7 +389,7 @@ export function GithubView() {
         {d.pull?.state === "OPEN" && <StackBar repo={full} number={n} />}
         <Header d={d} act={act} busy={false} people={people} actions={<>
           {d.pull && agent.data?.available === false && <Button disabled={createReview.isPending} onClick={() => { createReview.reset(); setLaunchReview(true); }}>Crear hilo de revisión</Button>}
-          {launchReview && <ReviewLaunch repo={full} pr={n} createOnly busy={createReview.isPending} error={createReview.error} onClose={() => setLaunchReview(false)} onLaunch={(launch) => createReview.mutate(launch)} />}
+          {launchReview && <ReviewLaunch busy={createReview.isPending} error={createReview.error} onClose={() => setLaunchReview(false)} onLaunch={(launch) => createReview.mutate(launch)} n={n} />}
           {d.pull && <PullActions pull={d.pull} me={d.viewer} act={act} busy={false} diff={showDiff} toggleDiff={() => setShowDiff(!showDiff)} />}
           {d.pull?.mergeable === "CONFLICTING" && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Resolver conflictos</Button>}
           {d.issue && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Definir tareas</Button>}
@@ -570,5 +571,18 @@ function DetailSkeleton() {
         </Card>
       ))}
     </div>
+  );
+}
+
+// ReviewLaunch picks the agent of the pull request's side chat.
+function ReviewLaunch({ n, busy, error, onClose, onLaunch }: { n: number; busy: boolean; error: unknown; onClose: () => void; onLaunch: (l: ReturnType<typeof useLaunchForm>["value"]) => void }) {
+  const form = useLaunchForm({ section: "pull-review" });
+  return (
+    <Modal title={`Crear el hilo de revisión de #${n}`} onClose={onClose}>
+      {form.fields}
+      <p className="text-xs text-slate-500 dark:text-muted">Se crea un hilo para tus consultas sobre esta PR, en la copia local del repositorio. El agente no modifica nada salvo que se lo pidas.</p>
+      <ErrorText error={form.error ?? error} />
+      <Button disabled={!form.ready || busy} onClick={() => { form.remember(); onLaunch(form.value); }}>{busy ? "Creando…" : "Crear hilo"}</Button>
+    </Modal>
   );
 }

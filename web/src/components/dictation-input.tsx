@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/client";
-import type { components } from "../api/schema";
 import { Button, ErrorText, Textarea } from "./ui";
 
-type DictationState = components["schemas"]["DictationState"];
-export type DictationTarget = { kind: "capture"; project_id?: string } | { kind: "define"; item_id: string };
+type DictationState = { id: string; status: string; text: string; error?: string };
+export type DictationTarget = { kind: "capture"; project_id?: string } | { kind: "thread"; thread_id: string };
 
 const RATE = 16000;
 const FRAME = RATE / 10; // 100 ms frames to measure energy
