@@ -86,13 +86,16 @@ func control(args []string) (bool, error) {
 		fmt.Printf("en marcha: %s (%s), versión %s, en %s\n", h["name"], h["node_id"], h["version"], base)
 		return true, nil
 	case "start":
-		return true, start(base)
+		return true, start(base, cfg.DataDir)
 	case "stop":
-		return true, serviceCtl("stop")
+		return true, stop(base)
 	case "restart":
-		return true, serviceCtl("restart")
+		if err := stop(base); err != nil {
+			return true, err
+		}
+		return true, start(base, cfg.DataDir)
 	case "open":
-		if err := start(base); err != nil {
+		if err := start(base, cfg.DataDir); err != nil {
 			return true, err
 		}
 		return true, openWindow(base)
@@ -112,14 +115,14 @@ func control(args []string) (bool, error) {
 	return true, nil
 }
 
-func health(base string) (map[string]string, error) {
+func health(base string) (map[string]any, error) {
 	c := http.Client{Timeout: 2 * time.Second}
 	resp, err := c.Get(base + "/api/health")
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	var h map[string]string
+	var h map[string]any
 	if err = json.NewDecoder(resp.Body).Decode(&h); err != nil || h["app"] != "dory" {
 		return nil, errors.New("another program answers on the Dory port")
 	}
@@ -128,7 +131,7 @@ func health(base string) (map[string]string, error) {
 
 // start runs the core if it is not running yet: through the service when it
 // is installed, otherwise as a detached process.
-func start(base string) error {
+func start(base, dataDir string) error {
 	if _, err := health(base); err == nil {
 		return nil
 	}
@@ -137,7 +140,16 @@ func start(base string) error {
 		if err != nil {
 			return err
 		}
+		if err = os.MkdirAll(dataDir, 0o700); err != nil {
+			return err
+		}
+		logFile, err := os.OpenFile(filepath.Join(dataDir, "dory.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+		if err != nil {
+			return err
+		}
+		defer logFile.Close()
 		cmd := exec.Command(self, "serve")
+		cmd.Stdout, cmd.Stderr = logFile, logFile
 		detach(cmd)
 		if err = cmd.Start(); err != nil {
 			return err
@@ -150,7 +162,36 @@ func start(base string) error {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	return errors.New("el núcleo no arrancó; mira `journalctl --user -u dory`")
+	return fmt.Errorf("el núcleo no arrancó; mira %s o `journalctl --user -u dory`", filepath.Join(dataDir, "dory.log"))
+}
+
+// stop ends the core: through the service when it is installed, otherwise
+// by signalling the process that answers on the Dory port.
+func stop(base string) error {
+	serviceCtl("stop")
+	// A core started outside the service may still hold the port.
+	h, err := health(base)
+	if err != nil {
+		return nil // already stopped
+	}
+	pid, ok := h["pid"].(float64)
+	if !ok {
+		return errors.New("el núcleo en marcha es de una versión anterior: páralo a mano")
+	}
+	p, err := os.FindProcess(int(pid))
+	if err != nil {
+		return err
+	}
+	if err = terminate(p); err != nil {
+		return err
+	}
+	for range 50 {
+		if _, err := health(base); err != nil {
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return errors.New("el núcleo no se detuvo")
 }
 
 func serviceCtl(action string) error {
