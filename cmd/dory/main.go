@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"log"
@@ -37,6 +38,7 @@ const usage = `usage: dory <command>
 
   serve                  run the node: API, MCP, web interface and agents
   status | start | stop | restart   control the core of this machine
+  pair [ADDRESS CODE]    show a pairing code, or pair with another node
   open                   start the core if needed and open the interface
   service install|uninstall         run the core as a user service
   update [--channel stable|nightly] install the latest release
@@ -154,7 +156,11 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	auth.Register(mux, store.Accounts(), cfg)
 	mux.Handle("/mcp", mcp.Handler(srv))
 	mux.Handle("/", web.Handler())
-	server := &http.Server{Addr: cfg.Listen, Handler: compress.Middleware(auth.Middleware(store.Accounts(), cfg, agentToken)(mux)),
+	control, err := controlToken(cfg.DataDir)
+	if err != nil {
+		return err
+	}
+	server := &http.Server{Addr: cfg.Listen, Handler: compress.Middleware(meshControl(control, mux, auth.Middleware(store.Accounts(), cfg, agentToken)(mux))),
 		ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	net.API = mux
 	net.Info = func(ctx context.Context) any {
@@ -213,6 +219,24 @@ func githubToken() string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// controlToken writes a fresh secret readable only by this user, so the CLI
+// of this machine can pair nodes without an interface (dory pair).
+func controlToken(dataDir string) (string, error) {
+	t := auth.Secret()
+	return t, os.WriteFile(filepath.Join(dataDir, "control.token"), []byte(t), 0o600)
+}
+
+// meshControl lets requests carrying the control token reach the mesh routes.
+func meshControl(token string, mux http.Handler, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/mesh") && subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+token)) == 1 {
+			mux.ServeHTTP(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // loopbackAddr is where local agents reach this node.

@@ -7,6 +7,13 @@ Cada nodo funciona solo y se sincroniza con los demás cuando se ven (ADR-007 y 
 1. En el nodo A, ve a **Entornos → Mostrar código**.
 2. En el nodo B, escribe la dirección de A (IP de Tailscale o de la red local, con puerto si no es el 7710) y el código.
 
+Sin interfaz (un servidor por SSH), usa la CLI del nodo:
+
+- `dory pair` muestra un código, la huella y el puerto de la malla de este nodo.
+- `dory pair DIRECCIÓN CÓDIGO` empareja este nodo con otro usando su código.
+
+Puedes combinar las dos formas: muestra el código con `dory pair` en el servidor y escríbelo en Entornos de tu ordenador, o al revés.
+
 El código vale 5 minutos y un solo uso. Desde entonces los dos nodos se reconocen por su clave. Comprueba que la huella que muestra cada uno coincide.
 
 Los nodos que aparecen en «Nodos encontrados en la red» se ven por la red local o por Tailscale. Al pulsar uno se rellena su dirección.

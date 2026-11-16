@@ -64,7 +64,7 @@ Categories=Development;
 func control(args []string) (bool, error) {
 	cmd := args[0]
 	switch cmd {
-	case "status", "start", "stop", "restart", "open", "service", "update", "url":
+	case "status", "start", "stop", "restart", "open", "service", "update", "url", "pair":
 	default:
 		return false, nil
 	}
@@ -99,6 +99,8 @@ func control(args []string) (bool, error) {
 			return true, err
 		}
 		return true, openWindow(base)
+	case "pair":
+		return true, pair(base, cfg.DataDir, args[1:])
 	case "service":
 		if len(args) < 2 {
 			return true, errors.New("usage: dory service install|uninstall")
@@ -327,5 +329,48 @@ func update(channel string) error {
 	if serviceCtl("restart") == nil {
 		fmt.Println("núcleo reiniciado")
 	}
+	return nil
+}
+
+// pair shows a pairing code for another node to use, or, given the address
+// of another node and its code, pairs with it. It needs no interface.
+func pair(base, dataDir string, args []string) error {
+	if len(args) != 0 && len(args) != 2 {
+		return errors.New("usage: dory pair            muestra un código para emparejar este nodo\n       dory pair DIRECCIÓN CÓDIGO   empareja con otro nodo")
+	}
+	if _, err := health(base); err != nil {
+		return errors.New("el núcleo no está en marcha: ejecuta `dory start`")
+	}
+	token, err := os.ReadFile(filepath.Join(dataDir, "control.token"))
+	if err != nil {
+		return errors.New("no encuentro el token de control: reinicia el núcleo con `dory restart`")
+	}
+	path, body := "/api/mesh/pair/code", "{}"
+	if len(args) == 2 {
+		b, _ := json.Marshal(map[string]string{"address": args[0], "code": args[1]})
+		path, body = "/api/mesh/pair", string(b)
+	}
+	req, _ := http.NewRequest("POST", base+path, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(string(token)))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	var out map[string]any
+	json.NewDecoder(resp.Body).Decode(&out)
+	if resp.StatusCode >= 300 {
+		if e, ok := out["error"].(map[string]any); ok {
+			return fmt.Errorf("no se pudo emparejar: %v", e["message"])
+		}
+		return fmt.Errorf("no se pudo emparejar: %s", resp.Status)
+	}
+	if len(args) == 0 {
+		fmt.Printf("Código: %v (caduca %v)\nHuella de este nodo: %v\nPuerto de la malla: %v\n\nEn el otro nodo: Entornos → Emparejar, o `dory pair <dirección de este nodo> %v`\n",
+			out["code"], out["expires_at"], out["fingerprint"], out["port"], out["code"])
+		return nil
+	}
+	fmt.Printf("Emparejado con %v. Huella: %v. Comprueba que coincide con la del otro nodo.\n", out["name"], out["fingerprint"])
 	return nil
 }
