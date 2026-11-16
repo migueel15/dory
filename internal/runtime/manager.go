@@ -37,8 +37,9 @@ type Update struct {
 
 // Queued is a message waiting for the running turn to end.
 type Queued struct {
-	RunID string `json:"run_id"`
-	Text  string `json:"text"`
+	RunID string       `json:"run_id"`
+	Text  string       `json:"text"`
+	Files []Attachment `json:"files,omitempty"`
 }
 
 // Manager owns the threads of this node: it starts turns, keeps their
@@ -59,6 +60,8 @@ type Manager struct {
 	usage   map[string][]Window
 	// asked marks threads whose agent asked the user something this turn.
 	asked map[string]bool
+	// steering marks threads whose turn was stopped to run the head of the queue now.
+	steering map[string]bool
 	// detected caches what Providers found.
 	detected   []Status
 	detectedAt time.Time
@@ -66,7 +69,7 @@ type Manager struct {
 
 func NewManager(db *sql.DB, store *data.Store, node, dataDir string, providers ...Provider) *Manager {
 	m := &Manager{db: db, store: store, node: node, dataDir: dataDir, providers: map[string]Provider{},
-		running: map[string]context.CancelFunc{}, queues: map[string][]Queued{}, subs: map[chan Update]string{}, usage: map[string][]Window{}, asked: map[string]bool{}}
+		running: map[string]context.CancelFunc{}, queues: map[string][]Queued{}, subs: map[chan Update]string{}, usage: map[string][]Window{}, asked: map[string]bool{}, steering: map[string]bool{}}
 	for _, p := range providers {
 		m.providers[p.ID()] = p
 	}
@@ -215,7 +218,7 @@ func (m *Manager) local(ctx context.Context, id string) (data.Thread, error) {
 }
 
 // Send starts a turn with text, or queues it while another turn runs.
-func (m *Manager) Send(ctx context.Context, id, text string) error {
+func (m *Manager) Send(ctx context.Context, id, text string, files ...Attachment) error {
 	t, err := m.local(ctx, id)
 	if err != nil {
 		return err
@@ -223,7 +226,7 @@ func (m *Manager) Send(ctx context.Context, id, text string) error {
 	run := newRunID()
 	m.mu.Lock()
 	if _, busy := m.running[id]; busy {
-		m.queues[id] = append(m.queues[id], Queued{RunID: run, Text: text})
+		m.queues[id] = append(m.queues[id], Queued{RunID: run, Text: text, Files: files})
 		q := append([]Queued(nil), m.queues[id]...)
 		m.mu.Unlock()
 		m.publish(Update{ThreadID: id, Queue: q})
@@ -232,7 +235,7 @@ func (m *Manager) Send(ctx context.Context, id, text string) error {
 	turnCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	m.running[id] = cancel
 	m.mu.Unlock()
-	if err = m.start(turnCtx, t, run, text); err != nil {
+	if err = m.start(turnCtx, t, run, text, files); err != nil {
 		cancel()
 		m.mu.Lock()
 		delete(m.running, id)
@@ -286,7 +289,7 @@ func (m *Manager) Queue(id string) []Queued {
 	return append([]Queued{}, m.queues[id]...)
 }
 
-func (m *Manager) start(ctx context.Context, t data.Thread, run, text string) error {
+func (m *Manager) start(ctx context.Context, t data.Thread, run, text string, files []Attachment) error {
 	p, ok := m.providers[t.Provider]
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrProvider, t.Provider)
@@ -296,8 +299,8 @@ func (m *Manager) start(ctx context.Context, t data.Thread, run, text string) er
 	if err != nil {
 		return err
 	}
-	m.save(ctx, Message{ID: run + ":user", ThreadID: t.ID, RunID: run, Role: "user", Text: text, CreatedAt: now()})
-	events, err := p.Run(ctx, Turn{RunID: run, Dir: dir, Text: text, Model: t.Model, Effort: t.Effort, Session: session,
+	m.save(ctx, Message{ID: run + ":user", ThreadID: t.ID, RunID: run, Role: "user", Text: text, Detail: attachmentsDetail(files), CreatedAt: now()})
+	events, err := p.Run(ctx, Turn{RunID: run, Dir: dir, Text: withAttachments(text, files), Model: t.Model, Effort: t.Effort, Session: session,
 		FullAccess: t.RuntimeMode != "approval-required", MCPURL: m.mcpURL(t.ID), MCPToken: m.MCPToken})
 	if err != nil {
 		return err
@@ -345,8 +348,16 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 	delete(m.asked, t.ID)
 	next := m.queues[t.ID]
 	var q Queued
-	if len(next) > 0 && ctx.Err() == nil {
+	steered := m.steering[t.ID]
+	delete(m.steering, t.ID)
+	if len(next) > 0 && (ctx.Err() == nil || steered) {
 		q, m.queues[t.ID] = next[0], next[1:]
+	}
+	if steered && q.RunID != "" {
+		// The stopped turn's context is gone: the steered one gets its own.
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(bg)
+		m.running[t.ID] = cancel
 	}
 	if q.RunID == "" {
 		delete(m.running, t.ID)
@@ -358,7 +369,7 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 		m.publish(Update{ThreadID: t.ID, Queue: remaining})
 		fresh, err := m.store.Threads().Get(bg, t.ID)
 		if err == nil {
-			err = m.start(ctx, fresh, q.RunID, q.Text)
+			err = m.start(ctx, fresh, q.RunID, q.Text, q.Files)
 		}
 		if err != nil {
 			m.mu.Lock()

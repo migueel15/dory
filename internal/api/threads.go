@@ -56,16 +56,26 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 	}))
 	mux.HandleFunc("POST /api/threads/{id}/messages", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		var body struct {
-			Text string `json:"text"`
+			Text  string   `json:"text"`
+			Files []string `json:"files"`
 		}
 		if !decode(w, r, &body) {
 			return
 		}
-		if body.Text == "" {
+		if body.Text == "" && len(body.Files) == 0 {
 			writeError(w, http.StatusBadRequest, "invalid_argument", "text is required")
 			return
 		}
-		if err := s.Runtime.Send(r.Context(), t.ID, body.Text); err != nil {
+		var files []runtime.Attachment
+		for _, id := range body.Files {
+			a, err := s.Runtime.Attachment(t.ID, id)
+			if err != nil {
+				writeDataError(w, err)
+				return
+			}
+			files = append(files, a)
+		}
+		if err := s.Runtime.Send(r.Context(), t.ID, body.Text, files...); err != nil {
 			writeDataError(w, err)
 			return
 		}
@@ -77,6 +87,96 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}))
+	mux.HandleFunc("POST /api/threads/{id}/attachments", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
+		f, h, err := r.FormFile("file")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "file is required")
+			return
+		}
+		defer f.Close()
+		a, err := s.Runtime.SaveAttachment(t.ID, h.Filename, h.Header.Get("Content-Type"), f)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, a)
+	}))
+	mux.HandleFunc("GET /api/threads/{id}/attachments/{file}", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
+		path, err := s.Runtime.AttachmentPath(t.ID, r.PathValue("file"))
+		if err != nil {
+			writeDataError(w, err)
+			return
+		}
+		w.Header().Set("Cache-Control", "private, max-age=86400")
+		http.ServeFile(w, r, path)
+	}))
+	// Messages waiting for the running turn: edit, drop or send now.
+	mux.HandleFunc("POST /api/threads/{id}/queue/{run}", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
+		var body struct {
+			Action string `json:"action"`
+			Text   string `json:"text"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		run := r.PathValue("run")
+		var err error
+		switch body.Action {
+		case "edit":
+			err = s.Runtime.EditQueued(r.Context(), t.ID, run, body.Text)
+		case "cancel":
+			err = s.Runtime.CancelQueued(r.Context(), t.ID, run)
+		case "steer":
+			err = s.Runtime.SteerQueued(r.Context(), t.ID, run)
+		default:
+			writeError(w, http.StatusBadRequest, "invalid_argument", "action must be edit, cancel or steer")
+			return
+		}
+		if err != nil {
+			writeDataError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	// Model, effort and permissions apply from the next turn.
+	mux.HandleFunc("POST /api/threads/{id}/settings", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
+		var body struct {
+			Model       *string `json:"model"`
+			Effort      *string `json:"effort"`
+			RuntimeMode *string `json:"runtime_mode"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		if body.Model != nil {
+			t.Model = *body.Model
+		}
+		if body.Effort != nil {
+			t.Effort = *body.Effort
+		}
+		if body.RuntimeMode != nil {
+			if *body.RuntimeMode != "full-access" && *body.RuntimeMode != "approval-required" {
+				writeError(w, http.StatusBadRequest, "invalid_argument", "runtime_mode must be full-access or approval-required")
+				return
+			}
+			t.RuntimeMode = *body.RuntimeMode
+		}
+		out, err := s.Store.Threads().Put(r.Context(), t)
+		if err != nil {
+			writeDataError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	}))
+	// Files of the thread's folder, for @ mentions in the composer.
+	mux.HandleFunc("GET /api/threads/{id}/files", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
+		dir, err := s.Runtime.Dir(r.Context(), t.ID)
+		if err != nil {
+			writeDataError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, runtime.Files(r.Context(), dir, r.URL.Query().Get("q"), 30))
 	}))
 	mux.HandleFunc("GET /api/threads/{id}/diff", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		diff, err := s.Runtime.Diff(r.Context(), t.ID)

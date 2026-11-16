@@ -25,7 +25,8 @@ export type Thread = {
 };
 export type Role = "user" | "assistant" | "reasoning" | "tool" | "plan" | "system" | "interrupt";
 export type Message = { id: string; thread_id?: string; run_id?: string; role: Role; text: string; title?: string; detail?: string; status?: string; streaming: boolean; created_at: string };
-export type Queued = { run_id: string; text: string };
+export type Attachment = { id: string; name: string; mime: string; path: string };
+export type Queued = { run_id: string; text: string; files?: Attachment[] };
 export type ThreadView = Thread & { messages: Message[]; queue: Queued[]; running: boolean; worktree: string; local: boolean };
 export type Column = "inbox" | "ready" | "working" | "needs_you" | "in_review" | "ready_to_merge" | "done" | "cancelled";
 export type Pull = { repo: string; number: number; title: string; url: string; draft: boolean; ci: string; review_decision: string; review_requests: string[]; mergeable: string; merge_state: string; head_ref: string };
@@ -131,7 +132,18 @@ export const api = {
   threads: (filter?: Record<string, unknown>, archived = false) => req<Thread[]>("GET", "/threads" + q(filter, archived)),
   thread: (id: string) => req<ThreadView>("GET", `/threads/${id}`),
   createThread: (body: NewThread) => req<{ thread_id: string }>("POST", "/threads", body),
-  send: (id: string, text: string) => req<void>("POST", `/threads/${id}/messages`, { text }),
+  send: (id: string, text: string, files: string[] = []) => req<void>("POST", `/threads/${id}/messages`, { text, files }),
+  upload: async (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`/api/threads/${id}/attachments`, { method: "POST", credentials: "same-origin", body: form });
+    if (!res.ok) { const e = await res.json().catch(() => null); throw new ApiError(res.status, e?.error?.message ?? res.statusText); }
+    return (await res.json()) as Attachment;
+  },
+  attachmentUrl: (id: string, file: string) => `/api/threads/${id}/attachments/${file}`,
+  queue: (id: string, run: string, action: "edit" | "cancel" | "steer", text?: string) => req<void>("POST", `/threads/${id}/queue/${run}`, { action, text }),
+  threadSettings: (id: string, body: { model?: string; effort?: string; runtime_mode?: Thread["runtime_mode"] }) => req<Thread>("POST", `/threads/${id}/settings`, body),
+  threadFiles: (id: string, q: string) => req<string[]>("GET", `/threads/${id}/files?q=${encodeURIComponent(q)}`),
   interrupt: (id: string) => req<void>("POST", `/threads/${id}/interrupt`),
   threadDiff: (id: string) => req<{ diff: string; branch: string }>("GET", `/threads/${id}/diff`),
   threadAction: (id: string, body: { action: ThreadActionName; title?: string; until?: string; task_id?: string }) => req<Thread>("POST", `/threads/${id}/actions`, body),

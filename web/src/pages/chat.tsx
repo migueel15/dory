@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowDown, Brain, CaretDown, CaretRight, Check, Copy, ListChecks, Stop, TerminalWindow, Wrench } from "@phosphor-icons/react";
-import type { Message } from "../api/client";
+import { ArrowDown, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, Stop, TerminalWindow, Wrench } from "@phosphor-icons/react";
+import { api, type Attachment, type Message } from "../api/client";
 import { copyText, Md } from "../components/ui";
 
 // The look of the conversation, kept from Dory v1 (as in T3 Code): user
@@ -22,19 +22,20 @@ export const shortTime = new Intl.DateTimeFormat("es-ES", { hour: "2-digit", min
 
 // Messages lays out a conversation; running is whether its last turn is live.
 // Only messages that arrive after it mounts animate in.
-export function Messages({ messages, running }: { messages: Message[]; running: boolean }) {
+export function Messages({ threadId, messages, running }: { threadId: string; messages: Message[]; running: boolean }) {
   const initial = useRef<Set<string> | null>(null);
   if (!initial.current) initial.current = new Set(messages.map((m) => m.id));
   return <>{layout(messages, running).map((m) => "worked" in m ? <WorkedBlock key={m.id} items={m.items} secs={m.secs} live={m.live} since={m.since} />
-    : <Entry key={m.id} m={m} fresh={!initial.current?.has(m.id)} />)}</>;
+    : <Entry key={m.id} m={m} threadId={threadId} fresh={!initial.current?.has(m.id)} />)}</>;
 }
 
-export function Entry({ m, fresh = false }: { m: Message; fresh?: boolean }) {
+export function Entry({ m, threadId = "", fresh = false }: { m: Message; threadId?: string; fresh?: boolean }) {
   switch (m.role) {
     case "user":
       return (
         <div data-message className={`group flex flex-col items-end ${fresh ? "msg-in" : ""}`}>
-          <div className="max-w-[85%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-2.5 text-white shadow-sm dark:bg-accent [&_*]:!text-inherit [&_code]:!bg-white/15 [&_pre]:!border-white/15 [&_pre]:!bg-white/10 [&_pre_code]:!bg-transparent"><Md>{m.text}</Md></div>
+          {threadId && <SentFiles threadId={threadId} detail={m.detail} />}
+          {m.text && <div className="max-w-[85%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-2.5 text-white shadow-sm dark:bg-accent [&_*]:!text-inherit [&_code]:!bg-white/15 [&_pre]:!border-white/15 [&_pre]:!bg-white/10 [&_pre_code]:!bg-transparent"><Md>{m.text}</Md></div>}
           <MessageMeta m={m} />
         </div>
       );
@@ -65,6 +66,23 @@ export function Entry({ m, fresh = false }: { m: Message; fresh?: boolean }) {
         </div>
       );
   }
+}
+
+// SentFiles shows the files sent with a message, above its bubble.
+function SentFiles({ threadId, detail }: { threadId: string; detail?: string }) {
+  let files: Attachment[] = [];
+  try { files = detail ? JSON.parse(detail) : []; } catch { return null; }
+  if (!Array.isArray(files) || !files.length) return null;
+  return (
+    <div className="mb-1 flex max-w-[85%] flex-wrap justify-end gap-2">
+      {files.map((f) => {
+        const url = api.attachmentUrl(threadId, f.id);
+        return f.mime?.startsWith("image/")
+          ? <a key={f.id} href={url} target="_blank" rel="noreferrer" title={f.name} className="block overflow-hidden rounded-xl border border-slate-200 dark:border-border"><img src={url} alt={f.name} className="max-h-48 max-w-64 object-cover" /></a>
+          : <a key={f.id} href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 dark:border-border dark:text-text-secondary dark:hover:bg-raised"><FileText className="size-4" />{f.name}</a>;
+      })}
+    </div>
+  );
 }
 
 function Dots() {

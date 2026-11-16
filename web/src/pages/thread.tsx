@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { ArrowUp, Circle, CircleNotch, GitBranch, GitDiff, Kanban, ListBullets, PencilSimpleLine, PushPin, Stop, Trash, WarningCircle, XCircle } from "@phosphor-icons/react";
-import { api, type ThreadView as View } from "../api/client";
+import { Circle, CircleNotch, GitBranch, GitDiff, Kanban, PencilSimpleLine, PushPin, Quotes, Trash, WarningCircle, XCircle } from "@phosphor-icons/react";
+import { api } from "../api/client";
 import { useThreadLive } from "../api/live";
 import { Button, ErrorText, pill } from "../components/ui";
 import { Messages, ToEnd, useFollow } from "./chat";
+import { Composer, Queue, type Insert } from "./composer";
 import { ProviderIcon } from "../components/launch-picker";
 import { Diff } from "./github-diff";
 
@@ -80,80 +81,50 @@ export function ThreadChat({ threadId }: { threadId?: string }) {
   const view = useThread(threadId);
   const t = view.data;
   const { scroller, onScroll, follow, away } = useFollow([t?.messages, t?.queue]);
+  const [insert, setInsert] = useState<Insert>();
+  const quote = (text: string) => setInsert((p) => ({ text: `${text.split("\n").map((l) => `> ${l}`).join("\n")}\n\n`, seq: (p?.seq ?? 0) + 1 }));
   if (!threadId) return null;
   if (view.error) return <div className="p-4"><ErrorText error={view.error} /></div>;
   return (
     <section className="relative flex min-h-0 flex-1 flex-col">
+      <SelectionQuote box={scroller} onQuote={quote} />
       <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto py-3">
         <div className="mx-auto w-full max-w-3xl space-y-4 px-3 sm:px-6">
           {t && t.messages.length === 0 && <p className="py-10 text-center text-sm text-slate-500 dark:text-muted">Sin mensajes todavía. Escribe abajo para empezar.</p>}
-          {t && <Messages key={t.id} messages={t.messages} running={t.running} />}
-          {t && t.queue.length > 0 && (
-            <section aria-label="Mensajes en cola" className="space-y-3 border-t border-dashed border-slate-300 pt-3 dark:border-border">
-              {t.queue.map((q) => (
-                <div key={q.run_id} className="msg-in flex flex-col items-end gap-1">
-                  <div className="w-fit max-w-[85%] rounded-2xl rounded-br-md border border-dashed border-slate-400 px-4 py-2.5 text-slate-700 dark:border-border-strong dark:text-text-secondary">
-                    <p className="whitespace-pre-wrap break-words text-sm">{q.text}</p>
-                  </div>
-                </div>
-              ))}
-            </section>
-          )}
+          {t && <Messages key={t.id} threadId={t.id} messages={t.messages} running={t.running} />}
+          {t && <Queue t={t} />}
           {t && !t.local && <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">Este hilo corre en otro nodo.</p>}
         </div>
       </div>
       <ToEnd away={away} follow={follow} />
-      {t && <Composer t={t} onSent={follow} />}
+      {t && <Composer t={t} onSent={follow} insert={insert} />}
     </section>
   );
 }
 
-// Composer keeps the v1 look: a rounded box with the text on top and the
-// send or stop button at its bottom right.
-function Composer({ t, onSent }: { t: View; onSent: () => void }) {
-  const qc = useQueryClient();
-  const [text, setText] = useState("");
-  const send = useMutation({
-    mutationFn: (body: string) => api.send(t.id, body),
-    onSuccess: () => { setText(""); onSent(); qc.invalidateQueries({ queryKey: ["thread", t.id] }); },
-  });
-  const stop = useMutation({ mutationFn: () => api.interrupt(t.id) });
-  const submit = () => { if (text.trim() && !send.isPending) send.mutate(text.trim()); };
-  if (!t.local) return null;
-  const busy = t.running;
+// SelectionQuote offers to quote text selected in the conversation.
+function SelectionQuote({ box, onQuote }: { box: RefObject<HTMLDivElement | null>; onQuote: (text: string) => void }) {
+  const [at, setAt] = useState<{ x: number; y: number; text: string } | null>(null);
+  useEffect(() => {
+    const update = () => {
+      const sel = document.getSelection();
+      const text = sel?.toString().trim() ?? "";
+      const el = box.current;
+      if (!sel || !text || !el || !sel.rangeCount || !el.contains(sel.anchorNode)) { setAt(null); return; }
+      const r = sel.getRangeAt(0).getBoundingClientRect();
+      const host = el.parentElement!.getBoundingClientRect();
+      setAt({ x: r.left + r.width / 2 - host.left, y: r.top - host.top, text });
+    };
+    document.addEventListener("selectionchange", update);
+    return () => document.removeEventListener("selectionchange", update);
+  }, [box]);
+  if (!at) return null;
   return (
-    <div className="mx-auto w-full max-w-3xl px-3 pb-4 pt-2 sm:px-6">
-      <form onSubmit={(e) => { e.preventDefault(); submit(); }} className="relative z-10 rounded-3xl border border-slate-200 bg-white shadow-md dark:border-border-strong dark:bg-surface">
-        <TextareaAutosize value={text} onChange={setText} onEnter={submit} />
-        <div className="flex items-center gap-0.5 px-2 pb-2">
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 px-2 text-xs text-slate-500 dark:text-text-secondary">
-            <ProviderIcon driver={t.provider} model={t.model} /><span className="truncate">{t.model || t.provider}{t.effort && <span className="text-slate-400"> · {t.effort}</span>}</span>
-          </div>
-          {busy && !text.trim() ? (
-            <button type="button" onClick={() => stop.mutate()} disabled={stop.isPending} title="Parar el turno en curso" aria-label="Parar"
-              className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-900 text-white transition hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200">
-              <Stop weight="fill" className="size-3.5" />
-            </button>
-          ) : (
-            <button type="submit" disabled={!text.trim() || send.isPending} title={busy ? "Encolar (Enter)" : "Enviar (Enter)"} aria-label="Enviar"
-              className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-900 p-0 text-white transition hover:bg-slate-700 disabled:bg-slate-200 disabled:text-slate-400 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 dark:disabled:bg-raised dark:disabled:text-muted">
-              {send.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : busy ? <ListBullets weight="bold" className="block size-4" /> : <ArrowUp weight="bold" className="block size-4" />}
-            </button>
-          )}
-        </div>
-        {(send.error || stop.error) && <div className="px-4 pb-2"><ErrorText error={send.error ?? stop.error} /></div>}
-      </form>
-    </div>
-  );
-}
-
-function TextareaAutosize({ value, onChange, onEnter }: { value: string; onChange: (v: string) => void; onEnter: () => void }) {
-  const area = useRef<HTMLTextAreaElement>(null);
-  useLayoutEffect(() => { const el = area.current; if (el) { el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 240)}px`; } }, [value]);
-  return (
-    <textarea ref={area} rows={1} value={value} onChange={(e) => onChange(e.target.value)} aria-label="Mensaje" placeholder="Escribe al hilo…"
-      onKeyDown={(e) => { if (e.nativeEvent.isComposing) return; if (e.key === "Enter" && !e.shiftKey && window.matchMedia("(min-width: 640px)").matches) { e.preventDefault(); onEnter(); } }}
-      className="block max-h-60 w-full resize-none break-words bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 !outline-none placeholder:text-slate-400" />
+    <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onQuote(at.text); document.getSelection()?.removeAllRanges(); setAt(null); }}
+      style={{ left: at.x, top: Math.max(4, at.y - 40) }}
+      className="absolute z-30 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-md hover:bg-slate-50 dark:border-border-strong dark:bg-surface dark:text-text-secondary dark:hover:bg-raised">
+      <Quotes className="size-3.5" />Citar
+    </button>
   );
 }
 
@@ -210,7 +181,7 @@ export function ExternalView() {
         <div className="mx-auto w-full max-w-3xl space-y-4 px-3 py-3 sm:px-6">
           <ErrorText error={view.error ?? adopt.error} />
           <p className="rounded-md bg-slate-100 px-3 py-2 text-xs text-slate-600 dark:bg-raised dark:text-muted">Conversación iniciada en {provider === "claude" ? "Claude Code" : "Codex"}. Se muestra en solo lectura; al continuarla en Dory, el agente retoma la misma sesión en su carpeta.</p>
-          {view.data && <Messages messages={view.data.messages} running={false} />}
+          {view.data && <Messages threadId="" messages={view.data.messages} running={false} />}
         </div>
       </div>
     </div>
