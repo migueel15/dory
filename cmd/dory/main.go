@@ -25,6 +25,7 @@ import (
 	"github.com/migueel15/dory/internal/localdb"
 	"github.com/migueel15/dory/internal/mcp"
 	"github.com/migueel15/dory/internal/mesh"
+	"github.com/migueel15/dory/internal/notify"
 	"github.com/migueel15/dory/internal/oplog"
 	"github.com/migueel15/dory/internal/runtime"
 	"github.com/migueel15/dory/internal/skills"
@@ -123,10 +124,15 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 			}
 			return ids
 		}}
+	notices, err := notify.New(ctx, store, cfg.DataDir)
+	if err != nil {
+		return err
+	}
 	log_.OnChange = func(entity, id string) {
 		events.Changed(entity, id)
 		net.Changed()
 		reconciler.Changed(entity)
+		notices.Changed(entity, id)
 	}
 	go reconciler.Run(ctx)
 	gh := github.New(func(ctx context.Context) (map[string]string, error) { return followed(ctx, store) }, githubToken())
@@ -142,6 +148,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	}
 	mux := http.NewServeMux()
 	net.Mount(mux)
+	notices.Mount(mux)
 	srv.Register(mux)
 	auth.Register(mux, store.Accounts(), cfg)
 	mux.Handle("/mcp", mcp.Handler(srv))

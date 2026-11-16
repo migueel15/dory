@@ -11,6 +11,7 @@ import { Environments, Memories, memorySearch } from "./pages/crud";
 import { CommandPalette, CommandsButton } from "./components/commands";
 import { TooltipHost } from "./components/tooltip";
 import { ProjectSwitcher } from "./components/project-switcher";
+import { NoticesToggle } from "./components/notices";
 import { Home } from "./pages/home";
 import { Github } from "./pages/github";
 import { Tasks } from "./pages/tasks";
@@ -169,7 +170,7 @@ function Layout() {
         <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-3 pb-4">{navLinks(folded)}</nav>
         <div className="shrink-0 px-3 pb-2"><ProjectSwitcher folded={folded} /></div>
         <SidebarFooter folded={folded} username={me.data.username} onLogout={() => logout.mutate()} update={null}
-          controls={[<ThemeToggle key="t" />]} />
+          controls={[<NoticesToggle key="n" />, <ThemeToggle key="t" />]} />
       </aside>
       {/* On desktop the current view is a card framed by the sidebar background. */}
       <div className="min-w-0 flex-1 sm:my-2 sm:mr-2 sm:overflow-auto sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">
@@ -212,6 +213,7 @@ function Layout() {
         <div className="shrink-0 space-y-3 border-t border-slate-200 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-border">
           {/* Theme, settings and usage live here on phones so the top bar keeps room for the project. */}
           <div className="flex items-center gap-1 [&>*]:flex [&>*]:flex-1 [&>*]:items-center [&>*]:justify-center">
+            <NoticesToggle />
             <ThemeToggle />
           </div>
           <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 py-1 pl-3 pr-1 dark:border-border">
