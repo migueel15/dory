@@ -119,7 +119,7 @@ func (s *Server) owned(h func(http.ResponseWriter, *http.Request, data.Thread)) 
 			if s.Remote != nil && s.Remote.Forward(w, r, t.NodeID) {
 				return
 			}
-			writeError(w, http.StatusServiceUnavailable, "node_offline", "the node that runs this thread is not connected")
+			writeError(w, http.StatusServiceUnavailable, "node_offline", "el nodo que ejecuta este hilo no está conectado")
 			return
 		}
 		h(w, r, t)

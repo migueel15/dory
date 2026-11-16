@@ -52,7 +52,15 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/version", version.Handler())
 	mux.HandleFunc("GET /api/node", s.node)
 	mux.HandleFunc("GET /api/search", s.search)
-	mux.HandleFunc("GET /api/events", s.Events.serve)
+	mux.HandleFunc("GET /api/events", func(w http.ResponseWriter, r *http.Request) {
+		// The live stream of another node's thread comes from that node.
+		if id := r.URL.Query().Get("thread"); id != "" {
+			if t, err := s.Store.Threads().Get(r.Context(), id); err == nil && t.NodeID != s.Node.ID && s.Remote != nil && s.Remote.Forward(w, r, t.NodeID) {
+				return
+			}
+		}
+		s.Events.serve(w, r)
+	})
 	s.mountRepositoryPaths(mux)
 	s.mountTasks(mux)
 	s.mountThreads(mux)

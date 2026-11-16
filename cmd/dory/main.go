@@ -24,6 +24,7 @@ import (
 	"github.com/migueel15/dory/internal/github"
 	"github.com/migueel15/dory/internal/localdb"
 	"github.com/migueel15/dory/internal/mcp"
+	"github.com/migueel15/dory/internal/mesh"
 	"github.com/migueel15/dory/internal/oplog"
 	"github.com/migueel15/dory/internal/runtime"
 	"github.com/migueel15/dory/internal/version"
@@ -98,22 +99,48 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		return err
 	}
 	events := api.NewEvents(rt)
-	log_.OnChange = events.Changed
+	id, err := mesh.LoadIdentity(cfg.DataDir)
+	if err != nil {
+		return err
+	}
+	net := mesh.New(store.DB(), log_, id, cfg.NodeName, cfg.MeshPort)
+	log_.OnChange = func(entity, id string) {
+		events.Changed(entity, id)
+		net.Changed()
+	}
 	gh := github.New(func(ctx context.Context) (map[string]string, error) { return followed(ctx, store) }, githubToken())
 	srv := &api.Server{
 		Store: store, Runtime: rt, GitHub: gh, Dictation: dictationManager(), Events: events,
 		Node: api.Node{ID: log_.Node(), Name: cfg.NodeName, OS: goruntime.GOOS, Version: version.Read().Short,
 			DataDir: cfg.DataDir, Listen: cfg.Listen, Platform: goruntime.GOOS + "/" + goruntime.GOARCH},
 	}
+	srv.Remote = net
+	srv.Peers = func() any {
+		peers, _ := net.Peers(context.Background())
+		return peers
+	}
 	mux := http.NewServeMux()
+	net.Mount(mux)
 	srv.Register(mux)
 	auth.Register(mux, store.Accounts(), cfg)
 	mux.Handle("/mcp", mcp.Handler(srv))
 	mux.Handle("/", web.Handler())
 	server := &http.Server{Addr: cfg.Listen, Handler: compress.Middleware(auth.Middleware(store.Accounts(), cfg, agentToken)(mux)),
 		ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
-	done := make(chan error, 1)
+	net.API = mux
+	net.Info = func(ctx context.Context) any {
+		return map[string]any{"node": srv.Node, "providers": rt.Providers(ctx)}
+	}
+	done := make(chan error, 2)
 	go func() { done <- server.ListenAndServe() }()
+	if cfg.MeshPort > 0 {
+		go func() {
+			if err := net.Serve(ctx); err != nil {
+				done <- fmt.Errorf("mesh: %w", err)
+			}
+		}()
+		net.Run(ctx)
+	}
 	log.Printf("dory: node %s (%s) listening on %s, data in %s", cfg.NodeName, log_.Node(), cfg.Listen, cfg.DataDir)
 	select {
 	case err := <-done:

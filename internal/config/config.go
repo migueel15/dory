@@ -15,7 +15,9 @@ type Config struct {
 	Listen  string `toml:"listen"`
 	DataDir string `toml:"data_dir"`
 	// Name shown for this node in the mesh; defaults to the host name.
-	NodeName       string        `toml:"node_name"`
+	NodeName string `toml:"node_name"`
+	// MeshPort is where other nodes reach this one; 0 turns the mesh off.
+	MeshPort       int           `toml:"mesh_port"`
 	CookieSecure   bool          `toml:"cookie_secure"`
 	PublicOrigin   string        `toml:"public_origin"`
 	SessionTTL     time.Duration `toml:"-"`
@@ -27,7 +29,7 @@ type Config struct {
 func Load() (Config, error) {
 	// A desktop node serves plain HTTP on loopback; a server behind TLS sets
 	// cookie_secure.
-	c := Config{Listen: "127.0.0.1:7700", SessionTTLText: "168h"}
+	c := Config{Listen: "127.0.0.1:7700", SessionTTLText: "168h", MeshPort: 7710}
 	path := os.Getenv("DORY_CONFIG")
 	explicit := path != ""
 	if !explicit {
@@ -48,6 +50,11 @@ func Load() (Config, error) {
 	for key, target := range map[string]*string{"DORY_LISTEN": &c.Listen, "DORY_DATA_DIR": &c.DataDir, "DORY_NODE_NAME": &c.NodeName, "DORY_SESSION_TTL": &c.SessionTTLText, "DORY_PUBLIC_ORIGIN": &c.PublicOrigin} {
 		if v, ok := os.LookupEnv(key); ok {
 			*target = v
+		}
+	}
+	if v, ok := os.LookupEnv("DORY_MESH_PORT"); ok {
+		if _, err := fmt.Sscan(v, &c.MeshPort); err != nil {
+			return c, fmt.Errorf("DORY_MESH_PORT must be a number")
 		}
 	}
 	if v, ok := os.LookupEnv("DORY_COOKIE_SECURE"); ok {

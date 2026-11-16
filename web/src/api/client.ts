@@ -34,7 +34,8 @@ export type Model = { slug: string; name: string; efforts?: string[] };
 export type Provider = { id: string; name: string; installed: boolean; version: string; models: Model[]; capabilities: string[] };
 export type UsageWindow = { kind: string; utilization: number; resets_at: string };
 export type NodeInfo = { id: string; name: string; os: string; version: string; data_dir: string; listen: string; platform: string };
-export type Peer = { id: string; name: string; address: string; connected: boolean; last_seen: string; os?: string; version?: string; providers?: Provider[] };
+export type Peer = { id: string; name: string; address: string; fingerprint: string; connected: boolean; last_seen: string; revoked: boolean; info: { node?: NodeInfo; providers?: Provider[] } };
+export type Mesh = { node_id: string; fingerprint: string; port: number; peers: Peer[]; discovered: { id: string; name: string; address: string }[] };
 export type NodeStatus = { node: NodeInfo; providers: Provider[]; usage: Record<string, UsageWindow[]>; peers?: Peer[] };
 export type Hit = { entity: "task" | "memory"; id: string; title: string; rank: number; record: Task | Memory };
 export type User = { id: string; username: string };
@@ -83,6 +84,10 @@ export type ThreadActionName = "rename" | "pin" | "unpin" | "read" | "unread" | 
 
 export const api = {
   version: () => req<Version>("GET", "/version"),
+  mesh: () => req<Mesh>("GET", "/mesh"),
+  pairCode: () => req<{ code: string; expires_at: string; fingerprint: string; port: number }>("POST", "/mesh/pair/code"),
+  pair: (address: string, code: string) => req<Peer>("POST", "/mesh/pair", { address, code }),
+  revokePeer: (id: string) => req<void>("DELETE", `/mesh/peers/${id}`),
   node: () => req<NodeStatus>("GET", "/node"),
   search: (text: string) => req<Hit[]>("GET", `/search?q=${encodeURIComponent(text)}`),
   login: (username: string, password: string) => req<User>("POST", "/auth/login", { username, password }),

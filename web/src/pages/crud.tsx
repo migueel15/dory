@@ -92,50 +92,97 @@ function MemoryForm({ memory, onClose }: { memory?: Memory; onClose: () => void 
 const osIcon = (os = "") => (os === "darwin" ? AppleLogo : os === "windows" ? WindowsLogo : os === "linux" ? LinuxLogo : Desktop);
 
 // Environments lists the nodes of the mesh: this one and its peers, with
-// their harnesses (requirements RF-06, RF-07).
+// their harnesses (requirements RF-06, RF-07), and pairs new ones (RF-05).
 export function Environments() {
+  const qc = useQueryClient();
   const node = useQuery({ queryKey: ["node"], queryFn: api.node, refetchInterval: 15_000 });
+  const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh, refetchInterval: 5_000 });
+  const [code, setCode] = useState<{ code: string; expires_at: string; fingerprint: string; port: number }>();
+  const [address, setAddress] = useState("");
+  const [typed, setTyped] = useState("");
+  const open = useMutation({ mutationFn: api.pairCode, onSuccess: setCode });
+  const pair = useMutation({ mutationFn: () => api.pair(address.trim(), typed.trim()), onSuccess: () => { setAddress(""); setTyped(""); qc.invalidateQueries({ queryKey: ["mesh"] }); } });
+  const revoke = useMutation({ mutationFn: api.revokePeer, onSuccess: () => qc.invalidateQueries({ queryKey: ["mesh"] }) });
   const n = node.data;
   const OsIcon = osIcon(n?.node.os);
   return (
     <div className="space-y-3">
-      <PageHeader title="Entornos" subtitle="Los nodos de Dory en tus máquinas." />
-      <ErrorText error={node.error} />
+      <PageHeader title="Entornos" subtitle="Los nodos de Dory en tus máquinas. Se sincronizan cuando se ven." />
+      <ErrorText error={node.error ?? mesh.error} />
       {n && (
         <Card>
           <div className="flex flex-wrap items-center gap-2">
             <OsIcon className="size-5" />
             <span className="font-semibold">{n.node.name}</span>
             <StatusPill tone="green">este nodo</StatusPill>
-            <span className="font-mono text-xs text-slate-500">{n.node.platform} · {n.node.version} · {n.node.listen}</span>
+            <span className="font-mono text-xs text-slate-500">{n.node.platform} · {n.node.version} · huella {mesh.data?.fingerprint}</span>
           </div>
           <p className="mt-1 font-mono text-xs text-slate-500">id {n.node.id} · datos en {n.node.data_dir}</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {n.providers.map((p) => (
-              <div key={p.id} className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-border">
-                <ProviderIcon driver={p.id} />
-                <span className="font-medium">{p.name}</span>
-                <span className="ml-auto font-mono text-xs text-slate-500">{p.installed ? p.version || "instalado" : "no instalado"}</span>
-              </div>
-            ))}
-          </div>
+          <Providers list={n.providers} />
         </Card>
       )}
-      {(n?.peers ?? []).map((p) => {
-        const Icon = osIcon(p.os);
+      {(mesh.data?.peers ?? []).filter((p) => !p.revoked).map((p) => {
+        const Icon = osIcon(p.info.node?.os);
         return (
           <Card key={p.id}>
             <div className="flex flex-wrap items-center gap-2">
               <Icon className="size-5" />
               <span className="font-semibold">{p.name}</span>
               <StatusPill tone={p.connected ? "green" : "slate"}>{p.connected ? "conectado" : "desconectado"}</StatusPill>
-              <span className="font-mono text-xs text-slate-500">{p.address}{p.version ? ` · ${p.version}` : ""}</span>
+              <span className="font-mono text-xs text-slate-500">{p.address}{p.info.node?.version ? ` · ${p.info.node.version}` : ""} · huella {p.fingerprint}</span>
               {!p.connected && p.last_seen && <span className="text-xs text-slate-500">visto {new Date(p.last_seen).toLocaleString()}</span>}
+              <Button variant="ghost" className="ml-auto text-xs" onClick={() => confirm(`¿Revocar ${p.name}? Dejará de sincronizarse con este nodo.`) && revoke.mutate(p.id)}>Revocar</Button>
             </div>
-            {!!p.providers?.length && <p className="mt-2 flex flex-wrap gap-2 text-xs">{p.providers.filter((x) => x.installed).map((x) => <span key={x.id} className="flex items-center gap-1"><ProviderIcon driver={x.id} />{x.name} {x.version.split(" ")[0]}</span>)}</p>}
+            {p.info.providers && <Providers list={p.info.providers} />}
           </Card>
         );
       })}
+      <Card>
+        <h2 className="mb-2 font-semibold">Emparejar otro nodo</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2 text-sm">
+            <p className="text-slate-600 dark:text-muted">En este nodo: abre un código y escríbelo en el otro.</p>
+            {code ? (
+              <div className="rounded-md bg-slate-100 p-3 dark:bg-raised">
+                <p className="font-mono text-2xl tracking-widest">{code.code}</p>
+                <p className="mt-1 text-xs text-slate-500">Puerto {code.port} · huella {code.fingerprint} · caduca a las {new Date(code.expires_at).toLocaleTimeString()}</p>
+              </div>
+            ) : <Button onClick={() => open.mutate()} disabled={open.isPending}>Mostrar código</Button>}
+            <ErrorText error={open.error} />
+          </div>
+          <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); if (address.trim() && typed.trim()) pair.mutate(); }}>
+            <p className="text-sm text-slate-600 dark:text-muted">O en el otro sentido: la dirección del nodo y su código.</p>
+            <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="100.64.0.2 o servidor:7710" />
+            <Input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Código, p. ej. 1234-5678" className="font-mono" />
+            <Button disabled={!address.trim() || !typed.trim() || pair.isPending}>{pair.isPending ? "Emparejando…" : "Emparejar"}</Button>
+            <ErrorText error={pair.error} />
+          </form>
+        </div>
+        {!!mesh.data?.discovered.length && (
+          <div className="mt-3 border-t border-slate-200 pt-3 dark:border-border">
+            <p className="mb-1 text-sm font-medium">Nodos encontrados en la red</p>
+            {mesh.data.discovered.map((d) => (
+              <button key={d.id} type="button" onClick={() => setAddress(d.address)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised">
+                <Desktop className="size-4" /><span>{d.name}</span><span className="ml-auto font-mono text-xs text-slate-500">{d.address}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function Providers({ list }: { list: { id: string; name: string; installed: boolean; version: string }[] }) {
+  return (
+    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      {list.map((p) => (
+        <div key={p.id} className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-border">
+          <ProviderIcon driver={p.id} />
+          <span className="font-medium">{p.name}</span>
+          <span className="ml-auto font-mono text-xs text-slate-500">{p.installed ? p.version.split(" ")[0] || "instalado" : "no instalado"}</span>
+        </div>
+      ))}
     </div>
   );
 }

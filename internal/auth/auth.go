@@ -216,3 +216,9 @@ func sameOrigin(r *http.Request, cfg config.Config) bool {
 func cookie(cfg config.Config, value string, expires time.Time, maxAge int) *http.Cookie {
 	return &http.Cookie{Name: "dory_session", Value: value, Path: "/", HttpOnly: true, Secure: cfg.CookieSecure, SameSite: http.SameSiteLaxMode, Expires: expires, MaxAge: maxAge}
 }
+
+// AsPeer marks a request forwarded by a paired node: it acts with the rights
+// of the user of that node, which is the same person (one owner per mesh).
+func AsPeer(ctx context.Context, node string) context.Context {
+	return context.WithValue(ctx, identityKey{}, identity{user: User{ID: "peer:" + node, Username: node}, scopes: []string{"admin"}})
+}
