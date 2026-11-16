@@ -20,6 +20,9 @@ type Op struct {
 	Entity   string          `json:"entity"`
 	EntityID string          `json:"entity_id"`
 	Fields   json.RawMessage `json:"fields"`
+	// Base is the latest clock of the row that the origin node knew when it
+	// wrote. An op whose clock is above the base of another was not seen by it.
+	Base string `json:"base,omitempty"`
 }
 
 // Vector holds, per origin node, the highest sequence number known locally.
@@ -60,8 +63,12 @@ func (l *Log) Append(ctx context.Context, tx *sql.Tx, entity, id string, fields 
 	if err != nil {
 		return Op{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO ops(node_id, seq, hlc, entity, entity_id, fields) VALUES (?, ?, ?, ?, ?, ?)`,
-		op.Node, op.Seq, op.HLC, op.Entity, op.EntityID, string(op.Fields)); err != nil {
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(hlc), '') FROM ops WHERE entity = ? AND entity_id = ?`, entity, id).Scan(&op.Base)
+	if err != nil {
+		return Op{}, err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO ops(node_id, seq, hlc, entity, entity_id, fields, base) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		op.Node, op.Seq, op.HLC, op.Entity, op.EntityID, string(op.Fields), op.Base); err != nil {
 		return Op{}, err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE node_state SET hlc = ? WHERE id = 1`, op.HLC); err != nil {
@@ -96,7 +103,7 @@ func (l *Log) Since(ctx context.Context, since Vector, limit int) ([]Op, error) 
 	if err != nil {
 		return nil, err
 	}
-	rows, err := l.db.QueryContext(ctx, `SELECT node_id, seq, hlc, entity, entity_id, fields FROM ops o
+	rows, err := l.db.QueryContext(ctx, `SELECT node_id, seq, hlc, entity, entity_id, fields, base FROM ops o
 		WHERE seq > COALESCE((SELECT value FROM json_each(?) WHERE key = o.node_id), 0)
 		ORDER BY hlc LIMIT ?`, string(raw), limit)
 	if err != nil {
@@ -107,7 +114,7 @@ func (l *Log) Since(ctx context.Context, since Vector, limit int) ([]Op, error) 
 	for rows.Next() {
 		var op Op
 		var fields string
-		if err = rows.Scan(&op.Node, &op.Seq, &op.HLC, &op.Entity, &op.EntityID, &fields); err != nil {
+		if err = rows.Scan(&op.Node, &op.Seq, &op.HLC, &op.Entity, &op.EntityID, &fields, &op.Base); err != nil {
 			return nil, err
 		}
 		op.Fields = json.RawMessage(fields)

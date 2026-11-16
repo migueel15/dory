@@ -25,15 +25,18 @@ type table struct {
 	// value offline, the row with the smallest id keeps it and the others get
 	// a suffix, the same on every node.
 	unique string
+	// merge is a text column where concurrent edits keep every version: the
+	// winner first, then each text it did not see, so no text is lost.
+	merge string
 }
 
 var tables = map[string]table{
-	"project":         {"projects", []string{"id"}, []string{"slug", "name", "description", "created_at", "updated_at", "archived_at"}, "slug"},
-	"repository":      {"repositories", []string{"id"}, []string{"project_id", "remote_url", "default_branch", "created_at", "updated_at", "archived_at"}, ""},
-	"task":            {"tasks", []string{"id"}, []string{"project_id", "repository_id", "title", "description", "stage", "branch", "issue_number", "pr_number", "position", "created_at", "updated_at", "archived_at"}, ""},
-	"task_dependency": {"task_dependencies", []string{"task_id", "depends_on_id"}, []string{"created_at", "archived_at"}, ""},
-	"plan":            {"plans", []string{"id"}, []string{"task_id", "version", "sections", "open_questions", "author", "accepted_at", "created_at", "updated_at", "archived_at"}, ""},
-	"memory":          {"memories", []string{"id"}, []string{"scope", "scope_id", "kind", "title", "content", "labels", "created_at", "updated_at", "archived_at"}, ""},
+	"project":         {"projects", []string{"id"}, []string{"slug", "name", "description", "created_at", "updated_at", "archived_at"}, "slug", ""},
+	"repository":      {"repositories", []string{"id"}, []string{"project_id", "remote_url", "default_branch", "created_at", "updated_at", "archived_at"}, "", ""},
+	"task":            {"tasks", []string{"id"}, []string{"project_id", "repository_id", "title", "description", "stage", "branch", "issue_number", "pr_number", "position", "created_at", "updated_at", "archived_at"}, "", ""},
+	"task_dependency": {"task_dependencies", []string{"task_id", "depends_on_id"}, []string{"created_at", "archived_at"}, "", ""},
+	"plan":            {"plans", []string{"id"}, []string{"task_id", "version", "sections", "open_questions", "author", "accepted_at", "created_at", "updated_at", "archived_at"}, "", ""},
+	"memory":          {"memories", []string{"id"}, []string{"scope", "scope_id", "kind", "title", "content", "labels", "created_at", "updated_at", "archived_at"}, "", "content"},
 }
 
 // Write records a local change and applies it to its table in one
@@ -84,8 +87,8 @@ func (l *Log) Apply(ctx context.Context, ops []Op) error {
 		if err != nil {
 			return err
 		}
-		res, err := tx.ExecContext(ctx, `INSERT INTO ops(node_id, seq, hlc, entity, entity_id, fields) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
-			op.Node, op.Seq, op.HLC, op.Entity, op.EntityID, string(op.Fields))
+		res, err := tx.ExecContext(ctx, `INSERT INTO ops(node_id, seq, hlc, entity, entity_id, fields, base) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+			op.Node, op.Seq, op.HLC, op.Entity, op.EntityID, string(op.Fields), op.Base)
 		if err != nil {
 			return err
 		}
@@ -129,14 +132,16 @@ func (l *Log) begin(ctx context.Context) (*sql.Tx, error) {
 // value of the latest operation, by clock, that set it.
 func materialize(ctx context.Context, tx *sql.Tx, entity, id string) error {
 	t := tables[entity]
-	rows, err := tx.QueryContext(ctx, `SELECT fields FROM ops WHERE entity = ? AND entity_id = ? ORDER BY hlc`, entity, id)
+	rows, err := tx.QueryContext(ctx, `SELECT fields, hlc, base FROM ops WHERE entity = ? AND entity_id = ? ORDER BY hlc`, entity, id)
 	if err != nil {
 		return err
 	}
 	values := map[string]any{}
+	var versions []version
 	for rows.Next() {
 		var raw string
-		if err = rows.Scan(&raw); err != nil {
+		var v version
+		if err = rows.Scan(&raw, &v.hlc, &v.base); err != nil {
 			rows.Close()
 			return err
 		}
@@ -150,10 +155,17 @@ func materialize(ctx context.Context, tx *sql.Tx, entity, id string) error {
 		for name, v := range fields {
 			values[name] = v
 		}
+		if text, ok := fields[t.merge].(string); ok && t.merge != "" {
+			v.text = text
+			versions = append(versions, v)
+		}
 	}
 	rows.Close()
 	if err = rows.Err(); err != nil {
 		return err
+	}
+	if len(versions) > 1 {
+		values[t.merge] = merged(versions)
 	}
 
 	keys := strings.Split(id, "/")
@@ -277,4 +289,21 @@ func RepositoryID(remote string) string {
 	sum[6] = sum[6]&0x0f | 0x50 // version 5
 	sum[8] = sum[8]&0x3f | 0x80 // RFC 4122 variant
 	return fmt.Sprintf("%x-%x-%x-%x-%x", sum[0:4], sum[4:6], sum[6:8], sum[8:10], sum[10:16])
+}
+
+type version struct{ hlc, base, text string }
+
+// merged returns the latest text followed by the texts written concurrently
+// with it, oldest first. A later edit made after seeing them replaces them.
+func merged(versions []version) string {
+	winner := versions[len(versions)-1]
+	out := winner.text
+	seen := map[string]bool{winner.text: true}
+	for _, v := range versions[:len(versions)-1] {
+		if v.hlc > winner.base && !seen[v.text] {
+			seen[v.text] = true
+			out += "\n\n---\nVersión en conflicto:\n\n" + v.text
+		}
+	}
+	return out
 }

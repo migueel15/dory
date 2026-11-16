@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/migueel15/dory/internal/localdb"
@@ -193,5 +194,40 @@ func TestSameRepositoryFromTwoNodesIsOneRow(t *testing.T) {
 	}
 	if _, err := a.Write(context.Background(), "repository", "other", map[string]any{"remote_url": "https://github.com/x/y"}); err == nil {
 		t.Fatal("repository id not derived from remote accepted")
+	}
+}
+
+func memory(t *testing.T, db *sql.DB) string {
+	t.Helper()
+	var content string
+	if err := db.QueryRow(`SELECT content FROM memories WHERE id = 'm1'`).Scan(&content); err != nil {
+		t.Fatal(err)
+	}
+	return content
+}
+
+func TestConcurrentMemoryEditsKeepBothTexts(t *testing.T) {
+	dbA, a := node(t)
+	dbB, b := node(t)
+	now := "2026-11-16T00:00:00Z"
+	write(t, a, "memory", "m1", map[string]any{"scope": "global", "content": "base", "created_at": now, "updated_at": now})
+	sync(t, a, b)
+	write(t, a, "memory", "m1", map[string]any{"content": "texto de A"})
+	write(t, b, "memory", "m1", map[string]any{"content": "texto de B"})
+	sync(t, a, b)
+	sync(t, b, a)
+	got := memory(t, dbA)
+	if got != memory(t, dbB) {
+		t.Fatalf("diverged:\n%s\n---\n%s", got, memory(t, dbB))
+	}
+	if !strings.Contains(got, "texto de A") || !strings.Contains(got, "texto de B") || strings.Contains(got, "base") {
+		t.Fatalf("lost or stale text:\n%s", got)
+	}
+
+	// Saving after seeing the conflict resolves it.
+	write(t, a, "memory", "m1", map[string]any{"content": "resuelto"})
+	sync(t, a, b)
+	if got = memory(t, dbB); got != "resuelto" {
+		t.Fatalf("conflict not resolved: %q", got)
 	}
 }

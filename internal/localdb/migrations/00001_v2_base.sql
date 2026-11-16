@@ -152,7 +152,9 @@ CREATE TABLE api_tokens (
 
 -- Operation log: every change to a replicated row, in the order of its
 -- origin node. fields holds only the changed columns. Ops from other nodes are
--- stored as received so they can be passed on.
+-- stored as received so they can be passed on. base is the latest clock of
+-- the same row known to the origin node when it wrote, to tell concurrent
+-- edits from later ones.
 CREATE TABLE ops (
   node_id text NOT NULL,
   seq integer NOT NULL CHECK (seq > 0),
@@ -160,6 +162,7 @@ CREATE TABLE ops (
   entity text NOT NULL,
   entity_id text NOT NULL,
   fields text NOT NULL CHECK (json_type(fields) = 'object'),
+  base text NOT NULL DEFAULT '',
   PRIMARY KEY (node_id, seq)
 );
 CREATE INDEX ops_entity_idx ON ops(entity, entity_id, hlc);
