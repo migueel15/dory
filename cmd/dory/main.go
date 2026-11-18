@@ -141,6 +141,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	gh := github.New(func(ctx context.Context) (map[string]string, error) { return followed(ctx, store) }, githubToken())
 	srv := &api.Server{
 		Store: store, Runtime: rt, GitHub: gh, Dictation: dictationManager(), Events: events,
+		SpeechModels: dictation.NewLocalModels(ctx, filepath.Join(cfg.DataDir, "dictation-models"), os.Getenv("DORY_NEMO_SPEECH_BIN")),
 		Node: api.Node{ID: log_.Node(), Name: cfg.NodeName, OS: goruntime.GOOS, Version: version.Read().Short,
 			DataDir: cfg.DataDir, Listen: cfg.Listen, Platform: goruntime.GOOS + "/" + goruntime.GOARCH},
 	}

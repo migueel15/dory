@@ -1,8 +1,10 @@
+import { DictationField } from "../components/dictation-field";
+import { useDictationInProgress } from "../components/local-dictation";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { api, repoName } from "../api/client";
-import { Button, ErrorText, Input, Label, Modal, Textarea } from "../components/ui";
+import { Button, ErrorText, Input, Label, Modal } from "../components/ui";
 import { useLaunchForm } from "../components/launch-picker";
 
 // DefineIssueDialog turns an issue into tasks, by hand or with an agent that
@@ -10,6 +12,7 @@ import { useLaunchForm } from "../components/launch-picker";
 // conflicts (resolve).
 export function DefineIssueDialog({ resolve = false, repo, number, onClose }: { resolve?: boolean; repo: string; number: number; onClose: () => void }) {
   const navigate = useNavigate();
+  const dictating = useDictationInProgress();
   const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list() });
   const registered = repos.data?.find((r) => repoName(r.remote_url).toLowerCase() === repo.toLowerCase());
   const form = useLaunchForm({ section: resolve ? "resolve" : "define-issue" });
@@ -43,8 +46,8 @@ export function DefineIssueDialog({ resolve = false, repo, number, onClose }: { 
           <section className="space-y-2 border-t border-slate-200 pt-3 dark:border-border">
             <h3 className="text-sm font-semibold">O crea una tarea a mano</h3>
             <Label text="Título"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={`Issue #${number}`} /></Label>
-            <Label text="Descripción"><Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} /></Label>
-            <Button variant="ghost" onClick={() => manual.mutate()} disabled={manual.isPending}>Crear tarea</Button>
+            <DictationField label="Descripción" rows={3} value={description} onValue={setDescription} />
+            <Button variant="ghost" onClick={() => manual.mutate()} disabled={dictating || manual.isPending}>Crear tarea</Button>
             <ErrorText error={manual.error} />
           </section>
         )}

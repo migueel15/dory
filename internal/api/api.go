@@ -32,12 +32,13 @@ type Node struct {
 
 // Server holds what the handlers need.
 type Server struct {
-	Store     *data.Store
-	Runtime   *runtime.Manager
-	GitHub    *github.Client
-	Dictation *dictation.Manager
-	Node      Node
-	Events    *Events
+	Store        *data.Store
+	Runtime      *runtime.Manager
+	GitHub       *github.Client
+	Dictation    *dictation.Manager
+	SpeechModels *dictation.LocalModels
+	Node         Node
+	Events       *Events
 	// Peers lists the other nodes of the mesh; nil until the mesh starts.
 	Peers func() any
 	// Remote forwards thread calls to the node that owns the thread.
@@ -131,6 +132,8 @@ func writeDataError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "not_found", err.Error())
 	case errors.Is(err, data.ErrInvalid), errors.Is(err, runtime.ErrProvider):
 		writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+	case errors.Is(err, runtime.ErrBusy):
+		writeError(w, http.StatusConflict, "thread_busy", err.Error())
 	case errors.Is(err, runtime.ErrRemote):
 		writeError(w, http.StatusConflict, "remote", err.Error())
 	default:

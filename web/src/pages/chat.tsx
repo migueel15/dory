@@ -1,9 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, Stop, TerminalWindow, Wrench } from "@phosphor-icons/react";
-import { api, type Attachment, type Message } from "../api/client";
+import { ArrowDown, ArrowRight, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, Stop, TerminalWindow, WarningCircle, Wrench, X } from "@phosphor-icons/react";
+import { api, type Attachment, type Message, type TurnModel } from "../api/client";
 import { copyText, defaultUrlTransform, Md } from "../components/ui";
 import { TokenChip, tokenize, type TokenKind } from "../components/composer-tokens";
+import { claudeModelName } from "../components/model-label";
+import { splitMessageQuotes } from "../components/message-quotes";
+import { ModelLogo } from "../components/model-logo";
 import { rehypeFade, useSmoothText } from "../components/stream";
+import { GroupCard, isAsk, TodoCard, ToolCard } from "../components/tool-card";
+import { QuestionCard } from "../components/question-card";
 
 // The look of the conversation, kept from Dory v1 (as in T3 Code): user
 // bubbles, answers as plain markdown, and each finished turn's work folded
@@ -24,20 +29,44 @@ export const shortTime = new Intl.DateTimeFormat("es-ES", { hour: "2-digit", min
 
 // Messages lays out a conversation; running is whether its last turn is live.
 // Only messages that arrive after it mounts animate in.
-export function Messages({ threadId, messages, running }: { threadId: string; messages: Message[]; running: boolean }) {
+const offscreen = { contentVisibility: "auto", containIntrinsicSize: "auto 160px" } as const;
+
+export function Messages({ threadId, messages: all, running }: { threadId: string; messages: Message[]; running: boolean }) {
   const initial = useRef<Set<string> | null>(null);
-  if (!initial.current) initial.current = new Set(messages.map((m) => m.id));
-  return <>{layout(messages, running).map((m) => "worked" in m ? <WorkedBlock key={m.id} items={m.items} secs={m.secs} live={m.live} since={m.since} />
-    : <Entry key={m.id} m={m} threadId={threadId} fresh={!initial.current?.has(m.id)} />)}</>;
+  if (!initial.current) initial.current = new Set(all.map((m) => m.id));
+  // The ask_user call holds the question and survives the resync from the
+  // harness's session file; the question message Dory saved does not, so
+  // when the call is there it is the one shown.
+  const messages = useMemo(() => {
+    const ms = latestTodos(all);
+    return ms.some(isAsk) ? ms.filter((m) => m.role !== "question") : ms;
+  }, [all]);
+  // A question is open while nothing the user sent came after it.
+  let openQuestion: string | undefined;
+  for (const m of messages) openQuestion = m.role === "user" ? undefined : m.role === "question" || isAsk(m) ? m.id : openQuestion;
+  // Messages off screen skip layout and paint (content-visibility), so a long
+  // conversation does not reflow whole while the side panel slides its width.
+  // "auto" keeps each one's last real height, so scrolling stays the same.
+  return <>{layout(messages, running).map((m) => <div key={m.id} style={offscreen}>{"worked" in m ? <WorkedBlock items={m.items} secs={m.secs} live={m.live} since={m.since} />
+    : <Entry m={m} threadId={threadId} fresh={!initial.current?.has(m.id)} openQuestion={m.id === openQuestion} />}</div>)}</>;
 }
 
-export function Entry({ m, threadId = "", fresh = false }: { m: Message; threadId?: string; fresh?: boolean }) {
+// latestTodos keeps, of a turn's task lists, only the last: each update of the
+// list is a new call, and the chat shows the list once, updated in place.
+function latestTodos(ms: Message[]): Message[] {
+  const last = new Map<string, string>();
+  for (const m of ms) if (m.tool?.kind === "todo") last.set(m.run_id ?? "", m.id);
+  if (!last.size) return ms;
+  return ms.filter((m) => m.tool?.kind !== "todo" || last.get(m.run_id ?? "") === m.id);
+}
+
+export function Entry({ m, threadId = "", fresh = false, openQuestion = false }: { m: Message; threadId?: string; fresh?: boolean; openQuestion?: boolean }) {
   switch (m.role) {
     case "user":
       return (
         <div data-message className={`group flex flex-col items-end ${fresh ? "msg-in" : ""}`}>
           {threadId && <SentFiles threadId={threadId} detail={m.detail} />}
-          {m.text && <div className="max-w-[85%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-2.5 text-white shadow-sm dark:bg-accent [&_*]:!text-inherit [&_code]:!bg-white/15 [&_pre]:!border-white/15 [&_pre]:!bg-white/10 [&_pre_code]:!bg-transparent"><Md urlTransform={keepToken} components={tokenLinks}>{tokenize(m.text)}</Md></div>}
+          {m.text && <UserMessageBody text={m.text} />}
           <MessageMeta m={m} />
         </div>
       );
@@ -51,9 +80,14 @@ export function Entry({ m, threadId = "", fresh = false }: { m: Message; threadI
     case "reasoning":
       return <Reasoning m={m} />;
     case "tool":
-      return <StepLine run={[m]} />;
+      if (isAsk(m)) return <QuestionCard m={m} threadId={threadId} open={openQuestion && !!threadId} />;
+      return m.tool ? <ToolCard m={m} /> : <StepLine run={[m]} />;
     case "plan":
-      return <PlanCard m={m} />;
+      return m.tool?.kind === "todo" ? <TodoCard m={m} /> : <PlanCard m={m} />;
+    case "question":
+      return <QuestionCard m={m} threadId={threadId} open={openQuestion && !!threadId} />;
+    case "model-change":
+      return <ModelChangeDivider change={readModelChange(m.detail)} />;
     case "interrupt":
       return (
         <div role="separator" className="flex items-center gap-3 text-[11px] font-medium uppercase tracking-wide text-slate-400">
@@ -61,13 +95,71 @@ export function Entry({ m, threadId = "", fresh = false }: { m: Message; threadI
         </div>
       );
     default:
+      // A failed turn reads as an alert, not as fine print.
+      if (m.status === "failed") return (
+        <div data-message role="alert" className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+          <WarningCircle weight="fill" className="mt-0.5 size-4 shrink-0" />
+          <div className="min-w-0 flex-1 [&_*]:!text-inherit"><p className="font-medium">{m.title || "El turno falló"}</p><Md>{m.text}</Md></div>
+        </div>
+      );
       return (
-        <div data-message className={`text-xs ${m.status === "failed" ? "text-red-600 dark:text-red-400" : "text-slate-500 dark:text-muted"}`}>
+        <div data-message className="text-xs text-slate-500 dark:text-muted">
           {m.title && <p className="font-medium">{m.title}</p>}
           <Md>{m.text}</Md>
         </div>
       );
   }
+}
+
+type ModelChange = { from: TurnModel; to: TurnModel; handoff: boolean };
+const providerLabels: Record<string, string> = { claude: "Claude Code", codex: "Codex", opencode: "OpenCode", replay: "Reproducción" };
+
+function readModelChange(detail?: string): ModelChange | undefined {
+  try {
+    const change = JSON.parse(detail ?? "") as ModelChange | null;
+    return change?.from && change.to ? change : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function transitionLabel(model: TurnModel, fallback: string) {
+  const provider = providerLabels[model.provider] ?? model.provider;
+  const id = model.reported_model || model.model;
+  const name = id && id !== "default" ? claudeModelName(id) ?? id.replace(/^gpt-/, "GPT-") : fallback;
+  return { provider, name };
+}
+
+export function ModelChangeDivider({ change, pending = false }: { change?: ModelChange; pending?: boolean }) {
+  if (!change) return null;
+  const from = transitionLabel(change.from, "Modelo anterior");
+  const to = transitionLabel(change.to, "Modelo configurado");
+  const caption = pending
+    ? (change.handoff ? "Traspaso de contexto pendiente" : "Cambio de modelo pendiente")
+    : change.handoff ? "Contexto transferido" : "";
+  const rule = pending ? "border-t border-dashed border-slate-300 dark:border-border-strong" : "border-t border-slate-200 dark:border-border";
+  return (
+    <div role="separator"
+      aria-label={`Cambio de modelo de ${from.provider} ${from.name} a ${to.provider} ${to.name}${caption ? `. ${caption}` : ""}`}
+      className="my-5 flex items-center gap-3 text-center text-xs text-slate-600 dark:text-muted">
+      <span className={`min-w-3 flex-1 ${rule}`} />
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+          <span title={from.provider} className="inline-flex items-center gap-1">
+            <ModelLogo driver={change.from.provider} />
+            {from.name}
+          </span>
+          <ArrowRight weight="thin" aria-hidden="true" className="size-3.5 shrink-0" />
+          <span title={to.provider} className="inline-flex items-center gap-1 font-medium text-slate-800 dark:text-text">
+            <ModelLogo driver={change.to.provider} />
+            {to.name}
+          </span>
+        </div>
+        {caption && <p className="mt-1 text-[11px]">{caption}</p>}
+      </div>
+      <span className={`min-w-3 flex-1 ${rule}`} />
+    </div>
+  );
 }
 
 // Answer is the model's reply, rendered as in Claude: serif prose that, while
@@ -99,20 +191,69 @@ const tokenLinks = {
   },
 };
 
+// MessageParts renders a user message, with its quotes as a bar on the left.
+export function MessageParts({ text }: { text: string }) {
+  return <>{splitMessageQuotes(text).map((part, index) => part.kind === "quote" ? (
+    <blockquote key={index} className="min-w-0 whitespace-pre-wrap break-words border-l-2 border-slate-300 pl-2.5 text-sm leading-relaxed text-slate-600 dark:border-border-strong dark:text-muted">
+      {part.text}
+    </blockquote>
+  ) : (
+    // Same size and line height as the answers.
+    <div key={index} className="[&>div]:!text-[16px] [&>div]:!leading-[1.7]"><Md urlTransform={keepToken} components={tokenLinks}>{tokenize(part.text)}</Md></div>
+  ))}</>;
+}
+
+function UserMessageBody({ text }: { text: string }) {
+  const parts = splitMessageQuotes(text);
+  const hasQuotes = parts.some((part) => part.kind === "quote");
+  if (!hasQuotes) {
+    return (
+      <div className="max-w-[85%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-2.5 text-white shadow-sm dark:bg-accent [&_*]:!text-inherit [&_code]:!bg-white/15 [&_pre]:!border-white/15 [&_pre]:!bg-white/10 [&_pre_code]:!bg-transparent">
+        <MessageParts text={text} />
+      </div>
+    );
+  }
+  return (
+    <div className="flex max-w-[85%] flex-col rounded-2xl rounded-br-md bg-slate-100 px-4 py-2.5 dark:bg-raised">
+      <MessageParts text={text} />
+    </div>
+  );
+}
+
 // SentFiles shows the files sent with a message, above its bubble.
 function SentFiles({ threadId, detail }: { threadId: string; detail?: string }) {
+  const [image, setImage] = useState<Attachment>();
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (image && dialog.current && !dialog.current.open) dialog.current.showModal();
+  }, [image]);
   let files: Attachment[] = [];
   try { files = detail ? JSON.parse(detail) : []; } catch { return null; }
   if (!Array.isArray(files) || !files.length) return null;
   return (
-    <div className="mb-1 flex max-w-[85%] flex-wrap justify-end gap-2">
-      {files.map((f) => {
-        const url = api.attachmentUrl(threadId, f.id);
-        return f.mime?.startsWith("image/")
-          ? <a key={f.id} href={url} target="_blank" rel="noreferrer" title={f.name} className="block overflow-hidden rounded-xl border border-slate-200 dark:border-border"><img src={url} alt={f.name} className="max-h-48 max-w-64 object-cover" /></a>
-          : <a key={f.id} href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 dark:border-border dark:text-text-secondary dark:hover:bg-raised"><FileText className="size-4" />{f.name}</a>;
-      })}
-    </div>
+    <>
+      <div className="mb-1 flex max-w-[85%] flex-wrap justify-end gap-2">
+        {files.map((f) => {
+          const url = api.attachmentUrl(threadId, f.id);
+          return f.mime?.startsWith("image/")
+            ? <button key={f.id} type="button" onClick={() => setImage(f)} title={f.name} aria-label={`Ampliar ${f.name}`} className="max-w-full cursor-zoom-in overflow-hidden rounded-xl border border-slate-200 dark:border-border">
+              <img src={url} alt={f.name} className="max-h-48 w-auto max-w-full sm:max-w-64" />
+            </button>
+            : <a key={f.id} href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 dark:border-border dark:text-text-secondary dark:hover:bg-raised"><FileText className="size-4" />{f.name}</a>;
+        })}
+      </div>
+      {image && (
+        <dialog ref={dialog} aria-label={image.name} onClose={() => setImage(undefined)}
+          onClick={(event) => { if (event.target === event.currentTarget) event.currentTarget.close(); }}
+          className="m-auto max-h-[92dvh] max-w-[94vw] overflow-hidden rounded-xl bg-white text-slate-900 backdrop:bg-black/75 dark:bg-surface dark:text-text">
+          <div className="flex items-center justify-between gap-4 px-3 py-2">
+            <span className="min-w-0 truncate text-sm">{image.name}</span>
+            <button type="button" aria-label="Cerrar imagen" onClick={() => dialog.current?.close()} className={`${iconBtn} shrink-0`}><X className="size-4" /></button>
+          </div>
+          <img src={api.attachmentUrl(threadId, image.id)} alt={image.name} className="max-h-[82dvh] max-w-full object-contain" />
+        </dialog>
+      )}
+    </>
   );
 }
 
@@ -192,7 +333,11 @@ const shells = new Set(["Bash", "command execution", "exec_command", "shell", "b
 
 // stepKind says which steps share a line: consecutive thoughts, commands,
 // notes or calls to the same tool show as one line that updates in place.
-const stepKind = (m: Message) => m.role === "assistant" ? "note" : m.role === "reasoning" ? "think" : shells.has(m.title ?? "") ? "cmd" : `tool:${m.title}`;
+// Calls in Dory's terms (m.tool) group only reads and searches; each other
+// call is its own card.
+const stepKind = (m: Message) => m.role === "assistant" ? "note" : m.role === "reasoning" ? "think"
+  : m.tool ? (m.tool.kind === "read" || m.tool.kind === "search" ? `group:${m.tool.kind}` : `call:${m.id}`)
+  : shells.has(m.title ?? "") ? "cmd" : `tool:${m.title}`;
 
 function stepRuns(items: Message[]): Message[][] {
   const out: Message[][] = [];
@@ -210,6 +355,12 @@ const oneLine = (t = "") => t.replace(/[`*_#>]/g, "").replace(/\s+/g, " ").trim(
 // StepLine is a run of steps of one kind: an icon and one line with the latest
 // step. A click opens every step of the run in full.
 export function StepLine({ run }: { run: Message[] }) {
+  if (run[0].tool) return run[0].tool.kind === "read" || run[0].tool.kind === "search" ? <GroupCard run={run} /> : <ToolCard m={run[0]} />;
+  return <LegacyStep run={run} />;
+}
+
+// LegacyStep draws steps saved before calls carried their Dory kind.
+function LegacyStep({ run }: { run: Message[] }) {
   const [open, setOpen] = useState(false);
   const m = run[run.length - 1];
   const kind = stepKind(m);
@@ -244,7 +395,8 @@ type Worked = { worked: true; id: string; items: Message[]; secs: number; live?:
 // for…" entry; the turn still running shows its steps as they come.
 function layout(ms: Message[], live: boolean): (Message | Worked)[] {
   const out: (Message | Worked)[] = [];
-  const isWork = (m: Message) => m.role === "reasoning" || m.role === "tool" || m.role === "assistant";
+  // A question stays out of the folded work: it is for the user to answer.
+  const isWork = (m: Message) => m.role === "reasoning" || (m.role === "tool" && !isAsk(m)) || m.role === "assistant";
   let start = 0;
   const flush = (end: number, last: boolean) => {
     const seg = ms.slice(start, end);
@@ -269,7 +421,7 @@ function layout(ms: Message[], live: boolean): (Message | Worked)[] {
   };
   let run = "";
   ms.forEach((m, i) => {
-    if (i > start && (m.role === "user" || (m.run_id && run && m.run_id !== run))) { flush(i, false); start = i; run = ""; }
+    if (i > start && (m.role === "user" || m.role === "model-change" || (m.run_id && run && m.run_id !== run))) { flush(i, false); start = i; run = ""; }
     if (m.run_id) run = m.run_id;
   });
   flush(ms.length, true);

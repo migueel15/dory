@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { Message, Queued, ThreadView } from "./client";
+import type { Message, Queued, ThreadView, TurnModel } from "./client";
 
 // useVisible tracks whether this tab is on screen. Live streams only stay open
 // while it is: over plain HTTP a browser allows about six connections per host.
@@ -25,7 +25,7 @@ const keys: Record<string, string[]> = {
   thread: ["threads", "board", "card", "thread"],
 };
 
-type Update = { thread_id: string; message?: Message; status?: string; error?: string; queue?: Queued[]; reload?: boolean };
+type Update = { thread_id: string; message?: Message; status?: string; error?: string; queue?: Queued[]; reload?: boolean; last_turn_model?: TurnModel };
 
 // useLiveUpdates subscribes to the node event stream and invalidates the
 // affected queries, batching bursts so a sync triggers one refetch.
@@ -80,6 +80,7 @@ export function useThreadLive(threadId: string | undefined) {
           next.running = u.status === "working";
         }
         if (u.queue) next.queue = u.queue;
+        if (u.last_turn_model) next.last_turn_model = u.last_turn_model;
         return next;
       });
     });

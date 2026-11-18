@@ -1,8 +1,11 @@
+import { DictationField } from "../components/dictation-field";
+import { useDictationInProgress } from "../components/local-dictation";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "@phosphor-icons/react";
 import { api, type Skill, type SkillState } from "../api/client";
-import { Button, Card, ErrorText, Input, Label, Modal, PageHeader, StatusPill, Textarea, type Tone } from "../components/ui";
+import { Button, Card, ErrorText, Input, Label, Modal, PageHeader, StatusPill, type Tone } from "../components/ui";
+import { askConfirm } from "../components/confirm";
 
 const HARNESSES = [["claude", "Claude Code"], ["codex", "Codex"], ["opencode", "OpenCode"]] as const;
 const STATE: Record<SkillState["status"], [string, Tone]> = {
@@ -50,6 +53,7 @@ export function Skills() {
 
 function SkillForm({ skill, nodes, onClose }: { skill?: Skill; nodes: { id: string; name: string }[]; onClose: () => void }) {
   const qc = useQueryClient();
+  const dictating = useDictationInProgress();
   const [s, setS] = useState<Partial<Skill>>(skill ?? { name: "", description: "", body_md: "", files: {}, targets: { nodes: [], harnesses: [] } });
   const toggle = (key: "nodes" | "harnesses", v: string) => {
     const list = s.targets?.[key] ?? [];
@@ -59,12 +63,12 @@ function SkillForm({ skill, nodes, onClose }: { skill?: Skill; nodes: { id: stri
   const archive = useMutation({ mutationFn: () => api.archiveSkill(skill!.id), onSuccess: () => { qc.invalidateQueries({ queryKey: ["skills"] }); onClose(); } });
   return (
     <Modal title={skill ? `Skill ${skill.name}` : "Nueva skill"} onClose={onClose} wide>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (!dictating) save.mutate(); }}>
         <div className="grid gap-2 sm:grid-cols-2">
           <Label text="Nombre (kebab-case)"><Input value={s.name ?? ""} onChange={(e) => setS({ ...s, name: e.target.value })} className="font-mono" /></Label>
-          <Label text="Descripción"><Input value={s.description ?? ""} onChange={(e) => setS({ ...s, description: e.target.value })} /></Label>
+          <DictationField label="Descripción" rows={1} value={s.description ?? ""} onValue={(description) => setS((current) => ({ ...current, description }))} />
         </div>
-        <Label text="Instrucciones (SKILL.md, sin frontmatter)"><Textarea rows={14} value={s.body_md ?? ""} onChange={(e) => setS({ ...s, body_md: e.target.value })} className="font-mono !text-xs" /></Label>
+        <DictationField label="Instrucciones (SKILL.md, sin frontmatter)" rows={14} value={s.body_md ?? ""} onValue={(body_md) => setS((current) => ({ ...current, body_md }))} className="font-mono !text-xs" />
         <fieldset className="text-sm">
           <legend className="mb-1 font-medium">Agentes <span className="text-xs text-slate-500">(ninguno marcado = todos)</span></legend>
           <div className="flex flex-wrap gap-3">{HARNESSES.map(([id, label]) => <label key={id} className="flex items-center gap-1.5"><input type="checkbox" checked={!!s.targets?.harnesses?.includes(id)} onChange={() => toggle("harnesses", id)} />{label}</label>)}</div>
@@ -75,8 +79,8 @@ function SkillForm({ skill, nodes, onClose }: { skill?: Skill; nodes: { id: stri
         </fieldset>
         <ErrorText error={save.error ?? archive.error} />
         <div className="flex gap-2">
-          <Button disabled={!s.name || save.isPending}>Guardar</Button>
-          {skill && <Button type="button" variant="ghost" className="ml-auto" onClick={() => confirm("¿Archivar la skill? Se desinstala de todos los nodos.") && archive.mutate()}>Archivar</Button>}
+          <Button disabled={dictating || !s.name || save.isPending}>Guardar</Button>
+          {skill && <Button type="button" variant="ghost" className="ml-auto" onClick={() => askConfirm("¿Archivar la skill? Se desinstala de todos los nodos.", "Archivar").then((ok) => ok && archive.mutate())}>Archivar</Button>}
         </div>
       </form>
     </Modal>

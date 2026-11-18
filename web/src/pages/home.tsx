@@ -1,11 +1,14 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowUp, ClipboardText, GitBranch } from "@phosphor-icons/react";
-import { api, COLUMN_LABELS } from "../api/client";
-import { Button, ErrorText, Select, Textarea } from "../components/ui";
+import { ArrowUp, ClipboardText, Folder, GitBranch } from "@phosphor-icons/react";
+import { api, COLUMN_LABELS, type LaunchChoice } from "../api/client";
+import { DictationMic, DictationPreview, useLocalDictation } from "../components/local-dictation";
+import { ErrorText, iconButton } from "../components/ui";
 import { useLaunchForm, ProviderIcon } from "../components/launch-picker";
+import { modelEffort, modelId } from "../effort";
 import { useProject } from "../project";
+import { Chip, ModelPicker, composerArea, composerFrame, runtimeModes } from "./composer";
 import { StatusDot } from "./thread";
 
 // definePrompt turns a chat into the definition of a task (requirement 13.3).
@@ -23,13 +26,15 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
   const [text, setText] = useState("");
   const [plan, setPlan] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
+  const dictation = useLocalDictation(text, setText, box, { panelShortcut: true, onEnter: (draft) => latestSendDraft.current(draft) });
+  const showingDictation = !!dictation.preview;
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const form = useLaunchForm({ section: "home" });
-  useLayoutEffect(() => { const el = box.current; if (el) { el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 400)}px`; } }, [text]);
+  useLayoutEffect(() => { const el = box.current; if (el && !showingDictation) { el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 240)}px`; } }, [dictation.value, showingDictation]);
   const start = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (draft: string) => {
       form.remember();
-      const body = text.trim();
+      const body = draft.trim();
       if (plan) {
         const task = await api.tasks.create({ project_id: project || null, title: body.split("\n")[0].slice(0, 80), description: body });
         return api.createThread({ ...form.value, project_id: project || null, task_id: task.id, title: `Definir: ${task.title}`, text: definePrompt(task.id, body) });
@@ -38,28 +43,67 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
     },
     onSuccess: (r) => { setText(""); onCreated(r.thread_id); },
   });
-  const submit = () => { if (text.trim() && form.ready && !start.isPending) start.mutate(); };
+  const sendDraft = (draft: string) => {
+    if (draft.trim() && form.ready && !start.isPending) start.mutate(draft);
+  };
+  const latestSendDraft = useRef(sendDraft);
+  useLayoutEffect(() => { latestSendDraft.current = sendDraft; });
+  const submit = () => { if (!dictation.active) sendDraft(text); };
+  const models = form.providers.flatMap((provider) =>
+    provider.models.map((model) => ({
+      value: JSON.stringify([provider.id, modelId(model)]),
+      label: model.name,
+      modelId: modelId(model),
+      icon: <ProviderIcon driver={provider.id} model={model.slug} />,
+      provider: provider.id,
+      model,
+    })),
+  );
   return (
     <div className="space-y-2">
-      <div className="rounded-2xl border border-slate-300 bg-white p-3 shadow-sm focus-within:border-slate-500 dark:border-border dark:bg-surface">
-        <Textarea bare ref={box} rows={3} autoFocus value={text} onChange={(e) => setText(e.target.value)} aria-label="Mensaje"
+      <form data-dictation-panel className={composerFrame} onSubmit={(e) => { e.preventDefault(); submit(); }}>
+        {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} className="min-h-16" />}
+        <textarea ref={box} data-dictation-disabled={start.isPending || undefined} rows={2} autoFocus value={dictation.value} readOnly={dictation.active} onChange={(e) => setText(e.target.value)} aria-label="Mensaje"
           placeholder={plan ? "Describe la tarea que quieres definir…" : "¿En qué trabajamos?"}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }}
-          className="max-h-[400px] min-h-16 w-full resize-none" />
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Select plain value={project} onChange={setProject} options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
-          <label className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-slate-100 dark:hover:bg-raised" title="Convierte la conversación en la definición de una tarea">
-            <input type="checkbox" checked={plan} onChange={(e) => setPlan(e.target.checked)} />
-            <ClipboardText className="size-4" />Modo plan
-          </label>
-          <Button className="ml-auto" title="Enviar" onClick={submit} disabled={!text.trim() || !form.ready || start.isPending}><ArrowUp className="size-4" weight="bold" /></Button>
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+            if (dictation.active || window.matchMedia("(min-width: 640px)").matches) {
+              e.preventDefault();
+              if (e.repeat) return;
+              if (dictation.active) {
+                dictation.finishAndSubmit((draft) => latestSendDraft.current(draft));
+              } else submit();
+            }
+          }}
+          className={showingDictation ? "sr-only" : `${composerArea} min-h-16`} />
+        <div className="flex items-end gap-0.5 px-2 pb-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
+            <ModelPicker models={models} providers={form.providers} modelId={form.value.model} selected={form.value.provider ? JSON.stringify([form.value.provider, form.value.model]) : ""} effort={form.value.effort}
+              effortsOf={(value) => {
+                const option = models.find((m) => m.value === value);
+                const efforts = option?.model.efforts;
+                return option && efforts?.length ? { values: efforts, initial: modelEffort(option.provider, option.model) } : undefined;
+              }}
+              onChange={(value, effort) => {
+                const model = models.find((m) => m.value === value);
+                if (model) form.selectModel(model.provider, model.model, effort);
+              }} />
+            <Chip below title="Proyecto" icon={<Folder className="size-4 shrink-0" />} value={project} onChange={setProject}
+              options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
+            <Chip below title="Permisos" value={form.value.runtime_mode} options={runtimeModes}
+              onChange={(value) => form.setRuntimeMode(value as LaunchChoice["runtime_mode"])} />
+            <button type="button" aria-pressed={plan} onClick={() => setPlan(!plan)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium hover:bg-slate-100 aria-pressed:bg-slate-200 dark:hover:bg-raised dark:aria-pressed:bg-raised">
+              <ClipboardText className="size-4" />Modo plan
+            </button>
+          </div>
+          <DictationMic dictation={dictation} disabled={start.isPending} />
+          <button type="submit" className={iconButton} title="Enviar" aria-label="Enviar" disabled={!text.trim() || !form.ready || start.isPending || dictation.active}>
+            {start.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <ArrowUp className="size-4" weight="regular" />}
+          </button>
         </div>
-      </div>
-      <details className="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-border">
-        <summary className="cursor-pointer text-slate-600 dark:text-muted">Agente: {form.value.provider || "—"} {form.value.model && `· ${form.value.model}`} {form.value.effort && `· ${form.value.effort}`}</summary>
-        <div className="mt-2">{form.fields}</div>
-      </details>
-      <ErrorText error={start.error ?? form.error} />
+      </form>
+      <ErrorText error={start.error ?? dictation.error ?? form.error ?? projects.error} />
     </div>
   );
 }

@@ -23,17 +23,29 @@ export type Thread = {
   pinned_at: string | null; read_at: string | null; last_activity_at: string | null; snoozed_until: string | null; settled_at: string | null;
   created_at: string; updated_at: string; archived_at: string | null;
 };
-export type Role = "user" | "assistant" | "reasoning" | "tool" | "plan" | "system" | "interrupt";
-export type Message = { id: string; thread_id?: string; run_id?: string; role: Role; text: string; title?: string; detail?: string; status?: string; streaming: boolean; created_at: string };
+export type Role = "user" | "assistant" | "reasoning" | "tool" | "plan" | "question" | "system" | "interrupt" | "model-change";
+// ToolCall is a tool call in Dory's own terms (runtime.ToolCall): every harness
+// maps its tools onto these kinds, and the chat draws one card per kind.
+export type ToolKind = "edit" | "command" | "todo" | "plan" | "read" | "search" | "web" | "agent" | "mcp" | "question" | "other";
+export type FileEdit = { path: string; change?: "add" | "update" | "delete" | string; added: number; removed: number; diff?: string };
+export type Todo = { text: string; status: "pending" | "in_progress" | "completed" | string; active?: string };
+export type Question = { question: string; header?: string; options?: { label: string; description?: string }[]; multi_select?: boolean };
+export type ToolCall = {
+  kind: ToolKind; name: string; files?: FileEdit[]; command?: string; exit_code?: number; todos?: Todo[];
+  path?: string; lines?: string; pattern?: string; url?: string; query?: string; agent?: string; summary?: string; steps?: number;
+  server?: string; tool?: string; input?: string; questions?: Question[];
+};
+export type Message = { id: string; thread_id?: string; run_id?: string; role: Role; text: string; title?: string; detail?: string; status?: string; streaming: boolean; created_at: string; tool?: ToolCall };
 // Entry is a slash command or skill of a harness; insert is how it is invoked.
 export type Entry = { name: string; description: string; insert: string };
 export type Attachment = { id: string; name: string; mime: string; path: string };
 export type Queued = { run_id: string; text: string; files?: Attachment[] };
-export type ThreadView = Thread & { messages: Message[]; queue: Queued[]; running: boolean; worktree: string; local: boolean };
+export type TurnModel = { provider: string; model: string | null; reported_model?: string };
+export type ThreadView = Thread & { last_turn_model?: TurnModel; reported_settings?: { model?: string; effort?: string }; messages: Message[]; queue: Queued[]; running: boolean; worktree: string; local: boolean };
 export type Column = "inbox" | "ready" | "working" | "needs_you" | "in_review" | "ready_to_merge" | "done" | "cancelled";
 export type Pull = { repo: string; number: number; title: string; url: string; draft: boolean; ci: string; review_decision: string; review_requests: string[]; mergeable: string; merge_state: string; head_ref: string };
 export type Card = Task & { column: Column; repo?: string; threads: Thread[]; pull?: Pull; pr_state?: "open" | "draft" | "merged" | "closed"; blockers: string[]; has_plan: boolean };
-export type Model = { slug: string; name: string; efforts?: string[] };
+export type Model = { slug: string; name: string; efforts?: string[]; resolved_model?: string };
 export type Provider = { id: string; name: string; installed: boolean; version: string; models: Model[]; capabilities: string[]; logged_in?: boolean; account?: string };
 // External is a conversation started in a harness, outside Dory.
 export type External = { provider: string; id: string; title: string; dir: string; branch?: string; updated_at: string; project_id: string | null; thread_id?: string };
@@ -144,7 +156,7 @@ export const api = {
   },
   attachmentUrl: (id: string, file: string) => `/api/threads/${id}/attachments/${file}`,
   queue: (id: string, run: string, action: "edit" | "cancel" | "steer", text?: string) => req<void>("POST", `/threads/${id}/queue/${run}`, { action, text }),
-  threadSettings: (id: string, body: { model?: string; effort?: string; runtime_mode?: Thread["runtime_mode"] }) => req<Thread>("POST", `/threads/${id}/settings`, body),
+  threadSettings: (id: string, body: { provider?: string; model?: string; effort?: string; runtime_mode?: Thread["runtime_mode"] }) => req<Thread>("POST", `/threads/${id}/settings`, body),
   threadCommands: (id: string) => req<{ commands: Entry[]; skills: Entry[] }>("GET", `/threads/${id}/commands`),
   threadFiles: (id: string, q: string) => req<string[]>("GET", `/threads/${id}/files?q=${encodeURIComponent(q)}`),
   interrupt: (id: string) => req<void>("POST", `/threads/${id}/interrupt`),

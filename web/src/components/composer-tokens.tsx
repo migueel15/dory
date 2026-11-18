@@ -1,7 +1,7 @@
 import { GitPullRequest, Lightning, LinkSimple, Quotes, Terminal, type Icon } from "@phosphor-icons/react";
 
 // Composer tokens: a /command, $skill, @file or #pull request picked from the
-// menu, or a quote of a message or plan text (value is the quoted text). In the text they are plain characters (what the harness receives); the UI always
+// menu. In the draft they are plain characters (what the harness receives); the UI always
 // shows them as one object, and they delete as a whole.
 export type TokenKind = "command" | "skill" | "path" | "ref" | "quote";
 export type Token = { kind: TokenKind; value: string; title?: string };
@@ -16,14 +16,13 @@ const looks: Record<TokenKind, { icon: Icon; color: string }> = {
 };
 
 // A quote goes to the agent as a Markdown block quote headed by its label, so
-// sent messages can show it again as one object.
+// the conversation can show the complete quote separately from the reply.
 export const quoteLabel = (text: string, max = 32) => {
   const flat = text.replace(/\s+/g, " ").trim();
   return flat.length > max ? `${flat.slice(0, max).trimEnd()}…` : flat;
 };
 export const quoteBlock = (label: string, body: string) =>
-  `\n\n> «${label}»\n${body.split("\n").filter((l) => l.trim()).map((l) => `> ${l}`).join("\n")}\n\n`;
-export const QUOTE_RE = /(?:^|\n)> «([^»\n]+)»\n((?:>[^\n]*(?:\n|$))*)/g;
+  `\n\n> «${label}»\n${body.split("\n").map((l) => `> ${l}`).join("\n")}\n\n`;
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -75,12 +74,10 @@ export function TokenChip({ kind, label, title }: { kind: TokenKind; label: stri
 }
 
 // tokenize marks the objects of a sent message so Md shows them as chips:
-// quotes, @files, $skills and a leading /command.
+// @files, $skills and /commands.
 export function tokenize(text: string): string {
   const link = (kind: TokenKind, value: string) => `[${kind}](tok:${kind}:${encodeURIComponent(value)})`;
-  let t = text.replace(QUOTE_RE, (_, label: string, body: string) =>
-    `\n\n${link("quote", JSON.stringify({ label, body: body.split("\n").map((l) => l.replace(/^> ?/, "")).join("\n").trim() }))}\n\n`);
-  t = t.replace(/(^|\s)@([^\s`]+[^\s`.,;:])(?=\s|$|[.,;:])/g, (_, pre: string, p: string) => pre + link("path", p));
+  let t = text.replace(/(^|\s)@([^\s`]+[^\s`.,;:])(?=\s|$|[.,;:])/g, (_, pre: string, p: string) => pre + link("path", p));
   t = t.replace(/(^|\s)\$([\w:.-]+)(?=\s|$|[.,;:])/g, (_, pre: string, k: string) => pre + link("skill", k));
   t = t.replace(/^\/([\w:.-]+)(?=\s|$)/, (_, c: string) => link("command", c));
   // Claude Code runs a skill as /name anywhere in the message.

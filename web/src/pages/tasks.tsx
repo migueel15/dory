@@ -1,12 +1,15 @@
+import { DictationField } from "../components/dictation-field";
+import { useDictationInProgress } from "../components/local-dictation";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ChatCircle, CircleNotch, ClipboardText, GitBranch, GitMerge, GitPullRequest, Plus, Rocket, X } from "@phosphor-icons/react";
 import { api, COLUMN_LABELS, repoName, type Card, type Column, type Plan, type Stage } from "../api/client";
-import { Button, Card as UiCard, ErrorText, Input, Label, Md, Modal, Select, Textarea } from "../components/ui";
+import { Button, Card as UiCard, ErrorText, Input, Label, Md, Modal, Select } from "../components/ui";
 import { useLaunchForm } from "../components/launch-picker";
 import { useProject } from "../project";
 import { StatusDot } from "./thread";
+import { askConfirm } from "../components/confirm";
 
 // Fixed meaning of each state color (requirement RF-48).
 const TONE = {
@@ -149,6 +152,7 @@ const COLUMN_TONE: Record<Column, string> = {
 
 function NewTask({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const current = useProject();
+  const dictating = useDictationInProgress();
   const [project, setProject] = useState(current);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -160,15 +164,15 @@ function NewTask({ onClose, onCreated }: { onClose: () => void; onCreated: (id: 
   });
   return (
     <Modal title="Nueva tarea" onClose={onClose}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (title.trim()) create.mutate(); }}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (!dictating && title.trim()) create.mutate(); }}>
         <Label text="Título"><Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} /></Label>
-        <Label text="Descripción"><Textarea rows={5} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Qué cambiar y cómo comprobarlo" /></Label>
+        <DictationField label="Descripción" rows={5} value={description} onValue={setDescription} placeholder="Qué cambiar y cómo comprobarlo" />
         <div className="grid grid-cols-2 gap-2">
           <Label text="Proyecto"><Select value={project} onChange={setProject} options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} /></Label>
           <Label text="Issue"><Input inputMode="numeric" value={issue} onChange={(e) => setIssue(e.target.value.replace(/\D/g, ""))} placeholder="Opcional" /></Label>
         </div>
         <ErrorText error={create.error} />
-        <Button disabled={!title.trim() || create.isPending}>Crear</Button>
+        <Button disabled={dictating || !title.trim() || create.isPending}>Crear</Button>
       </form>
     </Modal>
   );
@@ -178,6 +182,7 @@ const SECTIONS = [["goal", "Objetivo"], ["scope", "Alcance"], ["where", "Dónde"
 
 function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const qc = useQueryClient();
+  const dictating = useDictationInProgress();
   const navigate = useNavigate();
   const card = useQuery({ queryKey: ["card", id], queryFn: () => api.card(id) });
   const plans = useQuery({ queryKey: ["plans", id], queryFn: () => api.plans(id) });
@@ -220,18 +225,18 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
     <Modal title={COLUMN_LABELS[c.column]} onClose={onClose} wide>
       <div className="space-y-4">
         <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="!text-base font-semibold" aria-label="Título" />
-        <Textarea rows={6} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} aria-label="Descripción" placeholder="Qué cambiar y cómo comprobarlo" />
+        <DictationField rows={6} value={draft.description} onValue={(description) => setDraft((current) => current && { ...current, description })} aria-label="Descripción" placeholder="Qué cambiar y cómo comprobarlo" />
         <div className="grid gap-2 sm:grid-cols-3">
           <Label text="Repositorio"><Select value={draft.repo} onChange={(v) => setDraft({ ...draft, repo: v })} options={[{ value: "", label: projectRepos.length === 1 ? "El del proyecto" : "—" }, ...projectRepos.map((r) => ({ value: r.id, label: repoName(r.remote_url) }))]} /></Label>
           <Label text="Issue"><Input inputMode="numeric" value={draft.issue} onChange={(e) => setDraft({ ...draft, issue: e.target.value.replace(/\D/g, "") })} /></Label>
           <Label text="Pull request"><Input inputMode="numeric" value={draft.pr} onChange={(e) => setDraft({ ...draft, pr: e.target.value.replace(/\D/g, "") })} placeholder="Se detecta por la rama" /></Label>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {dirty && <Button onClick={() => save.mutate()} disabled={save.isPending}>Guardar</Button>}
+          {dirty && <Button onClick={() => save.mutate()} disabled={dictating || save.isPending}>Guardar</Button>}
           {c.stage !== "ready" && c.column === "inbox" && <Button variant="ghost" onClick={() => stage.mutate("ready")}>Marcar como lista</Button>}
           {c.stage === "ready" && c.column === "ready" && <Button variant="ghost" onClick={() => stage.mutate("inbox")}>Volver a inbox</Button>}
           {c.stage !== "cancelled" ? <Button variant="ghost" onClick={() => stage.mutate("cancelled")}>Cancelar tarea</Button> : <Button variant="ghost" onClick={() => stage.mutate("inbox")}>Reabrir</Button>}
-          <Button variant="ghost" className="ml-auto" onClick={() => confirm("¿Archivar la tarea?") && archive.mutate()}>Archivar</Button>
+          <Button variant="ghost" className="ml-auto" onClick={() => askConfirm("¿Archivar la tarea?", "Archivar").then((ok) => ok && archive.mutate())}>Archivar</Button>
         </div>
         <ErrorText error={save.error ?? stage.error ?? archive.error} />
 
@@ -281,6 +286,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
 
 function PlanEditor({ taskId, latest, versions }: { taskId: string; latest?: Plan; versions: number }) {
   const qc = useQueryClient();
+  const dictating = useDictationInProgress();
   const [edit, setEdit] = useState<Record<string, string>>();
   const done = () => { qc.invalidateQueries({ queryKey: ["plans", taskId] }); qc.invalidateQueries({ queryKey: ["card", taskId] }); qc.invalidateQueries({ queryKey: ["board"] }); };
   const create = useMutation({ mutationFn: (sections: Record<string, string>) => api.createPlan(taskId, { sections, open_questions: latest?.open_questions ?? [] }), onSuccess: () => { setEdit(undefined); done(); } });
@@ -297,8 +303,8 @@ function PlanEditor({ taskId, latest, versions }: { taskId: string; latest?: Pla
       </div>
       {edit ? (
         <div className="space-y-2">
-          {SECTIONS.map(([k, label]) => <Label key={k} text={label}><Textarea rows={2} value={edit[k] ?? ""} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} /></Label>)}
-          <div className="flex gap-2"><Button onClick={() => create.mutate(edit)} disabled={create.isPending}>Guardar versión</Button><Button variant="ghost" onClick={() => setEdit(undefined)}>Descartar</Button></div>
+          {SECTIONS.map(([k, label]) => <DictationField key={k} label={label} rows={2} value={edit[k] ?? ""} onValue={(value) => setEdit((current) => current && { ...current, [k]: value })} />)}
+          <div className="flex gap-2"><Button onClick={() => create.mutate(edit)} disabled={dictating || create.isPending}>Guardar versión</Button><Button variant="ghost" onClick={() => setEdit(undefined)}>Descartar</Button></div>
         </div>
       ) : latest ? (
         <div className="space-y-2 text-sm">

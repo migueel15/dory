@@ -26,6 +26,8 @@ type Message struct {
 	Status    string `json:"status,omitempty"`
 	Streaming bool   `json:"streaming"`
 	CreatedAt string `json:"created_at"`
+	// Tool is set on tool, plan and question messages: the call in Dory's terms.
+	Tool *ToolCall `json:"tool,omitempty"`
 }
 
 // Window is how much of one usage window of a provider is used, 0 to 1.
@@ -35,10 +37,17 @@ type Window struct {
 	ResetsAt    time.Time `json:"resets_at"`
 }
 
+// ReportedSettings contains the settings the harness reports for a turn.
+type ReportedSettings struct {
+	Model  string `json:"model,omitempty"`
+	Effort string `json:"effort,omitempty"`
+}
+
 // Event is what an adapter reports while a turn runs. Exactly one of its
 // fields is set.
 type Event struct {
-	Message *Message
+	Message  *Message
+	Settings *ReportedSettings
 	// Session is the harness id of the conversation, used to resume it.
 	Session string
 	Usage   []Window
@@ -63,9 +72,10 @@ type Turn struct {
 
 // Model is one model a provider offers, with its reasoning effort levels.
 type Model struct {
-	Slug    string   `json:"slug"`
-	Name    string   `json:"name"`
-	Efforts []string `json:"efforts,omitempty"`
+	Slug          string   `json:"slug"`
+	Name          string   `json:"name"`
+	Efforts       []string `json:"efforts,omitempty"`
+	ResolvedModel string   `json:"resolved_model,omitempty"`
 }
 
 // Status says whether a harness is installed on this machine.

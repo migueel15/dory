@@ -4,7 +4,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-export DORY_DATA_DIR="${DORY_DATA_DIR:-$PWD/.dev-data}"
+export DORY_DATA_DIR="${DORY_DATA_DIR:-$HOME/.dory/dev}"
 export DORY_LISTEN="${DORY_DEV_LISTEN:-127.0.0.1:8081}"
 export DORY_MESH_PORT="${DORY_MESH_PORT:-0}"
 export DORY_REPLAY_FILE="${DORY_REPLAY_FILE:-$PWD/internal/runtime/testdata/claude.jsonl}"

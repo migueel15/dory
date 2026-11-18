@@ -1,4 +1,4 @@
-{"type":"system","subtype":"init","session_id":"s-1"}
+{"type":"system","subtype":"init","session_id":"s-1","model":"claude-opus-4-6","effort":"high"}
 {"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_1"}}}
 {"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}}
 {"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Miro el repo"}}}

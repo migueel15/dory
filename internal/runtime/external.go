@@ -270,7 +270,7 @@ func claudeRecord(line []byte, emit func(Message), out []Message, index map[stri
 				emit(Message{ID: id, Role: "reasoning", Title: "Pensando", Text: b.Thinking, CreatedAt: r.Timestamp})
 			}
 		case "tool_use":
-			emit(Message{ID: b.ID, Role: "tool", Title: b.Name, Detail: toolDetail(b.Name, b.Input), Status: "completed", CreatedAt: r.Timestamp})
+			emit(Message{ID: b.ID, Role: "tool", Title: b.Name, Detail: toolDetail(b.Name, b.Input), Status: "completed", CreatedAt: r.Timestamp, Tool: toolCall(b.Name, b.Input)})
 		case "tool_result":
 			if i, ok := index[b.ToolUseID]; ok {
 				m := out[i]
@@ -340,7 +340,7 @@ func codexRecord(line []byte, emit func(Message), out []Message, index map[strin
 		if detail == "" {
 			detail = short(args, 300)
 		}
-		emit(Message{ID: p.CallID, Role: "tool", Title: p.Name, Detail: detail, Status: "completed", CreatedAt: r.Timestamp})
+		emit(Message{ID: p.CallID, Role: "tool", Title: p.Name, Detail: detail, Status: "completed", CreatedAt: r.Timestamp, Tool: codexTool(p.Name, args)})
 	case "function_call_output", "custom_tool_call_output":
 		if i, ok := index[p.CallID]; ok {
 			m := out[i]

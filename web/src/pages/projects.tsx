@@ -1,10 +1,13 @@
+import { DictationField } from "../components/dictation-field";
+import { useDictationInProgress } from "../components/local-dictation";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { ArrowUp, Desktop, FolderSimple, GitBranch, GithubLogo, HardDrive, House, Plus } from "@phosphor-icons/react";
 import { api, repoName, type Project } from "../api/client";
-import { Arrow, Button, Card, ErrorText, Input, Label, Modal, PageHeader, Textarea, pill } from "../components/ui";
+import { Arrow, Button, Card, ErrorText, Input, Label, Modal, PageHeader, pill } from "../components/ui";
 import { setProject } from "../project";
+import { askConfirm } from "../components/confirm";
 
 const slugify = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -12,6 +15,7 @@ const slugify = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300
 // folder on that machine; name, remote, branch and path are detected.
 function NewProject({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
+  const dictating = useDictationInProgress();
   const node = useQuery({ queryKey: ["node"], queryFn: api.node });
   const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh });
   const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list() });
@@ -84,7 +88,7 @@ function NewProject({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       ) : (
-        <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (form?.name.trim()) save.mutate(); }}>
+        <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (!dictating && form?.name.trim()) save.mutate(); }}>
           <p className="flex items-center gap-2 font-mono text-xs text-slate-500"><HardDrive className="size-4" />{env.name}: {c?.path ?? picked}
             <button type="button" className="ml-auto text-slate-500 underline" onClick={() => { setPicked(undefined); setForm(undefined); }}>cambiar</button></p>
           <ErrorText error={found.error} />
@@ -95,14 +99,14 @@ function NewProject({ onClose }: { onClose: () => void }) {
               <Label text="Nombre"><Input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value, slug: slugify(e.target.value) })} /></Label>
               <Label text="Slug"><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} className="font-mono" /></Label>
             </div>
-            <Label text="Descripción"><Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Label>
+            <DictationField label="Descripción" rows={2} value={form.description} onValue={(description) => setForm((current) => current && { ...current, description })} />
             {c?.git && <div className="grid gap-2 sm:grid-cols-[1fr_10rem]">
               <Label text="Remoto"><Input value={form.remote} onChange={(e) => setForm({ ...form, remote: e.target.value })} className="font-mono !text-xs" placeholder="Sin remoto" /></Label>
               <Label text="Rama principal"><Input value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })} className="font-mono !text-xs" /></Label>
             </div>}
           </>}
           <ErrorText error={save.error} />
-          <Button disabled={!form?.name.trim() || save.isPending}>{existing ? "Guardar ruta" : "Crear proyecto"}</Button>
+          <Button disabled={dictating || !form?.name.trim() || save.isPending}>{existing ? "Guardar ruta" : "Crear proyecto"}</Button>
         </form>
       )}
     </Modal>
@@ -135,6 +139,7 @@ export function Projects() {
 
 function ProjectForm({ project, onClose }: { project?: Project; onClose: () => void }) {
   const qc = useQueryClient();
+  const dictating = useDictationInProgress();
   const [name, setName] = useState(project?.name ?? "");
   const [slug, setSlug] = useState(project?.slug ?? "");
   const [description, setDescription] = useState(project?.description ?? "");
@@ -154,16 +159,16 @@ function ProjectForm({ project, onClose }: { project?: Project; onClose: () => v
   });
   return (
     <Modal title={project ? "Editar proyecto" : "Nuevo proyecto"} onClose={onClose}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (name.trim()) save.mutate(); }}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (!dictating && name.trim()) save.mutate(); }}>
         <Label text="Nombre"><Input autoFocus value={name} onChange={(e) => setName(e.target.value)} /></Label>
         <Label text="Slug"><Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="Se genera del nombre" /></Label>
-        <Label text="Descripción"><Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} /></Label>
+        <DictationField label="Descripción" rows={2} value={description} onValue={setDescription} />
         {!project && <>
           <Label text="Repositorio (remoto de Git)"><Input value={remote} onChange={(e) => setRemote(e.target.value)} placeholder="git@github.com:usuario/repo.git" /></Label>
           <Label text="Ruta local en este nodo"><Input value={path} onChange={(e) => setPath(e.target.value)} placeholder="/home/usuario/repos/repo" /></Label>
         </>}
         <ErrorText error={save.error} />
-        <Button disabled={!name.trim() || save.isPending}>Guardar</Button>
+        <Button disabled={dictating || !name.trim() || save.isPending}>Guardar</Button>
       </form>
     </Modal>
   );
@@ -206,7 +211,7 @@ export function ProjectDetail() {
         <div className="flex gap-2">
           <Link to="/tasks" className={pill} onClick={() => setProject(p.id)}>Ver tareas</Link>
           <Link to="/memories" className={pill} onClick={() => setProject(p.id)}>Ver memorias</Link>
-          <Button variant="ghost" className="ml-auto" onClick={() => confirm("¿Archivar el proyecto?") && archive.mutate()}>Archivar</Button>
+          <Button variant="ghost" className="ml-auto" onClick={() => askConfirm("¿Archivar el proyecto?", "Archivar").then((ok) => ok && archive.mutate())}>Archivar</Button>
         </div>
         {editing && <ProjectForm project={p} onClose={() => setEditing(false)} />}
       </>}

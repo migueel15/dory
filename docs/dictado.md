@@ -1,6 +1,30 @@
 # Dictado
 
-Dory transcribe el dictado en el servidor con whisper.cpp (ADR-006). Necesita HTTPS (`public_origin`) para que el navegador dé permiso al micrófono.
+El micrófono del compositor requiere HTTPS o localhost. El navegador entrega el audio al nodo Dory abierto, donde el modelo se ejecuta localmente. En desarrollo, si el nodo está en este ordenador, el audio se procesa aquí.
+
+## Modelos del compositor
+
+Instala una versión de [NeMo-Speech.cpp](https://github.com/NVIDIA/NeMo-Speech.cpp/releases) compatible con el nodo. Dory busca `nemo-speech` en el PATH. Si el ejecutable está en otra carpeta, fija `DORY_NEMO_SPEECH_BIN` a su ruta absoluta al iniciar el nodo.
+
+En **Ajustes → Dictado local**, descarga el modelo y marca **Usar modelo**. La preferencia se guarda en el navegador y las descargas en `dictation-models/` dentro del directorio de datos del nodo.
+
+- **Parakeet TDT 0.6B v3:** inserta el texto al detener la grabación.
+- **Nemotron Streaming 3.5 0.6B:** inserta una vista previa mientras hablas y completa la transcripción al detener la grabación.
+
+Pulsa el micrófono en el inicio, dentro de un hilo o al redactar una respuesta a una cita. También está disponible en comentarios de revisión y campos de texto libre como ideas, descripciones y planes. Al terminar puedes editar el texto antes de enviarlo o guardarlo.
+
+Un tono breve ascendente indica que el micrófono ya está grabando. Un tono descendente indica que ha dejado de grabar y empieza a finalizar la transcripción.
+
+## Atajo de dictado
+
+`Ctrl+D` inicia o detiene el dictado en el editor activo. Puedes cambiarlo en **Ajustes → Dictado local**.
+
+- Si seleccionas texto con un hilo abierto y pulsas el atajo, se abre la respuesta a la cita y empieza el dictado. `Enter` termina el dictado y añade la cita con su respuesta al borrador.
+- En el cuadro de mensaje, `Ctrl+D` deja el texto listo para editar. Si pulsas `Enter` mientras dictas, Dory espera al texto final y envía el mensaje.
+
+## Motor Whisper para captura
+
+El flujo de captura existente transcribe mediante whisper.cpp según el ADR-006.
 
 ## Puesta en marcha del motor en infra-admin
 

@@ -11,3 +11,7 @@
 | [ADR-007](adr-007-malla-de-nodos.md) | Malla de nodos iguales con SQLite y registro de operaciones | accepted |
 | [ADR-008](adr-008-runtime-propio.md) | Runtime de agentes propio, sin T3 Code | accepted |
 | [ADR-009](adr-009-malla-y-avisos.md) | Emparejamiento, sincronización y avisos entre nodos | accepted |
+| [ADR-010](adr-010-contexto-entre-proveedores.md) | Contexto entre proveedores de un mismo hilo | accepted |
+| [ADR-011](adr-011-modelos-de-dictado-local.md) | Modelos de dictado local para el compositor | accepted |
+| [ADR-012](adr-012-directorios-de-estado-local.md) | Directorios de estado local | accepted |
+| [ADR-013](adr-013-herramientas-comunes.md) | Herramientas comunes entre arneses | accepted |

@@ -1,4 +1,3 @@
-@import "@fontsource-variable/source-serif-4";
 @import "tailwindcss";
 
 /* Dark theme follows the `dark` class on <html>, set by src/theme.ts. */
@@ -102,8 +101,12 @@ body { @apply bg-slate-50 text-slate-900 dark:bg-canvas dark:text-text; }
 /* Layout that follows the measured width frame by frame: never transitioned. */
 .sidebar-track { transition-property: none !important; }
 
-/* Answers read like in Claude: a serif for prose. */
-@theme { --font-reading: "Source Serif 4 Variable", ui-serif, Georgia, serif; }
+/* One font for the whole interface, answers included: the desktop's own
+   (Adwaita Sans on GNOME), else Inter, else the system's. */
+@theme {
+  --font-sans: "Adwaita Sans", Inter, system-ui, ui-sans-serif, sans-serif;
+  --font-reading: var(--font-sans);
+}
 
 /* A word being written fades in (see components/stream.ts). */
 @keyframes word-in { from { opacity: 0; filter: blur(2px); } }

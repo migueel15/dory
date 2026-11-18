@@ -1,6 +1,7 @@
 import { Threads, ThreadsHome } from "./pages/threads";
+import { UsageQuick } from "./components/usage-quick";
 import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Brain, ChartBar, ChatsCircle, FolderSimple, GithubLogo, HardDrives, House, IconContext, Kanban, Lightning, List, Moon, SidebarSimple, SignOut, Sun, X } from "@phosphor-icons/react";
+import { Brain, ChartBar, ChatsCircle, FolderSimple, Gear, GithubLogo, HardDrives, House, IconContext, Kanban, Lightning, List, Moon, SidebarSimple, SignOut, Sun, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect } from "@tanstack/react-router";
@@ -62,6 +63,13 @@ function ThemeToggle() {
       {dark ? <Sun weight="duotone" className="size-5" aria-hidden="true" /> : <Moon weight="duotone" className="size-5" aria-hidden="true" />}
     </Button>
   );
+}
+
+function SettingsLink() {
+  return <Link to="/settings" aria-label="Ajustes" title="Ajustes"
+    className="inline-flex min-h-11 items-center justify-center rounded-md px-3 py-1.5 hover:bg-slate-200 dark:hover:bg-raised sm:min-h-0 [&.active]:text-accent dark:[&.active]:text-accent-text">
+    <Gear weight="duotone" className="size-5" aria-hidden="true" />
+  </Link>;
 }
 
 function VersionBadge() {
@@ -170,7 +178,7 @@ function Layout() {
         <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-3 pb-4">{navLinks(folded)}</nav>
         <div className="shrink-0 px-3 pb-2"><ProjectSwitcher folded={folded} /></div>
         <SidebarFooter folded={folded} username={me.data.username} onLogout={() => logout.mutate()} update={null}
-          controls={[<NoticesToggle key="n" />, <ThemeToggle key="t" />]} />
+          controls={[<NoticesToggle key="n" />, <ThemeToggle key="t" />, <SettingsLink key="settings" />, <UsageQuick key="u" />]} />
       </aside>
       {/* On desktop the current view is a card framed by the sidebar background. */}
       <div className="min-w-0 flex-1 sm:my-2 sm:mr-2 sm:overflow-auto sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">
@@ -215,6 +223,8 @@ function Layout() {
           <div className="flex items-center gap-1 [&>*]:flex [&>*]:flex-1 [&>*]:items-center [&>*]:justify-center">
             <NoticesToggle />
             <ThemeToggle />
+            <SettingsLink />
+            <UsageQuick />
           </div>
           <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 py-1 pl-3 pr-1 dark:border-border">
             <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
@@ -237,6 +247,7 @@ const pages = {
   usage: () => import("./pages/usage"),
   projects: () => import("./pages/projects"),
   skills: () => import("./pages/skills"),
+  settings: () => import("./pages/settings"),
 };
 const ThreadView = lazyRouteComponent(pages.thread, "ThreadView");
 const ExternalView = lazyRouteComponent(pages.thread, "ExternalView");
@@ -245,6 +256,7 @@ const Usage = lazyRouteComponent(pages.usage, "Usage");
 const Projects = lazyRouteComponent(pages.projects, "Projects");
 const ProjectDetail = lazyRouteComponent(pages.projects, "ProjectDetail");
 const Skills = lazyRouteComponent(pages.skills, "Skills");
+const Settings = lazyRouteComponent(pages.settings, "Settings");
 const idle = (fn: () => void) => ("requestIdleCallback" in window ? window.requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 1500));
 idle(() => { for (const load of Object.values(pages)) load().catch(() => {}); });
 
@@ -256,6 +268,7 @@ const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/inbox", beforeLoad: () => { throw redirect({ to: "/tasks" }); } }),
   createRoute({ getParentRoute: () => root, path: "/usage", component: Usage }),
   createRoute({ getParentRoute: () => root, path: "/skills", component: Skills }),
+  createRoute({ getParentRoute: () => root, path: "/settings", component: Settings }),
   createRoute({ getParentRoute: () => root, path: "/github", component: Github }),
   createRoute({ getParentRoute: () => root, path: "/github/$owner/$repo/$kind/$number", component: GithubView }),
   createRoute({ getParentRoute: () => root, path: "/tasks", component: Tasks }),

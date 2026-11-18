@@ -5,8 +5,8 @@
 listen = "127.0.0.1:7700"
 
 # Carpeta de datos del nodo (DORY_DATA_DIR): base SQLite, hilos y worktrees.
-# Por defecto, $XDG_DATA_HOME/dory o ~/.local/share/dory.
-# data_dir = "/home/miguel/.local/share/dory"
+# Por defecto, ~/.dory/data en instalaciones nuevas.
+# data_dir = "/home/miguel/.dory/data"
 
 # Nombre del nodo en la malla (DORY_NODE_NAME). Por defecto, el nombre del equipo.
 # node_name = "arch-laptop"

@@ -24,7 +24,7 @@ func (c Claude) bin() string {
 
 func (c Claude) Detect(ctx context.Context) Status {
 	version, ok := detect(ctx, c.bin())
-	return Status{ID: "claude", Name: "Claude Code", Installed: ok, Version: version,
+	status := Status{ID: "claude", Name: "Claude Code", Installed: ok, Version: version,
 		Models: []Model{
 			{Slug: "opus", Name: "Opus", Efforts: []string{"low", "medium", "high", "xhigh", "max"}},
 			{Slug: "sonnet", Name: "Sonnet", Efforts: []string{"low", "medium", "high", "xhigh", "max"}},
@@ -32,6 +32,12 @@ func (c Claude) Detect(ctx context.Context) Status {
 		},
 		Capabilities: []string{"interrupt", "resume", "effort", "usage"},
 	}
+	if ok {
+		if models := claudeModels(ctx, c.bin()); len(models) > 0 {
+			status.Models = models
+		}
+	}
+	return status
 }
 
 func (c Claude) Run(ctx context.Context, t Turn) (<-chan Event, error) {
@@ -55,6 +61,10 @@ func (c Claude) Run(ctx context.Context, t Turn) (<-chan Event, error) {
 			"type": "http", "url": t.MCPURL, "headers": map[string]string{"Authorization": "Bearer " + t.MCPToken},
 		}}})
 		args = append(args, "--mcp-config", string(cfg))
+		// In -p mode Claude's own AskUserQuestion cannot reach the user, so it
+		// asks through Dory's ask_user, which the chat shows with its options.
+		args = append(args, "--disallowedTools", "AskUserQuestion",
+			"--append-system-prompt", "To ask the user anything, call the dory ask_user tool (same questions/options shape as AskUserQuestion), then end your turn: the answer arrives as the next user message.")
 	}
 	cmd := exec.CommandContext(ctx, c.bin(), args...)
 	cmd.Dir = t.Dir
@@ -87,6 +97,8 @@ type claudeLine struct {
 	Type      string `json:"type"`
 	Subtype   string `json:"subtype"`
 	SessionID string `json:"session_id"`
+	Model     string `json:"model"`
+	Effort    string `json:"effort"`
 	IsError   bool   `json:"is_error"`
 	Result    string `json:"result"`
 	Event     struct {
@@ -104,6 +116,7 @@ type claudeLine struct {
 	} `json:"event"`
 	Message struct {
 		ID      string        `json:"id"`
+		Model   string        `json:"model"`
 		Content []claudeBlock `json:"content"`
 	} `json:"message"`
 	ParentToolUseID *string `json:"parent_tool_use_id"`
@@ -122,12 +135,34 @@ func (p *claudeParser) parse(line []byte, emit func(Event)) {
 	}
 	switch l.Type {
 	case "system":
-		if l.Subtype == "init" && l.SessionID != "" {
-			emit(Event{Session: l.SessionID})
+		if l.Subtype == "init" {
+			if l.SessionID != "" {
+				emit(Event{Session: l.SessionID})
+			}
+			if l.Model != "" || l.Effort != "" {
+				emit(Event{Settings: &ReportedSettings{Model: l.Model, Effort: l.Effort}})
+			}
 		}
 	case "stream_event":
-		p.partial(l, emit)
+		if l.ParentToolUseID == nil {
+			p.partial(l, emit)
+		}
 	case "assistant":
+		if l.ParentToolUseID == nil && l.Message.Model != "" && l.Message.Model != "<synthetic>" {
+			emit(Event{Settings: &ReportedSettings{Model: l.Message.Model}})
+		}
+		// A subagent's own work stays inside its card: it only counts its calls.
+		if l.ParentToolUseID != nil {
+			if parent := p.tools[*l.ParentToolUseID]; parent != nil && parent.Tool != nil {
+				for _, b := range l.Message.Content {
+					if b.Type == "tool_use" {
+						parent.Tool.Steps++
+					}
+				}
+				emit(Event{Message: copyOf(parent)})
+			}
+			return
+		}
 		for i, b := range l.Message.Content {
 			p.block(fmt.Sprintf("%s:%d", l.Message.ID, i), b, emit)
 		}
@@ -141,7 +176,11 @@ func (p *claudeParser) parse(line []byte, emit func(Event)) {
 				if b.IsError {
 					m.Status = "failed"
 				}
-				m.Text = clip(resultText(b.Content), 4000)
+				if m.Role == "plan" {
+					m.Status = "" // the plan keeps its text; the result is only an ack
+				} else {
+					m.Text = clip(resultText(b.Content), 4000)
+				}
 				emit(Event{Message: copyOf(m)})
 			}
 		}
@@ -215,9 +254,12 @@ func (p *claudeParser) block(id string, b claudeBlock, emit func(Event)) {
 			emit(Event{Message: copyOf(m)})
 		}
 	case "tool_use":
-		m := &Message{ID: b.ID, RunID: p.run, Role: "tool", Title: b.Name, Detail: toolDetail(b.Name, b.Input), Status: "running", CreatedAt: now()}
-		if b.Name == "TodoWrite" {
+		m := &Message{ID: b.ID, RunID: p.run, Role: "tool", Title: b.Name, Detail: toolDetail(b.Name, b.Input), Status: "running", CreatedAt: now(), Tool: toolCall(b.Name, b.Input)}
+		switch m.Tool.Kind {
+		case "todo":
 			m.Role = "plan"
+		case "plan":
+			m.Role, m.Text, m.Status = "plan", m.Tool.Summary, ""
 		}
 		p.tools[b.ID] = m
 		emit(Event{Message: copyOf(m)})

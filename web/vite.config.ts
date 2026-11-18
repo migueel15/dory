@@ -13,6 +13,7 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       "/api": {
+        ws: true,
         target: process.env.DORY_DEV_API ?? "http://localhost:8080",
         // Keep the browser's Host so the backend's same-origin check accepts any dev hostname.
         configure: (proxy) => {

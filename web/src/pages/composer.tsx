@@ -1,28 +1,32 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, CaretDown, Check, File as FileIcon, FileText, Lightning, ListBullets, Paperclip, PencilSimple, Stop, TerminalWindow, Trash, X } from "@phosphor-icons/react";
+import { ArrowUp, CaretDown, Check, File as FileIcon, FileText, Lightning, ListBullets, MagnifyingGlass, Paperclip, PencilSimple, Quotes, Stop, TerminalWindow, Trash, X } from "@phosphor-icons/react";
 import { api, type Attachment, type ThreadView } from "../api/client";
-import { Button, ErrorText, Input, errMsg, uuid } from "../components/ui";
+import { Button, ErrorText, errMsg, iconButton, uuid } from "../components/ui";
+import { DictationField } from "../components/dictation-field";
+import { DictationMic, DictationPreview, useDictationInProgress, useLocalDictation } from "../components/local-dictation";
+import { claudeModelName } from "../components/model-label";
 import { ProviderIcon } from "../components/launch-picker";
-import { saveEffort, savedEffort } from "../effort";
-import { iconBtn } from "./chat";
-import { paintTokens, quoteBlock, tokenRanges, type Token, type Tokens } from "../components/composer-tokens";
+import { explicitModels, findModel, modelEffort, modelId as concreteModelId, rememberModel } from "../effort";
+import { iconBtn, MessageParts } from "./chat";
+import type { DraftQuote } from "../components/quote-selection";
+import { paintTokens, quoteBlock, quoteLabel, tokenRanges, type Token, type Tokens } from "../components/composer-tokens";
 
 // The composer of a thread, kept from Dory v1: attachments, @ mentions of
 // files, model, effort and permissions, and send, queue or stop.
+
+export const composerFrame = "relative z-10 rounded-3xl border border-slate-200 bg-white shadow-md dark:border-raised dark:bg-surface";
+export const composerArea = "relative block max-h-60 w-full resize-none break-words bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 !outline-none placeholder:text-slate-400";
 
 export const runtimeModes = [
   { value: "approval-required", label: "Pedir permiso" },
   { value: "full-access", label: "Acceso total" },
 ];
 
-export type MenuOption = { value: string; label: string; group?: string; icon?: React.ReactNode };
-
-// Insert adds text to the composer from outside it, such as a quoted selection.
-export type Insert = { text: string; seq: number; quote?: { label: string; body: string } };
+export type MenuOption = { value: string; label: string; group?: string; modelId?: string; icon?: React.ReactNode };
 
 // Chip is a compact dropdown for the composer toolbar; the menu opens upwards.
-export function Chip({ value, options, onChange, title, icon }: { value: string; options: MenuOption[]; onChange: (v: string) => void; title: string; icon?: React.ReactNode }) {
+export function Chip({ value, options, onChange, title, icon, below = false }: { value: string; options: MenuOption[]; onChange: (v: string) => void; title: string; icon?: React.ReactNode; below?: boolean }) {
   const [open, setOpen] = useState(false);
   const box = useOutside(open, () => setOpen(false));
   const current = options.find((o) => o.value === value);
@@ -30,11 +34,11 @@ export function Chip({ value, options, onChange, title, icon }: { value: string;
     <div ref={box} className="relative">
       <button type="button" title={title} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}
         onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
-        className="inline-flex h-8 max-w-[11rem] items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white">
+        className="inline-flex h-8 max-w-[11rem] items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white">
         {current?.icon ?? icon}<span className="truncate">{current?.label ?? value}</span><CaretDown weight="regular" className="size-3 shrink-0 opacity-60" />
       </button>
       {open && (
-        <ul role="listbox" className="absolute bottom-full left-0 z-20 mb-2 max-h-72 min-w-[12rem] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-border dark:bg-surface">
+        <ul role="listbox" className={`absolute left-0 z-20 max-h-72 min-w-[12rem] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-border dark:bg-surface ${below ? "top-full mt-2" : "bottom-full mb-2"}`}>
           {options.map((o) => (
             <li key={o.value}>
               <button type="button" role="option" aria-selected={o.value === value} onClick={() => { onChange(o.value); setOpen(false); }}
@@ -60,51 +64,184 @@ function useOutside(open: boolean, close: () => void) {
   return box;
 }
 
-// ModelPicker joins model and effort in one chip: models on the left and, on
-// the right, the efforts of the model last clicked.
-export function ModelPicker({ models, selected, effort, effortsOf, onChange }: { models: MenuOption[]; selected: string; effort: string; effortsOf: (value: string) => { values: string[]; initial: string } | undefined; onChange: (value: string, effort: string) => void }) {
+type ModelOption = MenuOption & { provider: string };
+type ModelProvider = { id: string; name: string; disabled?: boolean };
+
+// ModelPicker filters the active provider's catalog and shows the selected model's reasoning levels.
+export function ModelPicker({ models, providers, selected, effort, effortsOf, onChange, modelId = selected, reportedEffort }: { models: ModelOption[]; providers: ModelProvider[]; selected: string; effort: string; effortsOf: (value: string) => { values: string[]; initial: string } | undefined; onChange: (value: string, effort: string) => void; modelId?: string; reportedEffort?: string }) {
   const [open, setOpen] = useState(false);
   const [focus, setFocus] = useState(selected);
+  const [provider, setProvider] = useState("");
+  const [search, setSearch] = useState("");
+  const [navigationIndex, setNavigationIndex] = useState<number>();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [placement, setPlacement] = useState<{ above: boolean; maxHeight: number }>();
+  const gap = 8;
+  const modelList = useRef<HTMLUListElement>(null);
+  const listId = useId();
   const box = useOutside(open, () => setOpen(false));
-  useEffect(() => { if (open) setFocus(selected); }, [open, selected]);
+  useLayoutEffect(() => {
+    const button = trigger.current;
+    const menu = panel.current;
+    if (!open || !button || !menu) return;
+
+    const viewport = window.visualViewport;
+    const place = () => {
+      const anchor = button.getBoundingClientRect();
+      const viewportTop = viewport?.offsetTop ?? 0;
+      const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
+      const aboveSpace = anchor.top - viewportTop - 2 * gap;
+      const belowSpace = viewportBottom - anchor.bottom - 2 * gap;
+      const menuHeight = menu.scrollHeight + (menu.offsetHeight - menu.clientHeight);
+      const above = menuHeight <= aboveSpace || (menuHeight > belowSpace && aboveSpace > belowSpace);
+      const maxHeight = Math.max(0, Math.floor(above ? aboveSpace : belowSpace));
+      setPlacement((previous) => previous?.above === above && previous.maxHeight === maxHeight ? previous : { above, maxHeight });
+    };
+    place();
+    const resize = new ResizeObserver(place);
+    resize.observe(menu);
+    resize.observe(button);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    viewport?.addEventListener("resize", place);
+    viewport?.addEventListener("scroll", place);
+    return () => {
+      resize.disconnect();
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+      viewport?.removeEventListener("resize", place);
+      viewport?.removeEventListener("scroll", place);
+    };
+  }, [open]);
   const current = models.find((m) => m.value === selected);
-  const efforts = effortsOf(focus);
-  const pickModel = (value: string) => {
+  const activeProvider = providers.find((item) => item.id === provider && !item.disabled) ?? providers.find((item) => !item.disabled);
+  const query = search.trim().toLowerCase();
+  const visibleModels = models.filter((model) =>
+    model.provider === activeProvider?.id &&
+    [model.label, model.modelId ?? model.value].some((name) => name.toLowerCase().includes(query)),
+  );
+  const highlightedIndex = navigationIndex ?? (query ? 0 : undefined);
+  const highlightedModel = highlightedIndex === undefined ? undefined : visibleModels[highlightedIndex];
+  const close = () => {
+    setOpen(false);
+    trigger.current?.focus();
+  };
+  const toggle = () => {
+    if (open) {
+      close();
+      return;
+    }
+    setProvider(current?.provider ?? activeProvider?.id ?? "");
+    setFocus(selected);
+    setSearch("");
+    setNavigationIndex(undefined);
+    setOpen(true);
+  };
+  const claude = claudeModelName(modelId);
+  const modelLabel = claude ||
+    (modelId === (current?.modelId ?? selected) ? current?.label : undefined) ||
+    (modelId && modelId !== "default" ? modelId : "Seleccionar modelo");
+  const effortLabel = reportedEffort || effort;
+  const settingsLabel = effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel;
+  const efforts = visibleModels.some((model) => model.value === focus) ? effortsOf(focus) : undefined;
+  const pickModel = (value: string, closeAfterSelection = false) => {
     const e = effortsOf(value);
     setFocus(value);
-    onChange(value, e?.initial ?? "");
-    if (!e) setOpen(false);
+    onChange(value, value === selected && effort ? effort : e?.initial ?? "");
+    if (!e || closeAfterSelection) close();
   };
   const row = "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised";
   return (
-    <div ref={box} className="relative">
-      <button type="button" title="Modelo y esfuerzo" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}
-        onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
-        className="inline-flex h-8 max-w-[15rem] items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white">
-        {current?.icon}<span className="truncate">{current?.label ?? (selected || "Modelo por defecto")}</span>
-        {effort && <span className="shrink-0 text-slate-400">· {effort}</span>}<CaretDown weight="regular" className="size-3 shrink-0 opacity-60" />
+    <div ref={box} className="relative flex">
+      <button ref={trigger} type="button" title={`${settingsLabel}${claude ? ` (${modelId})` : ""}`} aria-label={`Modelo y razonamiento: ${settingsLabel}`} aria-haspopup="dialog" aria-expanded={open} onClick={toggle}
+        className="inline-flex h-8 max-w-[20rem] items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white">
+        {current?.icon}<span className="truncate text-slate-900 dark:text-white">{modelLabel}</span>
+        {effortLabel && <span className="shrink-0 text-slate-500 dark:text-muted">· {effortLabel}</span>}<CaretDown weight="regular" className="size-3 shrink-0 opacity-60" />
       </button>
       {open && (
-        <div role="dialog" aria-label="Modelo y esfuerzo" className="absolute bottom-full left-0 z-20 mb-2 flex max-h-80 w-[min(30rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-border dark:bg-surface">
-          <ul className="min-w-0 flex-1 overflow-y-auto p-1">
-            {models.map((o) => (
-              <li key={o.value}>
-                <button type="button" onClick={() => pickModel(o.value)} className={`${row} ${o.value === focus ? "bg-slate-100 dark:bg-raised" : ""}`}>
-                  {o.icon}<span className="min-w-0 flex-1 truncate">{o.label}</span>{o.value === selected && <Check weight="regular" className="size-3.5" />}
-                </button>
-              </li>
-            ))}
-          </ul>
-          <div className="w-32 shrink-0 overflow-y-auto border-l border-slate-200 p-1 dark:border-border">
-            <p className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Esfuerzo</p>
-            {efforts ? efforts.values.map((x) => {
-              const active = focus === selected ? x === effort : x === efforts.initial;
-              return (
-                <button key={x} type="button" onClick={() => { onChange(focus, x); setOpen(false); }} className={`${row} ${active ? "font-medium" : ""}`}>
-                  <span className="min-w-0 flex-1 truncate">{x}</span>{active && <Check weight="regular" className="size-3.5" />}
-                </button>
-              );
-            }) : <p className="px-2 py-1.5 text-xs text-slate-400">Sin opciones</p>}
+        <div ref={panel} role="dialog" aria-label="Modelo y razonamiento"
+          onKeyDown={(e) => { if (e.key === "Escape" && !e.nativeEvent.isComposing) { e.stopPropagation(); close(); } }}
+          style={{
+            [placement?.above === false ? "top" : "bottom"]: `calc(100% + ${gap}px)`,
+            maxHeight: placement?.maxHeight,
+          }}
+          className="absolute left-0 z-20 w-[min(36rem,calc(100vw-4.5rem))] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-border dark:bg-surface">
+          <div className="flex items-center gap-2 border-b border-slate-200 px-3 dark:border-border">
+            <MagnifyingGlass className="size-4 shrink-0 text-slate-500 dark:text-muted" />
+            <input autoFocus type="search" role="combobox" aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
+              aria-activedescendant={highlightedModel ? `${listId}-${highlightedIndex}` : undefined}
+              value={search} placeholder="Buscar modelos…" aria-label="Buscar modelos"
+              onChange={(e) => {
+                setSearch(e.currentTarget.value);
+                setNavigationIndex(undefined);
+                if (modelList.current) modelList.current.scrollTop = 0;
+              }}
+              onKeyDown={(e) => {
+                if (e.nativeEvent.isComposing) return;
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (highlightedModel) pickModel(highlightedModel.value, true);
+                  return;
+                }
+                if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+                e.preventDefault();
+                if (!visibleModels.length) return;
+                const lastIndex = visibleModels.length - 1;
+                const down = e.key === "ArrowDown";
+                const next = highlightedModel && highlightedIndex !== undefined
+                  ? Math.max(0, Math.min(lastIndex, highlightedIndex + (down ? 1 : -1)))
+                  : down ? 0 : lastIndex;
+                setNavigationIndex(next);
+                modelList.current?.children.item(next)?.scrollIntoView({ block: "nearest" });
+              }}
+              className="min-w-0 flex-1 appearance-none border-0 bg-transparent py-2.5 text-sm outline-none! focus-visible:outline-none!" />
+          </div>
+          <div className="grid grid-cols-[minmax(4.75rem,0.7fr)_minmax(0,2fr)] sm:grid-cols-[8.5rem_minmax(0,1fr)_7rem]">
+            <ul aria-label="Proveedores" className="row-span-2 max-h-64 overflow-y-auto border-r border-slate-200 p-1 dark:border-border sm:row-span-1">
+              {providers.map((item) => (
+                <li key={item.id}>
+                  <button type="button" disabled={item.disabled} aria-pressed={activeProvider?.id === item.id}
+                    title={item.disabled ? "Espera a que termine el turno para cambiar de proveedor" : item.name}
+                    onClick={() => {
+                      setProvider(item.id);
+                      setNavigationIndex(undefined);
+                      if (modelList.current) modelList.current.scrollTop = 0;
+                    }}
+                    className={`${row} disabled:opacity-50`}>
+                    <ProviderIcon driver={item.id} />
+                    <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                    {activeProvider?.id === item.id && <Check weight="thin" className="size-3.5 shrink-0" />}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <ul ref={modelList} id={listId} role="listbox" aria-label="Modelos" className="max-h-44 min-w-0 overflow-y-auto p-1 sm:max-h-64">
+              {visibleModels.map((model, index) => (
+                <li key={model.value} role="presentation">
+                  <button id={`${listId}-${index}`} type="button" role="option" onClick={() => pickModel(model.value)} title={model.label}
+                    aria-selected={model.value === selected}
+                    className={`${row} ${model === highlightedModel ? "ring-1 ring-inset ring-slate-500 dark:ring-accent-text" : ""}`}>
+                    {model.icon}<span className="min-w-0 flex-1 truncate">{model.label}</span>
+                    {model.value === selected && <Check weight="thin" className="size-3.5 shrink-0" />}
+                  </button>
+                </li>
+              ))}
+              {!visibleModels.length && <li role="presentation" className="px-2 py-1.5 text-sm text-slate-500 dark:text-muted">{search.trim() ? "Sin resultados" : "Sin modelos disponibles"}</li>}
+            </ul>
+            {efforts && (
+              <div aria-label="Razonamiento" className="flex flex-wrap gap-1 border-t border-slate-200 p-1 dark:border-border sm:block sm:max-h-64 sm:overflow-y-auto sm:border-l sm:border-t-0">
+                {efforts.values.map((level) => {
+                  const active = level === (focus === selected ? effort : efforts.initial);
+                  return (
+                    <button key={level} type="button" aria-pressed={active} onClick={() => { onChange(focus, level); close(); }}
+                      className={`${row} !w-auto sm:!w-full`}>
+                      <span className="min-w-0 flex-1 truncate">{level}</span>{active && <Check weight="thin" className="size-3.5 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -114,19 +251,32 @@ export function ModelPicker({ models, selected, effort, effortsOf, onChange }: {
 
 type Draft = { key: string; name: string; mime: string; preview: string; done?: Attachment; error?: string };
 
-export function Composer({ t, onSent, insert }: { t: ThreadView; onSent: () => void; insert?: Insert }) {
+export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
+  t: ThreadView;
+  onSent: () => void;
+  area: React.RefObject<HTMLTextAreaElement | null>;
+  quotes: DraftQuote[];
+  onRemoveQuotes: (ids: string[]) => void;
+}) {
   const qc = useQueryClient();
   const key = ["thread", t.id];
   const providers = useQuery({ queryKey: ["node-providers", t.node_id], queryFn: () => api.nodeProviders(t.node_id), staleTime: 60_000 });
   const [text, setText] = useState("");
-  const area = useRef<HTMLTextAreaElement>(null);
+  const dictation = useLocalDictation(text, setText, area, { panelShortcut: true, onEnter: (draft) => latestSendDraft.current(draft) });
+  const showingDictation = !!dictation.preview;
+  const dictating = useDictationInProgress();
   const picker = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<Draft[]>([]);
+  const quoteList = useRef<HTMLUListElement>(null);
+  const latestQuote = quotes.at(-1)?.id;
+  useLayoutEffect(() => {
+    const list = quoteList.current;
+    if (list) list.scrollTop = list.scrollHeight;
+  }, [latestQuote]);
   const uploading = files.some((f) => !f.done && !f.error);
-  useLayoutEffect(() => { const el = area.current; if (el) { el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 240)}px`; } }, [text]);
-  // Picked /commands, $skills, @files and quotes live in the text as tokens:
-  // the text holds their characters, tokens their reference (a file's full
-  // path, a quote's text). The composer shows each one as an object.
+  useLayoutEffect(() => { const el = area.current; if (el && !showingDictation) { el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 240)}px`; } }, [dictation.value, showingDictation]);
+  // Picked /commands, $skills and @files are tokens in the draft text.
+  // The token reference preserves the full path of a selected file.
   const [tokens, setTokens] = useState<Tokens>({});
   const addToken = (insert: string, tk: Token) => {
     // Two files with the same name: the second one is written with its path.
@@ -134,29 +284,23 @@ export function Composer({ t, onSent, insert }: { t: ThreadView; onSent: () => v
     setTokens((ts) => ({ ...ts, [k]: tk }));
     return k;
   };
-  // Text sent from outside, such as a quoted selection, goes at the end.
-  useEffect(() => {
-    if (!insert) return;
-    let add = insert.text;
-    if (insert.quote) {
-      // The quote shows as one object; a repeated label gets a number.
-      let k = `«${insert.quote.label}»`;
-      for (let n = 2; tokens[k] && tokens[k].value !== insert.quote.body; n++) k = `«${insert.quote.label} (${n})»`;
-      setTokens((ts) => ({ ...ts, [k]: { kind: "quote", value: insert.quote!.body, title: insert.quote!.label } }));
-      add = `${k} ${insert.text}`;
-    }
-    setText((x) => (x.trim() ? `${x.trimEnd()}\n${add}` : add));
-    setTimeout(() => { const el = area.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0);
-  }, [insert?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
   const ranges = tokenRanges(text, tokens);
-  // The harness gets each @file with its full path and each quote as a block
-  // quote; the other tokens go as written.
-  const outgoing = ranges.reduceRight((x, r) => {
-    const tk = tokens[r.text];
-    if (tk.kind === "path") return `${x.slice(0, r.start)}@${tk.value}${x.slice(r.end)}`;
-    if (tk.kind === "quote") return `${x.slice(0, r.start)}${quoteBlock(tk.title ?? "", tk.value)}${x.slice(r.end).replace(/^ /, "")}`;
-    return x;
-  }, text).trim();
+  // The harness receives full file paths and each quote with its own reply.
+  const payload = (draft: string) => {
+    const draftRanges = draft === text ? ranges : tokenRanges(draft, tokens);
+    const outgoingText = draftRanges.reduceRight((value, range) => {
+      const token = tokens[range.text];
+      return token.kind === "path" ? `${value.slice(0, range.start)}@${token.value}${value.slice(range.end)}` : value;
+    }, draft).trim();
+    return [
+      ...quotes.map((quote) => {
+        const block = quoteBlock(quoteLabel(quote.text).replaceAll("»", "›"), quote.text).trim();
+        return quote.reply ? `${block}\n\n**Respuesta a la cita**\n\n${quote.reply}` : block;
+      }),
+      outgoingText,
+    ].filter(Boolean).join("\n\n");
+  };
+  const outgoing = payload(text);
   const paint = useRef<HTMLDivElement>(null);
   // A selection never splits a token: an edge inside one grows to cover it,
   // and a caret inside one jumps past it in the direction it was moving.
@@ -212,25 +356,63 @@ export function Composer({ t, onSent, insert }: { t: ThreadView; onSent: () => v
     }
   };
   const removeFile = (k: string) => setFiles((fs) => fs.filter((f) => { if (f.key === k) URL.revokeObjectURL(f.preview); return f.key !== k; }));
+  const availableProviders = (providers.data ?? []).filter((p) => p.installed && (p.id !== "replay" || p.id === t.provider));
+  const currentProvider = availableProviders.find((p) => p.id === t.provider);
+  const currentModel = findModel(currentProvider?.models ?? [], t.model);
+  const selectedModel = currentModel ? concreteModelId(currentModel) : t.model;
+  const modelOptions = availableProviders.flatMap((provider) => explicitModels(provider.models).map((model) => ({
+    value: JSON.stringify([provider.id, concreteModelId(model)]),
+    modelId: concreteModelId(model),
+    label: model.name,
+    provider: provider.id,
+    icon: <ProviderIcon driver={provider.id} model={model.slug} />,
+    model,
+  })));
+  const pickerProviders: ModelProvider[] = availableProviders.map((p) => ({
+    id: p.id, name: p.name, disabled: t.running && p.id !== t.provider,
+  }));
   const send = useMutation({
-    mutationFn: () => api.send(t.id, outgoing, files.flatMap((f) => (f.done ? [f.done.id] : []))),
-    onSuccess: () => { setText(""); setTokens({}); files.forEach((f) => URL.revokeObjectURL(f.preview)); setFiles([]); onSent(); qc.invalidateQueries({ queryKey: key }); },
+    mutationFn: ({ message, fileIds }: { message: string; fileIds: string[]; quoteIds: string[] }) => api.send(t.id, message, fileIds),
+    onSuccess: (_, { quoteIds }) => {
+      setText("");
+      setTokens({});
+      onRemoveQuotes(quoteIds);
+      files.forEach((f) => URL.revokeObjectURL(f.preview));
+      setFiles([]);
+      onSent();
+      qc.invalidateQueries({ queryKey: key });
+    },
   });
   const stop = useMutation({ mutationFn: () => api.interrupt(t.id) });
   const settings = useMutation({
+    scope: { id: `thread-settings:${t.id}` },
     mutationFn: (body: Parameters<typeof api.threadSettings>[1]) => api.threadSettings(t.id, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+    onSuccess: (updated, change) => {
+      if (change.model) rememberModel(updated);
+      qc.setQueryData<ThreadView>(key, (current) => current && {
+        ...current, provider: updated.provider, model: updated.model, effort: updated.effort, runtime_mode: updated.runtime_mode,
+        reported_settings: current.provider === updated.provider && current.model === updated.model && current.effort === updated.effort
+          ? current.reported_settings : undefined,
+      });
+      return qc.invalidateQueries({ queryKey: key });
+    },
   });
-  const suggest = useSuggest(t.id, text, area, setText, addToken);
-  const canSend = (!!text.trim() || files.some((f) => f.done)) && !uploading && !send.isPending;
-  const submit = () => { if (canSend) send.mutate(); };
+  const suggest = useSuggest(t.id, t.provider, text, area, setText, addToken);
+  const readyToSend = !uploading && !send.isPending && !settings.isPending;
+  const canSend = (!!outgoing || files.some((file) => file.done)) && readyToSend && !dictating;
+  const sendDraft = (draft: string) => {
+    const message = payload(draft);
+    const fileIds = files.flatMap((file) => file.done ? [file.done.id] : []);
+    if (readyToSend && (message || fileIds.length)) send.mutate({ message, fileIds, quoteIds: quotes.map(({ id }) => id) });
+  };
+  const latestSendDraft = useRef(sendDraft);
+  useLayoutEffect(() => { latestSendDraft.current = sendDraft; });
+  const submit = () => { if (canSend) sendDraft(text); };
   if (!t.local) return null;
   const busy = t.running;
-  const provider = providers.data?.find((p) => p.id === t.provider);
-  const models: MenuOption[] = (provider?.models ?? [{ slug: t.model, name: t.model || t.provider }]).map((m) => ({ value: m.slug, label: m.name, icon: <ProviderIcon driver={t.provider} model={m.slug} /> }));
   return (
-    <div className="mx-auto w-full max-w-3xl px-3 pb-4 pt-2 sm:px-6">
-      <form onSubmit={(e) => { e.preventDefault(); submit(); }}
+    <div className="mx-auto w-full max-w-[55.2rem] px-3 pb-4 pt-2 sm:px-6">
+      <form data-quote-ui data-dictation-panel onSubmit={(e) => { e.preventDefault(); submit(); }}
         onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
         onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); addFiles(e.dataTransfer.files); } }}
         onPaste={(e) => {
@@ -238,8 +420,24 @@ export function Composer({ t, onSent, insert }: { t: ThreadView; onSent: () => v
           const fs = Array.from(e.clipboardData.items).flatMap((i) => { const f = i.kind === "file" ? i.getAsFile() : null; return f ? [f] : []; });
           if (fs.length) { e.preventDefault(); addFiles(fs); }
         }}
-        className="relative z-10 rounded-3xl border border-slate-200 bg-white shadow-md dark:border-border-strong dark:bg-surface">
-        {suggest.menu}
+        className={composerFrame}>
+        {!dictation.active && suggest.menu}
+        {quotes.length > 0 && (
+          <ul ref={quoteList} aria-label="Citas del mensaje" className="mx-2 mt-2 max-h-44 space-y-1.5 overflow-y-auto overscroll-contain px-1 py-1">
+            {quotes.map((quote) => (
+              <li key={quote.id} title={quote.reply ? `${quote.text}\n\n${quote.reply}` : quote.text}
+                className="flex min-w-0 items-center gap-2 rounded-lg bg-slate-50 px-2 py-1.5 text-sm dark:bg-raised">
+                <Quotes weight="thin" aria-hidden="true" className="size-4 shrink-0 text-slate-500 dark:text-muted" />
+                <span className="min-w-0 flex-1 truncate">{quote.text}</span>
+                {quote.reply && <span className="shrink-0 text-xs text-slate-500 dark:text-muted">Con respuesta</span>}
+                <button type="button" onClick={() => onRemoveQuotes([quote.id])} aria-label={`Quitar cita ${quoteLabel(quote.text)}`}
+                  className="grid size-6 shrink-0 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
+                  <X weight="thin" className="size-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         {files.length > 0 && (
           <div className="flex flex-wrap gap-2 px-3 pt-3">
             {files.map((f) => (
@@ -255,41 +453,68 @@ export function Composer({ t, onSent, insert }: { t: ThreadView; onSent: () => v
           </div>
         )}
         <div className="relative">
+          {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} format={(part) => paintTokens(part, tokens)} />}
           {/* Tokens show as objects: this layer paints the text under a see-through textarea, glyph for glyph, so the caret stays aligned. */}
-          {ranges.length > 0 && <div ref={paint} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-4 pb-1 pt-3.5 text-[15px] leading-6">
+          {!showingDictation && ranges.length > 0 && <div ref={paint} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-4 pb-1 pt-3.5 text-[15px] leading-6">
             {paintTokens(text, tokens)}{"\u200b"}
           </div>}
-          <textarea ref={area} rows={1} value={text} onChange={(e) => setText(e.target.value)} onSelect={() => { snapSelection(); suggest.track(); }} onClick={suggest.track} aria-label="Mensaje"
+          <textarea ref={area} data-dictation-disabled={send.isPending || undefined} rows={1} value={dictation.value} readOnly={dictation.active} onChange={(e) => setText(e.target.value)} onSelect={() => { if (!dictation.active) { snapSelection(); suggest.track(); } }} onClick={() => { if (!dictation.active) suggest.track(); }} aria-label="Mensaje"
             onScroll={(e) => { if (paint.current) paint.current.scrollTop = e.currentTarget.scrollTop; }}
             placeholder={t.status === "waiting" ? "Escribe tu respuesta…" : "Escribe al hilo…"}
-            onKeyDown={(e) => { if (e.nativeEvent.isComposing || suggest.onKeyDown(e) || deleteToken(e)) return; if (e.key === "Enter" && !e.shiftKey && window.matchMedia("(min-width: 640px)").matches) { e.preventDefault(); submit(); } }}
-            className={`relative block max-h-60 w-full resize-none break-words bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 !outline-none placeholder:text-slate-400 ${ranges.length ? "text-transparent caret-slate-900 dark:caret-white" : ""}`} />
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
+              if (dictation.active) {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (!e.repeat) dictation.finishAndSubmit((draft) => latestSendDraft.current(draft));
+                }
+                return;
+              }
+              if (suggest.onKeyDown(e) || deleteToken(e)) return;
+              if (e.key === "Enter" && !e.shiftKey && window.matchMedia("(min-width: 640px)").matches) {
+                e.preventDefault();
+                if (!e.repeat) submit();
+              }
+            }}
+            className={showingDictation ? "sr-only" : `${composerArea} ${ranges.length ? "text-transparent caret-slate-900 dark:caret-white" : ""}`} />
         </div>
         <div className="flex items-center gap-0.5 px-2 pb-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
             <input ref={picker} type="file" multiple hidden onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
             <button type="button" onClick={() => picker.current?.click()} title="Adjuntar imágenes o ficheros" aria-label="Adjuntar"
-              className="grid size-8 place-items-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white">
+              className={iconButton}>
               <Paperclip weight="regular" className="size-4" />
             </button>
-            <ModelPicker models={models} selected={t.model} effort={t.effort}
-              effortsOf={(value) => { const m = provider?.models.find((x) => x.slug === value); return m?.efforts?.length ? { values: m.efforts, initial: value === t.model ? t.effort : savedEffort(value, m.efforts) || m.efforts[0] } : undefined; }}
-              onChange={(model, effort) => { if (effort) saveEffort(model, effort); settings.mutate({ model, effort }); }} />
+            <ModelPicker models={modelOptions} providers={pickerProviders} selected={JSON.stringify([t.provider, selectedModel])} effort={t.effort}
+              modelId={t.reported_settings?.model ?? selectedModel} reportedEffort={t.reported_settings?.effort}
+              effortsOf={(value) => {
+                const option = modelOptions.find((model) => model.value === value);
+                const efforts = option?.model.efforts;
+                return option && efforts?.length ? { values: efforts, initial: modelEffort(option.provider, option.model) } : undefined;
+              }}
+              onChange={(value, effort) => {
+                const option = modelOptions.find((model) => model.value === value);
+                if (!option) return;
+                const choice = { provider: option.provider, model: option.modelId, effort };
+                if (settings.isPending || choice.provider !== t.provider || choice.model !== t.model || effort !== t.effort) settings.mutate(choice);
+                else rememberModel(choice);
+              }} />
             <Chip title="Permisos" value={t.runtime_mode} options={runtimeModes} onChange={(x) => settings.mutate({ runtime_mode: x as ThreadView["runtime_mode"] })} />
           </div>
-          {busy && !text.trim() && !files.length ? (
+          <DictationMic dictation={dictation} disabled={send.isPending} />
+          {busy && !outgoing && !files.length && !dictation.active ? (
             <button type="button" onClick={() => stop.mutate()} disabled={stop.isPending} title="Parar el turno en curso" aria-label="Parar"
-              className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-900 text-white transition hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200">
+              className={iconButton}>
               <Stop weight="fill" className="size-3.5" />
             </button>
           ) : (
             <button type="submit" disabled={!canSend} title={busy ? "Encolar (Enter)" : "Enviar (Enter)"} aria-label="Enviar"
-              className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-900 p-0 text-white transition hover:bg-slate-700 disabled:bg-slate-200 disabled:text-slate-400 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 dark:disabled:bg-raised dark:disabled:text-muted">
-              {send.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : busy ? <ListBullets weight="bold" className="block size-4" /> : <ArrowUp weight="bold" className="block size-4" />}
+              className={iconButton}>
+              {send.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : busy ? <ListBullets weight="regular" className="block size-4" /> : <ArrowUp weight="regular" className="block size-4" />}
             </button>
           )}
         </div>
-        {(send.error || settings.error || stop.error) && <div className="px-4 pb-2"><ErrorText error={send.error ?? settings.error ?? stop.error} /></div>}
+        {Boolean(send.error || settings.error || stop.error || dictation.error) && <div className="px-4 pb-2"><ErrorText error={send.error ?? settings.error ?? stop.error ?? dictation.error} /></div>}
       </form>
     </div>
   );
@@ -301,10 +526,10 @@ const titles = { "/": "Comandos", $: "Skills", "@": "Ficheros" } as const;
 // useSuggest autocompletes the composer as in v1: /command (only at the
 // start), $skill and @file of the thread's folder. A pick replaces the typed
 // word with how the harness invokes it.
-function useSuggest(threadId: string, text: string, area: React.RefObject<HTMLTextAreaElement | null>, setText: (t: string) => void, onToken: (insert: string, t: Token) => string) {
+function useSuggest(threadId: string, provider: string, text: string, area: React.RefObject<HTMLTextAreaElement | null>, setText: (t: string) => void, onToken: (insert: string, t: Token) => string) {
   const [word, setWord] = useState<{ start: number; sigil: "/" | "$" | "@"; q: string } | null>(null);
   const [index, setIndex] = useState(0);
-  const catalog = useQuery({ queryKey: ["thread-commands", threadId], queryFn: () => api.threadCommands(threadId), enabled: word?.sigil === "/" || word?.sigil === "$", staleTime: 60_000 });
+  const catalog = useQuery({ queryKey: ["thread-commands", threadId, provider], queryFn: () => api.threadCommands(threadId), enabled: word?.sigil === "/" || word?.sigil === "$", staleTime: 60_000 });
   const files = useQuery({ queryKey: ["thread-files", threadId, word?.q], queryFn: () => api.threadFiles(threadId, word!.q), enabled: word?.sigil === "@", staleTime: 30_000 });
   const q = word?.q.toLowerCase() ?? "";
   const hit = (e: { name: string; description: string }) => !q || e.name.toLowerCase().includes(q) || e.description.toLowerCase().includes(q);
@@ -387,13 +612,22 @@ export function Queue({ t }: { t: ThreadView }) {
 
 function QueuedRow({ text, files, canSteer, onSteer, onCancel, onEdit }: { text: string; files: Attachment[]; canSteer: boolean; onSteer: () => void; onCancel: () => void; onEdit: (text: string) => void }) {
   const [draft, setDraft] = useState<string | null>(null);
+  const dictating = useDictationInProgress();
+  const save = () => {
+    if (dictating || draft === null) return;
+    onEdit(draft);
+    setDraft(null);
+  };
   return (
     <div className="msg-in flex flex-col items-end gap-1">
       <div className="w-fit max-w-[85%] rounded-2xl rounded-br-md border border-dashed border-slate-400 px-4 py-2.5 text-slate-700 dark:border-border-strong dark:text-text-secondary">
-        {draft === null ? <p className="whitespace-pre-wrap break-words text-sm">{text}</p> : (
-          <form className="flex gap-1" onSubmit={(e) => { e.preventDefault(); onEdit(draft); setDraft(null); }}>
-            <Input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") setDraft(null); }} />
-            <Button>Guardar</Button>
+        {draft === null ? <div className="flex flex-col text-sm"><MessageParts text={text} /></div> : (
+          <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); save(); }}>
+            <DictationField autoFocus rows={2} aria-label="Editar mensaje en cola" value={draft} onValue={setDraft} onKeyDown={(e) => {
+              if (e.key === "Escape") setDraft(null);
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); save(); }
+            }} />
+            <Button disabled={dictating}>Guardar</Button>
           </form>
         )}
         {files.length > 0 && <p className="mt-1 text-xs opacity-70">{files.map((f) => f.name).join(", ")}</p>}

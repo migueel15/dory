@@ -14,10 +14,12 @@ import (
 // ThreadView is a thread with its conversation, as the chat shows it.
 type ThreadView struct {
 	data.Thread
-	Messages []runtime.Message `json:"messages"`
-	Queue    []runtime.Queued  `json:"queue"`
-	Running  bool              `json:"running"`
-	Worktree string            `json:"worktree"`
+	LastTurnModel    *runtime.TurnModel       `json:"last_turn_model,omitempty"`
+	ReportedSettings runtime.ReportedSettings `json:"reported_settings"`
+	Messages         []runtime.Message        `json:"messages"`
+	Queue            []runtime.Queued         `json:"queue"`
+	Running          bool                     `json:"running"`
+	Worktree         string                   `json:"worktree"`
 	// Local is false when another node owns the thread; its messages then
 	// come from that node.
 	Local bool `json:"local"`
@@ -53,7 +55,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 			return
 		}
 		dir, _ := s.Runtime.Dir(r.Context(), t.ID)
-		writeJSON(w, http.StatusOK, ThreadView{Thread: t, Messages: msgs, Queue: s.Runtime.Queue(t.ID), Running: s.Runtime.Running(t.ID), Worktree: dir, Local: true})
+		writeJSON(w, http.StatusOK, ThreadView{Thread: t, LastTurnModel: s.Runtime.LastTurnModel(r.Context(), t.ID), ReportedSettings: s.Runtime.ReportedSettings(r.Context(), t), Messages: msgs, Queue: s.Runtime.Queue(t.ID), Running: s.Runtime.Running(t.ID), Worktree: dir, Local: true})
 	}))
 	mux.HandleFunc("POST /api/threads/{id}/messages", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		var body struct {
@@ -142,28 +144,11 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 	}))
 	// Model, effort and permissions apply from the next turn.
 	mux.HandleFunc("POST /api/threads/{id}/settings", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
-		var body struct {
-			Model       *string `json:"model"`
-			Effort      *string `json:"effort"`
-			RuntimeMode *string `json:"runtime_mode"`
-		}
+		var body runtime.ThreadSettings
 		if !decode(w, r, &body) {
 			return
 		}
-		if body.Model != nil {
-			t.Model = *body.Model
-		}
-		if body.Effort != nil {
-			t.Effort = *body.Effort
-		}
-		if body.RuntimeMode != nil {
-			if *body.RuntimeMode != "full-access" && *body.RuntimeMode != "approval-required" {
-				writeError(w, http.StatusBadRequest, "invalid_argument", "runtime_mode must be full-access or approval-required")
-				return
-			}
-			t.RuntimeMode = *body.RuntimeMode
-		}
-		out, err := s.Store.Threads().Put(r.Context(), t)
+		out, err := s.Runtime.Configure(r.Context(), t.ID, body)
 		if err != nil {
 			writeDataError(w, err)
 			return
@@ -312,36 +297,37 @@ func (s *Server) ThreadAction(ctx context.Context, id, action, title, until, tas
 		return t, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	fields := make(map[string]any)
 	switch action {
 	case "rename":
 		if title == "" {
 			return t, errors.Join(data.ErrInvalid, errors.New("title is required"))
 		}
-		t.Title = title
+		fields["title"] = title
 	case "pin":
-		t.PinnedAt = &now
+		fields["pinned_at"] = now
 	case "unpin":
-		t.PinnedAt = nil
+		fields["pinned_at"] = nil
 	case "read":
-		t.ReadAt = &now
+		fields["read_at"] = now
 	case "unread":
-		t.ReadAt = nil
+		fields["read_at"] = nil
 	case "settle":
-		t.SettledAt = &now
+		fields["settled_at"] = now
 	case "unsettle":
-		t.SettledAt = nil
+		fields["settled_at"] = nil
 	case "snooze":
 		if _, err := time.Parse(time.RFC3339, until); err != nil {
 			return t, errors.Join(data.ErrInvalid, errors.New("until must be an RFC 3339 time"))
 		}
-		t.SnoozedUntil = &until
+		fields["snoozed_until"] = until
 	case "unsnooze":
-		t.SnoozedUntil = nil
+		fields["snoozed_until"] = nil
 	case "link":
 		if taskID == "" {
-			t.TaskID = nil
+			fields["task_id"] = nil
 		} else {
-			t.TaskID = &taskID
+			fields["task_id"] = taskID
 		}
 	case "archive":
 		if t.NodeID == s.Node.ID {
@@ -353,5 +339,5 @@ func (s *Server) ThreadAction(ctx context.Context, id, action, title, until, tas
 	default:
 		return t, errors.Join(data.ErrInvalid, errors.New("unknown action "+action))
 	}
-	return s.Store.Threads().Put(ctx, t)
+	return s.Store.PatchThread(ctx, id, fields)
 }

@@ -2,12 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { api, type UsageWindow } from "../api/client";
 import { Card, ErrorText, PageHeader } from "../components/ui";
 import { ProviderIcon } from "../components/launch-picker";
-import { expectedRemaining, paceTitle } from "../lib/usage-pace";
+import { expectedRemaining, paceTitle, WINDOWS } from "../lib/usage-pace";
 
-const WINDOWS: Record<string, [string, number]> = {
-  five_hour: ["5 horas", 300], seven_day: ["Semanal", 7 * 24 * 60], seven_day_opus: ["Semanal · Opus", 7 * 24 * 60],
-  seven_day_sonnet: ["Semanal · Sonnet", 7 * 24 * 60], thirty_day: ["Mensual", 30 * 24 * 60], monthly: ["Mensual", 30 * 24 * 60],
-};
 
 const date = (iso: string) => new Date(iso).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" });
 

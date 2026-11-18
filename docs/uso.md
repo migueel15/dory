@@ -4,6 +4,18 @@
 
 La pantalla inicial es un chat. Eliges proyecto y agente (proveedor, modelo, razonamiento y permisos) y escribes. Con **Modo plan** activado, la conversación crea una tarea y un hilo que la define con el agente; el plan lo acepta solo el usuario.
 
+## Cambiar de proveedor en un hilo
+
+Cuando termine el turno, abre el selector de modelos del hilo y elige un modelo en otro proveedor. Al enviar el siguiente mensaje, el proveedor recibe un extracto de la conversación y continúa en el mismo hilo y directorio de trabajo. En conversaciones largas, el extracto prioriza la petición inicial y los mensajes recientes. Vuelve a adjuntar cualquier archivo anterior que el nuevo proveedor necesite. Al elegir otro modelo, se muestra un separador pendiente. Si vuelves al modelo del último turno, el aviso desaparece. Al enviar con el modelo nuevo, el separador se guarda en el historial e indica si se transfirió contexto a otra sesión.
+
+## Citar texto
+
+Selecciona texto con un hilo abierto y elige **Citar** para añadirlo al mensaje, o **Responder** para escribir una respuesta a ese fragmento. Las citas se apilan encima del cuadro de mensaje. Puedes quitar una cita con su ×. Al enviar, se incluye cada fragmento con su respuesta y el texto que hayas escrito en el cuadro principal.
+
+## Adjuntar imágenes
+
+Pega una imagen o añádela con el botón **Adjuntar**. La miniatura queda junto a tu mensaje en el historial. Pulsa la imagen para ampliarla y pulsa Escape para cerrar la vista.
+
 ## Tareas
 
 El kanban tiene estas columnas, que se calculan solas a partir de los hilos y de la PR de la rama:

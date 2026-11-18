@@ -1,11 +1,14 @@
+import { DictationField } from "../components/dictation-field";
+import { useDictationInProgress } from "../components/local-dictation";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { AppleLogo, Desktop, LinuxLogo, Plus, WindowsLogo } from "@phosphor-icons/react";
 import { api, type Memory, type MemoryInput, type Provider } from "../api/client";
-import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, PageHeader, Select, StatusPill, Textarea, csv } from "../components/ui";
+import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, PageHeader, Select, StatusPill, csv } from "../components/ui";
 import { ProviderIcon } from "../components/launch-picker";
 import { useProject } from "../project";
+import { askConfirm } from "../components/confirm";
 
 export const memorySearch = (s: Record<string, unknown>) => ({ q: typeof s.q === "string" ? s.q : undefined, kind: typeof s.kind === "string" ? s.kind : undefined });
 
@@ -56,6 +59,7 @@ export function Memories() {
 
 function MemoryForm({ memory, onClose }: { memory?: Memory; onClose: () => void }) {
   const qc = useQueryClient();
+  const dictating = useDictationInProgress();
   const project = useProject();
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const [m, setM] = useState<MemoryInput>(memory ?? { scope: project ? "project" : "global", scope_id: project, kind: "context", title: "", content: "", labels: [] });
@@ -70,9 +74,9 @@ function MemoryForm({ memory, onClose }: { memory?: Memory; onClose: () => void 
   const archive = useMutation({ mutationFn: () => api.memories.archive(memory!.id), onSuccess: () => { qc.invalidateQueries({ queryKey: ["memories"] }); onClose(); } });
   return (
     <Modal title={memory ? "Memoria" : "Nueva memoria"} onClose={onClose} wide>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (m.content.trim()) save.mutate(); }}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (!dictating && m.content.trim()) save.mutate(); }}>
         <Label text="Título"><Input value={m.title ?? ""} onChange={(e) => setM({ ...m, title: e.target.value })} /></Label>
-        <Label text="Contenido"><Textarea rows={10} value={m.content} onChange={(e) => setM({ ...m, content: e.target.value })} /></Label>
+        <DictationField label="Contenido" rows={10} value={m.content} onValue={(content) => setM((current) => ({ ...current, content }))} />
         <div className="grid gap-2 sm:grid-cols-3">
           <Label text="Tipo"><Select value={m.kind ?? "context"} onChange={(v) => setM({ ...m, kind: v as Memory["kind"] })} options={Object.entries(KINDS).map(([value, label]) => ({ value, label }))} /></Label>
           <Label text="Ámbito"><Select value={m.scope ?? "global"} onChange={(v) => setM({ ...m, scope: v as Memory["scope"] })} options={[{ value: "global", label: "Global" }, { value: "project", label: "Proyecto" }]} /></Label>
@@ -81,8 +85,8 @@ function MemoryForm({ memory, onClose }: { memory?: Memory; onClose: () => void 
         <Label text="Labels (separadas por comas)"><Input value={labels} onChange={(e) => setLabels(e.target.value)} /></Label>
         <ErrorText error={save.error ?? archive.error} />
         <div className="flex gap-2">
-          <Button disabled={!m.content.trim() || save.isPending}>Guardar</Button>
-          {memory && <Button type="button" variant="ghost" className="ml-auto" onClick={() => confirm("¿Archivar la memoria?") && archive.mutate()}>Archivar</Button>}
+          <Button disabled={dictating || !m.content.trim() || save.isPending}>Guardar</Button>
+          {memory && <Button type="button" variant="ghost" className="ml-auto" onClick={() => askConfirm("¿Archivar la memoria?", "Archivar").then((ok) => ok && archive.mutate())}>Archivar</Button>}
         </div>
       </form>
     </Modal>
@@ -131,7 +135,7 @@ export function Environments() {
               <StatusPill tone={p.connected ? "green" : "slate"}>{p.connected ? "conectado" : "desconectado"}</StatusPill>
               <span className="font-mono text-xs text-slate-500">{p.address}{p.info.node?.version ? ` · ${p.info.node.version}` : ""} · huella {p.fingerprint}</span>
               {!p.connected && p.last_seen && <span className="text-xs text-slate-500">visto {new Date(p.last_seen).toLocaleString()}</span>}
-              <Button variant="ghost" className="ml-auto text-xs" onClick={() => confirm(`¿Revocar ${p.name}? Dejará de sincronizarse con este nodo.`) && revoke.mutate(p.id)}>Revocar</Button>
+              <Button variant="ghost" className="ml-auto text-xs" onClick={() => askConfirm(`¿Revocar ${p.name}? Dejará de sincronizarse con este nodo.`, "Revocar").then((ok) => ok && revoke.mutate(p.id))}>Revocar</Button>
             </div>
             {p.info.providers && <Providers list={p.info.providers} node={p.connected ? p.id : undefined} />}
           </Card>

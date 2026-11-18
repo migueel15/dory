@@ -176,6 +176,37 @@ func (s *Server) issueTask(ctx context.Context, repo string, number int, title, 
 const maxChunkBytes = 2 << 20
 
 func (s *Server) mountDictation(mux *http.ServeMux) {
+	if models := s.SpeechModels; models != nil {
+		mux.HandleFunc("GET /api/dictation/models", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, http.StatusOK, models.Catalog())
+		})
+		mux.HandleFunc("POST /api/dictation/models/{id}/download", func(w http.ResponseWriter, r *http.Request) {
+			if err := models.Download(r.PathValue("id")); err != nil {
+				writeDictationError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusAccepted, models.Catalog())
+		})
+		mux.HandleFunc("POST /api/dictation/models/{id}/transcribe", func(w http.ResponseWriter, r *http.Request) {
+			if r.ContentLength > 12<<20 {
+				writeError(w, http.StatusRequestEntityTooLarge, "audio_too_large", "la grabación supera los 12 MiB")
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, 12<<20)
+			if err := models.Transcribe(w, r, r.PathValue("id"), false); err != nil {
+				writeDictationError(w, err)
+			}
+		})
+		mux.HandleFunc("GET /api/dictation/models/{id}/stream", func(w http.ResponseWriter, r *http.Request) {
+			if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+				writeError(w, http.StatusBadRequest, "invalid_argument", "se requiere WebSocket")
+				return
+			}
+			if err := models.Transcribe(w, r, r.PathValue("id"), true); err != nil {
+				writeDictationError(w, err)
+			}
+		})
+	}
 	dict := s.Dictation
 	mux.HandleFunc("POST /api/dictation", func(w http.ResponseWriter, r *http.Request) {
 		st, err := dict.Create(actor(r))
@@ -259,7 +290,7 @@ func writeDictationError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, dictation.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found", err.Error())
-	case errors.Is(err, dictation.ErrUnavailable):
+	case errors.Is(err, dictation.ErrUnavailable), errors.Is(err, dictation.ErrModelMissing):
 		writeError(w, http.StatusServiceUnavailable, "unavailable", err.Error())
 	case errors.Is(err, dictation.ErrFinished), errors.Is(err, dictation.ErrOutOfOrder):
 		writeError(w, http.StatusConflict, "conflict", err.Error())

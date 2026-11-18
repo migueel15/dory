@@ -4,7 +4,14 @@
 const { app, BrowserWindow, shell, Menu, dialog } = require("electron");
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
+
+const profile = path.join(os.homedir(), ".dory", "desktop");
+if (fs.existsSync(profile) || !fs.existsSync(path.join(app.getPath("userData"), "Local State"))) {
+  fs.mkdirSync(profile, { recursive: true, mode: 0o700 });
+  app.setPath("userData", profile);
+}
 
 // The binary shipped with the app, or the one on PATH.
 function doryBin() {

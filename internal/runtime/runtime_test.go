@@ -47,6 +47,9 @@ func TestClaudeParser(t *testing.T) {
 	if events[0].Session != "s-1" {
 		t.Fatalf("session: %+v", events[0])
 	}
+	if got := events[1].Settings; got == nil || *got != (ReportedSettings{Model: "claude-opus-4-6", Effort: "high"}) {
+		t.Fatalf("reported settings: %+v", got)
+	}
 	msgs, order := final(events)
 	want := []struct{ id, role, text, status string }{
 		{"msg_1:0", "reasoning", "Miro el repo", ""},

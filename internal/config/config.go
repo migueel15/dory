@@ -68,15 +68,10 @@ func Load() (Config, error) {
 		}
 	}
 	if c.DataDir == "" {
-		dir := os.Getenv("XDG_DATA_HOME")
-		if dir == "" {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return c, err
-			}
-			dir = filepath.Join(home, ".local", "share")
+		c.DataDir, err = defaultDataDir()
+		if err != nil {
+			return c, err
 		}
-		c.DataDir = filepath.Join(dir, "dory")
 	}
 	if c.NodeName == "" {
 		c.NodeName, _ = os.Hostname()
@@ -94,6 +89,26 @@ func Load() (Config, error) {
 		}
 	}
 	return c, nil
+}
+
+func defaultDataDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(home, ".dory", "data")
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		return dir, nil
+	}
+	legacy := os.Getenv("XDG_DATA_HOME")
+	if legacy == "" {
+		legacy = filepath.Join(home, ".local", "share")
+	}
+	legacy = filepath.Join(legacy, "dory")
+	if _, err := os.Stat(filepath.Join(legacy, "dory.db")); !os.IsNotExist(err) {
+		return legacy, nil
+	}
+	return dir, nil
 }
 
 // validateOrigin accepts scheme://host[:port] only, the form browsers send in Origin.

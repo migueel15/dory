@@ -8,6 +8,8 @@ import remarkGfm from "remark-gfm";
 import { RefCode, RefImg, RefLink } from "./refs";
 export { defaultUrlTransform };
 
+export const iconButton = "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-md text-slate-500 enabled:hover:bg-slate-100 enabled:hover:text-slate-900 disabled:opacity-40 dark:text-text-secondary dark:enabled:hover:bg-raised dark:enabled:hover:text-white";
+
 const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(" ");
 
 export function Button({ variant = "default", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "default" | "ghost" | "bare" | "danger" }) {

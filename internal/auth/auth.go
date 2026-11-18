@@ -178,7 +178,7 @@ func Middleware(svc Store, cfg config.Config, agentToken string) func(http.Handl
 			}
 			ctx := context.WithValue(r.Context(), identityKey{}, v)
 			scope := "read"
-			if !mcp && r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
+			if !mcp && ((r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS") || strings.EqualFold(r.Header.Get("Upgrade"), "websocket")) {
 				scope = "write"
 			}
 			if !Allowed(ctx, scope) {

@@ -4,7 +4,9 @@ import { createPortal } from "react-dom";
 import { ArrowsIn, CaretDown, ArrowsOut, CaretRight, Columns, Rows, SidebarSimple, ChatCircle, TreeView, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import { Button, ErrorText, Input, Textarea, keepAboveKeyboard } from "../components/ui";
+import { DictationField } from "../components/dictation-field";
+import { useDictationInProgress } from "../components/local-dictation";
+import { Button, ErrorText, Input, keepAboveKeyboard } from "../components/ui";
 import { Modal } from "../components/ui";
 import { useLaunchForm } from "../components/launch-picker";
 import type { LaunchChoice } from "../api/client";
@@ -242,13 +244,14 @@ function CommentForm({ draft, placeholder, suggest, rangeless, pending, agentPen
   onAsk: (body: string) => void; onSuggest: (body: string, steer: boolean) => void; onPublish: (body: string) => void; onCancel: () => void;
 }) {
   const [body, setBody] = useState(draft.current);
+  const dictating = useDictationInProgress();
   return (
     <div className="my-2 whitespace-normal font-sans">
-      <Textarea aria-label="Comentario de revisión" autoFocus onFocus={(e) => keepAboveKeyboard(e.currentTarget.parentElement!)} value={body} onChange={(e) => { setBody(e.target.value); draft.current = e.target.value; }} rows={3} placeholder={placeholder} className="p-2"
+      <DictationField aria-label="Comentario de revisión" autoFocus onFocus={(e) => keepAboveKeyboard(e.currentTarget.parentElement!)} value={body} onValue={(text) => { setBody(text); draft.current = text; }} rows={3} placeholder={placeholder} className="p-2"
         onKeyDown={(e) => {
           // Ctrl/Cmd+Enter always goes to the agent; Escape cancels. GitHub only by its button.
           if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onCancel(); return; }
-          if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey) || !body.trim()) return;
+          if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey) || dictating || !body.trim()) return;
           e.preventDefault();
           if (suggest) { if (!rangeless && !pending) onSuggest(body, false); }
           else if (!pending && !agentPending) onAsk(body);
@@ -256,13 +259,13 @@ function CommentForm({ draft, placeholder, suggest, rangeless, pending, agentPen
       <div className="mt-2 flex gap-2">
         {suggest ? (
           <>
-            <Button disabled={pending || !body.trim() || rangeless} onClick={() => onSuggest(body, false)} title="Envía la sugerencia al hilo; si está trabajando, se encola">Sugerir al chat</Button>
-            <Button variant="ghost" disabled={pending || !body.trim() || rangeless} onClick={() => onSuggest(body, true)} title="Inyecta la sugerencia en el turno en curso">Steer</Button>
+            <Button disabled={dictating || pending || !body.trim() || rangeless} onClick={() => onSuggest(body, false)} title="Envía la sugerencia al hilo; si está trabajando, se encola">Sugerir al chat</Button>
+            <Button variant="ghost" disabled={dictating || pending || !body.trim() || rangeless} onClick={() => onSuggest(body, true)} title="Inyecta la sugerencia en el turno en curso">Steer</Button>
           </>
         ) : <>
-          <Button disabled={pending || !body.trim() || agentPending} onClick={() => onAsk(body)}
+          <Button disabled={dictating || pending || !body.trim() || agentPending} onClick={() => onAsk(body)}
             title={`${agentAvailable ? "Consulta privada al hilo de revisión de la PR" : "La primera pregunta crea el hilo de revisión de la PR"}; no se publica en GitHub (Ctrl+Enter)`}>Preguntar al agente</Button>
-          <PublishButton disabled={pending || !body.trim()} onPublish={() => onPublish(body)} />
+          <PublishButton disabled={dictating || pending || !body.trim()} onPublish={() => onPublish(body)} />
         </>}
         <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
       </div>

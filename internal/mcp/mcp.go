@@ -17,6 +17,7 @@ import (
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/oplog"
+	"github.com/migueel15/dory/internal/runtime"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -98,7 +99,8 @@ type recallInput struct {
 }
 
 type askInput struct {
-	Question string `json:"question"`
+	Question  string             `json:"question,omitempty" jsonschema:"A single free question; prefer questions"`
+	Questions []runtime.Question `json:"questions,omitempty" jsonschema:"One or more questions, each with a short header and 2-4 options; the user may also answer freely"`
 }
 
 // Handler serves the tools. The caller authenticates the request; a thread
@@ -150,12 +152,19 @@ func Handler(s *api.Server) http.Handler {
 	}) (any, error) {
 		return store.Search(ctx, in.Query, 20)
 	})
-	add(srv, "ask_user", "Ask the user a question. The thread waits until the user answers in the chat.", func(ctx context.Context, in askInput) (any, error) {
+	add(srv, "ask_user", "Ask the user one or more questions, each with options to pick (multi_select for several). The chat shows them as a form; the thread waits and the answers arrive as the next user message.", func(ctx context.Context, in askInput) (any, error) {
 		id, _ := ctx.Value(threadKey{}).(string)
 		if id == "" {
 			return nil, errors.New("ask_user only works inside a Dory thread")
 		}
-		if err := s.Runtime.Ask(ctx, id, in.Question); err != nil {
+		qs := in.Questions
+		if in.Question != "" {
+			qs = append([]runtime.Question{{Question: in.Question}}, qs...)
+		}
+		if len(qs) == 0 {
+			return nil, errors.New("ask_user needs a question")
+		}
+		if err := s.Runtime.Ask(ctx, id, qs); err != nil {
 			return nil, err
 		}
 		return map[string]string{"status": "asked", "note": "Finish your turn; the answer arrives as the next user message."}, nil

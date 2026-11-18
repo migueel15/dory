@@ -46,6 +46,20 @@ func (s *Store) SkillStates() Resource[SkillState] {
 	return Resource[SkillState]{s, "skill_state"}
 }
 
+// PatchThread writes only the fields owned by an action, so a concurrent
+// status or metadata update cannot restore a stale provider selection.
+func (s *Store) PatchThread(ctx context.Context, id string, fields map[string]any) (Thread, error) {
+	t, err := s.Threads().Get(ctx, id)
+	if err != nil || len(fields) == 0 {
+		return t, err
+	}
+	fields["updated_at"] = s.now().UTC().Format(time.RFC3339Nano)
+	if _, err = s.log.Write(ctx, "thread", id, fields); err != nil {
+		return t, fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	return s.Threads().Get(ctx, id)
+}
+
 // jsonColumns are stored as JSON text and read back as JSON values.
 var jsonColumns = []string{"sections", "open_questions", "labels", "files", "targets"}
 

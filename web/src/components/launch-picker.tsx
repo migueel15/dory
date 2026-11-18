@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type LaunchChoice, type Provider } from "../api/client";
+import { api, type LaunchChoice, type Model } from "../api/client";
 import { Label, Select } from "./ui";
+import { explicitModels, findModel, lastModel, modelEffort, modelId, rememberModel } from "../effort";
 import { ModelLogo } from "./model-logo";
 
 export const ProviderIcon = ({ driver, model }: { driver: string; model?: string }) => <ModelLogo driver={driver} model={model} />;
@@ -17,41 +18,52 @@ export function useProviders() {
 }
 
 // useLaunchForm picks provider, model, effort and access for a new thread.
-// The last choice of each section is remembered in this browser.
+// The last selected model is shared across launch forms. Permissions stay per section.
 export function useLaunchForm({ section }: { section: string; repo?: string }) {
   const providers = useProviders();
-  const saved = stored(section);
-  const [value, setValue] = useState<LaunchChoice>({ provider: saved.provider ?? "", model: saved.model ?? "", effort: saved.effort ?? "", runtime_mode: saved.runtime_mode ?? "full-access" });
-  const list: Provider[] = providers.data ?? [];
-  const provider = list.find((p) => p.id === value.provider);
-  // Fall back to the first installed provider and its first model.
-  useEffect(() => {
-    if (!list.length) return;
-    if (!provider) setValue((v) => ({ ...v, provider: list[0].id, model: list[0].models[0]?.slug ?? "", effort: "" }));
-  }, [list.length, provider]); // eslint-disable-line react-hooks/exhaustive-deps
-  const model = provider?.models.find((m) => m.slug === value.model);
+  const [draft, setDraft] = useState<Partial<LaunchChoice>>(() => ({ runtime_mode: stored(section).runtime_mode }));
+  const last = lastModel() ?? stored(section);
+  const list = (providers.data ?? []).map((p) => ({ ...p, models: explicitModels(p.models) })).filter((p) => p.models.length > 0);
+  const provider = list.find((p) => p.id === (draft.provider ?? last.provider)) ?? list[0];
+  const model = provider && (findModel(provider.models, draft.model ?? last.model ?? "") ?? provider.models[0]);
+  const draftEffort = draft.effort ?? "";
+  const value: LaunchChoice = {
+    provider: provider?.id ?? "",
+    model: model ? modelId(model) : "",
+    effort: model && provider
+      ? (draft.model === modelId(model) && model.efforts?.includes(draftEffort) ? draftEffort : modelEffort(provider.id, model))
+      : "",
+    runtime_mode: draft.runtime_mode ?? "full-access",
+  };
+  const setRuntimeMode = (runtime_mode: LaunchChoice["runtime_mode"]) =>
+    setDraft((current) => ({ ...current, runtime_mode }));
+  const selectModel = (providerId: string, selected: Model, effort = modelEffort(providerId, selected)) => {
+    const choice = { provider: providerId, model: modelId(selected), effort };
+    rememberModel(choice);
+    setDraft((current) => ({ ...current, ...choice }));
+  };
   const fields = (
     <div className="grid gap-2 sm:grid-cols-2">
       <Label text="Agente">
-        <Select value={value.provider} onChange={(v) => { const p = list.find((x) => x.id === v); setValue((c) => ({ ...c, provider: v, model: p?.models[0]?.slug ?? "", effort: "" })); }}
+        <Select value={value.provider} onChange={(v) => { const first = list.find((p) => p.id === v)?.models[0]; if (first) selectModel(v, first); }}
           options={list.map((p) => ({ value: p.id, label: `${p.name}${p.version ? ` · ${p.version.split(" ")[0]}` : ""}`, icon: <ProviderIcon driver={p.id} /> }))} />
       </Label>
       <Label text="Modelo">
-        <Select value={value.model} onChange={(v) => setValue((c) => ({ ...c, model: v, effort: "" }))} options={(provider?.models ?? []).map((m) => ({ value: m.slug, label: m.name }))} />
+        <Select value={value.model} onChange={(v) => { const selected = findModel(provider?.models ?? [], v); if (selected) selectModel(value.provider, selected); }} options={(provider?.models ?? []).map((m) => ({ value: modelId(m), label: m.name }))} />
       </Label>
       {!!model?.efforts?.length && (
         <Label text="Razonamiento">
-          <Select value={value.effort} onChange={(v) => setValue((c) => ({ ...c, effort: v }))} options={[{ value: "", label: "Por defecto" }, ...model.efforts.map((e) => ({ value: e, label: e }))]} />
+          <Select value={value.effort} onChange={(v) => selectModel(value.provider, model, v)} options={model.efforts.map((e) => ({ value: e, label: e }))} />
         </Label>
       )}
       <Label text="Permisos">
-        <Select value={value.runtime_mode} onChange={(v) => setValue((c) => ({ ...c, runtime_mode: v as LaunchChoice["runtime_mode"] }))}
+        <Select value={value.runtime_mode} onChange={(v) => setRuntimeMode(v as LaunchChoice["runtime_mode"])}
           options={[{ value: "full-access", label: "Acceso completo" }, { value: "approval-required", label: "Solo ediciones" }]} />
       </Label>
     </div>
   );
   return {
-    fields, value, ready: !!value.provider, error: providers.error,
-    remember: () => { try { localStorage.setItem(`${KEY}.${section}`, JSON.stringify(value)); } catch { /* per browser only */ } },
+    fields, value, selectModel, setRuntimeMode, providers: list, ready: !!model, error: providers.error,
+    remember: () => { try { localStorage.setItem(`${KEY}.${section}`, JSON.stringify({ ...stored(section), runtime_mode: value.runtime_mode })); } catch { /* per browser only */ } },
   };
 }

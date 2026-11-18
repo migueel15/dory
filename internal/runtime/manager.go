@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -21,16 +22,18 @@ var (
 	ErrNotFound = errors.New("thread not found")
 	ErrRemote   = errors.New("thread runs on another node")
 	ErrProvider = errors.New("provider not available")
+	ErrBusy     = errors.New("espera a que termine el turno antes de cambiar de proveedor")
 )
 
 // Update is pushed to subscribers when a thread changes: a message upsert, a
 // new status or a new queue.
 type Update struct {
-	ThreadID string   `json:"thread_id"`
-	Message  *Message `json:"message,omitempty"`
-	Status   string   `json:"status,omitempty"`
-	Error    string   `json:"error,omitempty"`
-	Queue    []Queued `json:"queue,omitempty"`
+	ThreadID      string     `json:"thread_id"`
+	Message       *Message   `json:"message,omitempty"`
+	Status        string     `json:"status,omitempty"`
+	Error         string     `json:"error,omitempty"`
+	Queue         []Queued   `json:"queue,omitempty"`
+	LastTurnModel *TurnModel `json:"last_turn_model,omitempty"`
 	// Reload asks clients to fetch the whole conversation again.
 	Reload bool `json:"reload,omitempty"`
 }
@@ -188,7 +191,7 @@ func (m *Manager) Create(ctx context.Context, n NewThread) (data.Thread, error) 
 			return t, err
 		}
 	}
-	_, err = m.db.ExecContext(ctx, `INSERT INTO thread_runtime(thread_id, worktree_path, base_branch) VALUES (?, ?, ?)`, t.ID, dir, n.BaseBranch)
+	_, err = m.db.ExecContext(ctx, `INSERT INTO thread_runtime(thread_id, worktree_path, base_branch, session_provider) VALUES (?, ?, ?, ?)`, t.ID, dir, n.BaseBranch, t.Provider)
 	return t, err
 }
 
@@ -219,12 +222,13 @@ func (m *Manager) local(ctx context.Context, id string) (data.Thread, error) {
 
 // Send starts a turn with text, or queues it while another turn runs.
 func (m *Manager) Send(ctx context.Context, id, text string, files ...Attachment) error {
-	t, err := m.local(ctx, id)
-	if err != nil {
-		return err
-	}
 	run := newRunID()
 	m.mu.Lock()
+	t, err := m.local(ctx, id)
+	if err != nil {
+		m.mu.Unlock()
+		return err
+	}
 	if _, busy := m.running[id]; busy {
 		m.queues[id] = append(m.queues[id], Queued{RunID: run, Text: text, Files: files})
 		q := append([]Queued(nil), m.queues[id]...)
@@ -247,11 +251,16 @@ func (m *Manager) Send(ctx context.Context, id, text string, files ...Attachment
 
 // Ask records a question of the agent and marks the thread as waiting for
 // the user; the answer arrives as the next message.
-func (m *Manager) Ask(ctx context.Context, id, question string) error {
+func (m *Manager) Ask(ctx context.Context, id string, questions []Question) error {
 	if _, err := m.local(ctx, id); err != nil {
 		return err
 	}
-	m.save(ctx, Message{ID: newRunID(), ThreadID: id, Role: "system", Title: "Pregunta", Text: question, Status: "waiting", CreatedAt: now()})
+	var text []string
+	for _, q := range questions {
+		text = append(text, q.Question)
+	}
+	m.save(ctx, Message{ID: newRunID(), ThreadID: id, Role: "question", Title: "Pregunta", Text: strings.Join(text, "\n"), Status: "waiting", CreatedAt: now(),
+		Tool: &ToolCall{Kind: "question", Name: "ask_user", Questions: questions}})
 	m.mu.Lock()
 	m.asked[id] = true
 	m.mu.Unlock()
@@ -294,27 +303,80 @@ func (m *Manager) start(ctx context.Context, t data.Thread, run, text string, fi
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrProvider, t.Provider)
 	}
-	var session, dir string
-	err := m.db.QueryRowContext(ctx, `SELECT session_id, worktree_path FROM thread_runtime WHERE thread_id = ?`, t.ID).Scan(&session, &dir)
+	var session, dir, sessionProvider, lastModel string
+	err := m.db.QueryRowContext(ctx, `SELECT session_id, worktree_path, session_provider, last_turn_model FROM thread_runtime WHERE thread_id = ?`, t.ID).Scan(&session, &dir, &sessionProvider, &lastModel)
 	if err != nil {
 		return err
 	}
-	m.save(ctx, Message{ID: run + ":user", ThreadID: t.ID, RunID: run, Role: "user", Text: text, Detail: attachmentsDetail(files), CreatedAt: now()})
-	events, err := p.Run(ctx, Turn{RunID: run, Dir: dir, Text: withAttachments(text, files), Model: t.Model, Effort: t.Effort, Session: session,
+	prompt := withAttachments(text, files)
+	var transferred bool
+	if sessionProvider != t.Provider {
+		session = ""
+		history, err := m.Messages(ctx, t.ID)
+		if err != nil {
+			return err
+		}
+		prompt, transferred = portablePrompt(history, prompt)
+		if transferred {
+			// A provider file contains only its segment of this conversation.
+			if _, err := m.db.ExecContext(ctx, `UPDATE thread_runtime SET portable_history = 1 WHERE thread_id = ?`, t.ID); err != nil {
+				return err
+			}
+		}
+	}
+	startedAt := now()
+	events, err := p.Run(ctx, Turn{RunID: run, Dir: dir, Text: prompt, Model: t.Model, Effort: t.Effort, Session: session,
 		FullAccess: t.RuntimeMode != "approval-required", MCPURL: m.mcpURL(t.ID), MCPToken: m.MCPToken})
 	if err != nil {
 		return err
 	}
+	var previous TurnModel
+	_ = json.Unmarshal([]byte(lastModel), &previous)
+	current := TurnModel{Provider: t.Provider, Model: &t.Model}
+	modelChanged := (previous.Model != nil || (previous.ReportedModel != "" && t.Model != "")) &&
+		(previous.Model == nil || *previous.Model != t.Model) && (previous.ReportedModel == "" || previous.ReportedModel != t.Model)
+	providerChanged := previous.Provider != "" && previous.Provider != t.Provider
+	var marker Message
+	if providerChanged || modelChanged {
+		marker = Message{ID: run + ":model-change", ThreadID: t.ID, RunID: run, Role: "model-change", CreatedAt: startedAt}
+	} else if previous.Provider == t.Provider {
+		current.ReportedModel = previous.ReportedModel
+	}
+	change := modelChange{From: previous, To: current, Handoff: transferred}
+	m.saveTurnModel(ctx, t.ID, current)
+	if marker.ID != "" {
+		m.saveModelChange(ctx, marker, change)
+	}
+	m.save(ctx, Message{ID: run + ":user", ThreadID: t.ID, RunID: run, Role: "user", Text: text, Detail: attachmentsDetail(files), CreatedAt: startedAt})
 	m.setStatus(ctx, t.ID, "working", "")
-	go m.follow(ctx, t, events)
+	go m.follow(ctx, t, events, marker, change)
 	return nil
+}
+
+type turnSettings struct {
+	Provider   string
+	Configured ReportedSettings
+	Reported   ReportedSettings
+}
+
+func (m *Manager) ReportedSettings(ctx context.Context, t data.Thread) ReportedSettings {
+	var raw string
+	var settings turnSettings
+	if m.db.QueryRowContext(ctx, `SELECT reported_settings FROM thread_runtime WHERE thread_id = ?`, t.ID).Scan(&raw) == nil &&
+		json.Unmarshal([]byte(raw), &settings) == nil &&
+		settings.Provider == t.Provider &&
+		settings.Configured == (ReportedSettings{Model: t.Model, Effort: t.Effort}) {
+		return settings.Reported
+	}
+	return ReportedSettings{}
 }
 
 // follow stores what a turn emits until it ends, then starts the next
 // queued message, if any.
-func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event) {
+func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event, marker Message, change modelChange) {
 	bg := context.WithoutCancel(ctx)
 	status, failure := "idle", ""
+	settings := turnSettings{Provider: t.Provider, Configured: ReportedSettings{Model: t.Model, Effort: t.Effort}}
 	for e := range events {
 		switch {
 		case e.Message != nil:
@@ -322,8 +384,31 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 			msg.ThreadID = t.ID
 			m.save(bg, msg)
 		case e.Session != "":
-			if _, err := m.db.ExecContext(bg, `UPDATE thread_runtime SET session_id = ? WHERE thread_id = ?`, e.Session, t.ID); err != nil {
+			if _, err := m.db.ExecContext(bg, `UPDATE thread_runtime SET session_id = ?, session_provider = ? WHERE thread_id = ?`, e.Session, t.Provider, t.ID); err != nil {
 				log.Printf("runtime: save session: %v", err)
+			}
+		case e.Settings != nil:
+			previous := settings.Reported
+			if e.Settings.Model != "" {
+				settings.Reported.Model = e.Settings.Model
+				if change.To.ReportedModel != e.Settings.Model {
+					change.To.ReportedModel = e.Settings.Model
+					m.saveTurnModel(bg, t.ID, change.To)
+					if marker.ID != "" {
+						m.saveModelChange(bg, marker, change)
+					}
+				}
+			}
+			if e.Settings.Effort != "" {
+				settings.Reported.Effort = e.Settings.Effort
+			}
+			if settings.Reported != previous {
+				raw, _ := json.Marshal(settings)
+				if _, err := m.db.ExecContext(bg, `UPDATE thread_runtime SET reported_settings = ? WHERE thread_id = ?`, string(raw), t.ID); err != nil {
+					log.Printf("runtime: save reported settings: %v", err)
+				} else {
+					m.publish(Update{ThreadID: t.ID, Reload: true})
+				}
 			}
 		case e.Usage != nil:
 			m.mu.Lock()
@@ -363,8 +448,8 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 		delete(m.running, t.ID)
 	}
 	remaining := append([]Queued{}, m.queues[t.ID]...)
+	m.setStatusLocked(bg, t.ID, status, failure)
 	m.mu.Unlock()
-	m.setStatus(bg, t.ID, status, failure)
 	if q.RunID != "" {
 		m.publish(Update{ThreadID: t.ID, Queue: remaining})
 		fresh, err := m.store.Threads().Get(bg, t.ID)
@@ -374,28 +459,28 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 		if err != nil {
 			m.mu.Lock()
 			delete(m.running, t.ID)
+			m.setStatusLocked(bg, t.ID, "error", err.Error())
 			m.mu.Unlock()
-			m.setStatus(bg, t.ID, "error", err.Error())
 		}
 	}
 }
 
 func (m *Manager) setStatus(ctx context.Context, id, status, failure string) {
-	t, err := m.store.Threads().Get(ctx, id)
-	if err != nil {
-		log.Printf("runtime: status of %s: %v", id, err)
-		return
-	}
-	at := now()
-	t.Status, t.LastActivityAt = status, &at
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.setStatusLocked(ctx, id, status, failure)
+}
+
+func (m *Manager) setStatusLocked(ctx context.Context, id, status, failure string) {
+	fields := map[string]any{"status": status, "last_activity_at": now()}
 	if status != "working" {
 		// A finished turn is unread until the user opens the thread.
-		t.ReadAt = nil
+		fields["read_at"] = nil
 	}
-	if _, err = m.store.Threads().Put(ctx, t); err != nil {
+	if _, err := m.store.PatchThread(ctx, id, fields); err != nil {
 		log.Printf("runtime: status of %s: %v", id, err)
 	}
-	m.publish(Update{ThreadID: id, Status: status, Error: failure})
+	m.publishLocked(Update{ThreadID: id, Status: status, Error: failure})
 }
 
 // Message is stored with the thread it belongs to.
@@ -408,11 +493,11 @@ func (m *Manager) save(ctx context.Context, msg Message) {
 	if msg.CreatedAt == "" {
 		msg.CreatedAt = at
 	}
-	_, err := m.db.ExecContext(ctx, `INSERT INTO thread_messages(id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	_, err := m.db.ExecContext(ctx, `INSERT INTO thread_messages(id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, updated_at, tool)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET text = excluded.text, title = excluded.title, detail = excluded.detail,
-			status = excluded.status, streaming = excluded.streaming, updated_at = excluded.updated_at`,
-		msg.ID, msg.ThreadID, msg.RunID, msg.Role, msg.Text, msg.Title, msg.Detail, msg.Status, streaming, msg.CreatedAt, at)
+			status = excluded.status, streaming = excluded.streaming, updated_at = excluded.updated_at, tool = excluded.tool`,
+		msg.ID, msg.ThreadID, msg.RunID, msg.Role, msg.Text, msg.Title, msg.Detail, msg.Status, streaming, msg.CreatedAt, at, toolJSON(msg.Tool))
 	if err != nil {
 		log.Printf("runtime: save message: %v", err)
 		return
@@ -420,9 +505,17 @@ func (m *Manager) save(ctx context.Context, msg Message) {
 	m.publish(Update{ThreadID: msg.ThreadID, Message: &msg})
 }
 
+func toolJSON(t *ToolCall) string {
+	if t == nil {
+		return ""
+	}
+	b, _ := json.Marshal(t)
+	return string(b)
+}
+
 // Messages returns the conversation of a thread of this node, oldest first.
 func (m *Manager) Messages(ctx context.Context, id string) ([]Message, error) {
-	rows, err := m.db.QueryContext(ctx, `SELECT id, thread_id, run_id, role, text, title, detail, status, streaming, created_at
+	rows, err := m.db.QueryContext(ctx, `SELECT id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, tool
 		FROM thread_messages WHERE thread_id = ? ORDER BY seq`, id)
 	if err != nil {
 		return nil, err
@@ -432,10 +525,20 @@ func (m *Manager) Messages(ctx context.Context, id string) ([]Message, error) {
 	for rows.Next() {
 		var msg Message
 		var streaming int
-		if err = rows.Scan(&msg.ID, &msg.ThreadID, &msg.RunID, &msg.Role, &msg.Text, &msg.Title, &msg.Detail, &msg.Status, &streaming, &msg.CreatedAt); err != nil {
+		var tool string
+		if err = rows.Scan(&msg.ID, &msg.ThreadID, &msg.RunID, &msg.Role, &msg.Text, &msg.Title, &msg.Detail, &msg.Status, &streaming, &msg.CreatedAt, &tool); err != nil {
 			return nil, err
 		}
+		if tool != "" {
+			msg.Tool = &ToolCall{}
+			if json.Unmarshal([]byte(tool), msg.Tool) != nil {
+				msg.Tool = nil
+			}
+		} else if msg.Role == "tool" {
+			msg.Tool = legacyTool(msg.Title, msg.Detail)
+		}
 		msg.Streaming = streaming == 1
+		m.restoreAttachments(id, &msg)
 		out = append(out, msg)
 	}
 	return out, rows.Err()
@@ -458,6 +561,10 @@ func (m *Manager) Subscribe(id string) (<-chan Update, func()) {
 func (m *Manager) publish(u Update) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.publishLocked(u)
+}
+
+func (m *Manager) publishLocked(u Update) {
 	for ch, id := range m.subs {
 		if id != "" && id != u.ThreadID {
 			continue
@@ -553,7 +660,7 @@ func (m *Manager) Adopt(ctx context.Context, e External, projectID *string) (dat
 	if err != nil {
 		return t, err
 	}
-	if _, err = m.db.ExecContext(ctx, `INSERT INTO thread_runtime(thread_id, session_id, worktree_path) VALUES (?, ?, ?)`, t.ID, e.ID, e.Dir); err != nil {
+	if _, err = m.db.ExecContext(ctx, `INSERT INTO thread_runtime(thread_id, session_id, worktree_path, session_provider) VALUES (?, ?, ?, ?)`, t.ID, e.ID, e.Dir, e.Provider); err != nil {
 		return t, err
 	}
 	for _, msg := range msgs {
@@ -578,7 +685,8 @@ func (m *Manager) Follow(ctx context.Context, home string) {
 		case <-tick.C:
 		}
 		rows, err := m.db.QueryContext(ctx, `SELECT r.thread_id, r.session_id, t.provider FROM thread_runtime r JOIN threads t ON t.id = r.thread_id
-			WHERE r.session_id <> '' AND t.archived_at IS NULL AND t.provider IN ('claude', 'codex')`)
+			WHERE r.session_id <> '' AND r.session_provider = t.provider AND r.portable_history = 0
+			AND t.archived_at IS NULL AND t.provider IN ('claude', 'codex')`)
 		if err != nil {
 			continue
 		}
@@ -626,6 +734,35 @@ func (m *Manager) resync(ctx context.Context, thread string, e External) error {
 	if err != nil || len(msgs) == 0 {
 		return err
 	}
+	m.mu.Lock()
+	changed := false
+	defer func() {
+		m.mu.Unlock()
+		if changed {
+			m.publish(Update{ThreadID: thread, Reload: true})
+		}
+	}()
+	if _, busy := m.running[thread]; busy {
+		return nil
+	}
+	var matches bool
+	if err := m.db.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM thread_runtime r JOIN threads t ON t.id = r.thread_id
+		WHERE r.thread_id = ? AND r.session_id = ? AND r.session_provider = ? AND t.provider = ? AND r.portable_history = 0
+	)`, thread, e.ID, e.Provider, e.Provider).Scan(&matches); err != nil || !matches {
+		return err
+	}
+	saved, err := m.Messages(ctx, thread)
+	if err != nil {
+		return err
+	}
+	var markers []Message
+	for _, msg := range saved {
+		if msg.Role == "model-change" {
+			markers = append(markers, msg)
+		}
+	}
+	msgs = mergeModelChanges(msgs, markers)
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -639,15 +776,20 @@ func (m *Manager) resync(ctx context.Context, thread string, e External) error {
 		if msg.CreatedAt == "" {
 			msg.CreatedAt = at
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO thread_messages(id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, updated_at)
-			VALUES (?, ?, '', ?, ?, ?, ?, ?, 0, ?, ?) ON CONFLICT(id) DO NOTHING`,
-			thread+":"+msg.ID, thread, msg.Role, msg.Text, msg.Title, msg.Detail, msg.Status, msg.CreatedAt, at); err != nil {
+		id := msg.ID
+		if msg.Role != "model-change" {
+			id = thread + ":" + id
+		}
+		m.restoreAttachments(thread, &msg)
+		if _, err = tx.ExecContext(ctx, `INSERT INTO thread_messages(id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, updated_at, tool)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
+			id, thread, msg.RunID, msg.Role, msg.Text, msg.Title, msg.Detail, msg.Status, msg.CreatedAt, at, toolJSON(msg.Tool)); err != nil {
 			return err
 		}
 	}
 	if err = tx.Commit(); err != nil {
 		return err
 	}
-	m.publish(Update{ThreadID: thread, Reload: true})
+	changed = true
 	return nil
 }

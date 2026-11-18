@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { api } from "../api/client";
 import { Button, ErrorText, Modal, Select, Textarea, uuid } from "./ui";
 import { useProject } from "../project";
+import { DictationMic, DictationPreview, useDictationInProgress, useLocalDictation } from "./local-dictation";
 import { DictationInput } from "./dictation-input";
 
 // createIdea saves raw text as an inbox task: the first line is its title.
@@ -22,6 +23,9 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
   // Follow the global filter when it changes; a manual pick only affects this entry.
   useEffect(() => { setProject(projectId || current); }, [projectId, current]);
   const box = useRef<HTMLTextAreaElement>(null);
+  const dictation = useLocalDictation(text, setText, box);
+  const dictating = useDictationInProgress();
+  const showingDictation = !!dictation.preview;
   const picker = useRef<HTMLButtonElement>(null);
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const save = useMutation({
@@ -33,12 +37,12 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
       if (define) navigate({ to: "/tasks", search: { task: item.id } as never });
     },
   });
-  const submit = (define: boolean) => { if (text.trim() && !save.isPending) save.mutate({ raw: text.trim(), define }); };
+  const submit = (define: boolean) => { if (text.trim() && !save.isPending && !dictating) save.mutate({ raw: text.trim(), define }); };
   // Grow with the content.
   useLayoutEffect(() => {
     const el = box.current;
-    if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight}px`; }
-  }, [text]);
+    if (el && !showingDictation) { el.style.height = "auto"; el.style.height = `${el.scrollHeight}px`; }
+  }, [dictation.value, showingDictation]);
   useEffect(() => {
     if (!focusOnSlash) return;
     const onKey = (e: KeyboardEvent) => {
@@ -54,19 +58,21 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
     else if (e.altKey && e.code === "KeyP") { e.preventDefault(); picker.current?.focus(); picker.current?.click(); }
   };
   return (
-    <div className="space-y-2 rounded-lg border border-slate-300 bg-white p-3 focus-within:border-slate-500 dark:border-border dark:bg-surface dark:focus-within:border-border-strong">
-      <Textarea bare ref={box} autoFocus={autoFocus} rows={4} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKeyDown} disabled={save.isPending} aria-label="Nueva idea"
+    <div data-dictation-panel className="space-y-2 rounded-lg border border-slate-300 bg-white p-3 focus-within:border-slate-500 dark:border-border dark:bg-surface dark:focus-within:border-border-strong">
+      {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} className="min-h-24 !px-0 !pt-0 !text-sm" />}
+      <Textarea bare ref={box} autoFocus={autoFocus} rows={4} value={dictation.value} readOnly={dictation.active} onChange={(e) => setText(e.target.value)} onKeyDown={onKeyDown} disabled={save.isPending} aria-label="Nueva idea"
         placeholder="Apunta una idea; queda en el inbox de tareas."
-        className="max-h-[60vh] min-h-24 resize-none" />
-      <div className="flex items-center gap-2">
+        className={showingDictation ? "sr-only" : "max-h-[60vh] min-h-24 resize-none"} />
+      <div className="flex flex-wrap items-center gap-2">
         <Select plain buttonRef={picker} className="min-w-0 flex-1 sm:flex-none" value={project} onChange={(v) => { setProject(v); box.current?.focus(); }} options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
         <Kbd tight>Alt P</Kbd>
-        <div className="ml-auto flex shrink-0 gap-2">
-          <Button type="button" variant="ghost" disabled={!text.trim() || save.isPending} onClick={() => submit(false)} title="Guardar en inbox"><span className="sm:hidden">Inbox</span><span className="hidden sm:inline">Guardar en inbox</span><Kbd>Ctrl ↵</Kbd></Button>
-          <Button type="button" disabled={!text.trim() || save.isPending} onClick={() => submit(true)} title="Guardar y definir"><span className="sm:hidden">Definir</span><span className="hidden sm:inline">Guardar y definir</span><Kbd inverse>Ctrl ⇧ ↵</Kbd></Button>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <DictationMic dictation={dictation} disabled={save.isPending} />
+          <Button type="button" variant="ghost" disabled={!text.trim() || save.isPending || dictating} onClick={() => submit(false)} title="Guardar en inbox"><span className="sm:hidden">Inbox</span><span className="hidden sm:inline">Guardar en inbox</span><Kbd>Ctrl ↵</Kbd></Button>
+          <Button type="button" disabled={!text.trim() || save.isPending || dictating} onClick={() => submit(true)} title="Guardar y definir"><span className="sm:hidden">Definir</span><span className="hidden sm:inline">Guardar y definir</span><Kbd inverse>Ctrl ⇧ ↵</Kbd></Button>
         </div>
       </div>
-      <ErrorText error={save.error} />
+      <ErrorText error={save.error ?? dictation.error} />
       <DictationInput target={{ kind: "capture", project_id: project || undefined }} onSubmit={(raw) => save.mutate({ raw, define: false })} onSent={() => setTimeout(() => qc.invalidateQueries({ queryKey: ["board"] }), 5000)} />
     </div>
   );

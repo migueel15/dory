@@ -119,6 +119,10 @@ func (p *openCodeParser) parse(line []byte, emit func(Event)) {
 		if m.Detail == "" {
 			m.Detail = toolDetail(l.Part.Tool, s.Input)
 		}
+		m.Tool = toolCall(l.Part.Tool, s.Input)
+		if m.Tool.Kind == "todo" {
+			m.Role = "plan"
+		}
 		m.Status = map[string]string{"completed": "completed", "error": "failed"}[s.Status]
 		if m.Status == "" {
 			m.Status = "running"
