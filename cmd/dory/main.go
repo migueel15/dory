@@ -111,6 +111,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	if err := rt.Recover(ctx); err != nil {
 		return err
 	}
+	go rt.WatchUsage(ctx, 10*time.Minute)
 	events := api.NewEvents(rt)
 	id, err := mesh.LoadIdentity(cfg.DataDir)
 	if err != nil {

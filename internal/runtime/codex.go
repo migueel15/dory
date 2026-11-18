@@ -25,7 +25,7 @@ func (c Codex) Detect(ctx context.Context) Status {
 	efforts := []string{"low", "medium", "high", "xhigh"}
 	status := Status{ID: "codex", Name: "Codex", Installed: ok, Version: version,
 		Models:       []Model{{Slug: "gpt-5.5", Name: "GPT-5.5", Efforts: efforts}},
-		Capabilities: []string{"interrupt", "resume", "effort"},
+		Capabilities: []string{"interrupt", "resume", "effort", "usage"},
 	}
 	if ok {
 		if models := codexModels(ctx, c.bin()); len(models) > 0 {

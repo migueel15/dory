@@ -98,6 +98,9 @@ type Status struct {
 type Provider interface {
 	ID() string
 	Detect(ctx context.Context) Status
+	// Usage asks the harness for its usage windows without running a turn.
+	// A harness that does not report usage returns ErrNoUsage.
+	Usage(ctx context.Context) ([]Window, error)
 }
 
 // detect runs "<bin> --version" and reports its first line.

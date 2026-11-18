@@ -99,6 +99,42 @@ func (m *Manager) loadUsage() {
 	}
 }
 
+// WatchUsage asks every provider for its usage now and then every interval,
+// until ctx ends. A failed query keeps the last known windows.
+func (m *Manager) WatchUsage(ctx context.Context, every time.Duration) {
+	for {
+		m.RefreshUsage(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(every):
+		}
+	}
+}
+
+// RefreshUsage asks every provider for its usage at once.
+func (m *Manager) RefreshUsage(ctx context.Context) {
+	var wg sync.WaitGroup
+	for id, p := range m.providers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			windows, err := p.Usage(ctx)
+			switch {
+			case errors.Is(err, ErrNoUsage):
+			case err != nil:
+				log.Printf("runtime: %s usage: %v", id, err)
+			case len(windows) > 0:
+				m.mu.Lock()
+				m.usage[id] = windows
+				m.saveUsage()
+				m.mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+}
+
 // saveUsage writes the usage map; the caller holds m.mu.
 func (m *Manager) saveUsage() {
 	if m.dataDir == "" {
