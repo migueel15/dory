@@ -1,16 +1,19 @@
 // Package update moves this node to the latest release of its channel: the
 // core binary, the desktop app when the machine has it, and optionally the
-// harnesses. Releases live in a private repository, so downloads go through
-// the GitHub CLI, which carries the user's credentials (ADR-016).
+// harnesses. Releases are public on GitHub and are read over plain HTTPS,
+// without credentials, like T3 Code does (ADR-016).
 package update
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -205,35 +208,108 @@ func (u *Updater) run(ctx context.Context, opts Options) error {
 	return nil
 }
 
+// api is the GitHub REST API; unauthenticated calls allow 60 an hour per
+// address, and a node makes at most one check every few minutes.
+var api = "https://api.github.com/repos/" + Repo
+
+var client = &http.Client{Timeout: 10 * time.Minute}
+
 // latest resolves the tag of a channel and the commit it points to.
 func latest(ctx context.Context, channel string) (tag, sha string, err error) {
 	tag = "nightly"
 	if channel == "stable" {
-		if tag, err = gh(ctx, "release", "view", "--repo", Repo, "--json", "tagName", "-q", ".tagName"); err != nil {
+		var rel struct {
+			TagName string `json:"tag_name"`
+		}
+		if err = getJSON(ctx, api+"/releases/latest", &rel); err != nil {
 			return "", "", err
 		}
+		tag = rel.TagName
 	}
-	sha, err = gh(ctx, "api", "repos/"+Repo+"/commits/"+tag, "-q", ".sha")
-	return tag, sha, err
+	var commit struct {
+		SHA string `json:"sha"`
+	}
+	err = getJSON(ctx, api+"/commits/"+url.PathEscape(tag), &commit)
+	return tag, commit.SHA, err
 }
 
+// download saves the assets of a release whose names match the patterns.
 func download(ctx context.Context, tag, dir string, patterns ...string) error {
-	args := []string{"release", "download", tag, "--repo", Repo, "--dir", dir, "--clobber"}
-	for _, p := range patterns {
-		args = append(args, "--pattern", p)
+	var rel struct {
+		Assets []struct {
+			Name string `json:"name"`
+			URL  string `json:"browser_download_url"`
+		} `json:"assets"`
 	}
-	_, err := gh(ctx, args...)
-	return err
+	if err := getJSON(ctx, api+"/releases/tags/"+url.PathEscape(tag), &rel); err != nil {
+		return err
+	}
+	found := 0
+	for _, a := range rel.Assets {
+		for _, p := range patterns {
+			if ok, _ := filepath.Match(p, a.Name); ok {
+				if err := fetch(ctx, a.URL, filepath.Join(dir, a.Name)); err != nil {
+					return err
+				}
+				found++
+				break
+			}
+		}
+	}
+	if found == 0 {
+		return fmt.Errorf("la release %s no tiene %s", tag, strings.Join(patterns, ", "))
+	}
+	return nil
 }
 
-func gh(ctx context.Context, args ...string) (string, error) {
-	run, cancel := context.WithTimeout(ctx, 10*time.Minute)
-	defer cancel()
-	out, err := exec.CommandContext(run, "gh", args...).CombinedOutput()
+func get(ctx context.Context, target string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		return "", fmt.Errorf("gh %s: %s", args[0], strings.TrimSpace(string(out)))
+		return nil, err
 	}
-	return strings.TrimSpace(string(out)), nil
+	req.Header.Set("User-Agent", "dory-updater")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("GET %s: %s", target, resp.Status)
+	}
+	return resp, nil
+}
+
+func getJSON(ctx context.Context, target string, out any) error {
+	resp, err := get(ctx, target)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// fetch writes a file through a temporary name, so a cut download never
+// replaces a good one.
+func fetch(ctx context.Context, target, path string) error {
+	resp, err := get(ctx, target)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	tmp := path + ".part"
+	f, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	if _, err = io.Copy(f, resp.Body); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // desktopAssets are the files electron-updater needs on this system.

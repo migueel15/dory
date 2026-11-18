@@ -20,14 +20,14 @@ Comandos del núcleo:
 | `dory start`, `stop`, `restart` | Controla el núcleo: con el servicio si está instalado; si no, `start` lo lanza en segundo plano |
 | `dory open` | Arranca el núcleo si hace falta y abre la interfaz en una ventana de app |
 | `dory service install`, `uninstall` | Servicio de usuario de systemd (Linux) o LaunchAgent (macOS) |
-| `dory update` | Instala la última versión del canal del binario (estable o nightly) con `gh`, también la app de escritorio si la hay, y reinicia el núcleo. Para toda la malla, Entornos → «Actualizar la malla» |
+| `dory update` | Instala la última versión del canal del binario (estable o nightly) desde GitHub, también la app de escritorio si la hay, y reinicia el núcleo. Para toda la malla, Entornos → «Actualizar la malla» |
 | `dory user create --username X` | Crea una cuenta (contraseña en `DORY_PASSWORD`) |
 | `dory token create --username X --name N --scopes read,write` | Crea un token para la API o el MCP |
 
 Un binario compilado en local (`scripts/install.sh`) es del canal `dev` y no se actualiza. Para pasar a la nightly la primera vez:
 
 ```bash
-gh release download nightly -R migueel15/dory -p "dory-$(go env GOOS)-$(go env GOARCH)" -O ~/.local/bin/dory --clobber
+curl -fL -o ~/.local/bin/dory "https://github.com/migueel15/dory/releases/download/nightly/dory-$(go env GOOS)-$(go env GOARCH)"
 chmod +x ~/.local/bin/dory && dory restart
 ```
 
