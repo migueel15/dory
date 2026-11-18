@@ -10,7 +10,7 @@ import { rehypeFade, useSmoothText } from "../components/stream";
 import { GroupCard, isAsk, TodoCard, ToolCard } from "../components/tool-card";
 import { NativeQuestionCard, QuestionCard } from "../components/question-card";
 
-// The look of the conversation, kept from Dory v1 (as in T3 Code): user
+// The look of the conversation, kept from Dory v1: user
 // bubbles, answers as plain markdown, and each finished turn's work folded
 // into one "Worked for…" line.
 

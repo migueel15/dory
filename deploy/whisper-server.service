@@ -10,7 +10,7 @@ User=miguel
 ExecStart=/home/miguel/opt/whisper.cpp/build/bin/whisper-server --host 127.0.0.1 --port 8178 -m /home/miguel/opt/whisper.cpp/models/ggml-small-q5_1.bin -l es -t 4
 Restart=on-failure
 RestartSec=5
-# Deja CPU para dory y T3 en la misma máquina.
+# Deja CPU para dory y sus agentes en la misma máquina.
 Nice=5
 NoNewPrivileges=true
 ProtectSystem=strict

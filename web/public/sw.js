@@ -23,9 +23,7 @@ self.addEventListener("push", (event) => {
 });
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  let target = new URL(event.notification.data?.url || "/", self.location.origin);
-  // Older thread notices point at T3 Code: open the thread view in Dory instead.
-  if (target.origin !== self.location.origin && target.pathname.includes("/threads/")) target = new URL("/threads/" + target.pathname.replace(/\/+$/, "").split("/").pop(), self.location.origin);
+  const target = new URL(event.notification.data?.url || "/", self.location.origin);
   if (target.protocol !== "https:" && target.protocol !== "http:") return;
   event.waitUntil(self.clients.openWindow(target.href));
 });

@@ -49,21 +49,9 @@ export function RefCode({ children, className, node: _n, ...rest }: HTMLAttribut
   return <code className={className} {...rest}>{children}</code>;
 }
 
-// ThreadMediaContext names the thread whose messages are shown, so images the
-// agent references by local path load from its machine through Dory.
-export const ThreadMediaContext = createContext<string | null>(null);
-
-// mediaSrc maps a local image path (/abs/x.png or file:///abs/x.png) to Dory's proxy.
-export const mediaSrc = (threadId: string | null, src = "") => {
-  const path = src.startsWith("file://") ? decodeURIComponent(src.slice(7)) : src;
-  if (!threadId || !path.startsWith("/") || path.startsWith("/api/") || path.startsWith("//")) return src;
-  return `/api/t3/threads/${encodeURIComponent(threadId)}/media?path=${encodeURIComponent(path)}`;
-};
-
-// RefImg renders Markdown images; inside a thread, local paths show the file.
+// RefImg renders Markdown images as a link to the full-size image.
 export function RefImg({ src, alt, node: _n, ...rest }: ImgHTMLAttributes<HTMLImageElement> & { node?: unknown }) {
-  const threadId = useContext(ThreadMediaContext);
-  const url = mediaSrc(threadId, typeof src === "string" ? src : "");
+  const url = typeof src === "string" ? src : "";
   return (
     <a href={url} target="_blank" rel="noreferrer" className="inline-block max-w-full">
       <img src={url} alt={alt ?? ""} loading="lazy" {...rest} className="max-h-[32rem] max-w-full rounded-lg border border-slate-200 dark:border-border" />
