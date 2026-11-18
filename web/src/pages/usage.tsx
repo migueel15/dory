@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { api, type UsageWindow } from "../api/client";
+import { api, usable, type UsageWindow } from "../api/client";
 import { Card, ErrorText, PageHeader } from "../components/ui";
 import { ProviderIcon } from "../components/launch-picker";
 import { expectedRemaining, paceTitle, WINDOWS } from "../lib/usage-pace";
@@ -34,7 +34,7 @@ export function Usage() {
     <div className="mx-auto max-w-3xl space-y-3">
       <PageHeader title="Uso" subtitle="Lo que te queda de cada proveedor, según lo último que informó." />
       <ErrorText error={node.error} />
-      {(node.data?.providers ?? []).filter((p) => p.installed).map((p) => (
+      {(node.data?.providers ?? []).filter(usable).map((p) => (
         <Card key={p.id}>
           <p className="mb-2 flex items-center gap-2 font-semibold"><ProviderIcon driver={p.id} />{p.name}</p>
           {usage[p.id]?.length

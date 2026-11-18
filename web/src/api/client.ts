@@ -52,8 +52,10 @@ export type Column = "inbox" | "ready" | "working" | "needs_you" | "in_review" |
 export type Pull = { repo: string; number: number; title: string; url: string; draft: boolean; ci: string; review_decision: string; review_requests: string[]; mergeable: string; merge_state: string; head_ref: string };
 export type Card = Task & { column: Column; repo?: string; threads: Thread[]; pull?: Pull; pr_state?: "open" | "draft" | "merged" | "closed"; blockers: string[]; has_plan: boolean };
 export type Model = { slug: string; name: string; efforts?: string[]; resolved_model?: string };
-export type Provider = { id: string; name: string; installed: boolean; version: string; models: Model[]; capabilities: string[]; logged_in?: boolean; account?: string };
+export type Provider = { id: string; name: string; installed: boolean; enabled?: boolean; version: string; models: Model[]; capabilities: string[]; logged_in?: boolean; account?: string };
 // External is a conversation started in a harness, outside Dory.
+// usable says whether a provider can run threads: installed and not turned off.
+export const usable = (p: Provider) => p.installed && p.enabled !== false;
 export type External = { provider: string; id: string; title: string; dir: string; branch?: string; updated_at: string; project_id: string | null; thread_id?: string };
 export type Job = { id: string; provider: string; kind: "login" | "update"; output: string; done: boolean; accepts_code?: boolean; error?: string };
 export type Skill = { id: string; name: string; description: string; body_md: string; files: Record<string, string>; version: number; targets: { nodes: string[] | null; harnesses: string[] | null }; created_at: string; updated_at: string; archived_at: string | null };
@@ -125,6 +127,7 @@ export const api = {
   externalSession: (node: string, provider: string, id: string) => req<{ session: External; messages: Message[] }>("GET", `/nodes/${node}/external/${provider}/${id}`),
   adoptSession: (node: string, provider: string, id: string) => req<{ thread_id: string }>("POST", `/nodes/${node}/external/${provider}/${id}/adopt`),
   nodeProviders: (node: string) => req<Provider[]>("GET", `/nodes/${node}/providers`),
+  setProviderEnabled: (node: string, provider: string, enabled: boolean) => req<void>("PUT", `/nodes/${node}/providers/${provider}`, { enabled }),
   providerJob: (node: string, provider: string, kind: Job["kind"]) => req<Job>("POST", `/nodes/${node}/providers/${provider}/${kind}`),
   job: (node: string, id: string) => req<Job>("GET", `/nodes/${node}/jobs/${id}`),
   submitLoginCode: (node: string, id: string, code: string) => req<void>("POST", `/nodes/${node}/jobs/${id}/code`, { code }),

@@ -1,13 +1,12 @@
 import { DictationField } from "../components/dictation-field";
 import { useDictationInProgress } from "../components/local-dictation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { AppleLogo, Desktop, LinuxLogo, Plus, WindowsLogo } from "@phosphor-icons/react";
 import { useMeshUpdates } from "../components/mesh-update";
-import { api, type Memory, type MemoryInput, type NodeUpdate, type Provider } from "../api/client";
+import { api, type Memory, type MemoryInput, type NodeUpdate } from "../api/client";
 import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, PageHeader, Select, StatusPill, csv } from "../components/ui";
-import { ProviderIcon } from "../components/launch-picker";
 import { useProject } from "../project";
 import { askConfirm } from "../components/confirm";
 
@@ -125,7 +124,6 @@ export function Environments() {
             <span className="font-mono text-xs text-slate-500">{n.node.platform} · {n.node.version} · huella {mesh.data?.fingerprint}</span>
           </div>
           <p className="mt-1 font-mono text-xs text-slate-500">id {n.node.id} · datos en {n.node.data_dir}</p>
-          <Providers list={n.providers} node="local" />
         </Card>
       )}
       {(mesh.data?.peers ?? []).filter((p) => !p.revoked).map((p) => {
@@ -140,7 +138,6 @@ export function Environments() {
               {!p.connected && p.last_seen && <span className="text-xs text-slate-500">visto {new Date(p.last_seen).toLocaleString()}</span>}
               <Button variant="ghost" className="ml-auto text-xs" onClick={() => askConfirm(`¿Revocar ${p.name}? Dejará de sincronizarse con este nodo.`, "Revocar").then((ok) => ok && revoke.mutate(p.id))}>Revocar</Button>
             </div>
-            {p.info.providers && <Providers list={p.info.providers} node={p.connected ? p.id : undefined} />}
           </Card>
         );
       })}
@@ -239,91 +236,4 @@ function MeshUpdate() {
       </div>
     </Card>
   );
-}
-
-// Providers lists the harnesses of a node with their session, and signs in
-// or updates them on that node (requirements RF-09 to RF-11).
-function Providers({ list, node }: { list: Provider[]; node?: string }) {
-  const qc = useQueryClient();
-  const [job, setJob] = useState<{ id: string; node: string }>();
-  const start = useMutation({
-    mutationFn: ({ provider, kind }: { provider: string; kind: "login" | "update" }) => api.providerJob(node!, provider, kind),
-    onSuccess: (j) => setJob({ id: j.id, node: node! }),
-  });
-  const state = useQuery({
-    queryKey: ["job", job?.id], queryFn: () => api.job(job!.node, job!.id), enabled: !!job,
-    refetchInterval: (q) => (q.state.data?.done ? false : 1000),
-  });
-  useEffect(() => { if (state.data?.done) qc.invalidateQueries({ queryKey: ["node"] }); }, [state.data?.done]); // eslint-disable-line react-hooks/exhaustive-deps
-  return (
-    <div className="mt-3 space-y-2">
-      <div className="grid gap-2 sm:grid-cols-2">
-        {list.map((p) => (
-          <div key={p.id} className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-border">
-            <ProviderIcon driver={p.id} />
-            <span className="font-medium">{p.name}</span>
-            {p.installed && <StatusPill tone={p.logged_in ? "green" : "amber"}>{p.logged_in ? "con sesión" : "sin sesión"}</StatusPill>}
-            <span className="ml-auto font-mono text-xs text-slate-500">{p.installed ? p.version.split(" ")[0] || "instalado" : "no instalado"}</span>
-            {node && p.installed && p.capabilities.includes("login") && (
-              <span className="flex w-full justify-end gap-1">
-                {!p.logged_in && <Button variant="ghost" className="!py-0.5 text-xs" disabled={start.isPending} onClick={() => start.mutate({ provider: p.id, kind: "login" })}>Iniciar sesión</Button>}
-                <Button variant="ghost" className="!py-0.5 text-xs" onClick={() => start.mutate({ provider: p.id, kind: "update" })}>Actualizar</Button>
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-      <ErrorText error={start.error ?? state.error} />
-      {job && state.data && (
-        <div className="rounded-md bg-slate-100 p-2 dark:bg-raised">
-          <p className="mb-1 flex items-center gap-2 text-xs font-medium">{state.data.kind === "login" ? "Inicio de sesión" : "Actualización"} de {state.data.provider} · {state.data.done ? (state.data.error ? `terminó con error (${state.data.error})` : "terminado") : "en curso…"}
-            <button type="button" className="ml-auto text-slate-500" onClick={() => setJob(undefined)}>cerrar</button></p>
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-xs"><Linkify text={state.data.output || "Esperando salida…"} linkLabel={state.data.provider === "claude" && state.data.kind === "login" && !state.data.done ? "Abrir Claude en el navegador" : undefined} /></pre>
-          {!state.data.done && state.data.provider === "claude" && state.data.kind === "login" && state.data.accepts_code !== undefined && (
-            <LoginCodeForm key={job.id} node={job.node} id={job.id} acceptsCode={state.data.accepts_code} />
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LoginCodeForm({ node, id, acceptsCode }: { node: string; id: string; acceptsCode: boolean }) {
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState<unknown>();
-  if (sent) return <p role="status" className="mt-2 text-sm">Código enviado. Esperando la confirmación de Claude…</p>;
-  if (!acceptsCode) return <ErrorText error={error} />;
-  return (
-    <form className="mt-3 space-y-2" onSubmit={async (event) => {
-      event.preventDefault();
-      const form = event.currentTarget;
-      const code = String(new FormData(form).get("code") ?? "").trim();
-      if (!code || sending) return;
-      setSending(true);
-      setError(undefined);
-      try {
-        await api.submitLoginCode(node, id, code);
-        form.reset();
-        setSent(true);
-      } catch (error) {
-        setError(error);
-      } finally {
-        setSending(false);
-      }
-    }}>
-      <label className="block space-y-1 text-sm">
-        <span>Código de autorización</span>
-        <Input name="code" type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={2048} required />
-      </label>
-      <p className="text-sm">Abre el enlace de Claude arriba. Si Claude te muestra un código, pégalo aquí.</p>
-      <Button type="submit" disabled={sending}>Confirmar código</Button>
-      <ErrorText error={error} />
-    </form>
-  );
-}
-
-// Linkify makes the URLs a login prints clickable.
-function Linkify({ text, linkLabel }: { text: string; linkLabel?: string }) {
-  return <>{text.split(/(https?:\/\/\S+)/g).map((part, i) => (/^https?:\/\//.test(part) ? <a key={i} href={part} target="_blank" rel="noreferrer" className="text-blue-600 underline dark:text-accent-text">{linkLabel ?? part}</a> : part))}</>;
 }

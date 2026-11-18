@@ -64,6 +64,9 @@ type Manager struct {
 	queues   map[string][]Queued
 	subs     map[chan Update]string
 	usage    map[string][]Window
+	// disabled holds the providers turned off on this node, under its own lock.
+	disabledMu sync.Mutex
+	disabled   map[string]bool
 	// asked marks threads whose agent asked the user something this turn.
 	asked map[string]bool
 	// steering marks threads whose turn was stopped to run the head of the queue now.
@@ -80,6 +83,7 @@ func NewManager(db *sql.DB, store *data.Store, node, dataDir string, providers .
 		m.providers[p.ID()] = p
 	}
 	m.loadUsage()
+	m.loadDisabled()
 	return m
 }
 
@@ -117,6 +121,9 @@ func (m *Manager) WatchUsage(ctx context.Context, every time.Duration) {
 func (m *Manager) RefreshUsage(ctx context.Context) {
 	var wg sync.WaitGroup
 	for id, p := range m.providers {
+		if !m.Enabled(id) {
+			continue
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -207,6 +214,7 @@ func (m *Manager) Providers(ctx context.Context) []Status {
 	for _, id := range m.providerOrder() {
 		p := m.providers[id]
 		st := p.Detect(ctx)
+		st.Enabled = m.Enabled(id)
 		if a, ok := p.(Admin); ok && st.Installed {
 			st.LoggedIn, st.Account = a.Session(ctx)
 			st.Capabilities = append(st.Capabilities, "login", "update")
@@ -233,6 +241,9 @@ func (m *Manager) Usage() map[string][]Window {
 	out := make(map[string][]Window, len(m.usage))
 	now := time.Now()
 	for k, v := range m.usage {
+		if !m.Enabled(k) {
+			continue
+		}
 		ws := make([]Window, len(v))
 		for i, w := range v {
 			// A window that already reset starts again unused.
@@ -260,7 +271,7 @@ type NewThread struct {
 
 // Create registers a thread on this node and prepares its working directory.
 func (m *Manager) Create(ctx context.Context, n NewThread) (data.Thread, error) {
-	if _, ok := m.providers[n.Provider]; !ok {
+	if _, ok := m.provider(n.Provider); !ok {
 		return data.Thread{}, fmt.Errorf("%w: %s", ErrProvider, n.Provider)
 	}
 	t := data.Thread{NodeID: m.node, ProjectID: n.ProjectID, TaskID: n.TaskID, Provider: n.Provider, Model: n.Model,
@@ -409,7 +420,7 @@ func (m *Manager) Queue(id string) []Queued {
 }
 
 func (m *Manager) start(ctx context.Context, t data.Thread, run, text string, files []Attachment) error {
-	p, ok := m.providers[t.Provider]
+	p, ok := m.provider(t.Provider)
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrProvider, t.Provider)
 	}
@@ -782,7 +793,7 @@ func (m *Manager) Adopt(ctx context.Context, e External, projectID *string) (dat
 	if adopted, err := m.Adopted(ctx); err == nil && adopted[e.ID] != "" {
 		return m.store.Threads().Get(ctx, adopted[e.ID])
 	}
-	if _, ok := m.providers[e.Provider]; !ok {
+	if _, ok := m.provider(e.Provider); !ok {
 		return data.Thread{}, fmt.Errorf("%w: %s", ErrProvider, e.Provider)
 	}
 	msgs, err := ExternalMessages(e)

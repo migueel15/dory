@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUp, CaretDown, Check, File as FileIcon, FileText, Lightning, ListBullets, MagnifyingGlass, Paperclip, PencilSimple, Quotes, Stop, TerminalWindow, Trash, X } from "@phosphor-icons/react";
-import { api, type Attachment, type ThreadView } from "../api/client";
+import { api, usable, type Attachment, type ThreadView } from "../api/client";
 import { Button, ErrorText, errMsg, iconButton, uuid } from "../components/ui";
 import { DictationField } from "../components/dictation-field";
 import { DictationMic, DictationPreview, useDictationInProgress, useLocalDictation } from "../components/local-dictation";
@@ -351,7 +351,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
     }
   };
   const removeFile = (k: string) => setFiles((fs) => fs.filter((f) => { if (f.key === k) URL.revokeObjectURL(f.preview); return f.key !== k; }));
-  const availableProviders = (providers.data ?? []).filter((p) => p.installed);
+  const availableProviders = (providers.data ?? []).filter(usable);
   const currentProvider = availableProviders.find((p) => p.id === t.provider);
   const currentModel = findModel(currentProvider?.models ?? [], t.model);
   const selectedModel = currentModel ? concreteModelId(currentModel) : t.model;

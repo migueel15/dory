@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type LaunchChoice, type Model } from "../api/client";
+import { api, usable, type LaunchChoice, type Model } from "../api/client";
 import { Label, Select } from "./ui";
 import { explicitModels, findModel, lastModel, modelEffort, modelId, rememberModel } from "../effort";
 import { ModelLogo } from "./model-logo";
@@ -14,8 +14,8 @@ const stored = (section: string): Partial<LaunchChoice> => {
 
 // useProviders lists the harnesses installed on a node, this one by default.
 export function useProviders(node = "local") {
-  const local = useQuery({ queryKey: ["node"], queryFn: api.node, staleTime: 60_000, select: (n) => n.providers.filter((p) => p.installed), enabled: node === "local" });
-  const remote = useQuery({ queryKey: ["node-providers", node], queryFn: () => api.nodeProviders(node), staleTime: 60_000, select: (ps) => ps.filter((p) => p.installed), enabled: node !== "local" });
+  const local = useQuery({ queryKey: ["node"], queryFn: api.node, staleTime: 60_000, select: (n) => n.providers.filter(usable), enabled: node === "local" });
+  const remote = useQuery({ queryKey: ["node-providers", node], queryFn: () => api.nodeProviders(node), staleTime: 60_000, select: (ps) => ps.filter(usable), enabled: node !== "local" });
   return node === "local" ? local : remote;
 }
 

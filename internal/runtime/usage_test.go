@@ -48,3 +48,20 @@ func TestUsageNotReported(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestDisabledProvider(t *testing.T) {
+	m := NewManager(nil, nil, "n", t.TempDir(), OpenCode{})
+	if err := m.SetEnabled(context.Background(), "opencode", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m.provider("opencode"); ok {
+		t.Fatal("disabled provider still usable")
+	}
+	again := NewManager(nil, nil, "n", m.dataDir, OpenCode{})
+	if again.Enabled("opencode") {
+		t.Fatal("disabled provider not saved")
+	}
+	if err := again.SetEnabled(context.Background(), "opencode", true); err != nil || !again.Enabled("opencode") {
+		t.Fatalf("enable: %v", err)
+	}
+}
