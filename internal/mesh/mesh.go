@@ -252,11 +252,19 @@ func (m *Mesh) Serve(ctx context.Context) error {
 		// Discovery probes open and drop connections; their errors are noise.
 		ErrorLog: log.New(io.Discard, "", 0),
 		TLSConfig: &tls.Config{
-			// Go picks the first certificate the client supports: nodes get
-			// the Ed25519 one, Android web views the ECDSA one.
-			Certificates: []tls.Certificate{m.id.Cert, m.id.DeviceCert},
-			ClientAuth:   tls.RequestClientCert,
-			MinVersion:   tls.VersionTLS13,
+			// Nodes ask for the peer protocol and get the Ed25519 key; phones
+			// (Android has no Ed25519 in TLS) get the ECDSA one.
+			GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+				for _, p := range hello.SupportedProtos {
+					if p == peerProto {
+						return &m.id.Cert, nil
+					}
+				}
+				return &m.id.DeviceCert, nil
+			},
+			NextProtos: []string{"http/1.1"},
+			ClientAuth: tls.RequestClientCert,
+			MinVersion: tls.VersionTLS13,
 		},
 	}
 	go func() { <-ctx.Done(); srv.Close() }()

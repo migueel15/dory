@@ -160,11 +160,16 @@ func peerKey(certs [][]byte) (string, error) {
 	return encodeKey(k), nil
 }
 
+// peerProto is the ALPN name nodes use, so the server answers them with
+// the Ed25519 certificate.
+const peerProto = "dory-peer"
+
 // clientTLS dials a peer and accepts it only if its key is want ("" accepts
 // any key: used only while pairing, where the code authenticates both sides).
 func (id Identity) clientTLS(want string, got *string) *tls.Config {
 	return &tls.Config{
 		Certificates:       []tls.Certificate{id.Cert},
+		NextProtos:         []string{peerProto, "http/1.1"},
 		InsecureSkipVerify: true, // trust comes from the pinned key below, not from a CA
 		MinVersion:         tls.VersionTLS13,
 		VerifyPeerCertificate: func(certs [][]byte, _ [][]*x509.Certificate) error {
