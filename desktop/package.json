@@ -57,7 +57,10 @@
         "url": "http://127.0.0.1:7700/api/mesh/desktop"
       }
     ],
-    "detectUpdateChannel": false
+    "detectUpdateChannel": false,
+    "nsis": {
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    }
   },
   "devDependencies": {
     "electron": "^45.3.2",
