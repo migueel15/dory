@@ -1,6 +1,6 @@
 # Binaries and desktop apps for every channel (requirement 4.6):
 # - a tag v* publishes a stable release,
-# - once a day, if main changed, the "nightly" release is refreshed (it can
+# - every night at midnight (Madrid), if main changed, the "nightly" release is refreshed (it can
 #   also be run by hand),
 # - a pull request only runs the tests and the core binaries, to save minutes
 #   (macOS counts x10 and Windows x2).
@@ -10,7 +10,7 @@ on:
   push:
     tags: ["v*"]
   schedule:
-    - cron: "0 3 * * *"
+    - cron: "0 23 * * *" # medianoche en Madrid (23:00 UTC en invierno, 01:00 en verano)
   workflow_dispatch:
   pull_request:
 
