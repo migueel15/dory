@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os/exec"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -40,8 +42,12 @@ func (c Claude) Detect(ctx context.Context) Status {
 	return status
 }
 
-func (c Claude) Run(ctx context.Context, t Turn) (<-chan Event, error) {
-	args := []string{"-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
+// Start runs a turn with stream-json on both ends. The process asks Dory over
+// stdio before using a tool, so AskUserQuestion pauses the turn until the
+// user answers it. Stdin closes when the turn ends, which ends the process.
+func (c Claude) Start(ctx context.Context, t Turn) (Session, error) {
+	args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+		"--include-partial-messages", "--permission-prompt-tool", "stdio"}
 	if t.Model != "" {
 		args = append(args, "--model", t.Model)
 	}
@@ -61,15 +67,140 @@ func (c Claude) Run(ctx context.Context, t Turn) (<-chan Event, error) {
 			"type": "http", "url": t.MCPURL, "headers": map[string]string{"Authorization": "Bearer " + t.MCPToken},
 		}}})
 		args = append(args, "--mcp-config", string(cfg))
-		// In -p mode Claude's own AskUserQuestion cannot reach the user, so it
-		// asks through Dory's ask_user, which the chat shows with its options.
-		args = append(args, "--disallowedTools", "AskUserQuestion",
-			"--append-system-prompt", "To ask the user anything, call the dory ask_user tool (same questions/options shape as AskUserQuestion), then end your turn: the answer arrives as the next user message.")
 	}
 	cmd := exec.CommandContext(ctx, c.bin(), args...)
 	cmd.Dir = t.Dir
-	p := &claudeParser{run: t.RunID, texts: map[string]*Message{}, tools: map[string]*Message{}}
-	return stream(ctx, cmd, t.Text, p.parse)
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	s := newClaudeSession(t.RunID, in, t.FullAccess)
+	if s.events, err = pipe(ctx, cmd, s.handle); err != nil {
+		return nil, err
+	}
+	if err = s.write(map[string]any{"type": "user", "parent_tool_use_id": nil,
+		"message": map[string]any{"role": "user", "content": t.Text}}); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// claudeSession speaks Claude Code's control protocol on stdin while its
+// parser follows stdout.
+type claudeSession struct {
+	parser     *claudeParser
+	events     <-chan Event
+	fullAccess bool
+
+	mu      sync.Mutex
+	in      io.WriteCloser
+	pending map[string]claudeAsk
+}
+
+// claudeAsk is an AskUserQuestion call waiting for the user.
+type claudeAsk struct {
+	input     map[string]any
+	questions []Question
+}
+
+func newClaudeSession(run string, in io.WriteCloser, fullAccess bool) *claudeSession {
+	return &claudeSession{parser: &claudeParser{run: run, texts: map[string]*Message{}, tools: map[string]*Message{}},
+		in: in, fullAccess: fullAccess, pending: map[string]claudeAsk{}}
+}
+
+func (s *claudeSession) Events() <-chan Event { return s.events }
+
+// Answer lets the pending AskUserQuestion run with the answers, keyed by
+// question text; several choices go joined by ", " as Claude expects.
+func (s *claudeSession) Answer(id string, answers [][]string) error {
+	s.mu.Lock()
+	ask, ok := s.pending[id]
+	delete(s.pending, id)
+	s.mu.Unlock()
+	if !ok {
+		return ErrNoRequest
+	}
+	byQuestion := map[string]string{}
+	for i, q := range ask.questions {
+		if i < len(answers) {
+			byQuestion[q.Question] = strings.Join(answers[i], ", ")
+		}
+	}
+	input := map[string]any{}
+	for k, v := range ask.input {
+		input[k] = v
+	}
+	input["answers"] = byQuestion
+	return s.allow(id, input)
+}
+
+func (s *claudeSession) handle(line []byte, emit func(Event)) {
+	var l claudeLine
+	if json.Unmarshal(line, &l) != nil {
+		return
+	}
+	switch l.Type {
+	case "control_request":
+		s.control(l, emit)
+	case "control_cancel_request":
+		s.mu.Lock()
+		delete(s.pending, l.RequestID)
+		s.mu.Unlock()
+	default:
+		s.parser.parse(line, emit)
+		if l.Type == "result" {
+			s.mu.Lock()
+			s.in.Close()
+			s.mu.Unlock()
+		}
+	}
+}
+
+// control answers a permission request of the CLI. AskUserQuestion becomes
+// a pending request; other tools follow the access mode of the thread.
+func (s *claudeSession) control(l claudeLine, emit func(Event)) {
+	r := l.Request
+	if r.Subtype != "can_use_tool" {
+		s.write(map[string]any{"type": "control_response", "response": map[string]any{
+			"subtype": "error", "request_id": l.RequestID, "error": "unsupported request: " + r.Subtype}})
+		return
+	}
+	var input map[string]any
+	_ = json.Unmarshal(r.Input, &input)
+	if r.ToolName == "AskUserQuestion" {
+		qs := parseQuestions(r.Input)
+		s.mu.Lock()
+		s.pending[l.RequestID] = claudeAsk{input: input, questions: qs}
+		s.mu.Unlock()
+		emit(Event{Request: &Request{ID: l.RequestID, Kind: "question", MessageID: r.ToolUseID, Questions: qs, CreatedAt: now()}})
+		return
+	}
+	if s.fullAccess {
+		s.allow(l.RequestID, input)
+		return
+	}
+	// Approval prompts are not in Dory yet: without full access, tools that
+	// need one are refused as before.
+	s.write(map[string]any{"type": "control_response", "response": map[string]any{
+		"subtype": "success", "request_id": l.RequestID,
+		"response": map[string]any{"behavior": "deny", "message": "This thread does not allow " + r.ToolName + " without approval."}}})
+}
+
+func (s *claudeSession) allow(id string, input map[string]any) error {
+	return s.write(map[string]any{"type": "control_response", "response": map[string]any{
+		"subtype": "success", "request_id": id,
+		"response": map[string]any{"behavior": "allow", "updatedInput": input}}})
+}
+
+func (s *claudeSession) write(v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err = s.in.Write(append(b, '\n'))
+	return err
 }
 
 // claudeParser follows one turn. Streamed blocks are keyed by message id and
@@ -101,7 +232,14 @@ type claudeLine struct {
 	Effort    string `json:"effort"`
 	IsError   bool   `json:"is_error"`
 	Result    string `json:"result"`
-	Event     struct {
+	RequestID string `json:"request_id"`
+	Request   struct {
+		Subtype   string          `json:"subtype"`
+		ToolName  string          `json:"tool_name"`
+		Input     json.RawMessage `json:"input"`
+		ToolUseID string          `json:"tool_use_id"`
+	} `json:"request"`
+	Event struct {
 		Type    string `json:"type"`
 		Index   int    `json:"index"`
 		Message struct {
@@ -119,6 +257,10 @@ type claudeLine struct {
 		Model   string        `json:"model"`
 		Content []claudeBlock `json:"content"`
 	} `json:"message"`
+	// ToolUseResult carries the answers of an AskUserQuestion result.
+	ToolUseResult struct {
+		Answers map[string]string `json:"answers"`
+	} `json:"tool_use_result"`
 	ParentToolUseID *string `json:"parent_tool_use_id"`
 	RateLimitInfo   struct {
 		Unified map[string]struct {
@@ -178,6 +320,9 @@ func (p *claudeParser) parse(line []byte, emit func(Event)) {
 				}
 				if m.Role == "plan" {
 					m.Status = "" // the plan keeps its text; the result is only an ack
+				} else if m.Tool != nil && m.Tool.Kind == "question" && len(l.ToolUseResult.Answers) > 0 {
+					m.Tool.Questions = withAnswers(m.Tool.Questions, l.ToolUseResult.Answers)
+					m.Text = ""
 				} else {
 					m.Text = clip(resultText(b.Content), 4000)
 				}
@@ -318,4 +463,28 @@ func resultText(raw json.RawMessage) string {
 	return strings.Join(parts, "\n")
 }
 
-func copyOf(m *Message) *Message { c := *m; return &c }
+func copyOf(m *Message) *Message {
+	c := *m
+	if m.Tool != nil {
+		t := *m.Tool
+		t.Questions = append([]Question(nil), t.Questions...)
+		c.Tool = &t
+	}
+	return &c
+}
+
+// withAnswers sets the answers Claude reports, keyed by question text, on a
+// copy of the questions. Several choices come joined by ", ".
+func withAnswers(qs []Question, answers map[string]string) []Question {
+	out := append([]Question(nil), qs...)
+	for i, q := range out {
+		if a, ok := answers[q.Question]; ok {
+			if q.MultiSelect {
+				out[i].Answer = strings.Split(a, ", ")
+			} else {
+				out[i].Answer = []string{a}
+			}
+		}
+	}
+	return out
+}

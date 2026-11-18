@@ -51,6 +51,8 @@ type Event struct {
 	// Session is the harness id of the conversation, used to resume it.
 	Session string
 	Usage   []Window
+	// Request pauses the turn until the user answers it.
+	Request *Request
 	// Done ends the turn; Err is set when it failed.
 	Done bool
 	Err  string
@@ -91,13 +93,11 @@ type Status struct {
 	Account      string   `json:"account,omitempty"`
 }
 
-// Provider is the adapter of one harness.
+// Provider is the adapter of one harness. It runs turns as a Runner or, when
+// the harness can wait for the user mid-turn, as an Interactive.
 type Provider interface {
 	ID() string
 	Detect(ctx context.Context) Status
-	// Run starts a turn and streams its events until a Done event; the
-	// channel is closed afterwards. Cancelling ctx interrupts the turn.
-	Run(ctx context.Context, t Turn) (<-chan Event, error)
 }
 
 // detect runs "<bin> --version" and reports its first line.
@@ -119,11 +119,17 @@ func detect(ctx context.Context, bin string) (string, bool) {
 // stream starts cmd and feeds each stdout line to parse, which turns it into
 // events. Cancelling ctx interrupts the process gently, then kills it.
 func stream(ctx context.Context, cmd *exec.Cmd, stdin string, parse func(line []byte, emit func(Event))) (<-chan Event, error) {
-	interruptible(cmd)
-	cmd.WaitDelay = 10 * time.Second
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
 	}
+	return pipe(ctx, cmd, parse)
+}
+
+// pipe starts cmd, whose stdin the caller has set up, and parses its stdout
+// as stream does.
+func pipe(ctx context.Context, cmd *exec.Cmd, parse func(line []byte, emit func(Event))) (<-chan Event, error) {
+	interruptible(cmd)
+	cmd.WaitDelay = 10 * time.Second
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err

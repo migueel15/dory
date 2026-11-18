@@ -18,8 +18,10 @@ type ThreadView struct {
 	ReportedSettings runtime.ReportedSettings `json:"reported_settings"`
 	Messages         []runtime.Message        `json:"messages"`
 	Queue            []runtime.Queued         `json:"queue"`
-	Running          bool                     `json:"running"`
-	Worktree         string                   `json:"worktree"`
+	// Requests are what the agent waits for in the middle of its turn.
+	Requests []runtime.Request `json:"requests"`
+	Running  bool              `json:"running"`
+	Worktree string            `json:"worktree"`
 	// Local is false when another node owns the thread; its messages then
 	// come from that node.
 	Local bool `json:"local"`
@@ -56,8 +58,13 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 			writeDataError(w, err)
 			return
 		}
+		requests, err := s.Runtime.Requests(r.Context(), t.ID)
+		if err != nil {
+			writeDataError(w, err)
+			return
+		}
 		dir, _ := s.Runtime.Dir(r.Context(), t.ID)
-		writeJSON(w, http.StatusOK, ThreadView{Thread: t, LastTurnModel: s.Runtime.LastTurnModel(r.Context(), t.ID), ReportedSettings: s.Runtime.ReportedSettings(r.Context(), t), Messages: msgs, Queue: s.Runtime.Queue(t.ID), Running: s.Runtime.Running(t.ID), Worktree: dir, Local: true})
+		writeJSON(w, http.StatusOK, ThreadView{Thread: t, LastTurnModel: s.Runtime.LastTurnModel(r.Context(), t.ID), ReportedSettings: s.Runtime.ReportedSettings(r.Context(), t), Messages: msgs, Queue: s.Runtime.Queue(t.ID), Requests: requests, Running: s.Runtime.Running(t.ID), Worktree: dir, Local: true})
 	}))
 	mux.HandleFunc("POST /api/threads/{id}/messages", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		var body struct {
@@ -88,6 +95,25 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 	}))
 	mux.HandleFunc("POST /api/threads/{id}/interrupt", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		if err := s.Runtime.Interrupt(r.Context(), t.ID); err != nil {
+			writeDataError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	// Answers to a request the agent waits for, one list per question.
+	mux.HandleFunc("POST /api/threads/{id}/requests/{req}", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
+		var body struct {
+			Answers [][]string `json:"answers"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		err := s.Runtime.Answer(r.Context(), t.ID, r.PathValue("req"), body.Answers)
+		if errors.Is(err, runtime.ErrNoRequest) {
+			writeError(w, http.StatusConflict, "conflict", err.Error())
+			return
+		}
+		if err != nil {
 			writeDataError(w, err)
 			return
 		}

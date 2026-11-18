@@ -29,7 +29,9 @@ export type Role = "user" | "assistant" | "reasoning" | "tool" | "plan" | "quest
 export type ToolKind = "edit" | "command" | "todo" | "plan" | "read" | "search" | "web" | "agent" | "mcp" | "question" | "other";
 export type FileEdit = { path: string; change?: "add" | "update" | "delete" | string; added: number; removed: number; diff?: string };
 export type Todo = { text: string; status: "pending" | "in_progress" | "completed" | string; active?: string };
-export type Question = { question: string; header?: string; options?: { label: string; description?: string }[]; multi_select?: boolean };
+export type Question = { id?: string; question: string; header?: string; options?: { label: string; description?: string }[]; multi_select?: boolean; answer?: string[] };
+// PendingRequest is something the agent waits for in the middle of its turn.
+export type PendingRequest = { id: string; kind: "question" | "permission"; message_id?: string; questions: Question[]; created_at: string };
 export type ToolCall = {
   kind: ToolKind; name: string; files?: FileEdit[]; command?: string; exit_code?: number; todos?: Todo[];
   path?: string; lines?: string; pattern?: string; url?: string; query?: string; agent?: string; summary?: string; steps?: number;
@@ -41,7 +43,7 @@ export type Entry = { name: string; description: string; insert: string };
 export type Attachment = { id: string; name: string; mime: string; path: string };
 export type Queued = { run_id: string; text: string; files?: Attachment[] };
 export type TurnModel = { provider: string; model: string | null; reported_model?: string };
-export type ThreadView = Thread & { last_turn_model?: TurnModel; reported_settings?: { model?: string; effort?: string }; messages: Message[]; queue: Queued[]; running: boolean; worktree: string; local: boolean };
+export type ThreadView = Thread & { last_turn_model?: TurnModel; reported_settings?: { model?: string; effort?: string }; messages: Message[]; queue: Queued[]; requests?: PendingRequest[]; running: boolean; worktree: string; local: boolean };
 export type Column = "inbox" | "ready" | "working" | "needs_you" | "in_review" | "ready_to_merge" | "done" | "cancelled";
 export type Pull = { repo: string; number: number; title: string; url: string; draft: boolean; ci: string; review_decision: string; review_requests: string[]; mergeable: string; merge_state: string; head_ref: string };
 export type Card = Task & { column: Column; repo?: string; threads: Thread[]; pull?: Pull; pr_state?: "open" | "draft" | "merged" | "closed"; blockers: string[]; has_plan: boolean };
@@ -162,6 +164,7 @@ export const api = {
   threadSettings: (id: string, body: { provider?: string; model?: string; effort?: string; runtime_mode?: Thread["runtime_mode"] }) => req<Thread>("POST", `/threads/${id}/settings`, body),
   threadCommands: (id: string) => req<{ commands: Entry[]; skills: Entry[] }>("GET", `/threads/${id}/commands`),
   threadFiles: (id: string, q: string) => req<string[]>("GET", `/threads/${id}/files?q=${encodeURIComponent(q)}`),
+  answer: (id: string, request: string, answers: string[][]) => req<void>("POST", `/threads/${id}/requests/${encodeURIComponent(request)}`, { answers }),
   interrupt: (id: string) => req<void>("POST", `/threads/${id}/interrupt`),
   threadDiff: (id: string) => req<{ diff: string; branch: string }>("GET", `/threads/${id}/diff`),
   threadAction: (id: string, body: { action: ThreadActionName; title?: string; until?: string; task_id?: string }) => req<Thread>("POST", `/threads/${id}/actions`, body),

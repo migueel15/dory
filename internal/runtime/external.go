@@ -235,7 +235,9 @@ func claudeRecord(line []byte, emit func(Message), out []Message, index map[stri
 		Timestamp   string `json:"timestamp"`
 		IsSidechain bool   `json:"isSidechain"`
 		IsMeta      bool   `json:"isMeta"`
-		Message     struct {
+		// ToolUseResult carries the answers of an AskUserQuestion result.
+		ToolUseResult json.RawMessage `json:"toolUseResult"`
+		Message       struct {
 			Content json.RawMessage `json:"content"`
 		} `json:"message"`
 	}
@@ -277,6 +279,14 @@ func claudeRecord(line []byte, emit func(Message), out []Message, index map[stri
 				m.Text = clip(resultText(b.Content), 4000)
 				if b.IsError {
 					m.Status = "failed"
+				}
+				var result struct {
+					Answers map[string]string `json:"answers"`
+				}
+				if m.Tool != nil && m.Tool.Kind == "question" && json.Unmarshal(r.ToolUseResult, &result) == nil && len(result.Answers) > 0 {
+					t := *m.Tool
+					t.Questions = withAnswers(t.Questions, result.Answers)
+					m.Tool, m.Text = &t, ""
 				}
 				emit(m)
 			}

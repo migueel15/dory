@@ -13,6 +13,8 @@ Cada adaptador traduce sus llamadas a un `ToolCall` de Dory con uno de estos tip
 
 Las preguntas al usuario pasan siempre por la herramienta MCP `ask_user` de Dory, que acepta preguntas con cabecera, opciones y selección múltiple. Dory desactiva `AskUserQuestion` en Claude Code y le indica que use `ask_user`. La respuesta vuelve como el siguiente mensaje del usuario.
 
+En Claude Code, esta vía queda sustituida por ADR-015: `AskUserQuestion` vuelve a estar activa y pausa el turno.
+
 ## Consequences
 
 Un arnés nuevo solo tiene que mapear sus herramientas a estos tipos para verse bien en el chat. Lo que no encaja se muestra como `other` o `mcp`, con sus argumentos. Los mensajes guardados antes de este cambio se reconstruyen al leerlos a partir de su título y su argumento principal, así que también usan las tarjetas comunes, aunque con menos detalle (sin diff ni descripción).

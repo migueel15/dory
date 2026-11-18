@@ -58,9 +58,11 @@ type Manager struct {
 
 	mu      sync.Mutex
 	running map[string]context.CancelFunc
-	queues  map[string][]Queued
-	subs    map[chan Update]string
-	usage   map[string][]Window
+	// sessions holds the open turn of interactive harnesses, by thread.
+	sessions map[string]Session
+	queues   map[string][]Queued
+	subs     map[chan Update]string
+	usage    map[string][]Window
 	// asked marks threads whose agent asked the user something this turn.
 	asked map[string]bool
 	// steering marks threads whose turn was stopped to run the head of the queue now.
@@ -72,7 +74,7 @@ type Manager struct {
 
 func NewManager(db *sql.DB, store *data.Store, node, dataDir string, providers ...Provider) *Manager {
 	m := &Manager{db: db, store: store, node: node, dataDir: dataDir, providers: map[string]Provider{},
-		running: map[string]context.CancelFunc{}, queues: map[string][]Queued{}, subs: map[chan Update]string{}, usage: map[string][]Window{}, asked: map[string]bool{}, steering: map[string]bool{}}
+		running: map[string]context.CancelFunc{}, sessions: map[string]Session{}, queues: map[string][]Queued{}, subs: map[chan Update]string{}, usage: map[string][]Window{}, asked: map[string]bool{}, steering: map[string]bool{}}
 	for _, p := range providers {
 		m.providers[p.ID()] = p
 	}
@@ -82,6 +84,9 @@ func NewManager(db *sql.DB, store *data.Store, node, dataDir string, providers .
 // Recover marks as stopped the threads that were working when the node went
 // down: their processes died with it.
 func (m *Manager) Recover(ctx context.Context) error {
+	if err := m.dropRequests(ctx); err != nil {
+		return err
+	}
 	threads, err := m.store.Threads().List(ctx, data.Filter{Fields: map[string]any{"node_id": m.node, "status": "working"}, Limit: 1000})
 	if err != nil {
 		return err
@@ -325,10 +330,25 @@ func (m *Manager) start(ctx context.Context, t data.Thread, run, text string, fi
 		}
 	}
 	startedAt := now()
-	events, err := p.Run(ctx, Turn{RunID: run, Dir: dir, Text: prompt, Model: t.Model, Effort: t.Effort, Session: session,
-		FullAccess: t.RuntimeMode != "approval-required", MCPURL: m.mcpURL(t.ID), MCPToken: m.MCPToken})
-	if err != nil {
-		return err
+	turn := Turn{RunID: run, Dir: dir, Text: prompt, Model: t.Model, Effort: t.Effort, Session: session,
+		FullAccess: t.RuntimeMode != "approval-required", MCPURL: m.mcpURL(t.ID), MCPToken: m.MCPToken}
+	var events <-chan Event
+	switch p := p.(type) {
+	case Interactive:
+		s, err := p.Start(ctx, turn)
+		if err != nil {
+			return err
+		}
+		events = s.Events()
+		m.mu.Lock()
+		m.sessions[t.ID] = s
+		m.mu.Unlock()
+	case Runner:
+		if events, err = p.Run(ctx, turn); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("%w: %s cannot run turns", ErrProvider, t.Provider)
 	}
 	var previous TurnModel
 	_ = json.Unmarshal([]byte(lastModel), &previous)
@@ -414,6 +434,8 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 			m.mu.Lock()
 			m.usage[t.Provider] = e.Usage
 			m.mu.Unlock()
+		case e.Request != nil:
+			m.request(bg, t.ID, *e.Request)
 		case e.Done:
 			if e.Err != "" {
 				status, failure = "error", e.Err
@@ -426,7 +448,12 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 			}
 		}
 	}
+	// The process is gone: nothing can answer its requests any more.
+	if _, err := m.db.ExecContext(bg, `DELETE FROM thread_requests WHERE thread_id = ?`, t.ID); err != nil {
+		log.Printf("runtime: drop requests: %v", err)
+	}
 	m.mu.Lock()
+	delete(m.sessions, t.ID)
 	if m.asked[t.ID] && status == "idle" {
 		status = "waiting"
 	}

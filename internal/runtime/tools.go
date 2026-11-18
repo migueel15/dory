@@ -54,10 +54,14 @@ type Todo struct {
 
 // Question is one question the agent asks the user, with its options.
 type Question struct {
+	// ID is the harness's own id of the question, when it has one.
+	ID          string   `json:"id,omitempty"`
 	Question    string   `json:"question"`
 	Header      string   `json:"header,omitempty"`
 	Options     []Option `json:"options,omitempty"`
 	MultiSelect bool     `json:"multi_select,omitempty"`
+	// Answer holds the chosen labels or free text once the user answered.
+	Answer []string `json:"answer,omitempty"`
 }
 
 type Option struct {

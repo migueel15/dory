@@ -16,3 +16,4 @@
 | [ADR-012](adr-012-directorios-de-estado-local.md) | Directorios de estado local | accepted |
 | [ADR-013](adr-013-herramientas-comunes.md) | Herramientas comunes entre arneses | accepted |
 | [ADR-014](adr-014-app-movil.md) | App de Android que se conecta directamente a cada nodo | accepted |
+| [ADR-015](adr-015-sesiones-interactivas.md) | Sesiones interactivas de los arneses | accepted |

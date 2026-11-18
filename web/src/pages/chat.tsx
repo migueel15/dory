@@ -8,7 +8,7 @@ import { splitMessageQuotes } from "../components/message-quotes";
 import { ModelLogo } from "../components/model-logo";
 import { rehypeFade, useSmoothText } from "../components/stream";
 import { GroupCard, isAsk, TodoCard, ToolCard } from "../components/tool-card";
-import { QuestionCard } from "../components/question-card";
+import { NativeQuestionCard, QuestionCard } from "../components/question-card";
 
 // The look of the conversation, kept from Dory v1 (as in T3 Code): user
 // bubbles, answers as plain markdown, and each finished turn's work folded
@@ -81,6 +81,7 @@ export function Entry({ m, threadId = "", fresh = false, openQuestion = false }:
       return <Reasoning m={m} />;
     case "tool":
       if (isAsk(m)) return <QuestionCard m={m} threadId={threadId} open={openQuestion && !!threadId} />;
+      if (m.tool?.kind === "question") return <NativeQuestionCard m={m} />;
       return m.tool ? <ToolCard m={m} /> : <StepLine run={[m]} />;
     case "plan":
       return m.tool?.kind === "todo" ? <TodoCard m={m} /> : <PlanCard m={m} />;
@@ -396,7 +397,7 @@ type Worked = { worked: true; id: string; items: Message[]; secs: number; live?:
 function layout(ms: Message[], live: boolean): (Message | Worked)[] {
   const out: (Message | Worked)[] = [];
   // A question stays out of the folded work: it is for the user to answer.
-  const isWork = (m: Message) => m.role === "reasoning" || (m.role === "tool" && !isAsk(m)) || m.role === "assistant";
+  const isWork = (m: Message) => m.role === "reasoning" || (m.role === "tool" && !isAsk(m) && m.tool?.kind !== "question") || m.role === "assistant";
   let start = 0;
   const flush = (end: number, last: boolean) => {
     const seg = ms.slice(start, end);
