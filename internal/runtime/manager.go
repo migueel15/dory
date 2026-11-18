@@ -78,7 +78,40 @@ func NewManager(db *sql.DB, store *data.Store, node, dataDir string, providers .
 	for _, p := range providers {
 		m.providers[p.ID()] = p
 	}
+	m.loadUsage()
 	return m
+}
+
+// usageFile keeps the last reported usage so it survives restarts.
+func (m *Manager) usageFile() string { return filepath.Join(m.dataDir, "usage.json") }
+
+func (m *Manager) loadUsage() {
+	if m.dataDir == "" {
+		return
+	}
+	raw, err := os.ReadFile(m.usageFile())
+	if err != nil {
+		return
+	}
+	var saved map[string][]Window
+	if json.Unmarshal(raw, &saved) == nil && saved != nil {
+		m.usage = saved
+	}
+}
+
+// saveUsage writes the usage map; the caller holds m.mu.
+func (m *Manager) saveUsage() {
+	if m.dataDir == "" {
+		return
+	}
+	raw, _ := json.Marshal(m.usage)
+	tmp := m.usageFile() + ".tmp"
+	if err := os.WriteFile(tmp, raw, 0o600); err == nil {
+		err = os.Rename(tmp, m.usageFile())
+		if err != nil {
+			log.Printf("runtime: save usage: %v", err)
+		}
+	}
 }
 
 // Recover marks as stopped the threads that were working when the node went
@@ -142,8 +175,17 @@ func (m *Manager) Usage() map[string][]Window {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make(map[string][]Window, len(m.usage))
+	now := time.Now()
 	for k, v := range m.usage {
-		out[k] = v
+		ws := make([]Window, len(v))
+		for i, w := range v {
+			// A window that already reset starts again unused.
+			if !w.ResetsAt.IsZero() && w.ResetsAt.Before(now) {
+				w.Utilization = 0
+			}
+			ws[i] = w
+		}
+		out[k] = ws
 	}
 	return out
 }
@@ -440,6 +482,7 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 		case e.Usage != nil:
 			m.mu.Lock()
 			m.usage[t.Provider] = e.Usage
+			m.saveUsage()
 			m.mu.Unlock()
 		case e.Request != nil:
 			m.request(bg, t.ID, *e.Request)
