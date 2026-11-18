@@ -139,8 +139,7 @@ export function ThreadsHome() {
   const navigate = useNavigate();
   return (
     <div className="grid h-full place-items-center p-4">
-      <div className="w-full max-w-2xl space-y-3">
-        <p className="flex items-center gap-2 text-slate-500 dark:text-muted"><ChatsCircle className="size-5" />Elige un hilo o empieza uno nuevo.</p>
+      <div className="w-full max-w-3xl">
         <NewThread onCreated={(id) => navigate({ to: "/threads/$threadId", params: { threadId: id } })} />
       </div>
     </div>
