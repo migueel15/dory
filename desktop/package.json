@@ -34,7 +34,8 @@
         "deb"
       ],
       "category": "Development",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "maintainer": "Dory <dory@dorlab.net>"
     },
     "mac": {
       "target": [
