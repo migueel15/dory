@@ -1,22 +1,22 @@
-# Copia este fichero a ~/.config/dory/config.toml.
-# Cada clave se puede sobrescribir con una variable DORY_* (ver deploy/dory.env.example).
+# Copia este fichero a ~/.config/dory/config.toml. Todas las claves son
+# opcionales y cada una se puede sobrescribir con una variable DORY_*.
 
-# Dirección de escucha (DORY_LISTEN). Déjala en localhost y publícala con Tailscale.
-listen = "127.0.0.1:8080"
+# Dirección de escucha del nodo (DORY_LISTEN). En escritorio, localhost.
+listen = "127.0.0.1:7700"
 
-# Cadena de conexión a Postgres (DORY_DATABASE_URL).
-# Mejor definirla en el fichero de entorno, porque lleva la contraseña.
-# database_url = "postgres://dory:CAMBIAME@127.0.0.1:5432/dory?sslmode=disable"
+# Carpeta de datos del nodo (DORY_DATA_DIR): base SQLite, hilos y worktrees.
+# Por defecto, ~/.dory/data en instalaciones nuevas.
+# data_dir = "/home/miguel/.dory/data"
 
-# Cookie de sesión solo por HTTPS (DORY_COOKIE_SECURE). Ponla en false solo si
-# accedes por HTTP plano, por ejemplo en pruebas locales.
-cookie_secure = true
+# Nombre del nodo en la malla (DORY_NODE_NAME). Por defecto, el nombre del equipo.
+# node_name = "arch-laptop"
 
-# Origen público por HTTPS (DORY_PUBLIC_ORIGIN), por ejemplo si accedes detrás de un proxy
-# o de Cloudflare Tunnel. Sin proxy TLS, Dory no ve HTTPS y rechazaría el Origin.
-# Solo esquema y host, sin ruta. Déjalo vacío para el comportamiento por defecto.
+# Cookie de sesión solo por HTTPS (DORY_COOKIE_SECURE). Actívala en un servidor
+# detrás de un proxy TLS.
+# cookie_secure = true
+
+# Origen público por HTTPS (DORY_PUBLIC_ORIGIN) si el nodo está detrás de un proxy.
 # public_origin = "https://dory.dorlab.net"
 
 # Duración de la sesión web (DORY_SESSION_TTL), formato de Go: "168h" = 7 días.
 session_ttl = "168h"
-

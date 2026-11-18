@@ -8,13 +8,11 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"github.com/migueel15/dory/internal/service"
 )
 
 // Command handles user/token subcommands. Passwords come from DORY_PASSWORD
 // rather than process arguments. A newly generated token is printed only here.
-func Command(ctx context.Context, args []string, svc service.Service) (bool, error) {
+func Command(ctx context.Context, args []string, svc Store) (bool, error) {
 	if len(args) == 0 || args[0] != "user" && args[0] != "token" {
 		return false, nil
 	}
@@ -43,10 +41,10 @@ func Command(ctx context.Context, args []string, svc service.Service) (bool, err
 		}
 		if _, err := svc.FindUser(ctx, *username); err == nil {
 			return true, fmt.Errorf("user already exists")
-		} else if !errors.Is(err, service.ErrNotFound) {
+		} else if !errors.Is(err, ErrNotFound) {
 			return true, err
 		}
-		u, err := svc.Users().Put(ctx, "cli", service.User{Username: *username, PasswordHash: passwordHash(password)})
+		u, err := svc.CreateUser(ctx, *username, passwordHash(password))
 		if err == nil {
 			_, err = fmt.Fprintln(os.Stdout, u.ID)
 		}
@@ -66,12 +64,12 @@ func Command(ctx context.Context, args []string, svc service.Service) (bool, err
 		return true, err
 	}
 	value := secret()
-	token := service.Token{UserID: u.ID, Name: *name, SecretHash: digest(value), Permissions: permissions}
+	token := Token{UserID: u.ID, Name: *name, SecretHash: digest(value), Permissions: permissions}
 	if *ttl > 0 {
 		expires := time.Now().Add(*ttl)
 		token.ExpiresAt = &expires
 	}
-	_, err = svc.Tokens().Put(ctx, u.ID, token)
+	err = svc.CreateToken(ctx, token)
 	if err == nil {
 		_, err = fmt.Fprintln(os.Stdout, value)
 	}

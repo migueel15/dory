@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Dory</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header><h1>Dory</h1><p>Elige un entorno.</p></header>
+  <main>
+    <section>
+      <h2>Entornos</h2>
+      <ul id="saved"></ul>
+      <p id="none" class="hint">Todavía no has emparejado ningún entorno.</p>
+    </section>
+    <section id="found-box" hidden>
+      <h2>Disponibles para emparejar</h2>
+      <ul id="found"></ul>
+    </section>
+    <section>
+      <h2>Emparejar</h2>
+      <p class="hint">En el ordenador: <b>Entornos → Mostrar código</b>.</p>
+      <form id="pair">
+        <input id="address" placeholder="Dirección: 192.168.1.20 o portatil.tailnet.ts.net" autocapitalize="off" autocorrect="off" spellcheck="false" required />
+        <input id="code" placeholder="Código, p. ej. 1234-5678" inputmode="numeric" required />
+        <button>Emparejar</button>
+      </form>
+      <p id="error" class="error"></p>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

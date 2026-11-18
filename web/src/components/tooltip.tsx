@@ -90,14 +90,23 @@ export function TooltipHost() {
 // HoverCard is information the pointer asks for by resting on a control (the
 // remaining usage, what can be updated): unlike a label it shows at once. It
 // is centred over the anchor and rises into place like the tooltips.
-export function HoverCard({ anchor, children }: { anchor: HTMLElement | null; children: React.ReactNode }) {
+// With side="left" it sits beside the anchor instead, or on its right when
+// the left is short.
+// `edge` lends its sides when the anchor sits inside a box the card must clear.
+export function HoverCard({ anchor, children, side = "top", edge, gap: sideGap = 8 }: { anchor: HTMLElement | null; children: React.ReactNode; side?: "top" | "left"; edge?: HTMLElement | null; gap?: number }) {
   const card = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   useLayoutEffect(() => {
     if (!anchor || !card.current) return;
     const a = anchor.getBoundingClientRect(), t = card.current.getBoundingClientRect(), m = 8, gap = 8;
+    if (side === "left") {
+      const e = (edge ?? anchor).getBoundingClientRect();
+      const top = Math.min(Math.max(m, a.top + a.height / 2 - t.height / 2), window.innerHeight - t.height - m);
+      setPos({ left: e.left - t.width - sideGap >= m ? e.left - t.width - sideGap : Math.min(e.right + sideGap, window.innerWidth - t.width - m), top });
+      return;
+    }
     setPos({ left: Math.min(Math.max(m, a.left + a.width / 2 - t.width / 2), window.innerWidth - t.width - m), top: a.top - t.height - gap >= m ? a.top - t.height - gap : a.bottom + gap });
-  }, [anchor]);
+  }, [anchor, side, edge, sideGap]);
   if (!anchor) return null;
   return createPortal(
     <div ref={card} role="tooltip" style={pos ?? { left: 0, top: 0, visibility: "hidden" }}

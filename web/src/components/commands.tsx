@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Brain, ChartBar, Command as CommandIcon, FolderSimple, GithubLogo, HardDrives, House, Kanban, Lightbulb, MagnifyingGlass, Robot, Tray, type IconProps } from "@phosphor-icons/react";
+import { Brain, ChartBar, Command as CommandIcon, FolderSimple, GithubLogo, HardDrives, House, Kanban, Lightbulb, MagnifyingGlass, Robot, type IconProps } from "@phosphor-icons/react";
 import { IdeaModal } from "./capture";
 import { Input } from "./ui";
 
@@ -40,8 +40,7 @@ export function CommandPalette() {
   const commands: Command[] = [
     { id: "idea", group: "Crear", label: "Nueva idea", icon: Lightbulb, hint: "Al inbox", run: () => setIdea(true) },
     { id: "home", group: nav, label: "Inicio", icon: House, run: go("/") },
-    { id: "inbox", group: nav, label: "Inbox", icon: Tray, run: go("/inbox") },
-    { id: "attention", group: nav, label: "Atención", icon: Kanban, run: go("/attention") },
+    { id: "tasks", group: nav, label: "Tareas", icon: Kanban, run: go("/tasks") },
     { id: "threads", group: nav, label: "Hilos", icon: Robot, run: go("/threads") },
     { id: "projects", group: nav, label: "Proyectos", icon: FolderSimple, run: go("/projects") },
     { id: "usage", group: nav, label: "Uso", icon: ChartBar, run: go("/usage") },

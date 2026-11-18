@@ -15,3 +15,4 @@ web/dist/*
 
 # Desarrollo
 /tmp/
+.dev-data/

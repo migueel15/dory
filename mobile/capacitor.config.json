@@ -1,0 +1,6 @@
+{
+  "appId": "net.dorlab.dory",
+  "appName": "Dory",
+  "webDir": "www",
+  "android": { "allowMixedContent": false }
+}

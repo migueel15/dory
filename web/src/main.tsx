@@ -1,6 +1,7 @@
 import { Threads, ThreadsHome } from "./pages/threads";
+import { UsageQuick } from "./components/usage-quick";
 import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Brain, ChartBar, ChatsCircle, FolderSimple, Gear, GithubLogo, HardDrives, House, IconContext, Kanban, List, Moon, Robot, SidebarSimple, SignOut, Sun, Tray, BellRinging, X } from "@phosphor-icons/react";
+import { Brain, ChartBar, ChatsCircle, FolderSimple, Gear, GithubLogo, HardDrives, House, IconContext, Kanban, Lightning, List, Moon, SidebarSimple, SignOut, Sun, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect } from "@tanstack/react-router";
@@ -10,15 +11,11 @@ import { Button, Input, Label, errMsg } from "./components/ui";
 import { Environments, Memories, memorySearch } from "./pages/crud";
 import { CommandPalette, CommandsButton } from "./components/commands";
 import { TooltipHost } from "./components/tooltip";
-import { UsageQuick } from "./components/usage-quick";
-import { UpdateDialog, UpdateReview, UpdatesButton, useUpdates } from "./components/updates";
 import { ProjectSwitcher } from "./components/project-switcher";
-import { Notifications, NotificationItem } from "./components/notifications";
-import { Attention, useAttentionCount } from "./pages/attention";
+import { NoticesToggle } from "./components/notices";
 import { Home } from "./pages/home";
-// Home and the attention page already need these two, so they stay in the main chunk.
 import { Github } from "./pages/github";
-import { Inbox } from "./pages/items";
+import { Tasks } from "./pages/tasks";
 import { applyTheme, useTheme } from "./theme";
 import "./index.css";
 
@@ -34,8 +31,11 @@ function Login() {
   const qc = useQueryClient();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  // A new node has no account: the first one is created from this machine.
+  const setup = useQuery({ queryKey: ["setup"], queryFn: api.setupNeeded, retry: false });
+  const first = !!setup.data?.needed;
   const login = useMutation({
-    mutationFn: () => api.login(username, password),
+    mutationFn: () => (first ? api.setup(username, password) : api.login(username, password)),
     onSuccess: (u) => qc.setQueryData(["me"], u),
   });
   return (
@@ -45,21 +45,13 @@ function Login() {
     >
       <div>
         <h1 className="flex items-center gap-2 text-xl font-bold">Dory<DevBadge /></h1>
-        <p className="text-sm text-slate-500 dark:text-muted">Memoria y tareas para tus agentes</p>
+        <p className="text-sm text-slate-500 dark:text-muted">{first ? "Crea la cuenta de este nodo. La contraseña necesita al menos 12 caracteres." : "Tu entorno de trabajo con agentes"}</p>
       </div>
       <Label text="Usuario"><Input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus /></Label>
       <Label text="Contraseña"><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></Label>
       {login.error && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{login.error instanceof ApiError && login.error.status === 401 ? "Usuario o contraseña incorrectos." : errMsg(login.error)}</p>}
-      <Button className="w-full" disabled={login.isPending}>Entrar</Button>
+      <Button className="w-full" disabled={login.isPending}>{first ? "Crear cuenta" : "Entrar"}</Button>
     </form>
-  );
-}
-
-function SettingsLink() {
-  return (
-    <Link to="/settings" aria-label="Ajustes" title="Ajustes" className="grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-slate-200 sm:min-h-0 sm:min-w-0 sm:px-3 sm:py-1.5 dark:hover:bg-raised [&.active]:bg-slate-200 dark:[&.active]:bg-raised">
-      <Gear weight="duotone" className="size-5" aria-hidden="true" />
-    </Link>
   );
 }
 
@@ -71,6 +63,13 @@ function ThemeToggle() {
       {dark ? <Sun weight="duotone" className="size-5" aria-hidden="true" /> : <Moon weight="duotone" className="size-5" aria-hidden="true" />}
     </Button>
   );
+}
+
+function SettingsLink() {
+  return <Link to="/settings" aria-label="Ajustes" title="Ajustes"
+    className="inline-flex min-h-11 items-center justify-center rounded-md px-3 py-1.5 hover:bg-slate-200 dark:hover:bg-raised sm:min-h-0 [&.active]:text-accent dark:[&.active]:text-accent-text">
+    <Gear weight="duotone" className="size-5" aria-hidden="true" />
+  </Link>;
 }
 
 function VersionBadge() {
@@ -88,13 +87,11 @@ function Layout() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me, retry: false });
   const logout = useMutation({ mutationFn: api.logout, onSuccess: () => qc.clear() });
   useLiveUpdates(!!me.data);
-  // The project board needs the full width.
-  const wide = useLocation({ select: (l) => l.pathname.startsWith("/projects/") || l.pathname.startsWith("/items/") || l.pathname.startsWith("/threads") || /^\/github\/[^/]+\/[^/]+\/(pulls|issues)\//.test(l.pathname) || l.pathname === "/tasks" });
-  const attention = useAttentionCount(!!me.data);
-  // Environments with outdated T3 or connectors; the footer icon updates them all.
-  const upd = useUpdates(!!me.data);
-  const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list(), enabled: !!me.data });
-  const envNames = Object.fromEntries((upd.updates.data ?? []).map((x) => [x.instance_id, envs.data?.find((e) => e.id === x.environment_id)?.name ?? "Entorno"]));
+  // The board, threads and pull requests need the full width.
+  const wide = useLocation({ select: (l) => l.pathname.startsWith("/threads") || /^\/github\/[^/]+\/[^/]+\/(pulls|issues)\//.test(l.pathname) || l.pathname === "/tasks" });
+  // Threads that wait for the user show as a count on their link.
+  const threads = useQuery({ queryKey: ["threads", "attention"], queryFn: () => api.threads(), enabled: !!me.data, refetchInterval: 30_000 });
+  const attention = (threads.data ?? []).filter((t) => t.status === "waiting" || t.status === "error").length;
 
   const path = useLocation({ select: (l) => l.pathname });
   const [menu, setMenu] = useState(false);
@@ -153,17 +150,15 @@ function Layout() {
     <>
       {group("Trabajo", small)}
       <Link to="/" activeOptions={{ exact: true }} className={link} title={small ? "Inicio" : undefined}><House weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Inicio</span></Link>
-      <Link to="/inbox" className={link} title={small ? "Inbox" : undefined}><Tray weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Inbox</span></Link>
-      <Link to="/projects" className={link} title={small ? "Proyectos" : undefined}><FolderSimple weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Proyectos</span></Link>
-      {group("Agentes", small)}
       <Link to="/tasks" className={link} title={small ? "Tareas" : undefined}><Kanban weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Tareas</span></Link>
-      <Link to="/attention" className={`${link} relative`} title={small ? "Atención" : undefined}><BellRinging weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Atención</span>{attention > 0 && (small ? <span className="absolute right-1.5 top-1 size-2 rounded-full bg-amber-500" /> : <span className={`ml-1.5 rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-white transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>{attention}</span>)}</Link>
-      <Link to="/threads" className={link} title={small ? "Hilos" : undefined}><ChatsCircle weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Hilos</span></Link>
-      <Link to="/usage" className={link} title={small ? "Uso" : undefined}><ChartBar weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Uso</span></Link>
-      {group("Sistema", small)}
+      <Link to="/threads" className={`${link} relative`} title={small ? "Hilos" : undefined}><ChatsCircle weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Hilos</span>{attention > 0 && (small ? <span className="absolute right-1.5 top-1 size-2 rounded-full bg-orange-500" /> : <span className="ml-1.5 rounded-full bg-orange-500 px-1.5 text-xs font-semibold text-white" title="Te necesitan">{attention}</span>)}</Link>
+      <Link to="/projects" className={link} title={small ? "Proyectos" : undefined}><FolderSimple weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Proyectos</span></Link>
       <Link to="/github" className={link} title={small ? "GitHub" : undefined}><GithubLogo weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>GitHub</span></Link>
-      <Link to="/environments" className={link} title={small ? "Entornos" : undefined}><HardDrives weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Entornos</span></Link>
+      {group("Sistema", small)}
       <Link to="/memories" className={link} title={small ? "Memorias" : undefined}><Brain weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Memorias</span></Link>
+      <Link to="/skills" className={link} title={small ? "Skills" : undefined}><Lightning weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Skills</span></Link>
+      <Link to="/environments" className={link} title={small ? "Entornos" : undefined}><HardDrives weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Entornos</span></Link>
+      <Link to="/usage" className={link} title={small ? "Uso" : undefined}><ChartBar weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Uso</span></Link>
     </>
   );
   return (
@@ -182,9 +177,8 @@ function Layout() {
         </div>
         <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-3 pb-4">{navLinks(folded)}</nav>
         <div className="shrink-0 px-3 pb-2"><ProjectSwitcher folded={folded} /></div>
-        <SidebarFooter folded={folded} username={me.data.username} onLogout={() => logout.mutate()}
-          update={upd.outdated.length > 0 || upd.run.isPending ? <UpdatesButton u={upd} names={envNames} /> : null}
-          controls={[desktop && <Notifications key="n" />, <ThemeToggle key="t" />, <SettingsLink key="s" />, <UsageQuick key="u" />].filter(Boolean) as React.ReactElement[]} />
+        <SidebarFooter folded={folded} username={me.data.username} onLogout={() => logout.mutate()} update={null}
+          controls={[<NoticesToggle key="n" />, <ThemeToggle key="t" />, <SettingsLink key="settings" />, <UsageQuick key="u" />]} />
       </aside>
       {/* On desktop the current view is a card framed by the sidebar background. */}
       <div className="min-w-0 flex-1 sm:my-2 sm:mr-2 sm:overflow-auto sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">
@@ -193,9 +187,6 @@ function Layout() {
           <Link to="/" className="mr-1 flex shrink-0 items-center gap-2 font-bold">Dory<DevBadge /></Link>
           {/* The project is one tap away on phones, without opening the menu. */}
           <div className="min-w-0 flex-1"><ProjectSwitcher compact /></div>
-          <div className="flex shrink-0 items-center gap-1">
-            {!desktop && <Notifications />}
-          </div>
           <button type="button" aria-label="Menú" aria-controls="mobile-navigation" aria-expanded={menu} onClick={() => setMenu(!menu)} className="grid size-11 place-items-center rounded hover:bg-slate-200 dark:hover:bg-raised sm:hidden">
             {menu ? <X weight="regular" className="size-5" aria-hidden="true" /> : <List weight="regular" className="size-5" aria-hidden="true" />}
           </button>
@@ -230,6 +221,7 @@ function Layout() {
         <div className="shrink-0 space-y-3 border-t border-slate-200 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-border">
           {/* Theme, settings and usage live here on phones so the top bar keeps room for the project. */}
           <div className="flex items-center gap-1 [&>*]:flex [&>*]:flex-1 [&>*]:items-center [&>*]:justify-center">
+            <NoticesToggle />
             <ThemeToggle />
             <SettingsLink />
             <UsageQuick />
@@ -241,7 +233,7 @@ function Layout() {
           <VersionBadge />
         </div>
       </dialog>
-      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /><NotificationItem /></main></div><CommandPalette /><UpdateReview u={upd} names={envNames} /><UpdateDialog u={upd} names={envNames} /><TooltipHost />
+      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /></main></div><CommandPalette /><TooltipHost />
     </div>
   );
 }
@@ -253,18 +245,18 @@ const pages = {
   thread: () => import("./pages/thread"),
   githubDetail: () => import("./pages/github-detail"),
   usage: () => import("./pages/usage"),
-  settings: () => import("./pages/settings"),
-  define: () => import("./pages/define"),
   projects: () => import("./pages/projects"),
+  skills: () => import("./pages/skills"),
+  settings: () => import("./pages/settings"),
 };
 const ThreadView = lazyRouteComponent(pages.thread, "ThreadView");
+const ExternalView = lazyRouteComponent(pages.thread, "ExternalView");
 const GithubView = lazyRouteComponent(pages.githubDetail, "GithubView");
 const Usage = lazyRouteComponent(pages.usage, "Usage");
-const Settings = lazyRouteComponent(pages.settings, "Settings");
-const Define = lazyRouteComponent(pages.define, "Define");
 const Projects = lazyRouteComponent(pages.projects, "Projects");
 const ProjectDetail = lazyRouteComponent(pages.projects, "ProjectDetail");
-const Tasks = lazyRouteComponent(pages.projects, "Tasks");
+const Skills = lazyRouteComponent(pages.skills, "Skills");
+const Settings = lazyRouteComponent(pages.settings, "Settings");
 const idle = (fn: () => void) => ("requestIdleCallback" in window ? window.requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 1500));
 idle(() => { for (const load of Object.values(pages)) load().catch(() => {}); });
 
@@ -273,11 +265,9 @@ const root = createRootRoute({ component: Layout });
 const threadsRoute = createRoute({ getParentRoute: () => root, path: "/threads", component: Threads });
 const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/", component: Home }),
-  createRoute({ getParentRoute: () => root, path: "/inbox", component: Inbox }),
-  createRoute({ getParentRoute: () => root, path: "/attention", component: Attention }),
-  // Jobs became the "Lanzados" filter of the thread list.
-  createRoute({ getParentRoute: () => root, path: "/jobs", beforeLoad: () => { throw redirect({ to: "/threads", search: { f: "jobs" } as never }); } }),
+  createRoute({ getParentRoute: () => root, path: "/inbox", beforeLoad: () => { throw redirect({ to: "/tasks" }); } }),
   createRoute({ getParentRoute: () => root, path: "/usage", component: Usage }),
+  createRoute({ getParentRoute: () => root, path: "/skills", component: Skills }),
   createRoute({ getParentRoute: () => root, path: "/settings", component: Settings }),
   createRoute({ getParentRoute: () => root, path: "/github", component: Github }),
   createRoute({ getParentRoute: () => root, path: "/github/$owner/$repo/$kind/$number", component: GithubView }),
@@ -285,10 +275,10 @@ const routeTree = root.addChildren([
   threadsRoute.addChildren([
     createRoute({ getParentRoute: () => threadsRoute, path: "/", component: ThreadsHome }),
     createRoute({ getParentRoute: () => threadsRoute, path: "$threadId", component: ThreadView }),
+    createRoute({ getParentRoute: () => threadsRoute, path: "external/$node/$provider/$id", component: ExternalView }),
   ]),
   createRoute({ getParentRoute: () => root, path: "/projects", component: Projects }),
   createRoute({ getParentRoute: () => root, path: "/projects/$id", component: ProjectDetail }),
-  createRoute({ getParentRoute: () => root, path: "/items/$id/define", component: Define }),
   createRoute({ getParentRoute: () => root, path: "/environments", component: Environments }),
   createRoute({ getParentRoute: () => root, path: "/memories", component: Memories, validateSearch: memorySearch }),
 ]);

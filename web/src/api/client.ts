@@ -1,62 +1,69 @@
-import type { components } from "./schema";
+// Client of the Dory v2 node API. Types mirror internal/data and internal/api.
+import type { GithubAction, GithubClosed, GithubDetail, GithubOverview } from "./github-types";
+export type * from "./github-types";
 
-type S = components["schemas"];
-export type Project = S["Project"];
-export type ProjectInput = S["ProjectInput"];
-export type Environment = S["Environment"];
-export type EnvironmentInput = S["EnvironmentInput"];
-export type Repository = S["Repository"];
-export type Feature = S["Feature"];
-export type FeatureInput = S["FeatureInput"];
-export type Item = S["Item"];
-export type ItemInput = Partial<S["ItemInput"]> & { title: string };
-export type Memory = S["Memory"];
-export type MemoryInput = S["MemoryInput"];
-export type User = S["User"];
-export type T3Status = S["T3Status"];
-// What each T3 can update, read live from the instance (see internal/t3/update.go).
-export type T3ProviderUpdate = { instance_id: string; driver: string; name: string; current: string; latest: string; available: boolean; state: string; message: string };
-export type T3InstanceUpdates = { instance_id: string; environment_id: string; server: { current: string; latest: string; available: boolean; state?: "updating" }; providers: T3ProviderUpdate[]; active_threads: number; updating?: boolean; error?: string };
-export type T3UpdateResult = { instance_id: string; status: "current" | "updated" | "needs_confirmation" | "failed" | "missing_scope"; active_threads?: number; error?: string };
-export type T3InstanceUsage = S["T3InstanceUsage"];
-export type T3InstanceHistory = S["T3InstanceHistory"];
-export type T3DayUsage = S["T3DayUsage"];
-export type T3ThreadContext = S["T3ThreadContext"];
-export type T3Thread = S["T3Thread"];
-export type T3InstanceThreads = { instance_id: string; environment_id: string; threads: T3Thread[] };
-export type T3ThreadActionName = "rename" | "archive" | "unarchive" | "delete" | "pin" | "unpin" | "settle" | "unsettle" | "snooze" | "unsnooze" | "read" | "unread" | "stop" | "fork";
-export type T3ThreadAction = { action: T3ThreadActionName; title?: string; until?: string; run_id?: string };
-// Reasoning and tool entries are steps of the model between messages.
-export type T3ViewMessage = { id: string; run_id?: string; role: "user" | "assistant" | "system" | "reasoning" | "tool" | "interrupt" | "plan" | "handoff" | "html" | "secret" | "changes"; text: string; streaming: boolean; created_at: string; title?: string; detail?: string; status?: string; attachments?: T3Attachment[]; mentions?: string[]; skills?: string[]; from?: string; to?: string; from_provider?: string; to_provider?: string; html?: { attachment_id: string; title: string; height: number }; files?: T3ChangedFile[] };
-export type T3ChangedFile = { path: string; kind: string; additions: number; deletions: number };
-export type T3QueuedRun = { run_id: string; text: string; position: number; held: boolean };
-export type T3ThreadView = {
-  id: string; title: string; provider_id: string; model: string; effort: string; effort_option: string;
-  interaction_mode: string; runtime_mode: string; branch: string; worktree_path: string; project_id: string;
-  active_run_id: string; active_status: string; instance_id: string; interrupted: boolean;
-  pull_requests: { repository: string; number: number; url: string }[];
-  messages: T3ViewMessage[]; queue: T3QueuedRun[]; pending: T3ThreadContext["pending"];
-  items: { item_id: string; role: string }[];
-  history_cursor: string;
-  // Agents this thread launched, with their live state (from the parent's projection).
-  subagents?: T3SubagentRun[];
+export type UpdateStatus = { channel: string; current: string; latest?: string; available: boolean; desktop: boolean; active_turns: number; state: "idle" | "updating" | "failed"; error?: string };
+export type NodeUpdate = { node: string; name: string; status?: UpdateStatus; error?: string };
+export type Project = { id: string; slug: string; name: string; description: string; created_at: string; updated_at: string; archived_at: string | null };
+export type Repository = { id: string; project_id: string; remote_url: string; default_branch: string; created_at: string; updated_at: string; archived_at: string | null };
+export type Stage = "inbox" | "ready" | "cancelled";
+export type Task = {
+  id: string; project_id: string | null; repository_id: string | null; title: string; description: string; stage: Stage;
+  branch: string; issue_number: number | null; pr_number: number | null; position: string;
+  created_at: string; updated_at: string; archived_at: string | null;
 };
-export type T3SubagentRun = { thread_id: string; title: string; provider: string; model: string; effort: string; status: string; progress?: string; started_at?: string; completed_at?: string };
-export type T3Attachment = { type: "image" | "file"; id: string; name: string; mime_type: string; size_bytes: number };
-export type T3SendInput = { text: string; mode: "auto" | "steer"; provider_id?: string; model?: string; effort_option?: string; effort?: string; attachments?: T3Attachment[]; skills?: string[]; mentions?: string[] };
-export type GithubIssue = S["GithubIssue"];
-export type GithubPull = S["GithubPull"];
-export type GithubDetail = S["GithubDetail"];
-export type GithubThread = S["GithubThread"];
-export type ItemStatus = Item["status"];
-export type ItemPlan = S["ItemPlan"];
-export type PlanSections = S["PlanSections"];
-export type ItemRefinement = S["ItemRefinement"];
-export type TitleSettings = S["TitleSettings"];
-export type RefineInput = { text?: string; restart?: boolean; instance_id?: string; project_id?: string; provider?: string; model?: string; effort_option?: string; effort?: string };
-
-export type PullReview = { path: string; patch_hash: string; reviewed_at: string };
-export type PullAgent = { available: boolean; thread_id?: string; url?: string; t3_environment_id?: string };
+export type TaskInput = Partial<Task> & { title?: string };
+export type Plan = { id: string; task_id: string; version: number; sections: Record<string, string>; open_questions: string[]; author: "agent" | "user"; accepted_at: string | null; created_at: string };
+export type Dependency = { task_id: string; depends_on_id: string; created_at: string };
+export type Memory = { id: string; scope: "global" | "project" | "node"; scope_id: string; kind: "decision" | "lesson" | "context"; title: string; content: string; labels: string[]; created_at: string; updated_at: string; archived_at: string | null };
+export type MemoryInput = Partial<Memory> & { content: string };
+export type ThreadStatus = "idle" | "working" | "waiting" | "error";
+export type Thread = {
+  id: string; node_id: string; project_id: string | null; task_id: string | null; parent_id: string | null;
+  provider: string; model: string; effort: string; runtime_mode: "full-access" | "approval-required";
+  title: string; branch: string; status: ThreadStatus;
+  pinned_at: string | null; read_at: string | null; last_activity_at: string | null; snoozed_until: string | null; settled_at: string | null;
+  created_at: string; updated_at: string; archived_at: string | null;
+};
+export type Role = "user" | "assistant" | "reasoning" | "tool" | "plan" | "question" | "system" | "interrupt" | "model-change";
+// ToolCall is a tool call in Dory's own terms (runtime.ToolCall): every harness
+// maps its tools onto these kinds, and the chat draws one card per kind.
+export type ToolKind = "edit" | "command" | "todo" | "plan" | "read" | "search" | "web" | "agent" | "mcp" | "question" | "other";
+export type FileEdit = { path: string; change?: "add" | "update" | "delete" | string; added: number; removed: number; diff?: string };
+export type Todo = { text: string; status: "pending" | "in_progress" | "completed" | string; active?: string };
+export type Question = { id?: string; question: string; header?: string; options?: { label: string; description?: string }[]; multi_select?: boolean; answer?: string[] };
+// PendingRequest is something the agent waits for in the middle of its turn.
+export type PendingRequest = { id: string; kind: "question" | "permission"; message_id?: string; questions: Question[]; created_at: string };
+export type ToolCall = {
+  kind: ToolKind; name: string; files?: FileEdit[]; command?: string; exit_code?: number; todos?: Todo[];
+  path?: string; lines?: string; pattern?: string; url?: string; query?: string; agent?: string; summary?: string; steps?: number;
+  server?: string; tool?: string; input?: string; questions?: Question[];
+};
+export type Message = { id: string; thread_id?: string; run_id?: string; role: Role; text: string; title?: string; detail?: string; status?: string; streaming: boolean; created_at: string; tool?: ToolCall };
+// Entry is a slash command or skill of a harness; insert is how it is invoked.
+export type Entry = { name: string; description: string; insert: string };
+export type Attachment = { id: string; name: string; mime: string; path: string };
+export type Queued = { run_id: string; text: string; files?: Attachment[] };
+export type TurnModel = { provider: string; model: string | null; reported_model?: string };
+export type ThreadView = Thread & { last_turn_model?: TurnModel; reported_settings?: { model?: string; effort?: string }; messages: Message[]; queue: Queued[]; requests?: PendingRequest[]; running: boolean; worktree: string; local: boolean };
+export type Column = "inbox" | "ready" | "working" | "needs_you" | "in_review" | "ready_to_merge" | "done" | "cancelled";
+export type Pull = { repo: string; number: number; title: string; url: string; draft: boolean; ci: string; review_decision: string; review_requests: string[]; mergeable: string; merge_state: string; head_ref: string };
+export type Card = Task & { column: Column; repo?: string; threads: Thread[]; pull?: Pull; pr_state?: "open" | "draft" | "merged" | "closed"; blockers: string[]; has_plan: boolean };
+export type Model = { slug: string; name: string; efforts?: string[]; resolved_model?: string };
+export type Provider = { id: string; name: string; installed: boolean; version: string; models: Model[]; capabilities: string[]; logged_in?: boolean; account?: string };
+// External is a conversation started in a harness, outside Dory.
+export type External = { provider: string; id: string; title: string; dir: string; branch?: string; updated_at: string; project_id: string | null; thread_id?: string };
+export type Job = { id: string; provider: string; kind: "login" | "update"; output: string; done: boolean; accepts_code?: boolean; error?: string };
+export type Skill = { id: string; name: string; description: string; body_md: string; files: Record<string, string>; version: number; targets: { nodes: string[] | null; harnesses: string[] | null }; created_at: string; updated_at: string; archived_at: string | null };
+export type SkillState = { skill_id: string; node_id: string; status: "synced" | "pending" | "error" | "conflict" | "removed"; version: number; message: string; updated_at: string };
+export type UsageWindow = { kind: string; utilization: number; resets_at: string };
+export type NodeInfo = { id: string; name: string; os: string; version: string; data_dir: string; listen: string; platform: string };
+export type Peer = { id: string; name: string; address: string; fingerprint: string; connected: boolean; last_seen: string; revoked: boolean; info: { node?: NodeInfo; providers?: Provider[] } };
+export type Mesh = { node_id: string; fingerprint: string; port: number; peers: Peer[]; discovered: { id: string; name: string; address: string }[] };
+export type NodeStatus = { node: NodeInfo; providers: Provider[]; usage: Record<string, UsageWindow[]>; peers?: Peer[] };
+export type Hit = { entity: "task" | "memory"; id: string; title: string; rank: number; record: Task | Memory };
+export type User = { id: string; username: string };
+export type Version = { revision: string; short: string; time: string; modified: boolean };
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -64,7 +71,7 @@ export class ApiError extends Error {
   }
 }
 
-async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
+export async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
     credentials: "same-origin",
@@ -78,126 +85,120 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   return res.status === 204 ? (undefined as T) : res.json();
 }
 
-const q = (filter?: Record<string, unknown>) =>
-  filter ? `?filter=${encodeURIComponent(JSON.stringify(filter))}&limit=1000` : "?limit=1000";
+const q = (filter?: Record<string, unknown>, archived = false) =>
+  `?limit=1000${filter ? `&filter=${encodeURIComponent(JSON.stringify(filter))}` : ""}${archived ? "&include_archived=true" : ""}`;
 
-// Recurso CRUD genérico: list/create/update(PUT)/archive.
+// Generic resource: list, get, create, update (fields left out keep their value) and archive.
 function resource<T extends { id: string }, I>(path: string) {
   return {
-    list: (filter?: Record<string, unknown>) => req<T[]>("GET", path + q(filter)),
+    list: (filter?: Record<string, unknown>, archived = false) => req<T[]>("GET", path + q(filter, archived)),
+    get: (id: string) => req<T>("GET", `${path}/${id}`),
     create: (b: I) => req<T>("POST", path, b),
-    update: (id: string, b: I) => req<T>("PUT", `${path}/${id}`, b),
+    update: (id: string, b: Partial<I>) => req<T>("PUT", `${path}/${id}`, b),
     archive: (id: string) => req<void>("DELETE", `${path}/${id}`),
   };
 }
 
-export type T3Catalog = {
-  providers: { instance_id: string; name: string; driver: string; models: T3CatalogModel[]; commands?: T3ComposerEntry[]; skills?: T3ComposerEntry[] }[];
-  projects: { id: string; title: string; root: string; repo: string }[];
+export type NewThread = {
+  node?: string; project_id?: string | null; task_id?: string | null; repository_id?: string; provider: string; model?: string; effort?: string;
+  runtime_mode?: Thread["runtime_mode"]; title?: string; text?: string; worktree?: boolean; branch?: string; base_branch?: string;
 };
-export type T3ComposerEntry = { name: string; description?: string };
-export type T3CatalogModel = { slug: string; name: string; effort?: { id: string; values: string[]; default: string } };
-export type IssueDefineInput = { instance_id: string; project_id: string; provider: string; model: string; effort_option?: string; effort?: string };
-export type IssueThread = S["IssueThread"];
-export type T3LaunchInput = { instance_id: string; project_id: string; provider: string; model: string; role: "implementation"; worktree: boolean; base_branch?: string; effort_option?: string; effort?: string };
+export type Launch = { provider: string; model?: string; effort?: string; runtime_mode?: Thread["runtime_mode"]; base_branch?: string; text?: string };
+export type ThreadActionName = "rename" | "pin" | "unpin" | "read" | "unread" | "settle" | "unsettle" | "snooze" | "unsnooze" | "link" | "archive";
 
 export const api = {
-  itemThreads: resource<S["ItemThread"], S["ItemThreadInput"]>("/item-threads"),
-  github: (refresh = false) => req<S["GithubOverview"]>("GET", `/github/open${refresh ? "?refresh=true" : ""}`),
+  version: () => req<Version>("GET", "/version"),
+  mesh: () => req<Mesh>("GET", "/mesh"),
+  meshUpdates: () => req<NodeUpdate[]>("GET", "/mesh/update"),
+  updateMesh: (opts: { providers: boolean; force: boolean }) => req<NodeUpdate[]>("POST", "/mesh/update", opts),
+  pairCode: () => req<{ code: string; expires_at: string; fingerprint: string; port: number }>("POST", "/mesh/pair/code"),
+  pair: (address: string, code: string) => req<Peer>("POST", "/mesh/pair", { address, code }),
+  revokePeer: (id: string) => req<void>("DELETE", `/mesh/peers/${id}`),
+  devices: () => req<{ id: string; name: string; created_at: string }[]>("GET", "/devices"),
+  revokeDevice: (id: string) => req<void>("DELETE", `/devices/${id}`),
+  folders: (node: string, path = "", hidden = false) => req<{ path: string; parent: string; home: string; folders: { name: string; path: string; git: boolean }[] }>("GET", `/nodes/${node}/folders?${new URLSearchParams({ path, ...(hidden && { hidden: "true" }) })}`),
+  checkout: (node: string, path: string) => req<{ path: string; name: string; git: boolean; remote: string; default_branch: string }>("GET", `/nodes/${node}/checkout?path=${encodeURIComponent(path)}`),
+  setNodeRepositoryPath: (node: string, id: string, path: string) => req<void>("PUT", `/nodes/${node}/repositories/${id}/path`, { path }),
+  externalSessions: (node: string) => req<External[]>("GET", `/nodes/${node}/external`),
+  externalSession: (node: string, provider: string, id: string) => req<{ session: External; messages: Message[] }>("GET", `/nodes/${node}/external/${provider}/${id}`),
+  adoptSession: (node: string, provider: string, id: string) => req<{ thread_id: string }>("POST", `/nodes/${node}/external/${provider}/${id}/adopt`),
+  nodeProviders: (node: string) => req<Provider[]>("GET", `/nodes/${node}/providers`),
+  providerJob: (node: string, provider: string, kind: Job["kind"]) => req<Job>("POST", `/nodes/${node}/providers/${provider}/${kind}`),
+  job: (node: string, id: string) => req<Job>("GET", `/nodes/${node}/jobs/${id}`),
+  submitLoginCode: (node: string, id: string, code: string) => req<void>("POST", `/nodes/${node}/jobs/${id}/code`, { code }),
+  skills: () => req<Skill[]>("GET", "/skills"),
+  skillStates: () => req<SkillState[]>("GET", "/skills/states"),
+  saveSkill: (s: Partial<Skill>) => (s.id ? req<Skill>("PUT", `/skills/${s.id}`, s) : req<Skill>("POST", "/skills", s)),
+  archiveSkill: (id: string) => req<void>("DELETE", `/skills/${id}`),
+  node: () => req<NodeStatus>("GET", "/node"),
+  search: (text: string) => req<Hit[]>("GET", `/search?q=${encodeURIComponent(text)}`),
+  login: (username: string, password: string) => req<User>("POST", "/auth/login", { username, password }),
+  setupNeeded: () => req<{ needed: boolean }>("GET", "/auth/setup"),
+  setup: (username: string, password: string) => req<User>("POST", "/auth/setup", { username, password }),
+  logout: () => req<void>("POST", "/auth/logout"),
+  me: () => req<User>("GET", "/auth/me"),
+  projects: resource<Project, Partial<Project>>("/projects"),
+  repositories: resource<Repository, Partial<Repository>>("/repositories"),
+  repositoryPaths: () => req<Record<string, string>>("GET", "/repository-paths"),
+  setRepositoryPath: (id: string, path: string) => req<void>("PUT", `/repositories/${id}/path`, { path }),
+  tasks: resource<Task, TaskInput>("/tasks"),
+  board: (project?: string) => req<{ columns: Column[]; cards: Card[] }>("GET", `/board${project ? `?project=${project}` : ""}`),
+  card: (id: string) => req<Card>("GET", `/tasks/${id}/card`),
+  dependencies: (id: string) => req<Dependency[]>("GET", `/tasks/${id}/dependencies`),
+  addDependency: (id: string, dep: string) => req<Dependency>("PUT", `/tasks/${id}/dependencies/${dep}`),
+  removeDependency: (id: string, dep: string) => req<void>("DELETE", `/tasks/${id}/dependencies/${dep}`),
+  plans: (id: string) => req<Plan[]>("GET", `/tasks/${id}/plans`),
+  createPlan: (id: string, body: { sections: Record<string, string>; open_questions: string[] }) => req<Plan>("POST", `/tasks/${id}/plans`, body),
+  acceptPlan: (id: string) => req<{ task: Task; plan: Plan }>("POST", `/tasks/${id}/plan/accept`),
+  launch: (id: string, body: Launch) => req<{ thread_id: string; branch: string }>("POST", `/tasks/${id}/launch`, body),
+  memories: resource<Memory, MemoryInput>("/memories"),
+  threads: (filter?: Record<string, unknown>, archived = false) => req<Thread[]>("GET", "/threads" + q(filter, archived)),
+  thread: (id: string) => req<ThreadView>("GET", `/threads/${id}`),
+  createThread: ({ node, ...body }: NewThread) => req<{ thread_id: string }>("POST", `/nodes/${node || "local"}/threads`, body),
+  send: (id: string, text: string, files: string[] = []) => req<void>("POST", `/threads/${id}/messages`, { text, files }),
+  upload: async (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`/api/threads/${id}/attachments`, { method: "POST", credentials: "same-origin", body: form });
+    if (!res.ok) { const e = await res.json().catch(() => null); throw new ApiError(res.status, e?.error?.message ?? res.statusText); }
+    return (await res.json()) as Attachment;
+  },
+  attachmentUrl: (id: string, file: string) => `/api/threads/${id}/attachments/${file}`,
+  queue: (id: string, run: string, action: "edit" | "cancel" | "steer", text?: string) => req<void>("POST", `/threads/${id}/queue/${run}`, { action, text }),
+  threadSettings: (id: string, body: { provider?: string; model?: string; effort?: string; runtime_mode?: Thread["runtime_mode"] }) => req<Thread>("POST", `/threads/${id}/settings`, body),
+  threadCommands: (id: string) => req<{ commands: Entry[]; skills: Entry[] }>("GET", `/threads/${id}/commands`),
+  threadFiles: (id: string, q: string) => req<string[]>("GET", `/threads/${id}/files?q=${encodeURIComponent(q)}`),
+  answer: (id: string, request: string, answers: string[][]) => req<void>("POST", `/threads/${id}/requests/${encodeURIComponent(request)}`, { answers }),
+  interrupt: (id: string) => req<void>("POST", `/threads/${id}/interrupt`),
+  threadDiff: (id: string) => req<{ diff: string; branch: string }>("GET", `/threads/${id}/diff`),
+  threadAction: (id: string, body: { action: ThreadActionName; title?: string; until?: string; task_id?: string }) => req<Thread>("POST", `/threads/${id}/actions`, body),
+  issueTask: (repo: string, number: number, body: { title: string; description: string }) => req<Task>("POST", `/github/repos/${repo}/issues/${number}/tasks`, body),
+  githubPullRefs: (repo: string, q: string) => req<{ pulls: { number: number; title: string; state: "open" | "draft" | "merged" | "closed" }[] }>("GET", `/github/repos/${repo}/pull-refs?q=${encodeURIComponent(q)}`),
+  branches: (repo: string) => req<string[]>("GET", `/github/repos/${repo}/branches`),
+  github: (refresh = false) => req<GithubOverview>("GET", `/github/open${refresh ? "?refresh=true" : ""}`),
   githubClosed: (kind: "pulls" | "issues", project: string, cursor: string) =>
-    req<S["GithubClosed"]>("GET", `/github/closed?${new URLSearchParams({ kind, ...(project && { project }), ...(cursor && { cursor }) })}`),
+    req<GithubClosed>("GET", `/github/closed?${new URLSearchParams({ kind, ...(project && { project }), ...(cursor && { cursor }) })}`),
   githubDetail: (repo: string, kind: string, number: number) => req<GithubDetail>("GET", `/github/repos/${repo}/${kind}/${number}`),
-  githubAct: (repo: string, kind: string, number: number, action: S["GithubAction"]) => req<void>("POST", `/github/repos/${repo}/${kind}/${number}/actions`, action),
+  githubAct: (repo: string, kind: string, number: number, action: GithubAction) => req<void>("POST", `/github/repos/${repo}/${kind}/${number}/actions`, action),
   githubDiff: (repo: string, number: number) => req<{ diff: string }>("GET", `/github/repos/${repo}/pulls/${number}/diff`),
   pullReviews: (repo: string, number: number) => req<PullReview[]>("GET", `/github/repos/${repo}/pulls/${number}/reviews`),
   markPullReview: (repo: string, number: number, path: string, patch_hash: string) => req<void>("PUT", `/github/repos/${repo}/pulls/${number}/reviews`, { path, patch_hash }),
   unmarkPullReview: (repo: string, number: number, path: string) => req<void>("DELETE", `/github/repos/${repo}/pulls/${number}/reviews?path=${encodeURIComponent(path)}`),
   pullAgent: (repo: string, number: number) => req<PullAgent>("GET", `/github/repos/${repo}/pulls/${number}/agent`),
-  createPullReview: (repo: string, number: number, launch: { instance_id: string; project_id: string; provider: string; model: string; effort_option?: string; effort?: string }): Promise<PullAgent> => req<PullAgent>("POST", `/github/repos/${repo}/pulls/${number}/review-thread`, { launch }),
-  askPullAgent: (repo: string, number: number, body: { path: string; start: number; end: number; snippet: string; question: string; launch?: { instance_id: string; project_id: string; provider: string; model: string; effort_option?: string; effort?: string } }) =>
+  createPullReview: (repo: string, number: number, launch: LaunchChoice) => req<PullAgent>("POST", `/github/repos/${repo}/pulls/${number}/agent`, { launch }),
+  askPullAgent: (repo: string, number: number, body: { path: string; start: number; end: number; snippet: string; question: string; launch?: LaunchChoice }) =>
     req<PullAgent>("POST", `/github/repos/${repo}/pulls/${number}/ask`, body),
-  t3Pair: (id: string) => req<{ url: string }>("POST", `/t3/instances/${id}/pair`),
-  t3Context: (id: string) => req<T3ThreadContext>("GET", `/t3/threads/${encodeURIComponent(id)}/context`),
-  t3Send: (id: string, text: string) => req<void>("POST", `/t3/threads/${encodeURIComponent(id)}/messages`, { text }),
-  t3View: (id: string) => req<T3ThreadView>("GET", `/t3/threads/${encodeURIComponent(id)}/view`),
-  t3History: (id: string, cursor: string) => req<{ messages: T3ViewMessage[]; next_cursor: string; has_more: boolean }>("GET", `/t3/threads/${encodeURIComponent(id)}/history?cursor=${encodeURIComponent(cursor)}`),
-  t3Diff: (id: string, checkpoint?: string) => req<{ diff: string; source: "t3" | "git"; branch?: string; worktree?: string; base?: string }>("GET", `/t3/threads/${encodeURIComponent(id)}/diff${checkpoint ? `?checkpoint=${encodeURIComponent(checkpoint)}` : ""}`),
-  githubPullRefs: (repo: string, q: string) => req<{ pulls: { number: number; title: string; state: "open" | "draft" | "merged" | "closed" }[] }>("GET", `/github/repos/${repo}/pull-refs?q=${encodeURIComponent(q)}`),
-  t3Composer: (id: string, provider: string) => req<{ commands: T3ComposerEntry[]; skills: T3ComposerEntry[] }>("GET", `/t3/threads/${encodeURIComponent(id)}/composer?provider=${encodeURIComponent(provider)}`),
-  t3Entries: (id: string, q: string) => req<{ entries: { path: string; kind: string }[] }>("GET", `/t3/threads/${encodeURIComponent(id)}/entries?q=${encodeURIComponent(q)}`),
-  t3Dispatch: (id: string, body: T3SendInput) => req<void>("POST", `/t3/threads/${encodeURIComponent(id)}/send`, body),
-  t3QueueEdit: (id: string, run: string, text: string) => req<void>("PATCH", `/t3/threads/${encodeURIComponent(id)}/queue/${encodeURIComponent(run)}`, { text }),
-  t3QueueReorder: (id: string, run: string, before: string) => req<void>("POST", `/t3/threads/${encodeURIComponent(id)}/queue/${encodeURIComponent(run)}/reorder`, { before_run_id: before }),
-  t3QueueSteer: (id: string, run: string) => req<void>("POST", `/t3/threads/${encodeURIComponent(id)}/queue/${encodeURIComponent(run)}/steer`),
-  // t3Upload sends one file as the raw body; the result goes in t3Dispatch.
-  t3Upload: async (id: string, file: File): Promise<T3Attachment> => {
-    const res = await fetch(`/api/t3/threads/${encodeURIComponent(id)}/attachments?name=${encodeURIComponent(file.name || "adjunto")}`, {
-      method: "POST", credentials: "same-origin", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file,
-    });
-    if (!res.ok) {
-      const e = await res.json().catch(() => null);
-      throw new ApiError(res.status, e?.error?.message ?? res.statusText);
-    }
-    return res.json();
-  },
-  t3Interrupt: (id: string) => req<void>("POST", `/t3/threads/${encodeURIComponent(id)}/interrupt`),
-  t3QueueResume: (id: string) => req<void>("POST", `/t3/threads/${encodeURIComponent(id)}/queue/resume`),
-  t3QueueCancel: (id: string, run: string) => req<void>("DELETE", `/t3/threads/${encodeURIComponent(id)}/queue/${encodeURIComponent(run)}`),
-  t3Settings: (id: string, body: { interaction_mode?: string; runtime_mode?: string }) => req<void>("PATCH", `/t3/threads/${encodeURIComponent(id)}/settings`, body),
-  t3Respond: (id: string, requestId: string, body: { decision?: "accept" | "decline"; answers?: Record<string, unknown> }) =>
-    req<void>("POST", `/t3/threads/${encodeURIComponent(id)}/requests/${encodeURIComponent(requestId)}`, body),
-  titleSettings: () => req<TitleSettings>("GET", "/settings/titles"),
-  saveTitleSettings: (body: TitleSettings) => req<TitleSettings>("PUT", "/settings/titles", body),
-  t3Catalog: (id: string) => req<T3Catalog>("GET", `/t3/instances/${id}/catalog`),
-  item: (id: string) => req<Item>("GET", `/items/${id}`),
-  regenerateTitle: (id: string) => req<Item>("POST", `/items/${id}/title/regenerate`),
-  refinement: (id: string) => req<ItemRefinement>("GET", `/items/${id}/refinement`),
-  refine: (id: string, body: RefineInput) => req<{ thread_id: string }>("POST", `/items/${id}/refine`, body),
-  plans: (id: string) => req<ItemPlan[]>("GET", `/items/${id}/plans`),
-  createPlan: (id: string, body: { sections: PlanSections; open_questions: string[] }) => req<ItemPlan>("POST", `/items/${id}/plans`, body),
-  acceptPlan: (id: string) => req<{ item: Item; plan: ItemPlan }>("POST", `/items/${id}/plan/accept`),
-  t3AnswerSecret: (threadId: string, itemId: string, body: { secret: string } | { decline: true }) => req<void>("POST", `/t3/threads/${encodeURIComponent(threadId)}/secrets/${encodeURIComponent(itemId)}`, body),
-  t3CreateThread: (body: { instance_id: string; project_id: string; provider: string; model: string; effort_option?: string; effort?: string; text?: string }) => req<{ thread_id: string }>("POST", "/t3/threads", body),
-  t3Launch: (itemId: string, body: T3LaunchInput) => req<{ thread_id: string }>("POST", `/items/${itemId}/launch`, body),
-  resolveConflicts: (repo: string, number: number, body: IssueDefineInput) => req<{ thread_id: string }>("POST", `/github/repos/${repo}/pulls/${number}/resolve-conflicts`, body),
-  issueDefine: (repo: string, number: number, body: IssueDefineInput) => req<{ thread_id: string }>("POST", `/github/repos/${repo}/issues/${number}/define`, body),
-  branches: (repo: string) => req<string[]>("GET", `/github/repos/${repo}/branches`),
-  issueThreads: () => req<IssueThread[]>("GET", "/issue-threads?limit=200"),
-  version: () => req<S["Version"]>("GET", "/version"),
-  t3Status: () => req<T3Status[]>("GET", "/t3/status"),
-  t3Threads: () => req<T3InstanceThreads[]>("GET", "/t3/threads"),
-  t3ThreadAction: (id: string, body: T3ThreadAction) => req<{ thread_id: string } | undefined>("POST", `/t3/threads/${encodeURIComponent(id)}/actions`, body),
-  t3Updates: () => req<T3InstanceUpdates[]>("GET", "/t3/updates"),
-  t3Update: (instance_id: string, restart: boolean) => req<T3UpdateResult[]>("POST", "/t3/updates", { instance_id, restart }),
-  t3Usage: () => req<T3InstanceUsage[]>("GET", "/t3/usage"),
-  t3UsageRefresh: () => req<T3InstanceUsage[]>("POST", "/t3/usage/refresh"),
-  t3UsageHistory: (days: number) => req<T3InstanceHistory[]>("GET", `/t3/usage/history?days=${days}`),
-  login: (username: string, password: string) => req<User>("POST", "/auth/login", { username, password }),
-  logout: () => req<void>("POST", "/auth/logout"),
-  me: () => req<User>("GET", "/auth/me"),
-  projects: resource<Project, ProjectInput>("/projects"),
-  environments: resource<Environment, EnvironmentInput>("/environments"),
-  repositories: resource<Repository, S["RepositoryInput"]>("/repositories"),
-  features: resource<Feature, FeatureInput>("/features"),
-  items: resource<Item, ItemInput>("/items"),
-  memories: resource<Memory, MemoryInput>("/memories"),
 };
 
-// Convierte un Item en su Input para PUT (que reemplaza el recurso).
-export const itemInput = (i: Item, patch: Partial<ItemInput> = {}): ItemInput => ({
-  id: i.id,
-  project_id: i.project_id,
-  feature_id: i.feature_id,
-  raw_text: i.raw_text,
-  title: i.title,
-  body_md: i.body_md,
-  progress: i.progress,
-  refs: i.refs,
-  tags: i.tags,
-  status: i.status,
-  blocked_reason: i.blocked_reason,
-  priority: i.priority,
-  source: i.source,
-  title_source: i.title_source,
-  ...patch,
-});
+export type PullReview = { path: string; patch_hash: string; reviewed_at: string };
+export type PullAgent = { available: boolean; thread_id?: string };
+// LaunchChoice is where and how a new thread runs.
+export type LaunchChoice = { node: string; provider: string; model: string; effort: string; runtime_mode: Thread["runtime_mode"] };
+
+export const COLUMN_LABELS: Record<Column, string> = {
+  inbox: "Inbox", ready: "Ready", working: "Working", needs_you: "Needs you",
+  in_review: "In review", ready_to_merge: "Ready to merge", done: "Done", cancelled: "Cancelled",
+};
+
+// repoName extracts owner/name from a GitHub remote.
+export const repoName = (remote: string) => remote.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/)?.[1] ?? remote;

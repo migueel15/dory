@@ -1,0 +1,68 @@
+{
+  "name": "dory-desktop",
+  "productName": "Dory",
+  "version": "2.0.0",
+  "description": "Tu entorno de trabajo con agentes",
+  "private": true,
+  "main": "main.js",
+  "author": "migueel15",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "net.dorlab.dory",
+    "productName": "Dory",
+    "files": [
+      "main.js",
+      "preload.js",
+      "build/icon.png"
+    ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "bin",
+        "filter": [
+          "dory*"
+        ]
+      }
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "pacman",
+        "deb"
+      ],
+      "category": "Development",
+      "icon": "build/icon.png"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools",
+      "icon": "build/icon.png"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "http://127.0.0.1:7700/api/mesh/desktop"
+      }
+    ],
+    "detectUpdateChannel": false
+  },
+  "devDependencies": {
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  }
+}

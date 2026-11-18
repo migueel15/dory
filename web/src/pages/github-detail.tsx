@@ -3,12 +3,15 @@ import { Robot } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { api, type GithubDetail, type GithubPull, type GithubThread } from "../api/client";
-import { Badge, Button, Card, Input, Select, ErrorText, Md, Arrow, pill, toggleTask, Textarea, keepAboveKeyboard } from "../components/ui";
+import { DictationField } from "../components/dictation-field";
+import { useDictationInProgress } from "../components/local-dictation";
+import { Badge, Button, Card, Input, Select, ErrorText, Md, Arrow, pill, toggleTask, keepAboveKeyboard, Modal } from "../components/ui";
 import { Avatar, PullStatus, StackBar } from "./github";
-import { Diff, FullscreenHost, ReviewLaunch } from "./github-diff";
+import { Diff, FullscreenHost } from "./github-diff";
 import { DefineIssueDialog } from "./define-issue";
 import { ResizeHandle, ThreadChat } from "./thread";
 import { FileRefContext, type FileRef } from "../components/refs";
+import { useLaunchForm } from "../components/launch-picker";
 import { GithubMark, Icon, IconButton, Menu, MenuItem, RefContext, RefMd, Tip, UserPicker, icons, useArm, MentionArea } from "../components/github-ui";
 
 const labels: Record<string, string> = {
@@ -140,6 +143,7 @@ const quote = (who: string, body: string) => `> **@${who}**\n${body.trim().split
 // or, when Dory's account wrote it, to edit it in place.
 function Message({ author, verb, at, url, body, mine, editType, id, act, busy, onReply }: { author: string; verb?: string; at: string; url?: string; body: string; mine: boolean; editType: string; id: string; act: ThreadAct; busy: boolean; onReply: (q: string) => void }) {
   const [draft, setDraft] = useState<string>();
+  const dictating = useDictationInProgress();
   const when = new Date(at).toLocaleString();
   const small = "grid size-7 place-items-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-raised dark:hover:text-text";
   return (
@@ -154,10 +158,10 @@ function Message({ author, verb, at, url, body, mine, editType, id, act, busy, o
       </div>
       {draft === undefined ? <RefMd onToggle={mine && id && !id.startsWith("pending-") && !busy ? (line) => act({ type: editType, comment_id: id, body: toggleTask(body, line) }) : undefined}>{body}</RefMd> : (
         <div className="space-y-2">
-          <Textarea aria-label="Editar mensaje" autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setDraft(undefined)} rows={Math.min(14, draft.split("\n").length + 2)} className="p-2 font-mono" />
+          <DictationField aria-label="Editar mensaje" autoFocus value={draft} onValue={setDraft} onKeyDown={(e) => e.key === "Escape" && setDraft(undefined)} rows={Math.min(14, draft.split("\n").length + 2)} className="p-2 font-mono" />
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setDraft(undefined)}>Cancelar</Button>
-            <Button disabled={busy || !draft.trim()} onClick={() => { act({ type: editType, comment_id: id, body: draft }).catch(() => {}); setDraft(undefined); }}>Guardar</Button>
+            <Button disabled={dictating || busy || !draft.trim()} onClick={() => { act({ type: editType, comment_id: id, body: draft }).catch(() => {}); setDraft(undefined); }}>Guardar</Button>
           </div>
         </div>
       )}
@@ -168,6 +172,7 @@ function Message({ author, verb, at, url, body, mine, editType, id, act, busy, o
 function ThreadCard({ t, me, people, links, act, busy }: { t: GithubThread; me: string; people: string[]; links: GithubDetail["links"]; act: ThreadAct; busy: boolean }) {
   const [open, setOpen] = useState(!t.resolved);
   const [reply, setReply] = useState("");
+  const dictating = useDictationInProgress();
   const send = () => { act({ type: "reply_thread", thread_id: t.id, body: reply }).catch(() => {}); setReply(""); };
   return (
     <Card>
@@ -187,13 +192,13 @@ function ThreadCard({ t, me, people, links, act, busy }: { t: GithubThread; me: 
       {open && <>
         {t.comments.map((c, i) => (
           <div key={i} className="mt-2 border-l-2 border-slate-200 pl-2 dark:border-border">
-            <Message author={c.author} at={c.at} url={c.url} body={c.body} mine={c.author === me} editType="edit_thread_comment" id={c.id} act={act} busy={busy} onReply={(q) => setReply(q + reply)} />
+            <Message author={c.author} at={c.at} url={c.url} body={c.body} mine={c.author === me} editType="edit_thread_comment" id={c.id} act={act} busy={busy} onReply={(q) => { if (!dictating) setReply(q + reply); }} />
           </div>
         ))}
         <MentionArea people={people} links={links} aria-label="Responder en el hilo" value={reply} onValue={setReply} rows={2} placeholder="Responder…" className="mt-2 p-2" />
         <div className="flex gap-2">
-          <Button disabled={busy || !reply.trim()} onClick={send}>Responder</Button>
-          {reply && <Button variant="ghost" onClick={() => setReply("")}>Descartar</Button>}
+          <Button disabled={dictating || busy || !reply.trim()} onClick={send}>Responder</Button>
+          {reply && <Button variant="ghost" disabled={dictating} onClick={() => setReply("")}>Descartar</Button>}
         </div>
       </>}
     </Card>
@@ -219,6 +224,7 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
   const refs = d.pull?.issues ?? d.issue?.pulls ?? [];
   const [owner, repo] = e.repo.split("/");
   const [draft, setDraft] = useState<{ title: string; body: string }>();
+  const dictating = useDictationInProgress();
   const save = () => { if (draft) { act(d.pull ? "edit_pull" : "edit_issue", draft); setDraft(undefined); } };
   const box = "py-1";
   return (
@@ -231,7 +237,7 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
             : <h1 className="min-w-0 flex-1 break-words text-lg font-bold leading-snug">{e.title}</h1>}
           {(draft ? (
             <span className="flex shrink-0 gap-1">
-              <Tip text="Guardar"><button type="button" aria-label="Guardar" disabled={busy || !draft.title.trim()} onClick={save} className="grid size-8 place-items-center rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"><Icon i={icons.check} /></button></Tip>
+              <Tip text="Guardar"><button type="button" aria-label="Guardar" disabled={dictating || busy || !draft.title.trim()} onClick={save} className="grid size-8 place-items-center rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"><Icon i={icons.check} /></button></Tip>
               <Tip text="Cancelar"><button type="button" aria-label="Cancelar" onClick={() => setDraft(undefined)} className="grid size-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-raised"><Icon i={icons.x} /></button></Tip>
             </span>
           ) : (
@@ -271,7 +277,7 @@ function Header({ d, actions, act, busy, people }: { d: GithubDetail; actions: R
         </div>
       )}
       {draft
-        ? <div className="border-t border-slate-100 px-4 py-3 dark:border-border"><MentionArea aria-label="Descripción" value={draft.body} onValue={(body) => setDraft({ ...draft, body })} people={people} links={d.links} rows={12} className={`${box} font-mono`} /></div>
+        ? <div className="border-t border-slate-100 px-4 py-3 dark:border-border"><MentionArea aria-label="Descripción" value={draft.body} onValue={(body) => setDraft((current) => current && { ...current, body })} people={people} links={d.links} rows={12} className={`${box} font-mono`} /></div>
         : d.body && <div className="max-h-[60vh] overflow-auto border-t border-slate-100 px-4 py-3 dark:border-border"><RefMd onToggle={busy ? undefined : (line) => act(d.pull ? "edit_pull" : "edit_issue", { title: e.title, body: toggleTask(d.body, line) })}>{d.body}</RefMd></div>}
       <div className="flex flex-wrap items-center gap-2 rounded-b-lg border-t border-slate-100 bg-slate-50 px-4 py-2.5 dark:border-border dark:bg-canvas/40">{actions}</div>
     </Card>
@@ -294,17 +300,18 @@ type ComposerHandle = { quote: (q: string) => void };
 // Composer owns the message text, so typing re-renders only the box and not the page or the diff.
 function Composer({ ref, boxRef, people, links, pull, viewer, open, onSend }: { ref: Ref<ComposerHandle>; boxRef: React.RefObject<HTMLTextAreaElement | null>; people: string[]; links: GithubDetail["links"]; pull?: GithubPull; viewer: string; open: boolean; onSend: (type: string, body: string) => void }) {
   const [text, setText] = useState("");
-  useImperativeHandle(ref, () => ({ quote: (q) => setText((t) => q + t) }), []);
+  const dictating = useDictationInProgress();
+  useImperativeHandle(ref, () => ({ quote: (q) => { if (!dictating) setText((t) => q + t); } }), [dictating]);
   const discard = () => { setText(""); boxRef.current?.blur(); };
   const send = (type: string) => { onSend(type, text); discard(); };
   return (
     <Card className="space-y-2">
       <MentionArea boxRef={boxRef} people={people} links={links} id="composer" aria-label="Mensaje" value={text} onValue={setText} onKeyDown={(e) => e.key === "Escape" && boxRef.current?.blur()} rows={4} placeholder="Escribe un mensaje…" className="p-2" />
       <div className="flex flex-wrap gap-2">
-        <Button disabled={!text.trim()} onClick={() => send("comment")}>Comentar</Button>
-        {pull && open && <Button variant="ghost" disabled={!text.trim()} onClick={() => send("request_changes")}>Pedir cambios</Button>}
-        {pull && open && canApprove(pull, viewer) && <Button variant="ghost" disabled={!text.trim()} onClick={() => send("approve")}>Aprobar con mensaje</Button>}
-        {text && <Button variant="ghost" className="ml-auto" onClick={discard}>Descartar</Button>}
+        <Button disabled={dictating || !text.trim()} onClick={() => send("comment")}>Comentar</Button>
+        {pull && open && <Button variant="ghost" disabled={dictating || !text.trim()} onClick={() => send("request_changes")}>Pedir cambios</Button>}
+        {pull && open && canApprove(pull, viewer) && <Button variant="ghost" disabled={dictating || !text.trim()} onClick={() => send("approve")}>Aprobar con mensaje</Button>}
+        {text && <Button variant="ghost" className="ml-auto" disabled={dictating} onClick={discard}>Descartar</Button>}
       </div>
     </Card>
   );
@@ -388,7 +395,7 @@ export function GithubView() {
         {d.pull?.state === "OPEN" && <StackBar repo={full} number={n} />}
         <Header d={d} act={act} busy={false} people={people} actions={<>
           {d.pull && agent.data?.available === false && <Button disabled={createReview.isPending} onClick={() => { createReview.reset(); setLaunchReview(true); }}>Crear hilo de revisión</Button>}
-          {launchReview && <ReviewLaunch repo={full} pr={n} createOnly busy={createReview.isPending} error={createReview.error} onClose={() => setLaunchReview(false)} onLaunch={(launch) => createReview.mutate(launch)} />}
+          {launchReview && <ReviewLaunch busy={createReview.isPending} error={createReview.error} onClose={() => setLaunchReview(false)} onLaunch={(launch) => createReview.mutate(launch)} n={n} />}
           {d.pull && <PullActions pull={d.pull} me={d.viewer} act={act} busy={false} diff={showDiff} toggleDiff={() => setShowDiff(!showDiff)} />}
           {d.pull?.mergeable === "CONFLICTING" && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Resolver conflictos</Button>}
           {d.issue && open && <Button variant="ghost" className="text-xs" onClick={() => setDefining(true)}>Definir tareas</Button>}
@@ -570,5 +577,18 @@ function DetailSkeleton() {
         </Card>
       ))}
     </div>
+  );
+}
+
+// ReviewLaunch picks the agent of the pull request's side chat.
+function ReviewLaunch({ n, busy, error, onClose, onLaunch }: { n: number; busy: boolean; error: unknown; onClose: () => void; onLaunch: (l: ReturnType<typeof useLaunchForm>["value"]) => void }) {
+  const form = useLaunchForm({ section: "pull-review" });
+  return (
+    <Modal title={`Crear el hilo de revisión de #${n}`} onClose={onClose}>
+      {form.fields}
+      <p className="text-xs text-slate-500 dark:text-muted">Se crea un hilo para tus consultas sobre esta PR, en la copia local del repositorio. El agente no modifica nada salvo que se lo pidas.</p>
+      <ErrorText error={form.error ?? error} />
+      <Button disabled={!form.ready || busy} onClick={() => { form.remember(); onLaunch(form.value); }}>{busy ? "Creando…" : "Crear hilo"}</Button>
+    </Modal>
   );
 }

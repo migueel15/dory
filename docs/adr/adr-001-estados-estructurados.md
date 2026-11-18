@@ -1,6 +1,6 @@
 # ADR-001: Estados estructurados para items y features
 
-- Status: accepted
+- Status: superseded by ADR-007
 - Date: 2026-10-30
 
 ## Context

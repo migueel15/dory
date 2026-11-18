@@ -1,0 +1,12 @@
+{"type":"system","subtype":"init","session_id":"s-1","model":"claude-opus-4-6","effort":"high"}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_1"}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Miro el repo"}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Voy a "}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"listar."}}}
+{"type":"assistant","message":{"id":"msg_1","content":[{"type":"thinking","thinking":"Miro el repo"},{"type":"text","text":"Voy a listar."},{"type":"tool_use","id":"tu_1","name":"Bash","input":{"command":"ls -la","description":"Listar"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"tu_1","content":"go.mod\nREADME.md","is_error":false}]}}
+{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":0.07,"resetsAt":1794808200},"seven_day":{"utilization":0.08,"resetsAt":1795161600}}}}
+{"type":"assistant","message":{"id":"msg_2","content":[{"type":"text","text":"Hecho."}]}}
+{"type":"result","subtype":"success","is_error":false,"session_id":"s-1","result":"Hecho."}

@@ -1,352 +1,326 @@
-import { ThreadLink } from "../components/thread-link";
-import { MachineUpdate } from "../components/updates";
-import { useState } from "react";
+import { DictationField } from "../components/dictation-field";
+import { useDictationInProgress } from "../components/local-dictation";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { api, type Environment, type Feature, type Memory, type Project, type T3Status } from "../api/client";
-import { AppleLogo, Desktop, FolderSimple, LinuxLogo, Robot, Warning, WindowsLogo } from "@phosphor-icons/react";
-import { Badge, Button, Card, ErrorText, Arrow, Input, Label, Md, Modal, PageHeader, pill, Select, StatusPill, Textarea, csv, opts, type Tone } from "../components/ui";
+import { AppleLogo, Desktop, LinuxLogo, Plus, WindowsLogo } from "@phosphor-icons/react";
+import { api, type Memory, type MemoryInput, type NodeUpdate, type Provider } from "../api/client";
+import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, PageHeader, Select, StatusPill, csv } from "../components/ui";
+import { ProviderIcon } from "../components/launch-picker";
 import { useProject } from "../project";
+import { askConfirm } from "../components/confirm";
 
-// Hook compartido: guardar/archivar e invalidar la lista.
-function useSave<T>(key: string, fn: () => Promise<T>, onClose: () => void) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: fn,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [key] });
-      onClose();
-    },
-  });
-}
+export const memorySearch = (s: Record<string, unknown>) => ({ q: typeof s.q === "string" ? s.q : undefined, kind: typeof s.kind === "string" ? s.kind : undefined });
 
-function Footer({ onClose, onSave, onArchive, error, disabled }: { onClose: () => void; onSave: () => void; onArchive?: () => void; error: unknown; disabled?: boolean }) {
+const KINDS = { decision: "Decisión", lesson: "Lección", context: "Contexto" } as const;
+
+// Memories lists the notes agents read and write, filtered by the selected
+// project, kind, label and text (kept in the URL).
+export function Memories() {
+  const project = useProject();
+  const navigate = useNavigate();
+  const search = useSearch({ strict: false }) as { q?: string; kind?: string };
+  const memories = useQuery({ queryKey: ["memories"], queryFn: () => api.memories.list() });
+  const [editing, setEditing] = useState<Memory | "new">();
+  const q = (search.q ?? "").toLowerCase();
+  const shown = (memories.data ?? [])
+    .filter((m) => !project || m.scope !== "project" || m.scope_id === project)
+    .filter((m) => !search.kind || m.kind === search.kind)
+    .filter((m) => !q || m.title.toLowerCase().includes(q) || m.content.toLowerCase().includes(q) || m.labels.some((l) => l.toLowerCase().includes(q)))
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  const set = (patch: Record<string, string | undefined>) => navigate({ to: "/memories", search: { ...search, ...patch } as never, replace: true });
   return (
-    <>
-      <ErrorText error={error} />
-      <div className="flex justify-between">
-        {onArchive ? <Button variant="danger" onClick={onArchive}>Archivar</Button> : <span />}
-        <div className="flex gap-2">
-          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button disabled={disabled} onClick={onSave}>Guardar</Button>
-        </div>
+    <div className="space-y-3">
+      <PageHeader title="Memorias" subtitle="Lo que los agentes recuerdan entre sesiones. Se replica entre nodos."><Button onClick={() => setEditing("new")}><Plus className="size-4" />Nueva</Button></PageHeader>
+      <div className="flex flex-wrap gap-2">
+        <Input className="max-w-xs" value={search.q ?? ""} onChange={(e) => set({ q: e.target.value || undefined })} placeholder="Buscar por texto o label" />
+        <Select value={search.kind ?? ""} onChange={(v) => set({ kind: v || undefined })} options={[{ value: "", label: "Todos los tipos" }, ...Object.entries(KINDS).map(([value, label]) => ({ value, label }))]} />
       </div>
-    </>
-  );
-}
-
-function Header({ title, onNew }: { title: string; onNew: () => void }) {
-  return (
-    <div className="flex items-center justify-between">
-      <h1 className="text-xl font-bold">{title}</h1>
-      <Button onClick={onNew}>Nuevo</Button>
+      <ErrorText error={memories.error} />
+      <div className="space-y-2">
+        {shown.map((m) => (
+          <Card key={m.id}>
+            <button type="button" className="block w-full text-left" onClick={() => setEditing(m)}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{m.title || m.content.split("\n")[0].slice(0, 80)}</span>
+                <StatusPill tone={m.kind === "decision" ? "blue" : m.kind === "lesson" ? "amber" : "slate"}>{KINDS[m.kind]}</StatusPill>
+                <span className="text-xs text-slate-500">{m.scope === "global" ? "global" : m.scope === "node" ? "de nodo" : "de proyecto"}</span>
+                {m.labels.map((l) => <Badge key={l}>{l}</Badge>)}
+              </div>
+              <div className="mt-1 line-clamp-4 text-sm text-slate-600 dark:text-muted"><Md>{m.content}</Md></div>
+            </button>
+          </Card>
+        ))}
+      </div>
+      {editing && <MemoryForm memory={editing === "new" ? undefined : editing} onClose={() => setEditing(undefined)} />}
     </div>
   );
 }
 
-/* ---------- Proyectos ---------- */
-export function ProjectForm({ project, onClose }: { project?: Project; onClose: () => void }) {
-  const [name, setName] = useState(project?.name ?? "");
-  const [slug, setSlug] = useState(project?.slug ?? "");
-  const [description, setDescription] = useState(project?.description ?? "");
-  const [status, setStatus] = useState(project?.status ?? "active");
-  const [stack, setStack] = useState(project?.stack.join(", ") ?? "");
-  const data = { name, slug, description, status, stack: csv(stack) };
-  const save = useSave("projects", () => (project ? api.projects.update(project.id, { id: project.id, ...data }) : api.projects.create(data)), onClose);
-  const arch = useSave("projects", () => api.projects.archive(project!.id), onClose);
+function MemoryForm({ memory, onClose }: { memory?: Memory; onClose: () => void }) {
+  const qc = useQueryClient();
+  const dictating = useDictationInProgress();
+  const project = useProject();
+  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
+  const [m, setM] = useState<MemoryInput>(memory ?? { scope: project ? "project" : "global", scope_id: project, kind: "context", title: "", content: "", labels: [] });
+  const [labels, setLabels] = useState((memory?.labels ?? []).join(", "));
+  const save = useMutation({
+    mutationFn: () => {
+      const body = { ...m, labels: csv(labels), scope_id: m.scope === "global" ? "" : m.scope_id };
+      return memory ? api.memories.update(memory.id, body) : api.memories.create(body);
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["memories"] }); onClose(); },
+  });
+  const archive = useMutation({ mutationFn: () => api.memories.archive(memory!.id), onSuccess: () => { qc.invalidateQueries({ queryKey: ["memories"] }); onClose(); } });
   return (
-    <Modal title={project ? "Editar proyecto" : "Nuevo proyecto"} onClose={onClose}>
-      <Label text="Nombre"><Input value={name} onChange={(e) => setName(e.target.value)} /></Label>
-      <Label text="Slug"><Input value={slug} onChange={(e) => setSlug(e.target.value)} /></Label>
-      <Label text="Descripción"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></Label>
-      <Label text="Estado"><Input value={status} onChange={(e) => setStatus(e.target.value)} /></Label>
-      <Label text="Stack (coma)"><Input value={stack} onChange={(e) => setStack(e.target.value)} /></Label>
-      <Footer onClose={onClose} onSave={() => save.mutate()} onArchive={project && (() => arch.mutate())} error={save.error ?? arch.error} disabled={!name.trim() || !slug.trim()} />
+    <Modal title={memory ? "Memoria" : "Nueva memoria"} onClose={onClose} wide>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (!dictating && m.content.trim()) save.mutate(); }}>
+        <Label text="Título"><Input value={m.title ?? ""} onChange={(e) => setM({ ...m, title: e.target.value })} /></Label>
+        <DictationField label="Contenido" rows={10} value={m.content} onValue={(content) => setM((current) => ({ ...current, content }))} />
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Label text="Tipo"><Select value={m.kind ?? "context"} onChange={(v) => setM({ ...m, kind: v as Memory["kind"] })} options={Object.entries(KINDS).map(([value, label]) => ({ value, label }))} /></Label>
+          <Label text="Ámbito"><Select value={m.scope ?? "global"} onChange={(v) => setM({ ...m, scope: v as Memory["scope"] })} options={[{ value: "global", label: "Global" }, { value: "project", label: "Proyecto" }]} /></Label>
+          {m.scope === "project" && <Label text="Proyecto"><Select value={m.scope_id ?? ""} onChange={(v) => setM({ ...m, scope_id: v })} options={(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))} /></Label>}
+        </div>
+        <Label text="Labels (separadas por comas)"><Input value={labels} onChange={(e) => setLabels(e.target.value)} /></Label>
+        <ErrorText error={save.error ?? archive.error} />
+        <div className="flex gap-2">
+          <Button disabled={dictating || !m.content.trim() || save.isPending}>Guardar</Button>
+          {memory && <Button type="button" variant="ghost" className="ml-auto" onClick={() => askConfirm("¿Archivar la memoria?", "Archivar").then((ok) => ok && archive.mutate())}>Archivar</Button>}
+        </div>
+      </form>
     </Modal>
   );
 }
 
-/* ---------- Entornos (solo lectura, descubiertos por T3 Code) ---------- */
-const stateLabels: Record<T3Status["state"], string> = { available: "Disponible", disconnected: "Desconectada", auth_failed: "Token rechazado", incompatible: "Versión incompatible" };
+const osIcon = (os = "") => (os === "darwin" ? AppleLogo : os === "windows" ? WindowsLogo : os === "linux" ? LinuxLogo : Desktop);
 
-// The tab opens before the request so browsers do not block it as a popup.
-async function openT3(status: T3Status) {
-  const tab = window.open("", "_blank");
-  try {
-    const { url } = await api.t3Pair(status.instance_id);
-    if (tab) tab.location.href = url;
-  } catch {
-    if (tab) tab.location.href = status.base_url;
-  }
+// Environments lists the nodes of the mesh: this one and its peers, with
+// their harnesses (requirements RF-06, RF-07), and pairs new ones (RF-05).
+export function Environments() {
+  const qc = useQueryClient();
+  const node = useQuery({ queryKey: ["node"], queryFn: api.node, refetchInterval: 15_000 });
+  const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh, refetchInterval: 5_000 });
+  const [code, setCode] = useState<{ code: string; expires_at: string; fingerprint: string; port: number }>();
+  const [address, setAddress] = useState("");
+  const [typed, setTyped] = useState("");
+  const open = useMutation({ mutationFn: api.pairCode, onSuccess: setCode });
+  const pair = useMutation({ mutationFn: () => api.pair(address.trim(), typed.trim()), onSuccess: () => { setAddress(""); setTyped(""); qc.invalidateQueries({ queryKey: ["mesh"] }); } });
+  const revoke = useMutation({ mutationFn: api.revokePeer, onSuccess: () => qc.invalidateQueries({ queryKey: ["mesh"] }) });
+  const devices = useQuery({ queryKey: ["devices"], queryFn: api.devices, refetchInterval: 15_000 });
+  const revokeDevice = useMutation({ mutationFn: api.revokeDevice, onSuccess: () => qc.invalidateQueries({ queryKey: ["devices"] }) });
+  const n = node.data;
+  const OsIcon = osIcon(n?.node.os);
+  return (
+    <div className="space-y-3">
+      <PageHeader title="Entornos" subtitle="Los nodos de Dory en tus máquinas. Se sincronizan cuando se ven." />
+      <ErrorText error={node.error ?? mesh.error} />
+      <MeshUpdate />
+      {n && (
+        <Card>
+          <div className="flex flex-wrap items-center gap-2">
+            <OsIcon className="size-5" />
+            <span className="font-semibold">{n.node.name}</span>
+            <StatusPill tone="green">este nodo</StatusPill>
+            <span className="font-mono text-xs text-slate-500">{n.node.platform} · {n.node.version} · huella {mesh.data?.fingerprint}</span>
+          </div>
+          <p className="mt-1 font-mono text-xs text-slate-500">id {n.node.id} · datos en {n.node.data_dir}</p>
+          <Providers list={n.providers} node="local" />
+        </Card>
+      )}
+      {(mesh.data?.peers ?? []).filter((p) => !p.revoked).map((p) => {
+        const Icon = osIcon(p.info.node?.os);
+        return (
+          <Card key={p.id}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Icon className="size-5" />
+              <span className="font-semibold">{p.name}</span>
+              <StatusPill tone={p.connected ? "green" : "slate"}>{p.connected ? "conectado" : "desconectado"}</StatusPill>
+              <span className="font-mono text-xs text-slate-500">{p.address}{p.info.node?.version ? ` · ${p.info.node.version}` : ""} · huella {p.fingerprint}</span>
+              {!p.connected && p.last_seen && <span className="text-xs text-slate-500">visto {new Date(p.last_seen).toLocaleString()}</span>}
+              <Button variant="ghost" className="ml-auto text-xs" onClick={() => askConfirm(`¿Revocar ${p.name}? Dejará de sincronizarse con este nodo.`, "Revocar").then((ok) => ok && revoke.mutate(p.id))}>Revocar</Button>
+            </div>
+            {p.info.providers && <Providers list={p.info.providers} node={p.connected ? p.id : undefined} />}
+          </Card>
+        );
+      })}
+      <Card>
+        <h2 className="mb-2 font-semibold">Emparejar otro nodo o un móvil</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2 text-sm">
+            <p className="text-slate-600 dark:text-muted">En este nodo: abre un código y escríbelo en el otro nodo o en la app del móvil.</p>
+            {code ? (
+              <div className="rounded-md bg-slate-100 p-3 dark:bg-raised">
+                <p className="font-mono text-2xl tracking-widest">{code.code}</p>
+                <p className="mt-1 text-xs text-slate-500">Puerto {code.port} · huella {code.fingerprint} · caduca a las {new Date(code.expires_at).toLocaleTimeString()}</p>
+              </div>
+            ) : <Button onClick={() => open.mutate()} disabled={open.isPending}>Mostrar código</Button>}
+            <ErrorText error={open.error} />
+          </div>
+          <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); if (address.trim() && typed.trim()) pair.mutate(); }}>
+            <p className="text-sm text-slate-600 dark:text-muted">O en el otro sentido: la dirección del nodo y su código.</p>
+            <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="100.64.0.2 o servidor:7710" />
+            <Input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Código, p. ej. 1234-5678" className="font-mono" />
+            <Button disabled={!address.trim() || !typed.trim() || pair.isPending}>{pair.isPending ? "Emparejando…" : "Emparejar"}</Button>
+            <ErrorText error={pair.error} />
+          </form>
+        </div>
+        {!!mesh.data?.discovered.length && (
+          <div className="mt-3 border-t border-slate-200 pt-3 dark:border-border">
+            <p className="mb-1 text-sm font-medium">Nodos encontrados en la red</p>
+            {mesh.data.discovered.map((d) => (
+              <button key={d.id} type="button" onClick={() => setAddress(d.address)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised">
+                <Desktop className="size-4" /><span>{d.name}</span><span className="ml-auto font-mono text-xs text-slate-500">{d.address}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </Card>
+      {!!devices.data?.length && (
+        <Card>
+          <h2 className="mb-2 font-semibold">Móviles emparejados</h2>
+          {devices.data.map((d) => (
+            <div key={d.id} className="flex items-center gap-2 py-1 text-sm">
+              <span>{d.name}</span>
+              <span className="text-xs text-slate-500">desde {new Date(d.created_at).toLocaleDateString()}</span>
+              <Button variant="ghost" className="ml-auto text-xs" onClick={() => confirm(`¿Revocar ${d.name}? Tendrá que emparejarse de nuevo.`) && revokeDevice.mutate(d.id)}>Revocar</Button>
+            </div>
+          ))}
+          <ErrorText error={revokeDevice.error} />
+        </Card>
+      )}
+    </div>
+  );
 }
 
-const stateTone: Record<T3Status["state"], Tone> = { available: "green", disconnected: "slate", auth_failed: "red", incompatible: "amber" };
-const since = (iso: string | null) => {
-  if (!iso) return "nunca";
-  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
-  return m < 1 ? "ahora" : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} d`;
-};
-const osIcon = (os: string) => (/mac|darwin/i.test(os) ? AppleLogo : /win/i.test(os) ? WindowsLogo : /linux|debian|ubuntu|arch|fedora/i.test(os) ? LinuxLogo : Desktop);
-
-// Machine describes one device: identity, connection, agent activity, providers and projects.
-function Machine({ env, status }: { env: Environment; status: T3Status }) {
-  const up = status.state === "available";
-  const catalog = useQuery({ queryKey: ["t3-catalog", status.instance_id], queryFn: () => api.t3Catalog(status.instance_id), enabled: up, staleTime: 60_000 });
-  const working = status.threads.filter((t) => ["running", "pending", "starting", "working"].includes(t.status));
-  const needing = status.threads.filter((t) => t.attention);
-  const Os = osIcon(env.os);
-  const host = (() => { try { return new URL(status.base_url).host; } catch { return status.base_url; } })();
-  const muted = "text-xs text-slate-500 dark:text-muted";
+// MeshUpdate moves every connected node to the latest release of its channel,
+// with its desktop app and, if asked, its harnesses (ADR-016).
+function MeshUpdate() {
+  const qc = useQueryClient();
+  const [providers, setProviders] = useState(false);
+  const [force, setForce] = useState(false);
+  const list = useQuery({ queryKey: ["mesh-update"], queryFn: api.meshUpdates, refetchInterval: (q) => (q.state.data?.some((n) => n.status?.state === "updating") ? 3_000 : 60_000) });
+  const run = useMutation({ mutationFn: () => api.updateMesh({ providers, force }), onSuccess: (data) => qc.setQueryData(["mesh-update"], data) });
+  const nodes = list.data ?? [];
+  const pending = nodes.some((n) => n.status?.available) || providers;
+  const label = (n: NodeUpdate) => {
+    const st = n.status;
+    if (n.error) return <StatusPill tone="slate">{n.error}</StatusPill>;
+    if (!st) return null;
+    if (st.state === "updating") return <StatusPill tone="amber">actualizando…</StatusPill>;
+    if (st.state === "failed") return <StatusPill tone="red">falló: {st.error}</StatusPill>;
+    if (st.channel === "dev") return <StatusPill tone="slate">compilación local</StatusPill>;
+    if (st.available) return <StatusPill tone="amber">{st.current} → {st.latest}</StatusPill>;
+    return <StatusPill tone="green">al día</StatusPill>;
+  };
   return (
-    <Card className="flex h-full min-w-0 flex-col gap-4">
-      <div className="flex items-start gap-3">
-        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-700 dark:bg-raised dark:text-text"><Os weight="duotone" aria-hidden="true" className="size-6" /></span>
-        <div className="min-w-0 flex-1">
-          <div className="truncate font-semibold">{env.name}</div>
-          <div className={`truncate ${muted}`}>{env.os || "Sistema desconocido"}</div>
-        </div>
-        <StatusPill tone={stateTone[status.state]}><span className="inline-flex items-center gap-1.5"><span className={`size-1.5 rounded-full ${up ? "bg-emerald-500" : "bg-current"}`} />{stateLabels[status.state]}</span></StatusPill>
+    <Card>
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="font-semibold">Actualizar la malla</h2>
+        <span className="text-xs text-slate-500">Cada nodo conectado instala la última versión de su canal y, si tiene la app de escritorio, la reinstala.</span>
       </div>
-
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-        <div className="min-w-0"><dt className={muted}>Dirección</dt><dd className="truncate font-mono text-xs" title={status.base_url}>{host}</dd></div>
-        <div className="min-w-0"><dt className={muted}>T3 Code</dt><dd className="truncate">{status.version || "—"}</dd></div>
-        <div className="min-w-0"><dt className={muted}>Última conexión</dt><dd title={status.last_seen ? new Date(status.last_seen).toLocaleString() : undefined}>{since(status.last_seen)}</dd></div>
-        <div className="min-w-0"><dt className={muted}>Acceso</dt><dd className="truncate" title={env.access}>{env.access || "—"}</dd></div>
-      </dl>
-
-      <div className="grid grid-cols-3 divide-x divide-slate-200 rounded-lg border border-slate-200 text-center dark:divide-border dark:border-border">
-        {[["Hilos", status.threads.length, ""], ["Trabajando", working.length, working.length ? "text-blue-700 dark:text-accent-text" : ""], ["Te necesitan", needing.length, needing.length ? "text-amber-700 dark:text-amber-400" : ""]].map(([k, v, c]) => (
-          <div key={k} className="py-2"><div className={`text-lg font-semibold tabular-nums ${c}`}>{v}</div><div className={muted}>{k}</div></div>
+      <ErrorText error={list.error ?? run.error} />
+      <div className="mt-2 space-y-1">
+        {nodes.map((n) => (
+          <div key={n.node} className="flex flex-wrap items-center gap-2 text-sm">
+            <span>{n.name}</span>
+            {n.status && <span className="font-mono text-xs text-slate-500">{n.status.channel}{n.status.desktop ? " · escritorio" : ""}{n.status.active_turns ? ` · ${n.status.active_turns} turnos en marcha` : ""}</span>}
+            <span className="ml-auto">{label(n)}</span>
+          </div>
         ))}
       </div>
-
-      {needing.length > 0 && (
-        <ul className="space-y-1 text-sm">
-          {needing.map((t) => <li key={t.id} className="flex items-center gap-2"><Warning weight="fill" aria-hidden="true" className="size-4 shrink-0 text-amber-500" /><ThreadLink className="min-w-0 truncate hover:underline" url={t.url} environmentId={t.t3_environment_id} threadId={t.id}>{t.title}</ThreadLink></li>)}
-        </ul>
-      )}
-
-      <section className="space-y-1.5">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-muted">Agentes</h3>
-        {!up && <p className={muted}>La máquina no responde.</p>}
-        <ErrorText error={catalog.error} />
-        {catalog.data?.providers.map((p) => (
-          <details key={p.instance_id} className="group text-sm">
-            <summary className="flex cursor-pointer list-none items-center gap-2">
-              <Robot weight="duotone" aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
-              <span className="flex-1 font-medium">{p.name}</span>
-              <span className={muted}>{p.models.length} modelos</span>
-              <span aria-hidden="true" className="text-slate-400 transition-transform group-open:rotate-90 motion-reduce:transition-none">›</span>
-            </summary>
-            <div className="mt-1.5 flex min-w-0 flex-wrap gap-1 pl-6">{p.models.map((m) => <span key={m.slug} className="max-w-full truncate"><Badge>{m.name || m.slug}</Badge></span>)}</div>
-          </details>
-        ))}
-        {up && catalog.data?.providers.length === 0 && <p className={muted}>Sin agentes configurados.</p>}
-      </section>
-
-      <section className="space-y-1.5">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-muted">Proyectos en T3 {catalog.data && <span className="font-normal normal-case tracking-normal">({catalog.data.projects.length})</span>}</h3>
-        {catalog.data?.projects.length === 0 && <p className={muted}>Sin proyectos.</p>}
-        <ul className="space-y-1 text-sm">{catalog.data?.projects.map((p) => (
-          <li key={p.id} className="flex min-w-0 items-center gap-2"><FolderSimple weight="duotone" aria-hidden="true" className="size-4 shrink-0 text-slate-400" /><span className="min-w-0 max-w-[50%] shrink-0 truncate">{p.title}</span><span className="min-w-0 truncate font-mono text-[11px] text-slate-400 dark:text-muted" title={p.root}>{p.root}</span></li>
-        ))}</ul>
-      </section>
-
-      {up && status.instance_id && <MachineUpdate instanceId={status.instance_id} name={env.name} />}
-
-      {env.notes && <p className="whitespace-pre-wrap break-words rounded-md bg-slate-50 p-2 text-xs text-slate-600 dark:bg-raised dark:text-text-secondary">{env.notes}</p>}
-
-      <div className="mt-auto flex justify-end border-t border-slate-100 pt-3 dark:border-border">
-        {status.instance_id && <button type="button" className={pill} onClick={() => openT3(status)}>Abrir T3 Code <Arrow /></button>}
+      <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
+        <label className="flex items-center gap-2"><input type="checkbox" checked={providers} onChange={(e) => setProviders(e.target.checked)} />Actualizar también los proveedores</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />Aunque haya turnos en marcha</label>
+        <Button className="ml-auto" disabled={!pending || run.isPending} onClick={() => run.mutate()}>{run.isPending ? "Lanzando…" : "Actualizar"}</Button>
       </div>
     </Card>
   );
 }
 
-// Environments lists the devices T3 Code reports, in name order. Usage lives in Uso.
-export function Environments() {
-  const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
-  const t3 = useQuery({ queryKey: ["t3-status"], queryFn: api.t3Status, refetchInterval: 60_000 });
-  // Every environment is listed; one without a status yet (or between reads) counts as disconnected,
-  // so a machine going offline never vanishes from the page or the count.
-  const machines = (envs.data ?? []).map((env) => ({
-    env,
-    status: t3.data?.find((s) => s.environment_id === env.id) ?? { instance_id: "", environment_id: env.id, base_url: "", state: "disconnected" as const, version: "", last_seen: null, threads: [] },
-  })).sort((a, b) => a.env.name.localeCompare(b.env.name));
-  const online = machines.filter((m) => m.status.state === "available").length;
+// Providers lists the harnesses of a node with their session, and signs in
+// or updates them on that node (requirements RF-09 to RF-11).
+function Providers({ list, node }: { list: Provider[]; node?: string }) {
+  const qc = useQueryClient();
+  const [job, setJob] = useState<{ id: string; node: string }>();
+  const start = useMutation({
+    mutationFn: ({ provider, kind }: { provider: string; kind: "login" | "update" }) => api.providerJob(node!, provider, kind),
+    onSuccess: (j) => setJob({ id: j.id, node: node! }),
+  });
+  const state = useQuery({
+    queryKey: ["job", job?.id], queryFn: () => api.job(job!.node, job!.id), enabled: !!job,
+    refetchInterval: (q) => (q.state.data?.done ? false : 1000),
+  });
+  useEffect(() => { if (state.data?.done) qc.invalidateQueries({ queryKey: ["node"] }); }, [state.data?.done]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div className="space-y-3">
-      <PageHeader title="Entornos" subtitle={t3.data && machines.length ? `${online} de ${machines.length} disponibles` : undefined} />
-      <ErrorText error={envs.error ?? t3.error} />
-      {envs.data && t3.data && machines.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">T3 Code no ha detectado ninguna máquina.</p>}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
-        {t3.data && machines.map(({ env, status }) => <Machine key={env.id} env={env} status={status} />)}
-      </div>
-    </div>
-  );
-}
-
-/* ---------- Memorias ---------- */
-function MemoryForm({ memory, projects, envs, project, onClose }: { memory?: Memory; projects: Project[]; envs: Environment[]; project: string; onClose: () => void }) {
-  const [scope, setScope] = useState<Memory["scope"]>(memory?.scope ?? (project ? "project" : "global"));
-  const [scopeId, setScopeId] = useState(memory?.scope_id ?? project);
-  const [kind, setKind] = useState<Memory["kind"]>(memory?.kind ?? "context");
-  const [title, setTitle] = useState(memory?.title ?? "");
-  const [content, setContent] = useState(memory?.content ?? "");
-  const [tags, setTags] = useState(memory?.tags.join(", ") ?? "");
-  const data = { scope, scope_id: scope === "global" ? null : scopeId || null, kind, title, content, tags: csv(tags) };
-  const save = useSave("memories", () => (memory ? api.memories.update(memory.id, { id: memory.id, ...data }) : api.memories.create(data)), onClose);
-  const arch = useSave("memories", () => api.memories.archive(memory!.id), onClose);
-  const options = scope === "project" ? projects : envs;
-  return (
-    <Modal title={memory ? "Editar memoria" : "Nueva memoria"} onClose={onClose}>
+    <div className="mt-3 space-y-2">
       <div className="grid gap-2 sm:grid-cols-2">
-        <Label text="Ámbito">
-          <Select value={scope} onChange={(v) => { setScope(v as Memory["scope"]); setScopeId(""); }} options={opts(["global", "project", "environment"])} />
-        </Label>
-        {scope !== "global" && (
-          <Label text={scope === "project" ? "Proyecto" : "Entorno"}>
-            <Select value={scopeId} onChange={setScopeId} options={[{ value: "", label: "—" }, ...options.map((o) => ({ value: o.id, label: o.name }))]} />
-          </Label>
-        )}
-      </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        <Label text="Tipo">
-          <Select value={kind} onChange={(v) => setKind(v as Memory["kind"])} options={opts(["decision", "lesson", "context"])} />
-        </Label>
-        <Label text="Título"><Input value={title} onChange={(e) => setTitle(e.target.value)} /></Label>
-      </div>
-      <Label text="Contenido (markdown)"><Textarea value={content} onChange={(e) => setContent(e.target.value)} /></Label>
-      <Label text="Tags (coma)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Label>
-      <Footer onClose={onClose} onSave={() => save.mutate()} onArchive={memory && (() => arch.mutate())} error={save.error ?? arch.error} disabled={!content.trim() || (scope !== "global" && !scopeId)} />
-    </Modal>
-  );
-}
-
-// Filtros de la página de memorias, reflejados en la URL. El proyecto es el global de la app.
-export type MemorySearch = { kind?: Memory["kind"]; q?: string };
-export const memorySearch = (s: Record<string, unknown>): MemorySearch => ({
-  kind: ["decision", "lesson", "context"].includes(s.kind as string) ? (s.kind as Memory["kind"]) : undefined,
-  q: typeof s.q === "string" && s.q ? s.q : undefined,
-});
-
-
-export function Memories() {
-  const [editing, setEditing] = useState<Memory | "new" | null>(null);
-  const search = useSearch({ from: "/memories" });
-  const navigate = useNavigate({ from: "/memories" });
-  const setFilter = (patch: MemorySearch) => navigate({ search: memorySearch({ ...search, ...patch }), replace: true });
-  const mems = useQuery({ queryKey: ["memories"], queryFn: () => api.memories.list() });
-  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
-  const envs = useQuery({ queryKey: ["environments"], queryFn: () => api.environments.list() });
-  const names = new Map([...(projects.data ?? []), ...(envs.data ?? [])].map((o) => [o.id, o.name]));
-  const project = useProject();
-  const text = search.q?.toLowerCase() ?? "";
-  // With a project selected, show its memories plus the global ones.
-  const shown = mems.data?.filter((m) =>
-    (!project || m.scope === "global" || m.scope_id === project) &&
-    (!search.kind || m.kind === search.kind) &&
-    (!text || [m.title, m.content, ...m.tags].some((t) => t.toLowerCase().includes(text))),
-  );
-  return (
-    <div className="space-y-3">
-      <Header title="Memorias" onNew={() => setEditing("new")} />
-      <div className="flex flex-wrap gap-2">
-        <Select className="w-full sm:w-44" value={search.kind ?? ""} onChange={(v) => setFilter({ kind: v as Memory["kind"] })} options={[{ value: "", label: "Todos los tipos" }, ...opts(["decision", "lesson", "context"])]} />
-        <Input className="min-w-40 flex-1" placeholder="Buscar texto…" value={search.q ?? ""} onChange={(e) => setFilter({ q: e.target.value })} />
-      </div>
-      <ErrorText error={mems.error} />
-      <div className="space-y-2">
-        {shown?.map((m) => (
-          <Card key={m.id} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-raised">
-            <div onClick={() => setEditing(m)}>
-              {m.title && <div className="font-medium">{m.title}</div>}
-              <div className="mb-1 flex flex-wrap gap-1">
-                <Badge>{m.kind}</Badge>
-                <Badge>{m.scope}{m.scope_id && `: ${names.get(m.scope_id) ?? "?"}`}</Badge>
-                {m.tags.map((t) => <Badge key={t}>{t}</Badge>)}
-              </div>
-              <Md>{m.content}</Md>
-            </div>
-          </Card>
+        {list.filter((p) => p.id !== "replay").map((p) => (
+          <div key={p.id} className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-border">
+            <ProviderIcon driver={p.id} />
+            <span className="font-medium">{p.name}</span>
+            {p.installed && <StatusPill tone={p.logged_in ? "green" : "amber"}>{p.logged_in ? "con sesión" : "sin sesión"}</StatusPill>}
+            <span className="ml-auto font-mono text-xs text-slate-500">{p.installed ? p.version.split(" ")[0] || "instalado" : "no instalado"}</span>
+            {node && p.installed && p.capabilities.includes("login") && (
+              <span className="flex w-full justify-end gap-1">
+                {!p.logged_in && <Button variant="ghost" className="!py-0.5 text-xs" disabled={start.isPending} onClick={() => start.mutate({ provider: p.id, kind: "login" })}>Iniciar sesión</Button>}
+                <Button variant="ghost" className="!py-0.5 text-xs" onClick={() => start.mutate({ provider: p.id, kind: "update" })}>Actualizar</Button>
+              </span>
+            )}
+          </div>
         ))}
-        {shown?.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">Sin memorias para estos filtros.</p>}
       </div>
-      {editing && <MemoryForm memory={editing === "new" ? undefined : editing} projects={projects.data ?? []} envs={envs.data ?? []} project={project} onClose={() => setEditing(null)} />}
-    </div>
-  );
-}
-
-/* ---------- Features (por proyecto) ---------- */
-function FeatureForm({ feature, projectId, onClose }: { feature?: Feature; projectId: string; onClose: () => void }) {
-  const [title, setTitle] = useState(feature?.title ?? "");
-  const [body, setBody] = useState(feature?.body_md ?? "");
-  const [refs, setRefs] = useState(feature?.code_refs.join(", ") ?? "");
-  const [status, setStatus] = useState<Feature["status"]>(feature?.status ?? "planned");
-  const data = { project_id: projectId, title, body_md: body, code_refs: csv(refs), status };
-  const save = useSave("features", () => (feature ? api.features.update(feature.id, { id: feature.id, ...data }) : api.features.create(data)), onClose);
-  const arch = useSave("features", () => api.features.archive(feature!.id), onClose);
-  return (
-    <Modal title={feature ? "Editar feature" : "Nueva feature"} onClose={onClose}>
-      <Label text="Título"><Input value={title} onChange={(e) => setTitle(e.target.value)} /></Label>
-      <Label text="Descripción (markdown)"><Textarea value={body} onChange={(e) => setBody(e.target.value)} /></Label>
-      <Label text="Referencias de código (coma)"><Input value={refs} onChange={(e) => setRefs(e.target.value)} /></Label>
-      <Label text="Estado">
-        <Select value={status} onChange={(v) => setStatus(v as Feature["status"])} options={opts(["planned", "in_progress", "implemented", "deprecated"])} />
-      </Label>
-      <Footer onClose={onClose} onSave={() => save.mutate()} onArchive={feature && (() => arch.mutate())} error={save.error ?? arch.error} disabled={!title.trim()} />
-    </Modal>
-  );
-}
-
-const FEATURE_TONE = { planned: "slate", in_progress: "blue", implemented: "green", deprecated: "amber" } as const;
-
-function FeatureDetail({ feature, onEdit, onClose }: { feature: Feature; onEdit: () => void; onClose: () => void }) {
-  return (
-    <Modal title={feature.title} onClose={onClose} wide>
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusPill tone={FEATURE_TONE[feature.status] ?? "slate"}>{feature.status.replace("_", " ")}</StatusPill>
-      </div>
-      {feature.body_md ? <div className="max-h-[60vh] overflow-y-auto"><Md>{feature.body_md}</Md></div> : <p className="text-sm italic text-slate-500 dark:text-muted">Sin descripción.</p>}
-      {feature.code_refs.length > 0 && (
-        <div className="space-y-1">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-muted">Código</h3>
-          <div className="flex flex-wrap gap-1.5">{feature.code_refs.map((r) => <code key={r} className="break-all rounded bg-slate-100 px-1.5 py-0.5 text-xs dark:bg-raised">{r}</code>)}</div>
+      <ErrorText error={start.error ?? state.error} />
+      {job && state.data && (
+        <div className="rounded-md bg-slate-100 p-2 dark:bg-raised">
+          <p className="mb-1 flex items-center gap-2 text-xs font-medium">{state.data.kind === "login" ? "Inicio de sesión" : "Actualización"} de {state.data.provider} · {state.data.done ? (state.data.error ? `terminó con error (${state.data.error})` : "terminado") : "en curso…"}
+            <button type="button" className="ml-auto text-slate-500" onClick={() => setJob(undefined)}>cerrar</button></p>
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-xs"><Linkify text={state.data.output || "Esperando salida…"} linkLabel={state.data.provider === "claude" && state.data.kind === "login" && !state.data.done ? "Abrir Claude en el navegador" : undefined} /></pre>
+          {!state.data.done && state.data.provider === "claude" && state.data.kind === "login" && state.data.accepts_code !== undefined && (
+            <LoginCodeForm key={job.id} node={job.node} id={job.id} acceptsCode={state.data.accepts_code} />
+          )}
         </div>
       )}
-      <div className="flex justify-end gap-2 border-t border-slate-200 pt-3 dark:border-border">
-        <Button variant="ghost" onClick={onClose}>Cerrar</Button>
-        <Button onClick={onEdit}>Editar</Button>
-      </div>
-    </Modal>
+    </div>
   );
 }
 
-export function Features({ projectId }: { projectId: string }) {
-  const [editing, setEditing] = useState<Feature | "new" | null>(null);
-  const [viewing, setViewing] = useState<Feature | null>(null);
-  const feats = useQuery({ queryKey: ["features", projectId], queryFn: () => api.features.list({ project_id: projectId }) });
+function LoginCodeForm({ node, id, acceptsCode }: { node: string; id: string; acceptsCode: boolean }) {
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<unknown>();
+  if (sent) return <p role="status" className="mt-2 text-sm">Código enviado. Esperando la confirmación de Claude…</p>;
+  if (!acceptsCode) return <ErrorText error={error} />;
   return (
-    <>
-    <details className="group rounded-lg border border-slate-200 bg-white dark:border-border dark:bg-surface">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm">
-        <span className="font-semibold">Features <span className="font-normal text-slate-500 dark:text-muted">({feats.data?.length ?? 0})</span><span aria-hidden="true" className="ml-1 inline-block text-slate-400 transition-transform group-open:rotate-90 motion-reduce:transition-none">›</span></span>
-        <Button variant="ghost" onClick={(e) => { e.preventDefault(); setEditing("new"); }}>Nueva feature</Button>
-      </summary>
-      <ErrorText error={feats.error} />
-      <ul className="divide-y divide-slate-100 border-t border-slate-200 dark:divide-border dark:border-border">
-        {feats.data?.map((f) => (
-          <li key={f.id}>
-            <button type="button" onClick={() => setViewing(f)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-raised">
-              <span className="min-w-0 flex-1 truncate">{f.title}</span><Badge>{f.status}</Badge>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </details>
-    {viewing && <FeatureDetail feature={viewing} onClose={() => setViewing(null)} onEdit={() => { setEditing(viewing); setViewing(null); }} />}
-    {editing && <FeatureForm feature={editing === "new" ? undefined : editing} projectId={projectId} onClose={() => setEditing(null)} />}
-    </>
+    <form className="mt-3 space-y-2" onSubmit={async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const code = String(new FormData(form).get("code") ?? "").trim();
+      if (!code || sending) return;
+      setSending(true);
+      setError(undefined);
+      try {
+        await api.submitLoginCode(node, id, code);
+        form.reset();
+        setSent(true);
+      } catch (error) {
+        setError(error);
+      } finally {
+        setSending(false);
+      }
+    }}>
+      <label className="block space-y-1 text-sm">
+        <span>Código de autorización</span>
+        <Input name="code" type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={2048} required />
+      </label>
+      <p className="text-sm">Abre el enlace de Claude arriba. Si Claude te muestra un código, pégalo aquí.</p>
+      <Button type="submit" disabled={sending}>Confirmar código</Button>
+      <ErrorText error={error} />
+    </form>
   );
+}
+
+// Linkify makes the URLs a login prints clickable.
+function Linkify({ text, linkLabel }: { text: string; linkLabel?: string }) {
+  return <>{text.split(/(https?:\/\/\S+)/g).map((part, i) => (/^https?:\/\//.test(part) ? <a key={i} href={part} target="_blank" rel="noreferrer" className="text-blue-600 underline dark:text-accent-text">{linkLabel ?? part}</a> : part))}</>;
 }

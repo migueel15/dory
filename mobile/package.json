@@ -1,0 +1,17 @@
+{
+  "name": "dory-mobile",
+  "private": true,
+  "version": "0.1.0",
+  "description": "App de Android de Dory: encuentra los nodos y abre su interfaz",
+  "scripts": {
+    "sync": "cap sync android",
+    "apk": "cap sync android && cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/core": "^8.6.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.2"
+  }
+}

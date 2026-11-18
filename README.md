@@ -1,7 +1,13 @@
 # Dory
 
-Dory: app personal para gestionar proyectos, tareas y memoria de agentes. Binario Go con API REST, servidor MCP y SPA React empotrada; datos en Postgres.
+Dory es tu entorno de trabajo con agentes de IA: chats con Claude Code, Codex y OpenCode, proyectos y repositorios, tareas en un kanban ligado a issues y pull requests de GitHub, memoria compartida y skills.
 
-Límites y ritmo de consumo: [uso](docs/uso.md).
+Cada máquina ejecuta un nodo completo, que funciona sin red y se sincroniza con tus otros nodos cuando se ven. El servidor 24/7 es un nodo más, y desde él entra el móvil.
 
-Acciones rápidas de la interfaz: [items](docs/items.md) y [hilos](docs/hilos.md).
+- [Instalación](docs/instalacion.md): binario, servicio, app de escritorio y app móvil.
+- [Uso](docs/uso.md): tareas, hilos, plan, GitHub, skills y uso de los proveedores.
+- [Malla de nodos](docs/malla.md): emparejar máquinas y cómo se sincronizan.
+- [Configuración](docs/configuracion.md): opciones y variables `DORY_*`.
+- [MCP](docs/mcp.md): herramientas para los agentes.
+- [Dictado](docs/dictado.md): transcripción local con whisper.cpp.
+- [Decisiones de arquitectura](docs/adr/README.md).

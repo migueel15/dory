@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import type { Message, Queued, ThreadView, TurnModel } from "./client";
 
 // useVisible tracks whether this tab is on screen. Live streams only stay open
-// while it is: over plain HTTP a browser allows about six connections per host,
-// and two per background tab would leave a new tab's streams waiting.
+// while it is: over plain HTTP a browser allows about six connections per host.
 export function useVisible() {
   const [visible, setVisible] = useState(() => typeof document === "undefined" || document.visibilityState !== "hidden");
   useEffect(() => {
@@ -12,27 +13,22 @@ export function useVisible() {
   }, []);
   return visible;
 }
-import { useQueryClient } from "@tanstack/react-query";
 
-// Query keys refreshed for each audit entity_type.
+// Query keys refreshed when an entity changes, locally or replicated from another node.
 const keys: Record<string, string[]> = {
-  // Item status changes and T3 thread changes are what create notifications.
-  item: ["items", "notifications"],
-  feature: ["features"],
-  project: ["projects"],
-  repository: ["repositories"],
-  repositorylocation: ["repositories"],
-  environment: ["environments"],
+  project: ["projects", "board"],
+  repository: ["repositories", "board"],
+  task: ["tasks", "board", "card"],
+  task_dependency: ["board", "card", "dependencies"],
+  plan: ["plans", "board", "card"],
   memory: ["memories"],
-  link: ["items", "memories"],
-  itemthread: ["item-threads", "refinement"],
-  itemplan: ["refinement", "items"],
-  // Signals from the T3 monitor: thread states changed in some instance.
-  t3: ["t3-status", "t3-threads", "t3-updates", "item-threads", "issue-threads", "refinement", "t3-context", "notifications"],
+  thread: ["threads", "board", "card", "thread"],
 };
 
-// useLiveUpdates subscribes to the audit SSE stream and invalidates the
-// affected queries, batching bursts so a replay triggers one refetch.
+type Update = { thread_id: string; message?: Message; status?: string; error?: string; queue?: Queued[]; reload?: boolean; last_turn_model?: TurnModel };
+
+// useLiveUpdates subscribes to the node event stream and invalidates the
+// affected queries, batching bursts so a sync triggers one refetch.
 export function useLiveUpdates(enabled: boolean) {
   const qc = useQueryClient();
   const visible = useVisible();
@@ -40,41 +36,56 @@ export function useLiveUpdates(enabled: boolean) {
     if (!enabled || !visible) return;
     const pending = new Set<string>();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const source = new EventSource("/api/events/stream?after=latest", { withCredentials: true });
-    // Back from the background (or a reconnect): what changed meanwhile was not streamed.
+    const source = new EventSource("/api/events", { withCredentials: true });
     let opened = false;
     source.addEventListener("open", () => { if (opened) qc.invalidateQueries(); opened = true; });
     source.addEventListener("change", (e) => {
-      const { entity_type } = JSON.parse((e as MessageEvent).data) as { entity_type: string };
-      for (const k of keys[entity_type] ?? []) pending.add(k);
+      const { entity } = JSON.parse((e as MessageEvent).data) as { entity: string };
+      for (const k of keys[entity] ?? []) pending.add(k);
       clearTimeout(timer);
       timer = setTimeout(() => {
         for (const k of pending) qc.invalidateQueries({ queryKey: [k] });
         pending.clear();
-      }, 300);
+      }, 250);
     });
     return () => { clearTimeout(timer); source.close(); };
   }, [enabled, visible, qc]);
-  // Returning to the tab reloads what changed while its stream was closed.
   const [seen, setSeen] = useState(visible);
   useEffect(() => { if (visible && !seen) qc.invalidateQueries(); setSeen(visible); }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
-// useThreadLive follows one T3 thread while a view shows its conversation and
-// refetches the given query on each burst of changes. EventSource reconnects
-// on its own if the server or T3 drops the stream.
-export function useThreadLive(threadId: string | undefined, queryKey: unknown[], alsoKeys: unknown[][] = []) {
+// useThreadLive patches the cached view of one thread with each streamed
+// message, so tokens appear as the agent writes them.
+export function useThreadLive(threadId: string | undefined) {
   const qc = useQueryClient();
-  const key = JSON.stringify([queryKey, ...alsoKeys]);
   const visible = useVisible();
   useEffect(() => {
     if (!threadId || !visible) return;
-    const source = new EventSource(`/api/t3/threads/${encodeURIComponent(threadId)}/stream`, { withCredentials: true });
-    const refresh = () => { for (const k of JSON.parse(key) as unknown[][]) qc.invalidateQueries({ queryKey: k }); };
-    source.addEventListener("thread", refresh);
-    // The server skips the first T3 snapshot of each connection, so whatever changed
-    // while the stream was down (T3 dropped it, the browser reconnected) is lost: reload on every (re)open.
-    source.addEventListener("open", refresh);
+    const key = ["thread", threadId];
+    const source = new EventSource(`/api/events?thread=${encodeURIComponent(threadId)}`, { withCredentials: true });
+    source.addEventListener("thread", (e) => {
+      const u = JSON.parse((e as MessageEvent).data) as Update;
+      if (u.thread_id !== threadId) return;
+      // The history was rebuilt from the harness file: fetch it whole.
+      if (u.reload) { qc.invalidateQueries({ queryKey: key }); return; }
+      qc.setQueryData<ThreadView>(key, (v) => {
+        if (!v) return v;
+        const next = { ...v };
+        if (u.message) {
+          const i = v.messages.findIndex((m) => m.id === u.message!.id);
+          next.messages = i < 0 ? [...v.messages, u.message] : v.messages.map((m, j) => (j === i ? u.message! : m));
+        }
+        if (u.status) {
+          next.status = u.status as ThreadView["status"];
+          next.running = u.status === "working";
+        }
+        if (u.queue) next.queue = u.queue;
+        if (u.last_turn_model) next.last_turn_model = u.last_turn_model;
+        return next;
+      });
+    });
+    // Whatever changed while the stream was down is reloaded on every (re)open.
+    source.addEventListener("open", () => qc.invalidateQueries({ queryKey: key }));
     return () => source.close();
-  }, [threadId, key, visible, qc]);
+  }, [threadId, visible, qc]);
 }

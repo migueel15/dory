@@ -1,6 +1,7 @@
 import { Link as RouterLink } from "@tanstack/react-router";
 import { ArrowBendUpLeft, ArrowCounterClockwise, CaretDown, ChatCircle, Check, CheckCircle, Clock, Code, Eye, File, Flag, GitBranch, GitMerge, GitPullRequest, GithubLogo, PencilSimple, Plus, RadioButton, User, X, type Icon as PhosphorIcon, type IconWeight } from "@phosphor-icons/react";
-import { defaultUrlTransform, Md, Textarea } from "./ui";
+import { DictationMic, DictationPreview, useLocalDictation } from "./local-dictation";
+import { ErrorText, defaultUrlTransform, Md, Textarea } from "./ui";
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject, type ReactNode, type Ref, type TextareaHTMLAttributes } from "react";
 
 // Phosphor icons shared by the GitHub views.
@@ -245,6 +246,7 @@ function options(mark: string, query: string, people: string[], links: Link[]): 
 // opens next to the caret. Arrows move, Enter or Tab pick, Escape closes.
 export function MentionArea({ value, onValue, people, links = [], boxRef, onKeyDown, className, ...rest }: MentionProps) {
   const own = useRef<HTMLTextAreaElement | null>(null);
+  const dictation = useLocalDictation(value, onValue, own);
   const [m, setM] = useState<{ mark: string; start: number; query: string; x: number; y: number; top: number }>();
   const found = m ? options(m.mark, m.query, people, links) : [];
   const list = useRef<HTMLDivElement>(null);
@@ -283,16 +285,20 @@ export function MentionArea({ value, onValue, people, links = [], boxRef, onKeyD
     else if (boxRef) (boxRef as MutableRefObject<HTMLTextAreaElement | null>).current = el;
   };
   return (
-    <div className="relative">
+    <div data-dictation-panel className="relative">
+      {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview}
+        className="rounded-md border border-slate-300 bg-white !px-2 !py-1.5 !text-sm dark:border-border-strong dark:bg-surface" />}
       <Textarea
         {...rest}
         ref={setRef}
-        value={value}
-        className={className}
+        value={dictation.value}
+        readOnly={rest.readOnly || dictation.active}
+        className={dictation.preview ? "sr-only" : className}
         onChange={(e) => { onValue(e.target.value); look(e.target); }}
-        onClick={(e) => look(e.currentTarget)}
+        onClick={(e) => { if (!dictation.active) look(e.currentTarget); }}
         onBlur={() => setTimeout(() => setM(undefined), 120)}
         onKeyDown={(e) => {
+          if (dictation.active) return;
           if (found.length) {
             if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); setSel((sel + (e.key === "ArrowDown" ? 1 : found.length - 1)) % found.length); return; }
             if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pick(found[sel]); return; }
@@ -301,7 +307,11 @@ export function MentionArea({ value, onValue, people, links = [], boxRef, onKeyD
           onKeyDown?.(e);
         }}
       />
-      {m && found.length > 0 && (
+      <div className="flex items-start justify-end gap-2">
+        <ErrorText error={dictation.error} />
+        <DictationMic dictation={dictation} disabled={rest.disabled || rest.readOnly} />
+      </div>
+      {!dictation.active && m && found.length > 0 && (
         <div ref={list} role="listbox" style={{ left: Math.max(0, Math.min(m.x, (own.current?.clientWidth ?? 400) - (m.mark === "#" ? 352 : 224))), ...(up ? { top: m.top - 4, transform: "translateY(-100%)" } : { top: m.y + 4 }) }} className={`absolute z-30 ${m.mark === "#" ? "w-88" : "w-56"} overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-border dark:bg-surface`}>
           {found.map((p, i) => (
             <button key={p.key} type="button" role="option" aria-selected={i === sel} onMouseDown={(e) => { e.preventDefault(); pick(p); }} onMouseEnter={() => setSel(i)} className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm ${i === sel ? "bg-blue-50 text-blue-700 dark:bg-accent-subtle dark:text-accent-text" : "text-slate-700 dark:text-text"}`}>

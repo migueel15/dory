@@ -1,6 +1,6 @@
 # ADR-005: Suscripción persistente a T3 Code
 
-- Status: accepted
+- Status: superseded by ADR-008
 - Date: 2026-11-06
 
 ## Context
