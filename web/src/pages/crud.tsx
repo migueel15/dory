@@ -122,7 +122,6 @@ export function Environments() {
           <div className="flex flex-wrap items-center gap-2">
             <OsIcon className="size-5" />
             <span className="font-semibold">{n.node.name}</span>
-            <StatusPill tone="green">este nodo</StatusPill>
             <span className="font-mono text-xs text-slate-500">{n.node.platform} · {n.node.version} · huella {mesh.data?.fingerprint}</span>
           </div>
           <p className="mt-1 font-mono text-xs text-slate-500">id {n.node.id} · datos en {n.node.data_dir}</p>

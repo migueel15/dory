@@ -24,7 +24,7 @@ function NewProject({ onClose }: { onClose: () => void }) {
   const [hidden, setHidden] = useState(false);
   const [picked, setPicked] = useState<string>();
   const envs = [
-    ...(node.data ? [{ id: "local", name: `${node.data.node.name} (este equipo)`, online: true }] : []),
+    ...(node.data ? [{ id: "local", name: node.data.node.name, online: true }] : []),
     ...(mesh.data?.peers ?? []).filter((p) => !p.revoked).map((p) => ({ id: p.id, name: p.name, online: p.connected })),
   ];
   const folders = useQuery({ queryKey: ["folders", env?.id, dir, hidden], queryFn: () => api.folders(env!.id, dir, hidden), enabled: !!env && !picked });
@@ -114,7 +114,7 @@ function useEnvironments() {
   const node = useQuery({ queryKey: ["node"], queryFn: api.node });
   const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh });
   const locations = useQuery({ queryKey: ["repository-locations"], queryFn: api.repositoryLocations });
-  const name = (id: string) => id === node.data?.node.id ? `${node.data.node.name} (este equipo)` : mesh.data?.peers.find((p) => p.id === id)?.name ?? id.slice(0, 8);
+  const name = (id: string) => id === node.data?.node.id ? node.data.node.name : mesh.data?.peers.find((p) => p.id === id)?.name ?? id.slice(0, 8);
   return (repoId: string) => (locations.data ?? []).filter((l) => l.repository_id === repoId).map((l) => ({ node: l.node_id, name: name(l.node_id), path: l.path }));
 }
 
