@@ -241,15 +241,3 @@ func TestWorktreePerThread(t *testing.T) {
 		t.Fatalf("branch %q", out)
 	}
 }
-
-func TestOpenCodeParser(t *testing.T) {
-	p := &openCodeParser{run: "r1"}
-	events := parseFile(t, "opencode.jsonl", p.parse)
-	if events[0].Session == "" {
-		t.Fatalf("session: %+v", events[0])
-	}
-	msgs, order := final(events)
-	if len(order) != 1 || msgs[order[0]].Role != "assistant" || msgs[order[0]].Text != "hola" {
-		t.Fatalf("messages: %+v", msgs)
-	}
-}

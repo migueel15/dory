@@ -138,7 +138,7 @@ func toolCall(name string, input json.RawMessage) *ToolCall {
 	case "exitplanmode", "plan_exit":
 		// The plan the agent proposes before acting; the chat shows it as a document.
 		t.Kind, t.Summary = "plan", str("plan")
-	case "askuserquestion":
+	case "askuserquestion", "question":
 		t.Kind = "question"
 		t.Questions = parseQuestions(input)
 	default:
