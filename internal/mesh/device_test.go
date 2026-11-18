@@ -32,7 +32,7 @@ func TestDevicePairing(t *testing.T) {
 	var out map[string]string
 	json.NewDecoder(resp.Body).Decode(&out)
 	resp.Body.Close()
-	if resp.StatusCode != 200 || out["token"] != "secret" || out["proof"] != proof(code, a.m.id.PublicKey(), "device") {
+	if resp.StatusCode != 200 || out["token"] != "secret" || out["proof"] != proof(code, a.m.id.DevicePin, "device") {
 		t.Fatalf("pair: %d %v", resp.StatusCode, out)
 	}
 	if resp = post(code); resp.StatusCode != 403 {

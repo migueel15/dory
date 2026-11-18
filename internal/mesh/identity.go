@@ -4,7 +4,9 @@
 package mesh
 
 import (
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
@@ -25,6 +27,10 @@ import (
 type Identity struct {
 	Key  ed25519.PrivateKey
 	Cert tls.Certificate
+	// DeviceCert serves phones: Android web views do not accept Ed25519 in
+	// TLS, so they get an ECDSA P-256 certificate, pinned by DevicePin.
+	DeviceCert tls.Certificate
+	DevicePin  string
 }
 
 // PublicKey encodes the public key as peers store it.
@@ -85,7 +91,57 @@ func LoadIdentity(dir string) (Identity, error) {
 	if err != nil {
 		return Identity{}, err
 	}
-	return Identity{Key: key, Cert: tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}}, nil
+	id := Identity{Key: key, Cert: tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}}
+	id.DeviceCert, id.DevicePin, err = deviceCert(filepath.Join(dir, "device.key"))
+	return id, err
+}
+
+// deviceCert loads or creates the ECDSA key for phones. The pin is the
+// SHA-256 of its public key info, as Android reports it.
+func deviceCert(path string) (tls.Certificate, string, error) {
+	var key *ecdsa.PrivateKey
+	raw, err := os.ReadFile(path)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		if key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader); err != nil {
+			return tls.Certificate{}, "", err
+		}
+		der, err := x509.MarshalECPrivateKey(key)
+		if err != nil {
+			return tls.Certificate{}, "", err
+		}
+		if err = os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der}), 0o600); err != nil {
+			return tls.Certificate{}, "", err
+		}
+	case err != nil:
+		return tls.Certificate{}, "", err
+	default:
+		block, _ := pem.Decode(raw)
+		if block == nil {
+			return tls.Certificate{}, "", errors.New("mesh: device.key is not PEM")
+		}
+		if key, err = x509.ParseECPrivateKey(block.Bytes); err != nil {
+			return tls.Certificate{}, "", err
+		}
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "dory-node"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(10 * 365 * 24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, key.Public(), key)
+	if err != nil {
+		return tls.Certificate{}, "", err
+	}
+	spki, err := x509.MarshalPKIXPublicKey(key.Public())
+	if err != nil {
+		return tls.Certificate{}, "", err
+	}
+	sum := sha256.Sum256(spki)
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}, base64.RawURLEncoding.EncodeToString(sum[:]), nil
 }
 
 // peerKey extracts the public key a peer presented in TLS.

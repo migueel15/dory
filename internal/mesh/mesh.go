@@ -157,7 +157,7 @@ func (m *Mesh) seen(ctx context.Context, node, address string, info json.RawMess
 func (m *Mesh) Serve(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /peer/v1/hello", func(w http.ResponseWriter, r *http.Request) {
-		reply(w, map[string]string{"node_id": m.log.Node(), "name": m.name, "public_key": m.id.PublicKey()})
+		reply(w, map[string]string{"node_id": m.log.Node(), "name": m.name, "public_key": m.id.PublicKey(), "device_pin": m.id.DevicePin})
 	})
 	mux.HandleFunc("POST /peer/v1/pair", m.acceptPair)
 	mux.HandleFunc("GET /peer/v1/info", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
@@ -252,7 +252,9 @@ func (m *Mesh) Serve(ctx context.Context) error {
 		// Discovery probes open and drop connections; their errors are noise.
 		ErrorLog: log.New(io.Discard, "", 0),
 		TLSConfig: &tls.Config{
-			Certificates: []tls.Certificate{m.id.Cert},
+			// Go picks the first certificate the client supports: nodes get
+			// the Ed25519 one, Android web views the ECDSA one.
+			Certificates: []tls.Certificate{m.id.Cert, m.id.DeviceCert},
 			ClientAuth:   tls.RequestClientCert,
 			MinVersion:   tls.VersionTLS13,
 		},
@@ -430,7 +432,7 @@ func (m *Mesh) Revoke(ctx context.Context, node string) error {
 const devicePairMaxFails = 5
 
 // pairDevice gives a phone that knows the code a token for this node. The
-// proof binds the code to the key of this node, so the phone can tell that
+// proof binds the code to the phone key of this node, so the phone can tell that
 // nobody in the middle answered.
 func (m *Mesh) pairDevice(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -459,7 +461,7 @@ func (m *Mesh) pairDevice(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	reply(w, map[string]string{"node_id": m.log.Node(), "name": m.name, "public_key": m.id.PublicKey(), "token": token, "proof": proof(code, m.id.PublicKey(), "device")})
+	reply(w, map[string]string{"node_id": m.log.Node(), "name": m.name, "pin": m.id.DevicePin, "token": token, "proof": proof(code, m.id.DevicePin, "device")})
 }
 
 // --- client side ------------------------------------------------------------
