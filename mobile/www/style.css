@@ -1,0 +1,21 @@
+:root { color-scheme: light dark; --bg: #f8fafc; --fg: #0f172a; --muted: #64748b; --card: #fff; --line: #e2e8f0; --accent: #2563eb; }
+@media (prefers-color-scheme: dark) { :root { --bg: #0b0d10; --fg: #e5e7eb; --muted: #8b949e; --card: #15181d; --line: #262b33; } }
+* { box-sizing: border-box; }
+body { margin: 0; padding: env(safe-area-inset-top) 16px 24px; background: var(--bg); color: var(--fg); font: 16px/1.4 system-ui, sans-serif; }
+header h1 { margin: 20px 0 0; font-size: 28px; }
+header p, .hint { color: var(--muted); margin: 4px 0 12px; font-size: 14px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 24px 0 8px; }
+ul { list-style: none; margin: 0; padding: 0; }
+li { display: flex; align-items: center; gap: 10px; padding: 14px; margin-bottom: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+li .name { font-weight: 600; }
+li .sub { color: var(--muted); font-size: 12px; font-family: ui-monospace, monospace; }
+li .grow { flex: 1; min-width: 0; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.on { background: #16a34a; }
+.forget { background: none; border: 0; color: var(--muted); font-size: 13px; padding: 6px; }
+form { display: grid; gap: 8px; }
+input { padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font-size: 16px; }
+#code { font-family: ui-monospace, monospace; letter-spacing: .1em; }
+form button { padding: 12px; border: 0; border-radius: 10px; background: var(--accent); color: #fff; font-size: 16px; font-weight: 600; }
+form button:disabled { opacity: .6; }
+.error { color: #dc2626; font-size: 14px; min-height: 1em; }
