@@ -123,6 +123,16 @@ type SkillTargets struct {
 	Harnesses []string `json:"harnesses"`
 }
 
+// RepositoryLocation is where one node keeps a repository, published by that node.
+type RepositoryLocation struct {
+	RepositoryID string  `json:"repository_id"`
+	NodeID       string  `json:"node_id"`
+	Path         string  `json:"path"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
+	ArchivedAt   *string `json:"archived_at"`
+}
+
 // SkillState is what one node really has of a skill, published by that node.
 type SkillState struct {
 	SkillID    string  `json:"skill_id"`

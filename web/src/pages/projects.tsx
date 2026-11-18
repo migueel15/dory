@@ -35,18 +35,14 @@ function NewProject({ onClose }: { onClose: () => void }) {
   if (c && !form) setForm({ name: c.name, slug: slugify(c.name), description: "", remote: c.remote, branch: c.default_branch || "main" });
   const save = useMutation({
     mutationFn: async () => {
-      let projectId = existing?.project_id;
-      if (!projectId) {
-        const p = await api.projects.create({ name: form!.name.trim(), slug: form!.slug || slugify(form!.name), description: form!.description });
-        projectId = p.id;
-      }
-      if (form!.remote.trim()) {
-        const r = existing ?? (await api.repositories.create({ project_id: projectId, remote_url: form!.remote.trim(), default_branch: form!.branch || "main" }));
-        await api.setNodeRepositoryPath(env!.id, r.id, c!.path);
-      }
-      return projectId;
+      const fields = { name: form!.name.trim(), slug: form!.slug || slugify(form!.name), description: form!.description };
+      if (!form!.remote.trim()) return (await api.projects.create(fields)).id;
+      // One project per repository, whatever environment adds it.
+      const r = await api.projectFromRepository({ ...fields, remote_url: form!.remote.trim(), default_branch: form!.branch || "main" });
+      await api.setNodeRepositoryPath(env!.id, r.id, c!.path);
+      return r.project_id;
     },
-    onSuccess: (id) => { qc.invalidateQueries({ queryKey: ["projects"] }); qc.invalidateQueries({ queryKey: ["repositories"] }); setProject(id); onClose(); },
+    onSuccess: (id) => { qc.invalidateQueries({ queryKey: ["projects"] }); qc.invalidateQueries({ queryKey: ["repositories"] }); qc.invalidateQueries({ queryKey: ["repository-locations"] }); setProject(id); onClose(); },
   });
   const row = "flex w-full min-h-11 sm:min-h-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised";
   return (
@@ -113,10 +109,20 @@ function NewProject({ onClose }: { onClose: () => void }) {
   );
 }
 
+// useEnvironments names, by repository id, the environments that keep it and where.
+function useEnvironments() {
+  const node = useQuery({ queryKey: ["node"], queryFn: api.node });
+  const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh });
+  const locations = useQuery({ queryKey: ["repository-locations"], queryFn: api.repositoryLocations });
+  const name = (id: string) => id === node.data?.node.id ? `${node.data.node.name} (este equipo)` : mesh.data?.peers.find((p) => p.id === id)?.name ?? id.slice(0, 8);
+  return (repoId: string) => (locations.data ?? []).filter((l) => l.repository_id === repoId).map((l) => ({ node: l.node_id, name: name(l.node_id), path: l.path }));
+}
+
 // Projects lists the projects and creates new ones.
 export function Projects() {
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list() });
+  const envs = useEnvironments();
   const [adding, setAdding] = useState(false);
   return (
     <div className="space-y-3">
@@ -128,6 +134,7 @@ export function Projects() {
             <p className="flex items-center gap-2 font-medium"><FolderSimple className="size-4" />{p.name}</p>
             {p.description && <p className="mt-1 line-clamp-2 text-sm text-slate-500 dark:text-muted">{p.description}</p>}
             <p className="mt-2 font-mono text-xs text-slate-500">{(repos.data ?? []).filter((r) => r.project_id === p.id).map((r) => repoName(r.remote_url)).join(", ") || "sin repositorio"}</p>
+            {(() => { const names = [...new Set((repos.data ?? []).filter((r) => r.project_id === p.id).flatMap((r) => envs(r.id).map((e) => e.name)))]; return names.length > 0 && <p className="mt-1 flex items-center gap-1 text-xs text-slate-500"><Desktop className="size-3.5" />{names.join(", ")}</p>; })()}
           </Link>
         ))}
       </div>
@@ -182,6 +189,7 @@ export function ProjectDetail() {
   const project = useQuery({ queryKey: ["projects", id], queryFn: () => api.projects.get(id) });
   const repos = useQuery({ queryKey: ["repositories", id], queryFn: () => api.repositories.list({ project_id: id }) });
   const paths = useQuery({ queryKey: ["repositories", "paths"], queryFn: api.repositoryPaths });
+  const envs = useEnvironments();
   const [editing, setEditing] = useState(false);
   const [remote, setRemote] = useState("");
   const add = useMutation({
@@ -201,7 +209,7 @@ export function ProjectDetail() {
         </PageHeader>
         <Card>
           <h2 className="mb-2 font-semibold">Repositorios</h2>
-          {(repos.data ?? []).map((r) => <RepoRow key={r.id} id={r.id} remote={r.remote_url} branch={r.default_branch} path={paths.data?.[r.id] ?? ""} />)}
+          {(repos.data ?? []).map((r) => <RepoRow key={r.id} id={r.id} remote={r.remote_url} branch={r.default_branch} path={paths.data?.[r.id] ?? ""} envs={envs(r.id)} />)}
           <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (remote.trim()) add.mutate(); }}>
             <Input value={remote} onChange={(e) => setRemote(e.target.value)} placeholder="Añadir remoto: git@github.com:usuario/repo.git" />
             <Button disabled={!remote.trim() || add.isPending}>Añadir</Button>
@@ -219,13 +227,14 @@ export function ProjectDetail() {
   );
 }
 
-function RepoRow({ id, remote, branch, path }: { id: string; remote: string; branch: string; path: string }) {
+function RepoRow({ id, remote, branch, path, envs }: { id: string; remote: string; branch: string; path: string; envs: { node: string; name: string; path: string }[] }) {
   const qc = useQueryClient();
   const [value, setValue] = useState(path);
-  const save = useMutation({ mutationFn: () => api.setRepositoryPath(id, value.trim()), onSuccess: () => qc.invalidateQueries({ queryKey: ["repositories", "paths"] }) });
+  const save = useMutation({ mutationFn: () => api.setRepositoryPath(id, value.trim()), onSuccess: () => { qc.invalidateQueries({ queryKey: ["repositories", "paths"] }); qc.invalidateQueries({ queryKey: ["repository-locations"] }); } });
   return (
     <div className="space-y-1 border-t border-slate-200 py-2 first:border-t-0 dark:border-border">
       <p className="flex items-center gap-2 text-sm"><GithubLogo className="size-4" /><span className="font-mono">{repoName(remote)}</span><span className="text-xs text-slate-500">· {branch}</span></p>
+      {envs.map((e) => <p key={e.node} className="flex items-center gap-2 text-xs text-slate-500"><Desktop className="size-3.5 shrink-0" />{e.name}<span className="truncate font-mono">{e.path}</span></p>)}
       <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
         <HardDrive className="size-4 shrink-0 text-slate-400" />
         <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder="Ruta local en este nodo (sin ella no se pueden lanzar hilos aquí)" className="font-mono !text-xs" />

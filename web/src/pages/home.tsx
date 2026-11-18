@@ -29,7 +29,7 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
   const dictation = useLocalDictation(text, setText, box, { panelShortcut: true, onEnter: (draft) => latestSendDraft.current(draft) });
   const showingDictation = !!dictation.preview;
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
-  const form = useLaunchForm({ section: "home" });
+  const form = useLaunchForm({ section: "home" , project });
   useLayoutEffect(() => { const el = box.current; if (el && !showingDictation) { el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 240)}px`; } }, [dictation.value, showingDictation]);
   const start = useMutation({
     mutationFn: async (draft: string) => {

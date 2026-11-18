@@ -203,7 +203,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["dependencies", id] }); refresh(); },
   });
   const archive = useMutation({ mutationFn: () => api.tasks.archive(id), onSuccess: () => { refresh(); onClose(); } });
-  const form = useLaunchForm({ section: "task" });
+  const form = useLaunchForm({ section: "task" , project: c?.project_id });
   const launch = useMutation({
     mutationFn: () => { form.remember(); return api.launch(id, form.value); },
     onSuccess: (r) => navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } }),

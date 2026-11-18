@@ -45,8 +45,13 @@ func (s *Store) SetRepositoryPath(ctx context.Context, repositoryID, path string
 		return err
 	}
 	if path == "" {
-		_, err := s.db.ExecContext(ctx, `DELETE FROM repository_paths WHERE repository_id = ?`, repositoryID)
-		return err
+		if _, err := s.db.ExecContext(ctx, `DELETE FROM repository_paths WHERE repository_id = ?`, repositoryID); err != nil {
+			return err
+		}
+		if err := s.RepositoryLocations().Archive(ctx, repositoryID+"/"+s.log.Node()); !errors.Is(err, ErrNotFound) {
+			return err
+		}
+		return nil
 	}
 	path = filepath.Clean(path)
 	if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
@@ -55,5 +60,33 @@ func (s *Store) SetRepositoryPath(ctx context.Context, repositoryID, path string
 	_, err := s.db.ExecContext(ctx, `INSERT INTO repository_paths(repository_id, path, updated_at) VALUES (?, ?, ?)
 		ON CONFLICT(repository_id) DO UPDATE SET path = excluded.path, updated_at = excluded.updated_at`,
 		repositoryID, path, time.Now().UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return err
+	}
+	return s.publishLocation(ctx, repositoryID, path)
+}
+
+// publishLocation tells the other nodes where this node keeps a repository.
+func (s *Store) publishLocation(ctx context.Context, repositoryID, path string) error {
+	current, err := s.RepositoryLocations().Get(ctx, repositoryID+"/"+s.log.Node())
+	if err == nil && current.Path == path {
+		return nil
+	}
+	_, err = s.RepositoryLocations().Put(ctx, RepositoryLocation{RepositoryID: repositoryID, NodeID: s.log.Node(), Path: path})
 	return err
+}
+
+// PublishLocations publishes the local paths that the other nodes do not
+// know yet, such as those saved before locations replicated.
+func (s *Store) PublishLocations(ctx context.Context) error {
+	paths, err := s.RepositoryPaths(ctx)
+	if err != nil {
+		return err
+	}
+	for id, path := range paths {
+		if err = s.publishLocation(ctx, id, path); err != nil {
+			return err
+		}
+	}
+	return nil
 }

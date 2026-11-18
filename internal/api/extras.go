@@ -12,6 +12,7 @@ import (
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/dictation"
 	"github.com/migueel15/dory/internal/github"
+	"github.com/migueel15/dory/internal/oplog"
 )
 
 func (s *Server) mountRepositoryPaths(mux *http.ServeMux) {
@@ -22,6 +23,36 @@ func (s *Server) mountRepositoryPaths(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, http.StatusOK, paths)
+	})
+	// Every environment that keeps each repository, published by each node.
+	mux.HandleFunc("GET /api/repository-locations", func(w http.ResponseWriter, r *http.Request) {
+		locs, err := s.Store.RepositoryLocations().List(r.Context(), data.Filter{Limit: 1000})
+		if err != nil {
+			writeDataError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, locs)
+	})
+	// A project added from a repository is one project in every environment:
+	// it reuses the project of the repository, or creates one whose id derives
+	// from the remote so two environments offline converge on the same row.
+	mux.HandleFunc("POST /api/projects/from-repository", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Name          string `json:"name"`
+			Slug          string `json:"slug"`
+			Description   string `json:"description"`
+			RemoteURL     string `json:"remote_url"`
+			DefaultBranch string `json:"default_branch"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		repo, err := s.projectFromRepository(r.Context(), body.Name, body.Slug, body.Description, body.RemoteURL, body.DefaultBranch)
+		if err != nil {
+			writeDataError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, repo)
 	})
 	mux.HandleFunc("PUT /api/repositories/{id}/path", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -36,6 +67,28 @@ func (s *Server) mountRepositoryPaths(mux *http.ServeMux) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+func (s *Server) projectFromRepository(ctx context.Context, name, slug, description, remote, branch string) (data.Repository, error) {
+	remote = strings.TrimSpace(remote)
+	if remote == "" {
+		return data.Repository{}, errors.Join(data.ErrInvalid, errors.New("remote_url required"))
+	}
+	if repo, err := s.Store.Repositories().Get(ctx, oplog.RepositoryID(remote)); err == nil {
+		if _, err = s.Store.Projects().Get(ctx, repo.ProjectID); err == nil {
+			return repo, nil
+		}
+	}
+	p, err := s.Store.Projects().Get(ctx, oplog.ProjectID(remote))
+	if err != nil {
+		if p, err = s.Store.Projects().Put(ctx, data.Project{ID: oplog.ProjectID(remote), Name: name, Slug: slug, Description: description}); err != nil {
+			return data.Repository{}, err
+		}
+	}
+	if branch == "" {
+		branch = "main"
+	}
+	return s.Store.Repositories().Put(ctx, data.Repository{ProjectID: p.ID, RemoteURL: remote, DefaultBranch: branch})
 }
 
 func writeGithubError(w http.ResponseWriter, err error) {

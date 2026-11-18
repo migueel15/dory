@@ -6,6 +6,7 @@ export type UpdateStatus = { channel: string; current: string; latest?: string; 
 export type ProviderVersion = { id: string; name: string; current: string; latest?: string; available: boolean };
 export type NodeUpdate = { node: string; name: string; status?: UpdateStatus; error?: string };
 export type Project = { id: string; slug: string; name: string; description: string; created_at: string; updated_at: string; archived_at: string | null };
+export type RepositoryLocation = { repository_id: string; node_id: string; path: string };
 export type Repository = { id: string; project_id: string; remote_url: string; default_branch: string; created_at: string; updated_at: string; archived_at: string | null };
 export type Stage = "inbox" | "ready" | "cancelled";
 export type Task = {
@@ -140,6 +141,8 @@ export const api = {
   me: () => req<User>("GET", "/auth/me"),
   projects: resource<Project, Partial<Project>>("/projects"),
   repositories: resource<Repository, Partial<Repository>>("/repositories"),
+  repositoryLocations: () => req<RepositoryLocation[]>("GET", "/repository-locations"),
+  projectFromRepository: (body: { name: string; slug: string; description: string; remote_url: string; default_branch: string }) => req<Repository>("POST", "/projects/from-repository", body),
   repositoryPaths: () => req<Record<string, string>>("GET", "/repository-paths"),
   setRepositoryPath: (id: string, path: string) => req<void>("PUT", `/repositories/${id}/path`, { path }),
   tasks: resource<Task, TaskInput>("/tasks"),

@@ -97,6 +97,9 @@ func run() error {
 }
 
 func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplog.Log) error {
+	if err := store.PublishLocations(ctx); err != nil {
+		log.Printf("publish repository locations: %v", err)
+	}
 	providers := []runtime.Provider{runtime.Claude{}, runtime.Codex{}, runtime.OpenCode{}}
 	if file := os.Getenv("DORY_REPLAY_FILE"); file != "" {
 		providers = append(providers, runtime.Replay{File: file, Delay: 30 * time.Millisecond})
