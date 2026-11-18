@@ -108,6 +108,8 @@ export const api = {
   pairCode: () => req<{ code: string; expires_at: string; fingerprint: string; port: number }>("POST", "/mesh/pair/code"),
   pair: (address: string, code: string) => req<Peer>("POST", "/mesh/pair", { address, code }),
   revokePeer: (id: string) => req<void>("DELETE", `/mesh/peers/${id}`),
+  devices: () => req<{ id: string; name: string; created_at: string }[]>("GET", "/devices"),
+  revokeDevice: (id: string) => req<void>("DELETE", `/devices/${id}`),
   folders: (node: string, path = "", hidden = false) => req<{ path: string; parent: string; home: string; folders: { name: string; path: string; git: boolean }[] }>("GET", `/nodes/${node}/folders?${new URLSearchParams({ path, ...(hidden && { hidden: "true" }) })}`),
   checkout: (node: string, path: string) => req<{ path: string; name: string; git: boolean; remote: string; default_branch: string }>("GET", `/nodes/${node}/checkout?path=${encodeURIComponent(path)}`),
   setNodeRepositoryPath: (node: string, id: string, path: string) => req<void>("PUT", `/nodes/${node}/repositories/${id}/path`, { path }),

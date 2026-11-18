@@ -107,6 +107,8 @@ export function Environments() {
   const open = useMutation({ mutationFn: api.pairCode, onSuccess: setCode });
   const pair = useMutation({ mutationFn: () => api.pair(address.trim(), typed.trim()), onSuccess: () => { setAddress(""); setTyped(""); qc.invalidateQueries({ queryKey: ["mesh"] }); } });
   const revoke = useMutation({ mutationFn: api.revokePeer, onSuccess: () => qc.invalidateQueries({ queryKey: ["mesh"] }) });
+  const devices = useQuery({ queryKey: ["devices"], queryFn: api.devices, refetchInterval: 15_000 });
+  const revokeDevice = useMutation({ mutationFn: api.revokeDevice, onSuccess: () => qc.invalidateQueries({ queryKey: ["devices"] }) });
   const n = node.data;
   const OsIcon = osIcon(n?.node.os);
   return (
@@ -142,10 +144,10 @@ export function Environments() {
         );
       })}
       <Card>
-        <h2 className="mb-2 font-semibold">Emparejar otro nodo</h2>
+        <h2 className="mb-2 font-semibold">Emparejar otro nodo o un móvil</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2 text-sm">
-            <p className="text-slate-600 dark:text-muted">En este nodo: abre un código y escríbelo en el otro.</p>
+            <p className="text-slate-600 dark:text-muted">En este nodo: abre un código y escríbelo en el otro nodo o en la app del móvil.</p>
             {code ? (
               <div className="rounded-md bg-slate-100 p-3 dark:bg-raised">
                 <p className="font-mono text-2xl tracking-widest">{code.code}</p>
@@ -173,6 +175,19 @@ export function Environments() {
           </div>
         )}
       </Card>
+      {!!devices.data?.length && (
+        <Card>
+          <h2 className="mb-2 font-semibold">Móviles emparejados</h2>
+          {devices.data.map((d) => (
+            <div key={d.id} className="flex items-center gap-2 py-1 text-sm">
+              <span>{d.name}</span>
+              <span className="text-xs text-slate-500">desde {new Date(d.created_at).toLocaleDateString()}</span>
+              <Button variant="ghost" className="ml-auto text-xs" onClick={() => confirm(`¿Revocar ${d.name}? Tendrá que emparejarse de nuevo.`) && revokeDevice.mutate(d.id)}>Revocar</Button>
+            </div>
+          ))}
+          <ErrorText error={revokeDevice.error} />
+        </Card>
+      )}
     </div>
   );
 }
