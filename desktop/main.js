@@ -8,6 +8,14 @@ const os = require("node:os");
 const path = require("node:path");
 const { autoUpdater } = require("electron-updater");
 
+// Chromium names its audio streams "Chromium input" for PulseAudio and
+// PipeWire. The audio service inherits this environment, so the dictation
+// microphone shows up as Dory in wpctl and similar tools.
+if (process.platform === "linux") {
+  const props = "application.name=Dory application.icon_name=dory media.name=Dory";
+  process.env.PULSE_PROP = process.env.PULSE_PROP ? `${process.env.PULSE_PROP} ${props}` : props;
+}
+
 const profile = path.join(os.homedir(), ".dory", "desktop");
 if (fs.existsSync(profile) || !fs.existsSync(path.join(app.getPath("userData"), "Local State"))) {
   fs.mkdirSync(profile, { recursive: true, mode: 0o700 });
