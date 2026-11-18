@@ -148,7 +148,16 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 			DataDir: cfg.DataDir, Listen: cfg.Listen, Platform: goruntime.GOOS + "/" + goruntime.GOARCH},
 	}
 	srv.Remote = net
-	srv.Updater = &update.Updater{DataDir: cfg.DataDir, Active: rt.Active, Providers: rt.UpdateAll, Restart: restartSelf}
+	srv.Updater = &update.Updater{DataDir: cfg.DataDir, Active: rt.Active, Providers: rt.UpdateAll, Restart: restartSelf,
+		Installed: func(ctx context.Context) []update.Installed {
+			var out []update.Installed
+			for _, p := range rt.Providers(ctx) {
+				if p.Installed {
+					out = append(out, update.Installed{ID: p.ID, Name: p.Name, Version: p.Version})
+				}
+			}
+			return out
+		}}
 	srv.Mesh = func(ctx context.Context) []api.MeshNode {
 		peers, _ := net.Peers(ctx)
 		var out []api.MeshNode
