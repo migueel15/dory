@@ -59,10 +59,17 @@ type Mesh struct {
 	Info func(ctx context.Context) any
 	// API serves calls forwarded from peers for threads this node owns.
 	API http.Handler
+	// Web serves the interface and the authenticated API to paired phones.
+	Web http.Handler
+	// IssueDevice creates the token of a phone that showed the pairing code.
+	IssueDevice func(ctx context.Context, name string) (string, error)
+	// DeviceSession trades the token of a phone for a session cookie.
+	DeviceSession http.HandlerFunc
 
-	mu       sync.Mutex
-	pairCode string
-	pairExp  time.Time
+	mu        sync.Mutex
+	pairCode  string
+	pairExp   time.Time
+	pairFails int
 	wake     map[string]chan struct{}
 	stop     map[string]context.CancelFunc
 	found    map[string]Found
@@ -221,6 +228,23 @@ func (m *Mesh) Serve(ctx context.Context) error {
 		r2.RequestURI = ""
 		m.API.ServeHTTP(w, r2)
 	}))
+	// Phones pair with the same code as nodes and then use the interface
+	// over this TLS port; they present no client certificate.
+	mux.HandleFunc("POST /device/v1/pair", m.pairDevice)
+	mux.HandleFunc("POST /device/v1/session", func(w http.ResponseWriter, r *http.Request) {
+		if m.DeviceSession == nil {
+			http.NotFound(w, r)
+			return
+		}
+		m.DeviceSession(w, r)
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if m.Web == nil {
+			http.NotFound(w, r)
+			return
+		}
+		m.Web.ServeHTTP(w, r)
+	})
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", m.port),
 		Handler:           mux,
@@ -229,7 +253,7 @@ func (m *Mesh) Serve(ctx context.Context) error {
 		ErrorLog: log.New(io.Discard, "", 0),
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{m.id.Cert},
-			ClientAuth:   tls.RequireAnyClientCert,
+			ClientAuth:   tls.RequestClientCert,
 			MinVersion:   tls.VersionTLS13,
 		},
 	}
@@ -399,6 +423,43 @@ func (m *Mesh) Revoke(ctx context.Context, node string) error {
 	}
 	m.mu.Unlock()
 	return err
+}
+
+// devicePairMaxFails closes pairing after this many wrong codes, so the
+// code cannot be guessed by trying.
+const devicePairMaxFails = 5
+
+// pairDevice gives a phone that knows the code a token for this node. The
+// proof binds the code to the key of this node, so the phone can tell that
+// nobody in the middle answered.
+func (m *Mesh) pairDevice(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Code string `json:"code"`
+		Name string `json:"name"`
+	}
+	if m.IssueDevice == nil || json.NewDecoder(io.LimitReader(r.Body, 8192)).Decode(&req) != nil || req.Code == "" {
+		http.Error(w, "bad request", 400)
+		return
+	}
+	m.mu.Lock()
+	valid := m.pairCode != "" && time.Now().Before(m.pairExp) && hmac.Equal([]byte(req.Code), []byte(m.pairCode))
+	if valid {
+		m.pairCode = ""
+	} else if m.pairFails++; m.pairFails >= devicePairMaxFails {
+		m.pairCode = ""
+	}
+	code := req.Code
+	m.mu.Unlock()
+	if !valid {
+		http.Error(w, "wrong or expired code", 403)
+		return
+	}
+	token, err := m.IssueDevice(r.Context(), req.Name)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	reply(w, map[string]string{"node_id": m.log.Node(), "name": m.name, "public_key": m.id.PublicKey(), "token": token, "proof": proof(code, m.id.PublicKey(), "device")})
 }
 
 // --- client side ------------------------------------------------------------

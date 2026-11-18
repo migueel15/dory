@@ -108,3 +108,34 @@ func (a Accounts) CreateToken(ctx context.Context, t auth.Token) error {
 		newID(), t.UserID, t.Name, t.SecretHash, string(permissions), expires, now, now)
 	return err
 }
+
+var _ auth.DeviceStore = Accounts{}
+
+// OwnerID is the first account of the node: one person owns each mesh.
+func (a Accounts) OwnerID(ctx context.Context) (id string, err error) {
+	err = a.db.QueryRowContext(ctx, `SELECT id FROM users WHERE archived_at IS NULL ORDER BY created_at LIMIT 1`).Scan(&id)
+	return id, notFound(err)
+}
+
+func (a Accounts) ListTokens(ctx context.Context, prefix string) ([]auth.Device, error) {
+	rows, err := a.db.QueryContext(ctx, `SELECT id, name, created_at FROM api_tokens WHERE archived_at IS NULL AND substr(name, 1, ?) = ? ORDER BY created_at`, len(prefix), prefix)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []auth.Device{}
+	for rows.Next() {
+		var d auth.Device
+		if err = rows.Scan(&d.ID, &d.Name, &d.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+func (a Accounts) RevokeToken(ctx context.Context, id string) error {
+	now := stamp(time.Now())
+	_, err := a.db.ExecContext(ctx, `UPDATE api_tokens SET archived_at = ?, updated_at = ? WHERE id = ? AND archived_at IS NULL`, now, now, id)
+	return err
+}

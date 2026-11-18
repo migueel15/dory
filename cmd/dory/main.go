@@ -155,15 +155,22 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	notices.Mount(mux)
 	srv.Register(mux)
 	auth.Register(mux, store.Accounts(), cfg)
+	auth.RegisterDevices(mux, store.Accounts())
 	mux.Handle("/mcp", mcp.Handler(srv))
 	mux.Handle("/", web.Handler())
 	control, err := controlToken(cfg.DataDir)
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: cfg.Listen, Handler: compress.Middleware(meshControl(control, mux, auth.Middleware(store.Accounts(), cfg, agentToken)(mux))),
+	authed := auth.Middleware(store.Accounts(), cfg, agentToken)(mux)
+	server := &http.Server{Addr: cfg.Listen, Handler: compress.Middleware(meshControl(control, mux, authed)),
 		ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	net.API = mux
+	net.Web = compress.Middleware(authed)
+	net.IssueDevice = func(ctx context.Context, name string) (string, error) {
+		return auth.IssueDevice(ctx, store.Accounts(), name)
+	}
+	net.DeviceSession = func(w http.ResponseWriter, r *http.Request) { auth.DeviceSession(w, r, store.Accounts(), cfg) }
 	net.Info = func(ctx context.Context) any {
 		return map[string]any{"node": srv.Node, "providers": rt.Providers(ctx)}
 	}
