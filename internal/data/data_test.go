@@ -138,3 +138,19 @@ func TestBlockers(t *testing.T) {
 		t.Fatalf("cancelled task still blocks: %+v", blockers)
 	}
 }
+
+func TestRepositoryLocationPutGet(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	node := s.log.Node()
+	if _, err := s.RepositoryLocations().Put(ctx, RepositoryLocation{RepositoryID: "r1", NodeID: node, Path: "/src/r1"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.RepositoryLocations().Get(ctx, "r1/"+node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Path != "/src/r1" {
+		t.Fatalf("path = %q", got.Path)
+	}
+}

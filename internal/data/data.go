@@ -266,7 +266,7 @@ func (s *Store) query(ctx context.Context, entity string, f Filter) ([]json.RawM
 		args = append(args, v)
 	}
 	table := map[string]string{"project": "projects", "repository": "repositories", "task": "tasks",
-		"task_dependency": "task_dependencies", "plan": "plans", "memory": "memories", "thread": "threads", "skill": "skills", "skill_state": "skill_states"}[entity]
+		"task_dependency": "task_dependencies", "plan": "plans", "memory": "memories", "thread": "threads", "skill": "skills", "skill_state": "skill_states", "repository_location": "repository_locations"}[entity]
 	query := fmt.Sprintf("SELECT json_object(%s) FROM %s WHERE %s ORDER BY created_at, %s LIMIT ? OFFSET ?",
 		strings.Join(pairs, ", "), table, strings.Join(where, " AND "), strings.Join(key, ", "))
 	rows, err := s.db.QueryContext(ctx, query, append(args, f.Limit, f.Offset)...)
