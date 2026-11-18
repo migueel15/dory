@@ -78,9 +78,6 @@ jobs:
       - name: Bundle the core
         shell: bash
         run: mkdir -p desktop/bin && cp out/${{ matrix.bin }} desktop/bin/${{ matrix.name }} && chmod +x desktop/bin/${{ matrix.name }}
-      - name: Install bsdtar for the pacman package
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libarchive-tools
       - name: Version the app
         shell: bash
         run: |
@@ -94,8 +91,6 @@ jobs:
           name: desktop-${{ matrix.os }}
           path: |
             desktop/dist/*.AppImage
-            desktop/dist/*.pacman
-            desktop/dist/*.deb
             desktop/dist/*.dmg
             desktop/dist/*.exe
             desktop/dist/*.zip

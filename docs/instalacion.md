@@ -40,7 +40,7 @@ go build -o desktop/bin/dory ./cmd/dory
 cd desktop && npm ci && npm run dist
 ```
 
-Genera AppImage, paquete de pacman y .deb en Linux, .dmg en macOS e instalador NSIS en Windows. Las releases de GitHub las publican ya hechas.
+Genera AppImage en Linux (el único formato que se actualiza solo), .dmg en macOS e instalador NSIS en Windows. Las releases de GitHub las publican ya hechas.
 
 ## App de Android
 

@@ -29,13 +29,10 @@
     ],
     "linux": {
       "target": [
-        "AppImage",
-        "pacman",
-        "deb"
+        "AppImage"
       ],
       "category": "Development",
-      "icon": "build/icon.png",
-      "maintainer": "Dory <dory@dorlab.net>"
+      "icon": "build/icon.png"
     },
     "mac": {
       "target": [
