@@ -1,20 +1,43 @@
 # Binaries and desktop apps for every channel (requirement 4.6):
 # - a tag v* publishes a stable release,
-# - each push to main refreshes the "nightly" release,
-# - each push to a pull request branch leaves the builds as workflow artifacts.
+# - once a day, if main changed, the "nightly" release is refreshed (it can
+#   also be run by hand),
+# - a pull request only runs the tests and the core binaries, to save minutes
+#   (macOS counts x10 and Windows x2).
 name: release
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
   pull_request:
 
 permissions:
   contents: write
 
 jobs:
+  # The daily run is skipped when the nightly already points at this commit.
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          build=true
+          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+            current=$(gh api "repos/$GITHUB_REPOSITORY/commits/nightly" -q .sha 2>/dev/null || true)
+            [ "$current" = "$GITHUB_SHA" ] && build=false
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
   binaries:
+    needs: check
+    if: needs.check.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +60,7 @@ jobs:
 
   desktop:
     needs: binaries
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -79,7 +103,8 @@ jobs:
             desktop/dist/latest*.yml
 
   publish:
-    if: github.event_name == 'push'
+    # Only main and the tags publish; a manual run on another branch only builds.
+    if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main')
     needs: [binaries, desktop]
     runs-on: ubuntu-latest
     steps:
