@@ -48,6 +48,8 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, threads)
 	})
 	mux.HandleFunc("POST /api/threads", s.createThread)
+	// A thread runs where it is created: the mesh forwards it to the chosen node.
+	mux.HandleFunc("POST /api/nodes/{node}/threads", s.onNode(s.createThread))
 	mux.HandleFunc("GET /api/threads/{id}", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		msgs, err := s.Runtime.Messages(r.Context(), t.ID)
 		if err != nil {
@@ -251,7 +253,10 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 	var path string
 	if body.RepositoryID != "" {
 		var err error
-		if path, err = s.Store.RepositoryPath(ctx, body.RepositoryID); err != nil && !errors.Is(err, data.ErrNotFound) {
+		if path, err = s.Store.RepositoryPath(ctx, body.RepositoryID); errors.Is(err, data.ErrNotFound) {
+			writeError(w, http.StatusBadRequest, "repository_not_cloned", "el repositorio no está clonado en este nodo")
+			return
+		} else if err != nil {
 			writeDataError(w, err)
 			return
 		}

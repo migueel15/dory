@@ -22,6 +22,10 @@ Los nodos que aparecen en «Nodos encontrados en la red» se ven por la red loca
 
 En la app de Android, el código de **Mostrar código** sirve igual que entre nodos. Mira [Instalación](instalacion.md#app-de-android).
 
+## Elegir el nodo de un hilo
+
+Al crear un hilo, el selector **Nodo** muestra este nodo y los nodos emparejados conectados. El hilo se ejecuta en el nodo elegido, con sus agentes y su copia del repositorio. Si el repositorio no está clonado en ese nodo, el hilo no se crea y aparece un error.
+
 ## Qué se replica
 
 - **Se replica:** proyectos, repositorios, tareas, dependencias, planes, memorias, skills y su estado por nodo, y la organización de los hilos (título, fijado, leído, tarea).

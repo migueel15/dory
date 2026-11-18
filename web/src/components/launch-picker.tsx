@@ -12,15 +12,26 @@ const stored = (section: string): Partial<LaunchChoice> => {
   try { return JSON.parse(localStorage.getItem(`${KEY}.${section}`) ?? "{}"); } catch { return {}; }
 };
 
-// useProviders lists the harnesses installed on this node.
-export function useProviders() {
-  return useQuery({ queryKey: ["node"], queryFn: api.node, staleTime: 60_000, select: (n) => n.providers.filter((p) => p.installed) });
+// useProviders lists the harnesses installed on a node, this one by default.
+export function useProviders(node = "local") {
+  const local = useQuery({ queryKey: ["node"], queryFn: api.node, staleTime: 60_000, select: (n) => n.providers.filter((p) => p.installed), enabled: node === "local" });
+  const remote = useQuery({ queryKey: ["node-providers", node], queryFn: () => api.nodeProviders(node), staleTime: 60_000, select: (ps) => ps.filter((p) => p.installed), enabled: node !== "local" });
+  return node === "local" ? local : remote;
+}
+
+// useNodes lists where a new thread can run: this node and the connected peers.
+export function useNodes() {
+  const status = useQuery({ queryKey: ["node"], queryFn: api.node, staleTime: 60_000 });
+  const peers = (status.data?.peers ?? []).filter((p) => p.connected && !p.revoked);
+  return [{ value: "local", label: status.data?.node.name ?? "Este nodo" }, ...peers.map((p) => ({ value: p.id, label: p.name }))];
 }
 
 // useLaunchForm picks provider, model, effort and access for a new thread.
 // The last selected model is shared across launch forms. Permissions stay per section.
 export function useLaunchForm({ section }: { section: string; repo?: string }) {
-  const providers = useProviders();
+  const [node, setNode] = useState("local");
+  const nodes = useNodes();
+  const providers = useProviders(node);
   const [draft, setDraft] = useState<Partial<LaunchChoice>>(() => ({ runtime_mode: stored(section).runtime_mode }));
   const last = lastModel() ?? stored(section);
   const list = (providers.data ?? []).map((p) => ({ ...p, models: explicitModels(p.models) })).filter((p) => p.models.length > 0);
@@ -28,6 +39,7 @@ export function useLaunchForm({ section }: { section: string; repo?: string }) {
   const model = provider && (findModel(provider.models, draft.model ?? last.model ?? "") ?? provider.models[0]);
   const draftEffort = draft.effort ?? "";
   const value: LaunchChoice = {
+    node,
     provider: provider?.id ?? "",
     model: model ? modelId(model) : "",
     effort: model && provider
@@ -44,6 +56,11 @@ export function useLaunchForm({ section }: { section: string; repo?: string }) {
   };
   const fields = (
     <div className="grid gap-2 sm:grid-cols-2">
+      {nodes.length > 1 && (
+        <Label text="Nodo">
+          <Select value={node} onChange={setNode} options={nodes} />
+        </Label>
+      )}
       <Label text="Agente">
         <Select value={value.provider} onChange={(v) => { const first = list.find((p) => p.id === v)?.models[0]; if (first) selectModel(v, first); }}
           options={list.map((p) => ({ value: p.id, label: `${p.name}${p.version ? ` · ${p.version.split(" ")[0]}` : ""}`, icon: <ProviderIcon driver={p.id} /> }))} />
@@ -63,7 +80,7 @@ export function useLaunchForm({ section }: { section: string; repo?: string }) {
     </div>
   );
   return {
-    fields, value, selectModel, setRuntimeMode, providers: list, ready: !!model, error: providers.error,
+    fields, value, nodes, setNode, selectModel, setRuntimeMode, providers: list, ready: !!model, error: providers.error,
     remember: () => { try { localStorage.setItem(`${KEY}.${section}`, JSON.stringify({ ...stored(section), runtime_mode: value.runtime_mode })); } catch { /* per browser only */ } },
   };
 }

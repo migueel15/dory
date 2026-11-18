@@ -67,4 +67,5 @@ Dory nunca pisa una carpeta o un fichero que no escribió (por ejemplo, enlaces 
 ## Entornos y uso
 
 - **Entornos:** muestra este nodo y los emparejados, con sus agentes, su versión y si tienen sesión. Desde aquí se inicia sesión o se actualiza un agente en cualquier nodo conectado.
+  Para iniciar sesión en Claude Code desde el móvil, elige el nodo, pulsa **Iniciar sesión** en Claude y abre el enlace que aparece. Si Claude muestra un código de autorización, vuelve a Dory, pégalo en **Código de autorización** y pulsa **Confirmar código**. El código se envía al proceso de Claude Code del nodo seleccionado. La tarjeta actualiza el estado cuando el proceso termina.
 - **Uso:** muestra lo que queda en cada ventana (5 horas y semanal) según lo último que informó cada proveedor.

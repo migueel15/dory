@@ -1,11 +1,11 @@
 package runtime
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -59,13 +59,15 @@ func (o OpenCode) UpdateCommand() []string { return []string{o.bin(), "upgrade"}
 // Job is a harness command started from the interface, such as a login that
 // prints a URL and a code and waits for the browser.
 type Job struct {
-	ID       string    `json:"id"`
-	Provider string    `json:"provider"`
-	Kind     string    `json:"kind"`
-	Output   string    `json:"output"`
-	Done     bool      `json:"done"`
-	Error    string    `json:"error,omitempty"`
-	Started  time.Time `json:"started"`
+	ID          string    `json:"id"`
+	Provider    string    `json:"provider"`
+	Kind        string    `json:"kind"`
+	Output      string    `json:"output"`
+	Done        bool      `json:"done"`
+	Error       string    `json:"error,omitempty"`
+	Started     time.Time `json:"started"`
+	AcceptsCode bool      `json:"accepts_code"`
+	input       *os.File
 }
 
 type jobs struct {
@@ -103,30 +105,69 @@ func (m *Manager) StartJob(provider, kind string) (*Job, error) {
 	default:
 		return nil, errors.New("unknown job " + kind)
 	}
-	j := &Job{ID: strings.ToLower(rand.Text()[:10]), Provider: provider, Kind: kind, Started: time.Now()}
+	j := &Job{ID: strings.ToLower(rand.Text()), Provider: provider, Kind: kind, Started: time.Now()}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
-	cmd.Stdin = bytes.NewReader(nil)
+	if provider == "claude" && kind == "login" {
+		reader, writer, err := os.Pipe()
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		defer reader.Close()
+		cmd.Stdin = reader
+		j.input = writer
+		j.AcceptsCode = true
+	}
 	cmd.Stdout, cmd.Stderr = jobOutput{j}, jobOutput{j}
 	if err := cmd.Start(); err != nil {
+		if j.input != nil {
+			j.input.Close()
+		}
 		cancel()
 		return nil, err
 	}
 	running.mu.Lock()
 	running.list[j.ID] = j
+	snapshot := *j
 	running.mu.Unlock()
 	go func() {
 		defer cancel()
 		err := cmd.Wait()
 		running.mu.Lock()
 		j.Done = true
+		j.AcceptsCode = false
+		if j.input != nil {
+			j.input.Close()
+			j.input = nil
+		}
 		if err != nil {
 			j.Error = err.Error()
 		}
 		running.mu.Unlock()
 		m.invalidate()
 	}()
-	return j, nil
+	return &snapshot, nil
+}
+
+var ErrJobInputClosed = errors.New("el intento ya no admite códigos")
+
+// SubmitLoginCode writes a single authorization code to the active CLI.
+func (m *Manager) SubmitLoginCode(id, code string) error {
+	running.mu.Lock()
+	defer running.mu.Unlock()
+	j, ok := running.list[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if !j.AcceptsCode || j.input == nil {
+		return ErrJobInputClosed
+	}
+	j.AcceptsCode = false
+	if _, err := j.input.WriteString(code + "\n"); err != nil {
+		return ErrJobInputClosed
+	}
+	return nil
 }
 
 // JobState returns a copy of a job.

@@ -88,6 +88,7 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
                 const model = models.find((m) => m.value === value);
                 if (model) form.selectModel(model.provider, model.model, effort);
               }} />
+            {form.nodes.length > 1 && <Chip below title="Nodo" value={form.value.node} onChange={form.setNode} options={form.nodes} />}
             <Chip below title="Proyecto" icon={<Folder className="size-4 shrink-0" />} value={project} onChange={setProject}
               options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
             <Chip below title="Permisos" value={form.value.runtime_mode} options={runtimeModes}

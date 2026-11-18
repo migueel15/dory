@@ -49,7 +49,7 @@ export type Model = { slug: string; name: string; efforts?: string[]; resolved_m
 export type Provider = { id: string; name: string; installed: boolean; version: string; models: Model[]; capabilities: string[]; logged_in?: boolean; account?: string };
 // External is a conversation started in a harness, outside Dory.
 export type External = { provider: string; id: string; title: string; dir: string; branch?: string; updated_at: string; project_id: string | null; thread_id?: string };
-export type Job = { id: string; provider: string; kind: "login" | "update"; output: string; done: boolean; error?: string };
+export type Job = { id: string; provider: string; kind: "login" | "update"; output: string; done: boolean; accepts_code?: boolean; error?: string };
 export type Skill = { id: string; name: string; description: string; body_md: string; files: Record<string, string>; version: number; targets: { nodes: string[] | null; harnesses: string[] | null }; created_at: string; updated_at: string; archived_at: string | null };
 export type SkillState = { skill_id: string; node_id: string; status: "synced" | "pending" | "error" | "conflict" | "removed"; version: number; message: string; updated_at: string };
 export type UsageWindow = { kind: string; utilization: number; resets_at: string };
@@ -96,7 +96,7 @@ function resource<T extends { id: string }, I>(path: string) {
 }
 
 export type NewThread = {
-  project_id?: string | null; task_id?: string | null; repository_id?: string; provider: string; model?: string; effort?: string;
+  node?: string; project_id?: string | null; task_id?: string | null; repository_id?: string; provider: string; model?: string; effort?: string;
   runtime_mode?: Thread["runtime_mode"]; title?: string; text?: string; worktree?: boolean; branch?: string; base_branch?: string;
 };
 export type Launch = { provider: string; model?: string; effort?: string; runtime_mode?: Thread["runtime_mode"]; base_branch?: string; text?: string };
@@ -119,6 +119,7 @@ export const api = {
   nodeProviders: (node: string) => req<Provider[]>("GET", `/nodes/${node}/providers`),
   providerJob: (node: string, provider: string, kind: Job["kind"]) => req<Job>("POST", `/nodes/${node}/providers/${provider}/${kind}`),
   job: (node: string, id: string) => req<Job>("GET", `/nodes/${node}/jobs/${id}`),
+  submitLoginCode: (node: string, id: string, code: string) => req<void>("POST", `/nodes/${node}/jobs/${id}/code`, { code }),
   skills: () => req<Skill[]>("GET", "/skills"),
   skillStates: () => req<SkillState[]>("GET", "/skills/states"),
   saveSkill: (s: Partial<Skill>) => (s.id ? req<Skill>("PUT", `/skills/${s.id}`, s) : req<Skill>("POST", "/skills", s)),
@@ -147,7 +148,7 @@ export const api = {
   memories: resource<Memory, MemoryInput>("/memories"),
   threads: (filter?: Record<string, unknown>, archived = false) => req<Thread[]>("GET", "/threads" + q(filter, archived)),
   thread: (id: string) => req<ThreadView>("GET", `/threads/${id}`),
-  createThread: (body: NewThread) => req<{ thread_id: string }>("POST", "/threads", body),
+  createThread: ({ node, ...body }: NewThread) => req<{ thread_id: string }>("POST", `/nodes/${node || "local"}/threads`, body),
   send: (id: string, text: string, files: string[] = []) => req<void>("POST", `/threads/${id}/messages`, { text, files }),
   upload: async (id: string, file: File) => {
     const form = new FormData();
@@ -185,7 +186,7 @@ export const api = {
 export type PullReview = { path: string; patch_hash: string; reviewed_at: string };
 export type PullAgent = { available: boolean; thread_id?: string };
 // LaunchChoice is where and how a new thread runs.
-export type LaunchChoice = { provider: string; model: string; effort: string; runtime_mode: Thread["runtime_mode"] };
+export type LaunchChoice = { node: string; provider: string; model: string; effort: string; runtime_mode: Thread["runtime_mode"] };
 
 export const COLUMN_LABELS: Record<Column, string> = {
   inbox: "Inbox", ready: "Ready", working: "Working", needs_you: "Needs you",
