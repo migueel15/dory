@@ -357,6 +357,12 @@ func codexRecord(line []byte, emit func(Message), out []Message, index map[strin
 			switch o := p.Output.(type) {
 			case string:
 				m.Text = clip(o, 4000)
+				if m.Tool != nil && m.Tool.Kind == "question" {
+					t := *m.Tool
+					if qs, ok := codexAnswers(t.Questions, o); ok {
+						t.Questions, m.Tool, m.Text = qs, &t, ""
+					}
+				}
 			default:
 				raw, _ := json.Marshal(o)
 				m.Text = clip(string(raw), 4000)

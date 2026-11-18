@@ -18,8 +18,10 @@ Un evento `Request` (id, tipo `question` y, más adelante, `permission`, y las p
 
 Claude Code se lanza con `--input-format stream-json --permission-prompt-tool stdio`, hablando el protocolo directamente desde Go, sin el SDK. Ante un `control_request` `can_use_tool` de `AskUserQuestion` se crea la petición, y se contesta con `allow` y `updatedInput.answers` (pregunta → respuesta; varias opciones se unen con ", "). Con acceso total, el resto de herramientas se permite; sin él, se rechazan como antes, hasta que haya aprobaciones en Dory. Ya no se desactiva `AskUserQuestion`.
 
+Codex se lanza con `codex app-server --enable default_mode_request_user_input`, hablando su JSON-RPC por stdio: `initialize`, `thread/start` o `thread/resume` con el id de sesión guardado, y `turn/start`. Sus items se traducen a los mismos `ToolCall` que los de `codex exec --json`. La herramienta `request_user_input` solo existe en el modo por defecto con esa opción experimental. `item/tool/requestUserInput` se convierte en la petición, y la respuesta lleva las respuestas por id de pregunta. Las aprobaciones no deberían llegar, porque se usa `approvalPolicy: never`; si llegan, se rechazan.
+
 El chat dibuja la pregunta nativa como una tarjeta con las preguntas y sus respuestas, sin burbuja del usuario. El formulario abierto va anclado encima del composer. Los hilos antiguos y los arneses sin sesión siguen usando `ask_user`.
 
 ## Consequences
 
-Un arnés con sesión interactiva solo tiene que implementar `Interactive` para pausar el turno. Codex (`app-server`) y OpenCode irán en pasos posteriores; mientras tanto siguen con `ask_user`. Si el nodo se reinicia con una pregunta pendiente, el turno se pierde y el hilo queda en error. Las peticiones de permiso podrán usar la misma vía.
+Un arnés con sesión interactiva solo tiene que implementar `Interactive` para pausar el turno. OpenCode irá en un paso posterior; mientras tanto sigue con `ask_user`. Si Codex quita o cambia la opción experimental `default_mode_request_user_input`, sus preguntas volverán a terminar el turno. Si el nodo se reinicia con una pregunta pendiente, el turno se pierde y el hilo queda en error. Las peticiones de permiso podrán usar la misma vía.

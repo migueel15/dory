@@ -170,6 +170,7 @@ func mcpName(name string) (server, tool string, ok bool) {
 func parseQuestions(input json.RawMessage) []Question {
 	var in struct {
 		Questions []struct {
+			ID          string   `json:"id"`
 			Question    string   `json:"question"`
 			Header      string   `json:"header"`
 			Options     []Option `json:"options"`
@@ -180,7 +181,7 @@ func parseQuestions(input json.RawMessage) []Question {
 	_ = json.Unmarshal(input, &in)
 	var out []Question
 	for _, q := range in.Questions {
-		out = append(out, Question{Question: q.Question, Header: q.Header, Options: q.Options, MultiSelect: q.MultiSelect || q.Multi})
+		out = append(out, Question{ID: q.ID, Question: q.Question, Header: q.Header, Options: q.Options, MultiSelect: q.MultiSelect || q.Multi})
 	}
 	return out
 }
@@ -262,8 +263,30 @@ func codexTool(name, args string) *ToolCall {
 			t.Todos = append(t.Todos, Todo{Text: x.Step, Status: x.Status})
 		}
 		return t
+	case "request_user_input":
+		return &ToolCall{Kind: "question", Name: name, Questions: parseQuestions(json.RawMessage(args))}
 	}
 	return toolCall(name, json.RawMessage(args))
+}
+
+// codexAnswers sets on a copy of the questions the answers of a
+// request_user_input result: {"answers": {"<question id>": {"answers": [...]}}}.
+func codexAnswers(qs []Question, output string) ([]Question, bool) {
+	var res struct {
+		Answers map[string]struct {
+			Answers []string `json:"answers"`
+		} `json:"answers"`
+	}
+	if json.Unmarshal([]byte(output), &res) != nil || len(res.Answers) == 0 {
+		return qs, false
+	}
+	out := append([]Question(nil), qs...)
+	for i, q := range out {
+		if a, ok := res.Answers[q.ID]; ok {
+			out[i].Answer = a.Answers
+		}
+	}
+	return out, true
 }
 
 // patchFiles reads the files and line changes of an apply_patch envelope.

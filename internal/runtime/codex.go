@@ -3,13 +3,12 @@ package runtime
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"os"
-	"os/exec"
 	"strings"
 )
 
-// Codex runs "codex exec --json"; a later turn resumes the same session.
+// Codex runs turns over "codex app-server" (codex_app.go); a later turn
+// resumes the same thread. codexParser maps the items of "codex exec --json",
+// which app-server items are converted to.
 type Codex struct{ Bin string }
 
 func (Codex) ID() string { return "codex" }
@@ -34,36 +33,6 @@ func (c Codex) Detect(ctx context.Context) Status {
 		}
 	}
 	return status
-}
-
-func (c Codex) Run(ctx context.Context, t Turn) (<-chan Event, error) {
-	args := []string{"exec"}
-	if t.Session != "" {
-		args = append(args, "resume", t.Session)
-	}
-	args = append(args, "--json", "--skip-git-repo-check")
-	if t.Model != "" {
-		args = append(args, "--model", t.Model)
-	}
-	if t.Effort != "" {
-		args = append(args, "-c", fmt.Sprintf("model_reasoning_effort=%q", t.Effort))
-	}
-	if t.FullAccess {
-		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
-	} else if t.Session == "" {
-		args = append(args, "--sandbox", "workspace-write")
-	}
-	cmd := exec.CommandContext(ctx, c.bin(), append(args, "-")...)
-	cmd.Dir = t.Dir
-	cmd.Env = os.Environ()
-	if t.MCPURL != "" {
-		cmd.Args = append(cmd.Args[:len(cmd.Args)-1],
-			"-c", fmt.Sprintf("mcp_servers.dory.url=%q", t.MCPURL),
-			"-c", `mcp_servers.dory.bearer_token_env_var="DORY_MCP_TOKEN"`, "-")
-		cmd.Env = append(cmd.Env, "DORY_MCP_TOKEN="+t.MCPToken)
-	}
-	p := &codexParser{run: t.RunID}
-	return stream(ctx, cmd, t.Text, p.parse)
 }
 
 type codexParser struct {
