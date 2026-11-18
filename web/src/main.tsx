@@ -11,6 +11,7 @@ import { Button, Input, Label, errMsg } from "./components/ui";
 import { Environments, Memories, memorySearch } from "./pages/crud";
 import { CommandPalette, CommandsButton } from "./components/commands";
 import { TooltipHost } from "./components/tooltip";
+import { MeshUpdateButton } from "./components/mesh-update";
 import { ProjectSwitcher } from "./components/project-switcher";
 import { NoticesToggle } from "./components/notices";
 import { Home } from "./pages/home";
@@ -177,7 +178,7 @@ function Layout() {
         </div>
         <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-3 pb-4">{navLinks(folded)}</nav>
         <div className="shrink-0 px-3 pb-2"><ProjectSwitcher folded={folded} /></div>
-        <SidebarFooter folded={folded} username={me.data.username} onLogout={() => logout.mutate()} update={null}
+        <SidebarFooter folded={folded} username={me.data.username} onLogout={() => logout.mutate()} update={<MeshUpdateButton />}
           controls={[<NoticesToggle key="n" />, <ThemeToggle key="t" />, <SettingsLink key="settings" />, <UsageQuick key="u" />]} />
       </aside>
       {/* On desktop the current view is a card framed by the sidebar background. */}

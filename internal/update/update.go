@@ -56,6 +56,21 @@ type Status struct {
 	ActiveTurns int    `json:"active_turns"`
 	State       string `json:"state"`
 	Error       string `json:"error,omitempty"`
+	// Providers are the harnesses of this node and the release npm offers.
+	Providers []ProviderVersion `json:"providers"`
+}
+
+// Pending reports whether the core or any harness has a newer release.
+func (s Status) Pending() bool {
+	if s.Available {
+		return true
+	}
+	for _, p := range s.Providers {
+		if p.Available {
+			return true
+		}
+	}
+	return false
 }
 
 // Options of an update.
@@ -74,6 +89,8 @@ type Updater struct {
 	Active func() int
 	// Providers updates the harnesses and returns the ones that failed.
 	Providers func(ctx context.Context) map[string]string
+	// Installed lists the harnesses installed here with their versions.
+	Installed func(ctx context.Context) []Installed
 	// Restart starts the new binary once it is in place.
 	Restart func()
 
@@ -99,6 +116,10 @@ func (u *Updater) Status(ctx context.Context) Status {
 	}
 	fresh := time.Since(u.checked) < checkTTL
 	u.mu.Unlock()
+	st.Providers = []ProviderVersion{}
+	if u.Installed != nil {
+		st.Providers = providerVersions(ctx, u.Installed(ctx))
+	}
 	if info.Channel == "dev" {
 		return st
 	}
@@ -125,7 +146,8 @@ func (u *Updater) Status(ctx context.Context) Status {
 
 // Start begins an update in the background.
 func (u *Updater) Start(opts Options) error {
-	if version.Channel == "dev" {
+	// A local build can still update its harnesses.
+	if version.Channel == "dev" && !opts.Providers {
 		return ErrDev
 	}
 	if !opts.Force && u.Active() > 0 {
@@ -153,6 +175,14 @@ func (u *Updater) Start(opts Options) error {
 	return nil
 }
 
+// providerError turns the harnesses that failed into the update error.
+func providerError(notes []string) error {
+	if len(notes) == 0 {
+		return nil
+	}
+	return errors.New("no se actualizaron: " + strings.Join(notes, "; "))
+}
+
 // Apply updates this node and waits; the CLI uses it.
 func (u *Updater) Apply(ctx context.Context, opts Options) error {
 	if version.Channel == "dev" {
@@ -170,9 +200,16 @@ func (u *Updater) run(ctx context.Context, opts Options) error {
 			notes = append(notes, fmt.Sprintf("%s: %s", id, msg))
 		}
 	}
-	tag, _, err := latest(ctx, version.Channel)
+	// The core only moves when its channel has another commit.
+	if version.Channel == "dev" {
+		return providerError(notes)
+	}
+	tag, sha, err := latest(ctx, version.Channel)
 	if err != nil {
 		return err
+	}
+	if sha == version.Read().Revision {
+		return providerError(notes)
 	}
 	dir := filepath.Join(u.DataDir, "updates")
 	if err = os.MkdirAll(dir, 0o700); err != nil {

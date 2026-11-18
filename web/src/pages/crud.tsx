@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { AppleLogo, Desktop, LinuxLogo, Plus, WindowsLogo } from "@phosphor-icons/react";
+import { useMeshUpdates } from "../components/mesh-update";
 import { api, type Memory, type MemoryInput, type NodeUpdate, type Provider } from "../api/client";
 import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, PageHeader, Select, StatusPill, csv } from "../components/ui";
 import { ProviderIcon } from "../components/launch-picker";
@@ -199,10 +200,10 @@ function MeshUpdate() {
   const qc = useQueryClient();
   const [providers, setProviders] = useState(false);
   const [force, setForce] = useState(false);
-  const list = useQuery({ queryKey: ["mesh-update"], queryFn: api.meshUpdates, refetchInterval: (q) => (q.state.data?.some((n) => n.status?.state === "updating") ? 3_000 : 60_000) });
+  const list = useMeshUpdates();
   const run = useMutation({ mutationFn: () => api.updateMesh({ providers, force }), onSuccess: (data) => qc.setQueryData(["mesh-update"], data) });
   const nodes = list.data ?? [];
-  const pending = nodes.some((n) => n.status?.available) || providers;
+  const pending = nodes.some((n) => n.status?.available || n.status?.providers.some((p) => p.available)) || providers;
   const label = (n: NodeUpdate) => {
     const st = n.status;
     if (n.error) return <StatusPill tone="slate">{n.error}</StatusPill>;
@@ -226,6 +227,9 @@ function MeshUpdate() {
             <span>{n.name}</span>
             {n.status && <span className="font-mono text-xs text-slate-500">{n.status.channel}{n.status.desktop ? " · escritorio" : ""}{n.status.active_turns ? ` · ${n.status.active_turns} turnos en marcha` : ""}</span>}
             <span className="ml-auto">{label(n)}</span>
+            {n.status?.providers.filter((p) => p.available).map((p) => (
+              <span key={p.id} className="basis-full pl-4 text-xs text-slate-500">{p.name} {p.current} → {p.latest}</span>
+            ))}
           </div>
         ))}
       </div>

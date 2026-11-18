@@ -2,7 +2,8 @@
 import type { GithubAction, GithubClosed, GithubDetail, GithubOverview } from "./github-types";
 export type * from "./github-types";
 
-export type UpdateStatus = { channel: string; current: string; latest?: string; available: boolean; desktop: boolean; active_turns: number; state: "idle" | "updating" | "failed"; error?: string };
+export type UpdateStatus = { channel: string; current: string; latest?: string; available: boolean; desktop: boolean; active_turns: number; state: "idle" | "updating" | "failed"; error?: string; providers: ProviderVersion[] };
+export type ProviderVersion = { id: string; name: string; current: string; latest?: string; available: boolean };
 export type NodeUpdate = { node: string; name: string; status?: UpdateStatus; error?: string };
 export type Project = { id: string; slug: string; name: string; description: string; created_at: string; updated_at: string; archived_at: string | null };
 export type Repository = { id: string; project_id: string; remote_url: string; default_branch: string; created_at: string; updated_at: string; archived_at: string | null };
