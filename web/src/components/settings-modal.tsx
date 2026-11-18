@@ -1,4 +1,5 @@
 import { useEffect, useState, type ComponentType } from "react";
+import { createPortal } from "react-dom";
 import { Cpu, Microphone, X, type IconProps } from "@phosphor-icons/react";
 import { ProvidersSettings } from "./settings-providers";
 import { DictationSettings } from "./settings-dictation";
@@ -12,7 +13,8 @@ const SECTIONS: Section[] = [
 ];
 
 // SettingsModal covers most of the screen over a dimmed background. A click
-// outside it or Escape closes it.
+// outside it or Escape closes it. It renders on the body, so no ancestor of
+// the button that opens it can clip or position it.
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [active, setActive] = useState(SECTIONS[0].id);
   useEffect(() => {
@@ -22,7 +24,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   }, [onClose]);
   const section = SECTIONS.find((s) => s.id === active) ?? SECTIONS[0];
   const Body = section.component;
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 sm:p-6" onClick={onClose}>
       <div role="dialog" aria-modal="true" aria-label="Ajustes" onClick={(e) => e.stopPropagation()}
         className="flex h-full max-h-[56rem] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-border dark:bg-surface md:flex-row">
@@ -48,6 +50,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
