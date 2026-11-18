@@ -42,6 +42,10 @@ func (s *Store) Plans() Resource[Plan]      { return Resource[Plan]{s, "plan"} }
 func (s *Store) Memories() Resource[Memory] { return Resource[Memory]{s, "memory"} }
 func (s *Store) Threads() Resource[Thread]  { return Resource[Thread]{s, "thread"} }
 func (s *Store) Skills() Resource[Skill]    { return Resource[Skill]{s, "skill"} }
+func (s *Store) RepositoryLocations() Resource[RepositoryLocation] {
+	return Resource[RepositoryLocation]{s, "repository_location"}
+}
+
 func (s *Store) SkillStates() Resource[SkillState] {
 	return Resource[SkillState]{s, "skill_state"}
 }

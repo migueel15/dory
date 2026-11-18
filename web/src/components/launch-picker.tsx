@@ -26,11 +26,26 @@ export function useNodes() {
   return [{ value: "local", label: status.data?.node.name ?? "Este nodo" }, ...peers.map((p) => ({ value: p.id, label: p.name }))];
 }
 
+// useProjectNodes lists the nodes that keep a repository of a project, with
+// this node as "local". Empty when the project has no known environment.
+export function useProjectNodes(project?: string | null) {
+  const status = useQuery({ queryKey: ["node"], queryFn: api.node, staleTime: 60_000 });
+  const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list(), enabled: !!project });
+  const locations = useQuery({ queryKey: ["repository-locations"], queryFn: api.repositoryLocations, enabled: !!project });
+  const ids = new Set((repos.data ?? []).filter((r) => r.project_id === project).map((r) => r.id));
+  const self = status.data?.node.id;
+  return [...new Set((locations.data ?? []).filter((l) => ids.has(l.repository_id)).map((l) => (l.node_id === self ? "local" : l.node_id)))];
+}
+
 // useLaunchForm picks provider, model, effort and access for a new thread.
 // The last selected model is shared across launch forms. Permissions stay per section.
-export function useLaunchForm({ section }: { section: string; repo?: string }) {
-  const [node, setNode] = useState("local");
-  const nodes = useNodes();
+// With a project, only the environments that keep its repository are offered.
+export function useLaunchForm({ section, project }: { section: string; repo?: string; project?: string | null }) {
+  const [picked, setNode] = useState("local");
+  const all = useNodes();
+  const homes = useProjectNodes(project);
+  const nodes = homes.length ? all.filter((n) => homes.includes(n.value)) : all;
+  const node = nodes.some((n) => n.value === picked) ? picked : nodes[0]?.value ?? "local";
   const providers = useProviders(node);
   const [draft, setDraft] = useState<Partial<LaunchChoice>>(() => ({ runtime_mode: stored(section).runtime_mode }));
   const last = lastModel() ?? stored(section);

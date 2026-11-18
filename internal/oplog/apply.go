@@ -31,15 +31,16 @@ type table struct {
 }
 
 var tables = map[string]table{
-	"project":         {"projects", []string{"id"}, []string{"slug", "name", "description", "created_at", "updated_at", "archived_at"}, "slug", ""},
-	"repository":      {"repositories", []string{"id"}, []string{"project_id", "remote_url", "default_branch", "created_at", "updated_at", "archived_at"}, "", ""},
-	"task":            {"tasks", []string{"id"}, []string{"project_id", "repository_id", "title", "description", "stage", "branch", "issue_number", "pr_number", "position", "created_at", "updated_at", "archived_at"}, "", ""},
-	"task_dependency": {"task_dependencies", []string{"task_id", "depends_on_id"}, []string{"created_at", "archived_at"}, "", ""},
-	"plan":            {"plans", []string{"id"}, []string{"task_id", "version", "sections", "open_questions", "author", "accepted_at", "created_at", "updated_at", "archived_at"}, "", ""},
-	"memory":          {"memories", []string{"id"}, []string{"scope", "scope_id", "kind", "title", "content", "labels", "created_at", "updated_at", "archived_at"}, "", "content"},
-	"skill":           {"skills", []string{"id"}, []string{"name", "description", "body_md", "files", "version", "targets", "created_at", "updated_at", "archived_at"}, "name", ""},
-	"skill_state":     {"skill_states", []string{"skill_id", "node_id"}, []string{"status", "version", "message", "created_at", "updated_at", "archived_at"}, "", ""},
-	"thread":          {"threads", []string{"id"}, []string{"node_id", "project_id", "task_id", "parent_id", "provider", "model", "effort", "runtime_mode", "title", "branch", "status", "pinned_at", "read_at", "last_activity_at", "snoozed_until", "settled_at", "created_at", "updated_at", "archived_at"}, "", ""},
+	"project":             {"projects", []string{"id"}, []string{"slug", "name", "description", "created_at", "updated_at", "archived_at"}, "slug", ""},
+	"repository":          {"repositories", []string{"id"}, []string{"project_id", "remote_url", "default_branch", "created_at", "updated_at", "archived_at"}, "", ""},
+	"repository_location": {"repository_locations", []string{"repository_id", "node_id"}, []string{"path", "created_at", "updated_at", "archived_at"}, "", ""},
+	"task":                {"tasks", []string{"id"}, []string{"project_id", "repository_id", "title", "description", "stage", "branch", "issue_number", "pr_number", "position", "created_at", "updated_at", "archived_at"}, "", ""},
+	"task_dependency":     {"task_dependencies", []string{"task_id", "depends_on_id"}, []string{"created_at", "archived_at"}, "", ""},
+	"plan":                {"plans", []string{"id"}, []string{"task_id", "version", "sections", "open_questions", "author", "accepted_at", "created_at", "updated_at", "archived_at"}, "", ""},
+	"memory":              {"memories", []string{"id"}, []string{"scope", "scope_id", "kind", "title", "content", "labels", "created_at", "updated_at", "archived_at"}, "", "content"},
+	"skill":               {"skills", []string{"id"}, []string{"name", "description", "body_md", "files", "version", "targets", "created_at", "updated_at", "archived_at"}, "name", ""},
+	"skill_state":         {"skill_states", []string{"skill_id", "node_id"}, []string{"status", "version", "message", "created_at", "updated_at", "archived_at"}, "", ""},
+	"thread":              {"threads", []string{"id"}, []string{"node_id", "project_id", "task_id", "parent_id", "provider", "model", "effort", "runtime_mode", "title", "branch", "status", "pinned_at", "read_at", "last_activity_at", "snoozed_until", "settled_at", "created_at", "updated_at", "archived_at"}, "", ""},
 }
 
 // Write records a local change and applies it to its table in one
@@ -292,14 +293,20 @@ func suffixed(value any, id string) string {
 
 // RepositoryID derives the id of a repository from its remote, so two nodes
 // that add the same repository offline create the same row.
-func RepositoryID(remote string) string {
+func RepositoryID(remote string) string { return remoteID("dory-repository:", remote) }
+
+// ProjectID derives the id of a project created from a repository, so two
+// environments that add the same repository create the same project.
+func ProjectID(remote string) string { return remoteID("dory-project:", remote) }
+
+func remoteID(namespace, remote string) string {
 	u := strings.TrimSpace(remote)
 	if rest, ok := strings.CutPrefix(u, "git@"); ok {
 		u = "https://" + strings.Replace(rest, ":", "/", 1)
 	}
 	u = strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
 	u = strings.ToLower(strings.TrimSuffix(strings.TrimSuffix(u, "/"), ".git"))
-	sum := sha1.Sum([]byte("dory-repository:" + u))
+	sum := sha1.Sum([]byte(namespace + u))
 	sum[6] = sum[6]&0x0f | 0x50 // version 5
 	sum[8] = sum[8]&0x3f | 0x80 // RFC 4122 variant
 	return fmt.Sprintf("%x-%x-%x-%x-%x", sum[0:4], sum[4:6], sum[6:8], sum[8:10], sum[10:16])
