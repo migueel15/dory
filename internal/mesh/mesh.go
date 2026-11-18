@@ -70,10 +70,10 @@ type Mesh struct {
 	pairCode  string
 	pairExp   time.Time
 	pairFails int
-	wake     map[string]chan struct{}
-	stop     map[string]context.CancelFunc
-	found    map[string]Found
-	streams  map[chan struct{}]struct{}
+	wake      map[string]chan struct{}
+	stop      map[string]context.CancelFunc
+	found     map[string]Found
+	streams   map[chan struct{}]struct{}
 }
 
 // Found is a node seen on the network that is not paired yet.
