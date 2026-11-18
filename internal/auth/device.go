@@ -63,9 +63,9 @@ func DeviceSession(w http.ResponseWriter, r *http.Request, svc Store, cfg config
 		return
 	}
 	cfg.CookieSecure = cfg.CookieSecure || r.TLS != nil
-	if cfg.SessionTTL <= 0 {
-		cfg.SessionTTL = 7 * 24 * time.Hour
-	}
+	// Short sessions: the app trades its token again on each start, and a
+	// revoked phone loses access within this time.
+	cfg.SessionTTL = 12 * time.Hour
 	if err = startSession(w, r, svc, cfg, u); err != nil {
 		failure(w, 500)
 		return
