@@ -33,8 +33,17 @@ type DeviceStore interface {
 // this node and returns its secret, shown only to that phone.
 func IssueDevice(ctx context.Context, svc DeviceStore, name string) (string, error) {
 	owner, err := svc.OwnerID(ctx)
+	if errors.Is(err, ErrNotFound) {
+		// A node without an interface (a server set up by SSH) may have no
+		// account yet. The code shown on the machine already proves that
+		// the phone belongs to its owner, so the account is created here,
+		// with a random password nobody knows: `dory user` can replace it.
+		var u User
+		u, err = svc.CreateUser(ctx, "owner", passwordHash(secret()))
+		owner = u.ID
+	}
 	if err != nil {
-		return "", errors.New("este nodo todavía no tiene cuenta")
+		return "", err
 	}
 	name = strings.TrimSpace(name)
 	if name == "" {
