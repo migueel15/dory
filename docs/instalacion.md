@@ -35,15 +35,21 @@ cd desktop && npm ci && npm run dist
 
 Genera AppImage, paquete de pacman y .deb en Linux, .dmg en macOS e instalador NSIS en Windows. Las releases de GitHub las publican ya hechas.
 
-## App móvil
+## App de Android
 
-La interfaz es una PWA instalable. Desde el móvil, conéctate al nodo servidor y usa «Añadir a la pantalla de inicio». El navegador solo la instala y permite avisos por HTTPS. Con Tailscale, publica el nodo del servidor con un certificado válido:
+La app está en `mobile/`. Encuentra los nodos de tu red local, y por Tailscale los de la malla de un nodo ya emparejado, y abre directamente el que elijas. No necesita un servidor central (ADR-014).
 
 ```sh
-tailscale serve --bg --https=443 http://127.0.0.1:7700
+cd mobile && npm ci && npx cap sync android
+cd android && JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew assembleDebug
+adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Pon `public_origin = "https://<servidor>.<tailnet>.ts.net"` y `cookie_secure = true` en la configuración del servidor. Después activa los avisos con la campana de la barra lateral.
+Gradle necesita JDK 17 o 21, y el SDK de Android en `ANDROID_HOME` o en `mobile/android/local.properties`.
+
+Para emparejar, abre en el ordenador **Entornos → Mostrar código** y escribe el código en la app, en el nodo que aparece o con su dirección. Cada nodo se empareja por separado. Los móviles emparejados aparecen en Entornos y se pueden revocar desde ahí.
+
+La interfaz también funciona como PWA si publicas un nodo por HTTPS (`tailscale serve --bg --https=443 http://127.0.0.1:7700`, con `public_origin` y `cookie_secure = true`).
 
 ## Versiones
 

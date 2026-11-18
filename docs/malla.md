@@ -18,6 +18,10 @@ El código vale 5 minutos y un solo uso. Desde entonces los dos nodos se reconoc
 
 Los nodos que aparecen en «Nodos encontrados en la red» se ven por la red local o por Tailscale. Al pulsar uno se rellena su dirección.
 
+## Emparejar el móvil
+
+En la app de Android, el código de **Mostrar código** sirve igual que entre nodos. Mira [Instalación](instalacion.md#app-de-android).
+
 ## Qué se replica
 
 - **Se replica:** proyectos, repositorios, tareas, dependencias, planes, memorias, skills y su estado por nodo, y la organización de los hilos (título, fijado, leído, tarea).
