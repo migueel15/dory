@@ -258,7 +258,7 @@ function Providers({ list, node }: { list: Provider[]; node?: string }) {
   return (
     <div className="mt-3 space-y-2">
       <div className="grid gap-2 sm:grid-cols-2">
-        {list.filter((p) => p.id !== "replay").map((p) => (
+        {list.map((p) => (
           <div key={p.id} className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-border">
             <ProviderIcon driver={p.id} />
             <span className="font-medium">{p.name}</span>

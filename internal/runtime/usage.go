@@ -103,8 +103,6 @@ func (c Codex) Usage(ctx context.Context) ([]Window, error) {
 
 func (OpenCode) Usage(context.Context) ([]Window, error) { return nil, ErrNoUsage }
 
-func (Replay) Usage(context.Context) ([]Window, error) { return nil, ErrNoUsage }
-
 // windowKind names a window by its length with the kinds Claude Code uses,
 // so the interface labels every provider the same way.
 func windowKind(minutes int) string {

@@ -351,7 +351,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
     }
   };
   const removeFile = (k: string) => setFiles((fs) => fs.filter((f) => { if (f.key === k) URL.revokeObjectURL(f.preview); return f.key !== k; }));
-  const availableProviders = (providers.data ?? []).filter((p) => p.installed && (p.id !== "replay" || p.id === t.provider));
+  const availableProviders = (providers.data ?? []).filter((p) => p.installed);
   const currentProvider = availableProviders.find((p) => p.id === t.provider);
   const currentModel = findModel(currentProvider?.models ?? [], t.model);
   const selectedModel = currentModel ? concreteModelId(currentModel) : t.model;

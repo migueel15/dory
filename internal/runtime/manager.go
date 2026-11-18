@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -135,6 +136,28 @@ func (m *Manager) RefreshUsage(ctx context.Context) {
 	wg.Wait()
 }
 
+// providerOrder lists the registered providers: the known ones first, in a
+// fixed order, then any other by id.
+func (m *Manager) providerOrder() []string {
+	rank := map[string]int{"claude": 0, "codex": 1, "opencode": 2}
+	ids := make([]string, 0, len(m.providers))
+	for id := range m.providers {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		ri, iok := rank[ids[i]]
+		rj, jok := rank[ids[j]]
+		if iok != jok {
+			return iok
+		}
+		if iok && ri != rj {
+			return ri < rj
+		}
+		return ids[i] < ids[j]
+	})
+	return ids
+}
+
 // saveUsage writes the usage map; the caller holds m.mu.
 func (m *Manager) saveUsage() {
 	if m.dataDir == "" {
@@ -181,11 +204,8 @@ func (m *Manager) Providers(ctx context.Context) []Status {
 	}
 	m.mu.Unlock()
 	out := make([]Status, 0, len(m.providers))
-	for _, id := range []string{"claude", "codex", "opencode", "replay"} {
-		p, ok := m.providers[id]
-		if !ok {
-			continue
-		}
+	for _, id := range m.providerOrder() {
+		p := m.providers[id]
 		st := p.Detect(ctx)
 		if a, ok := p.(Admin); ok && st.Installed {
 			st.LoggedIn, st.Account = a.Session(ctx)

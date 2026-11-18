@@ -16,7 +16,6 @@ Otras variables:
 
 - `DORY_GITHUB_TOKEN`: token de GitHub. Sin él, Dory usa la sesión de `gh` de la máquina. El token no sale del nodo.
 - `DORY_WHISPER_URL`: servidor de whisper.cpp para el dictado.
-- `DORY_REPLAY_FILE`: activa el proveedor de reproducción, que repite una conversación grabada de Claude Code. Sirve para desarrollar sin agentes reales.
 
 ## Ficheros del nodo
 

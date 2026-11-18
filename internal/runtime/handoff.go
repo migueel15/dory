@@ -28,7 +28,7 @@ func (m *Manager) Configure(ctx context.Context, id string, settings ThreadSetti
 	fields := make(map[string]any)
 	if settings.Provider != nil && *settings.Provider != t.Provider {
 		target := *settings.Provider
-		if _, ok := m.providers[target]; !ok || target == "replay" {
+		if _, ok := m.providers[target]; !ok {
 			return t, fmt.Errorf("%w: %s", ErrProvider, target)
 		}
 		if _, busy := m.running[id]; busy {

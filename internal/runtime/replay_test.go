@@ -8,13 +8,15 @@ import (
 )
 
 // Replay is a test provider: it plays back a recorded Claude Code stream-json
-// file, so the interface can be developed without a real agent.
+// file, so the runtime can be tested without a real agent.
 type Replay struct {
 	File  string
 	Delay time.Duration
 }
 
 func (Replay) ID() string { return "replay" }
+
+func (Replay) Usage(context.Context) ([]Window, error) { return nil, ErrNoUsage }
 
 func (r Replay) Detect(context.Context) Status {
 	_, err := os.Stat(r.File)
