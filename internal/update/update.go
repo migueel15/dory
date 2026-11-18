@@ -150,6 +150,14 @@ func (u *Updater) Start(opts Options) error {
 	return nil
 }
 
+// Apply updates this node and waits; the CLI uses it.
+func (u *Updater) Apply(ctx context.Context, opts Options) error {
+	if version.Channel == "dev" {
+		return ErrDev
+	}
+	return u.run(ctx, opts)
+}
+
 func (u *Updater) run(ctx context.Context, opts Options) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()

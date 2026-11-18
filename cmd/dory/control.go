@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/migueel15/dory/internal/update"
 
 	"github.com/migueel15/dory/internal/config"
 )
@@ -107,12 +108,15 @@ func control(args []string) (bool, error) {
 		}
 		return true, service(args[1])
 	case "update":
-		fs := flag.NewFlagSet("update", flag.ContinueOnError)
-		channel := fs.String("channel", "stable", "stable or nightly")
-		if err := fs.Parse(args[1:]); err != nil {
+		// The same update the interface runs, for this node only: the
+		// channel is the one the binary was built for.
+		u := &update.Updater{DataDir: cfg.DataDir, Active: func() int { return 0 },
+			Restart: func() { _ = serviceCtl("restart") }}
+		if err := u.Apply(context.Background(), update.Options{}); err != nil {
 			return true, err
 		}
-		return true, selfUpdate(*channel)
+		fmt.Println("actualizado")
+		return true, nil
 	}
 	return true, nil
 }
@@ -284,55 +288,6 @@ func openWindow(base string) error {
 	}
 	opener := map[string][]string{"linux": {"xdg-open"}, "darwin": {"open"}, "windows": {"cmd", "/c", "start"}}[runtime.GOOS]
 	return exec.Command(opener[0], append(opener[1:], base)...).Start()
-}
-
-// selfUpdate replaces this binary with the latest release of a channel, using
-// the GitHub CLI so private repositories work too.
-func selfUpdate(channel string) error {
-	tag := map[string]string{"stable": "", "nightly": "nightly"}[channel]
-	if channel != "stable" && channel != "nightly" {
-		return errors.New("--channel must be stable or nightly")
-	}
-	self, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	dir, err := os.MkdirTemp("", "dory-update")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(dir)
-	asset := fmt.Sprintf("dory-%s-%s", runtime.GOOS, runtime.GOARCH)
-	args := []string{"release", "download", "--repo", "migueel15/dory", "--pattern", asset, "--dir", dir}
-	if tag != "" {
-		args = append(args[:2], append([]string{tag}, args[2:]...)...)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-	if out, err := exec.CommandContext(ctx, "gh", args...).CombinedOutput(); err != nil {
-		return fmt.Errorf("gh release download: %s", strings.TrimSpace(string(out)))
-	}
-	next := filepath.Join(dir, asset)
-	if err = os.Chmod(next, 0o755); err != nil {
-		return err
-	}
-	// Replace atomically next to the running binary, then restart the core.
-	tmp := self + ".new"
-	raw, err := os.ReadFile(next)
-	if err != nil {
-		return err
-	}
-	if err = os.WriteFile(tmp, raw, 0o755); err != nil {
-		return err
-	}
-	if err = os.Rename(tmp, self); err != nil {
-		return err
-	}
-	fmt.Printf("actualizado al canal %s\n", channel)
-	if serviceCtl("restart") == nil {
-		fmt.Println("núcleo reiniciado")
-	}
-	return nil
 }
 
 // pair shows a pairing code for another node to use, or, given the address
