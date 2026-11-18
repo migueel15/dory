@@ -47,7 +47,7 @@ export function useLaunchForm({ section, project }: { section: string; repo?: st
   const nodes = homes.length ? all.filter((n) => homes.includes(n.value)) : all;
   const node = nodes.some((n) => n.value === picked) ? picked : nodes[0]?.value ?? "local";
   const providers = useProviders(node);
-  const [draft, setDraft] = useState<Partial<LaunchChoice>>(() => ({ runtime_mode: stored(section).runtime_mode }));
+  const [draft, setDraft] = useState<Partial<LaunchChoice>>({});
   const last = lastModel() ?? stored(section);
   const list = (providers.data ?? []).map((p) => ({ ...p, models: explicitModels(p.models) })).filter((p) => p.models.length > 0);
   const provider = list.find((p) => p.id === (draft.provider ?? last.provider)) ?? list[0];
@@ -60,10 +60,8 @@ export function useLaunchForm({ section, project }: { section: string; repo?: st
     effort: model && provider
       ? (draft.model === modelId(model) && model.efforts?.includes(draftEffort) ? draftEffort : modelEffort(provider.id, model))
       : "",
-    runtime_mode: draft.runtime_mode ?? "full-access",
+    runtime_mode: "full-access",
   };
-  const setRuntimeMode = (runtime_mode: LaunchChoice["runtime_mode"]) =>
-    setDraft((current) => ({ ...current, runtime_mode }));
   const selectModel = (providerId: string, selected: Model, effort = modelEffort(providerId, selected)) => {
     const choice = { provider: providerId, model: modelId(selected), effort };
     rememberModel(choice);
@@ -88,14 +86,10 @@ export function useLaunchForm({ section, project }: { section: string; repo?: st
           <Select value={value.effort} onChange={(v) => selectModel(value.provider, model, v)} options={model.efforts.map((e) => ({ value: e, label: e }))} />
         </Label>
       )}
-      <Label text="Permisos">
-        <Select value={value.runtime_mode} onChange={(v) => setRuntimeMode(v as LaunchChoice["runtime_mode"])}
-          options={[{ value: "full-access", label: "Acceso completo" }, { value: "approval-required", label: "Solo ediciones" }]} />
-      </Label>
     </div>
   );
   return {
-    fields, value, nodes, setNode, selectModel, setRuntimeMode, providers: list, ready: !!model, error: providers.error,
+    fields, value, nodes, setNode, selectModel, providers: list, ready: !!model, error: providers.error,
     remember: () => { try { localStorage.setItem(`${KEY}.${section}`, JSON.stringify({ ...stored(section), runtime_mode: value.runtime_mode })); } catch { /* per browser only */ } },
   };
 }

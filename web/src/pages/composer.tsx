@@ -18,11 +18,6 @@ import { paintTokens, quoteBlock, quoteLabel, tokenRanges, type Token, type Toke
 export const composerFrame = "relative z-10 rounded-3xl border border-slate-200 bg-white shadow-md dark:border-raised dark:bg-surface";
 export const composerArea = "relative block max-h-60 w-full resize-none break-words bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 !outline-none placeholder:text-slate-400";
 
-export const runtimeModes = [
-  { value: "approval-required", label: "Pedir permiso" },
-  { value: "full-access", label: "Acceso total" },
-];
-
 export type MenuOption = { value: string; label: string; group?: string; modelId?: string; icon?: React.ReactNode };
 
 // Chip is a compact dropdown for the composer toolbar; the menu opens upwards.
@@ -499,7 +494,6 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
                 if (settings.isPending || choice.provider !== t.provider || choice.model !== t.model || effort !== t.effort) settings.mutate(choice);
                 else rememberModel(choice);
               }} />
-            <Chip title="Permisos" value={t.runtime_mode} options={runtimeModes} onChange={(x) => settings.mutate({ runtime_mode: x as ThreadView["runtime_mode"] })} />
           </div>
           <DictationMic dictation={dictation} disabled={send.isPending} />
           {busy && !outgoing && !files.length && !dictation.active ? (
