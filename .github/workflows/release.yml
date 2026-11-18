@@ -38,6 +38,7 @@ jobs:
   desktop:
     needs: binaries
     strategy:
+      fail-fast: false
       matrix:
         include:
           - { os: ubuntu-latest, bin: dory-linux-amd64, name: dory, flag: --linux }
@@ -53,6 +54,9 @@ jobs:
       - name: Bundle the core
         shell: bash
         run: mkdir -p desktop/bin && cp out/${{ matrix.bin }} desktop/bin/${{ matrix.name }} && chmod +x desktop/bin/${{ matrix.name }}
+      - name: Install bsdtar for the pacman package
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libarchive-tools
       - name: Version the app
         shell: bash
         run: |
