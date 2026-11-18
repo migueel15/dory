@@ -2,6 +2,8 @@
 import type { GithubAction, GithubClosed, GithubDetail, GithubOverview } from "./github-types";
 export type * from "./github-types";
 
+export type UpdateStatus = { channel: string; current: string; latest?: string; available: boolean; desktop: boolean; active_turns: number; state: "idle" | "updating" | "failed"; error?: string };
+export type NodeUpdate = { node: string; name: string; status?: UpdateStatus; error?: string };
 export type Project = { id: string; slug: string; name: string; description: string; created_at: string; updated_at: string; archived_at: string | null };
 export type Repository = { id: string; project_id: string; remote_url: string; default_branch: string; created_at: string; updated_at: string; archived_at: string | null };
 export type Stage = "inbox" | "ready" | "cancelled";
@@ -107,6 +109,8 @@ export type ThreadActionName = "rename" | "pin" | "unpin" | "read" | "unread" | 
 export const api = {
   version: () => req<Version>("GET", "/version"),
   mesh: () => req<Mesh>("GET", "/mesh"),
+  meshUpdates: () => req<NodeUpdate[]>("GET", "/mesh/update"),
+  updateMesh: (opts: { providers: boolean; force: boolean }) => req<NodeUpdate[]>("POST", "/mesh/update", opts),
   pairCode: () => req<{ code: string; expires_at: string; fingerprint: string; port: number }>("POST", "/mesh/pair/code"),
   pair: (address: string, code: string) => req<Peer>("POST", "/mesh/pair", { address, code }),
   revokePeer: (id: string) => req<void>("DELETE", `/mesh/peers/${id}`),

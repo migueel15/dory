@@ -16,6 +16,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/migueel15/dory/internal/update"
+
 	"github.com/migueel15/dory/internal/api"
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/compress"
@@ -146,6 +148,17 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 			DataDir: cfg.DataDir, Listen: cfg.Listen, Platform: goruntime.GOOS + "/" + goruntime.GOARCH},
 	}
 	srv.Remote = net
+	srv.Updater = &update.Updater{DataDir: cfg.DataDir, Active: rt.Active, Providers: rt.UpdateAll, Restart: restartSelf}
+	srv.Mesh = func(ctx context.Context) []api.MeshNode {
+		peers, _ := net.Peers(ctx)
+		var out []api.MeshNode
+		for _, p := range peers {
+			if p.Connected {
+				out = append(out, api.MeshNode{ID: p.ID, Name: p.Name})
+			}
+		}
+		return out
+	}
 	srv.Peers = func() any {
 		peers, _ := net.Peers(context.Background())
 		return peers

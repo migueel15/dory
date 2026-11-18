@@ -38,7 +38,8 @@
     },
     "mac": {
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ],
       "category": "public.app-category.developer-tools",
       "icon": "build/icon.png"
@@ -48,10 +49,20 @@
         "nsis"
       ],
       "icon": "build/icon.png"
-    }
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "http://127.0.0.1:7700/api/mesh/desktop"
+      }
+    ],
+    "detectUpdateChannel": false
   },
   "devDependencies": {
     "electron": "^45.3.2",
     "electron-builder": "^26.18.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
   }
 }

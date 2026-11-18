@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { AppleLogo, Desktop, LinuxLogo, Plus, WindowsLogo } from "@phosphor-icons/react";
-import { api, type Memory, type MemoryInput, type Provider } from "../api/client";
+import { api, type Memory, type MemoryInput, type NodeUpdate, type Provider } from "../api/client";
 import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, PageHeader, Select, StatusPill, csv } from "../components/ui";
 import { ProviderIcon } from "../components/launch-picker";
 import { useProject } from "../project";
@@ -115,6 +115,7 @@ export function Environments() {
     <div className="space-y-3">
       <PageHeader title="Entornos" subtitle="Los nodos de Dory en tus máquinas. Se sincronizan cuando se ven." />
       <ErrorText error={node.error ?? mesh.error} />
+      <MeshUpdate />
       {n && (
         <Card>
           <div className="flex flex-wrap items-center gap-2">
@@ -189,6 +190,51 @@ export function Environments() {
         </Card>
       )}
     </div>
+  );
+}
+
+// MeshUpdate moves every connected node to the latest release of its channel,
+// with its desktop app and, if asked, its harnesses (ADR-016).
+function MeshUpdate() {
+  const qc = useQueryClient();
+  const [providers, setProviders] = useState(false);
+  const [force, setForce] = useState(false);
+  const list = useQuery({ queryKey: ["mesh-update"], queryFn: api.meshUpdates, refetchInterval: (q) => (q.state.data?.some((n) => n.status?.state === "updating") ? 3_000 : 60_000) });
+  const run = useMutation({ mutationFn: () => api.updateMesh({ providers, force }), onSuccess: (data) => qc.setQueryData(["mesh-update"], data) });
+  const nodes = list.data ?? [];
+  const pending = nodes.some((n) => n.status?.available) || providers;
+  const label = (n: NodeUpdate) => {
+    const st = n.status;
+    if (n.error) return <StatusPill tone="slate">{n.error}</StatusPill>;
+    if (!st) return null;
+    if (st.state === "updating") return <StatusPill tone="amber">actualizando…</StatusPill>;
+    if (st.state === "failed") return <StatusPill tone="red">falló: {st.error}</StatusPill>;
+    if (st.channel === "dev") return <StatusPill tone="slate">compilación local</StatusPill>;
+    if (st.available) return <StatusPill tone="amber">{st.current} → {st.latest}</StatusPill>;
+    return <StatusPill tone="green">al día</StatusPill>;
+  };
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="font-semibold">Actualizar la malla</h2>
+        <span className="text-xs text-slate-500">Cada nodo conectado instala la última versión de su canal y, si tiene la app de escritorio, la reinstala.</span>
+      </div>
+      <ErrorText error={list.error ?? run.error} />
+      <div className="mt-2 space-y-1">
+        {nodes.map((n) => (
+          <div key={n.node} className="flex flex-wrap items-center gap-2 text-sm">
+            <span>{n.name}</span>
+            {n.status && <span className="font-mono text-xs text-slate-500">{n.status.channel}{n.status.desktop ? " · escritorio" : ""}{n.status.active_turns ? ` · ${n.status.active_turns} turnos en marcha` : ""}</span>}
+            <span className="ml-auto">{label(n)}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
+        <label className="flex items-center gap-2"><input type="checkbox" checked={providers} onChange={(e) => setProviders(e.target.checked)} />Actualizar también los proveedores</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />Aunque haya turnos en marcha</label>
+        <Button className="ml-auto" disabled={!pending || run.isPending} onClick={() => run.mutate()}>{run.isPending ? "Lanzando…" : "Actualizar"}</Button>
+      </div>
+    </Card>
   );
 }
 

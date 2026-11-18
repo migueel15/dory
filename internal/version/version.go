@@ -7,8 +7,14 @@ import (
 	"runtime/debug"
 )
 
+// Channel is the release line of this build, set by the release workflow
+// with -ldflags "-X .../internal/version.Channel=stable|nightly". Local builds
+// are "dev" and never update themselves.
+var Channel = "dev"
+
 // Info describes the build of the running binary.
 type Info struct {
+	Channel  string `json:"channel"`
 	Revision string `json:"revision"`
 	Short    string `json:"short"`
 	Time     string `json:"time"`
@@ -17,7 +23,7 @@ type Info struct {
 
 // fromBuildInfo derives Info from build metadata; without VCS data it is "dev".
 func fromBuildInfo(bi *debug.BuildInfo, ok bool) Info {
-	info := Info{Revision: "dev", Short: "dev"}
+	info := Info{Channel: Channel, Revision: "dev", Short: "dev"}
 	if !ok || bi == nil {
 		return info
 	}

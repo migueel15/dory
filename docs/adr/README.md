@@ -17,3 +17,4 @@
 | [ADR-013](adr-013-herramientas-comunes.md) | Herramientas comunes entre arneses | accepted |
 | [ADR-014](adr-014-app-movil.md) | App de Android que se conecta directamente a cada nodo | accepted |
 | [ADR-015](adr-015-sesiones-interactivas.md) | Sesiones interactivas de los arneses | accepted |
+| [ADR-016](adr-016-actualizacion-de-la-malla.md) | Actualización de la malla desde las releases de GitHub | accepted |

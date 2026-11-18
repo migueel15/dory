@@ -296,6 +296,13 @@ func (m *Manager) Running(id string) bool {
 	return ok
 }
 
+// Active counts the turns in progress on this node.
+func (m *Manager) Active() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.running)
+}
+
 // Queue returns the messages waiting in a thread.
 func (m *Manager) Queue(id string) []Queued {
 	m.mu.Lock()

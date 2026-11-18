@@ -2,12 +2,15 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
+
+	"github.com/migueel15/dory/internal/update"
 
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/data"
@@ -43,6 +46,10 @@ type Server struct {
 	Peers func() any
 	// Remote forwards thread calls to the node that owns the thread.
 	Remote Remote
+	// Updater moves this node to the latest release; nil disables the routes.
+	Updater *update.Updater
+	// Mesh lists the peers that answer now.
+	Mesh func(ctx context.Context) []MeshNode
 }
 
 // Register mounts every /api route; auth owns /api/auth/* on the same mux.
@@ -78,6 +85,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	s.mountFolders(mux)
 	s.mountExternal(mux)
 	s.mountDictation(mux)
+	s.mountUpdate(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "route not found")
 	})

@@ -112,7 +112,7 @@ func control(args []string) (bool, error) {
 		if err := fs.Parse(args[1:]); err != nil {
 			return true, err
 		}
-		return true, update(*channel)
+		return true, selfUpdate(*channel)
 	}
 	return true, nil
 }
@@ -286,9 +286,9 @@ func openWindow(base string) error {
 	return exec.Command(opener[0], append(opener[1:], base)...).Start()
 }
 
-// update replaces this binary with the latest release of a channel, using
+// selfUpdate replaces this binary with the latest release of a channel, using
 // the GitHub CLI so private repositories work too.
-func update(channel string) error {
+func selfUpdate(channel string) error {
 	tag := map[string]string{"stable": "", "nightly": "nightly"}[channel]
 	if channel != "stable" && channel != "nightly" {
 		return errors.New("--channel must be stable or nightly")
@@ -381,4 +381,20 @@ func pair(base, dataDir string, args []string) error {
 	}
 	fmt.Printf("Emparejado con %v. Huella: %v. Comprueba que coincide con la del otro nodo.\n", out["name"], out["fingerprint"])
 	return nil
+}
+
+// restartSelf runs the new binary after an update. Under the service the core
+// exits with an error and systemd or launchd start it again; otherwise a
+// detached `dory restart` stops this process and starts the new one.
+func restartSelf() {
+	if serviceCtl("status") == nil || runtime.GOOS == "darwin" {
+		os.Exit(3)
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return
+	}
+	cmd := exec.Command(self, "restart")
+	detach(cmd)
+	_ = cmd.Start()
 }

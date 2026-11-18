@@ -6,6 +6,7 @@ const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { autoUpdater } = require("electron-updater");
 
 const profile = path.join(os.homedir(), ".dory", "desktop");
 if (fs.existsSync(profile) || !fs.existsSync(path.join(app.getPath("userData"), "Local State"))) {
@@ -37,6 +38,27 @@ async function healthy(url) {
 
 let win;
 
+// The core downloads the desktop release of its channel when the mesh updates
+// (ADR-016); the app installs it from there and restarts.
+async function followUpdates(url) {
+  if (!app.isPackaged) return;
+  try {
+    const { data_dir: dataDir } = await (await fetch(`${url}/api/health`)).json();
+    const token = fs.readFileSync(path.join(dataDir, "control.token"), "utf8").trim();
+    autoUpdater.requestHeaders = { Authorization: `Bearer ${token}` };
+  } catch {
+    return;
+  }
+  autoUpdater.setFeedURL({ provider: "generic", url: `${url}/api/mesh/desktop` });
+  autoUpdater.allowPrerelease = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on("update-downloaded", () => autoUpdater.quitAndInstall(true, true));
+  autoUpdater.on("error", () => {});
+  const check = () => autoUpdater.checkForUpdates().catch(() => {});
+  check();
+  setInterval(check, 2 * 60_000);
+}
+
 async function open() {
   const url = await dory(["url"]).catch(() => "http://127.0.0.1:7700");
   if (!(await healthy(url))) await dory(["start"]);
@@ -55,6 +77,7 @@ async function open() {
     if (!target.startsWith(url)) { e.preventDefault(); shell.openExternal(target); }
   });
   await win.loadURL(url);
+  followUpdates(url);
 }
 
 // One window per machine: a second launch focuses the first.

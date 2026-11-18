@@ -180,3 +180,23 @@ func (m *Manager) JobState(id string) (Job, bool) {
 	}
 	return *j, true
 }
+
+// UpdateAll runs the update command of every installed harness, one after
+// another, and returns the error of each one that failed.
+func (m *Manager) UpdateAll(ctx context.Context) map[string]string {
+	failed := map[string]string{}
+	for _, st := range m.Providers(ctx) {
+		p, ok := m.providers[st.ID].(Admin)
+		if !ok || !st.Installed {
+			continue
+		}
+		args := p.UpdateCommand()
+		run, cancel := context.WithTimeout(ctx, 10*time.Minute)
+		out, err := exec.CommandContext(run, args[0], args[1:]...).CombinedOutput()
+		cancel()
+		if err != nil {
+			failed[st.ID] = strings.TrimSpace(string(out))
+		}
+	}
+	return failed
+}
