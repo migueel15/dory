@@ -4,7 +4,9 @@ El micrófono del compositor requiere HTTPS o localhost. El navegador entrega el
 
 ## Modelos del compositor
 
-Instala una versión de [NeMo-Speech.cpp](https://github.com/NVIDIA/NeMo-Speech.cpp/releases) compatible con el nodo. Dory busca `nemo-speech` en el PATH. Si el ejecutable está en otra carpeta, fija `DORY_NEMO_SPEECH_BIN` a su ruta absoluta al iniciar el nodo.
+No hace falta instalar nada. Al descargar un modelo, si el nodo no tiene motor, Dory descarga [NeMo-Speech.cpp](https://github.com/NVIDIA/NeMo-Speech.cpp/releases) v0.3.0 (variante CPU) para su sistema, verifica su SHA-256 y lo guarda en `dictation-models/runtime/`. Hay motor para Linux y macOS (x86_64 y arm64) y Windows x86_64.
+
+Dory busca el motor en cada uso, en este orden: `DORY_NEMO_SPEECH_BIN` si está fijada, el motor descargado y `nemo-speech` en el PATH. Para usar otra variante, como CUDA o Vulkan, instálala y fija `DORY_NEMO_SPEECH_BIN` a su ruta absoluta.
 
 En **Ajustes → Dictado local**, descarga el modelo y marca **Usar modelo**. La preferencia se guarda en el navegador y las descargas en `dictation-models/` dentro del directorio de datos del nodo.
 

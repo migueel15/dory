@@ -9,7 +9,7 @@ El flujo por lotes de Whisper del ADR-006 ya sirve para la captura. En el compos
 
 ## Decision
 
-Dory instala artefactos GGUF de revisiones fijas y verifica su tamaño y SHA-256. Lanza NeMo-Speech.cpp en loopback cuando se usa un modelo. El navegador accede al motor a través de la API autenticada de Dory. Parakeet recibe una grabación WAV al terminar. Nemotron recibe PCM por WebSocket y devuelve parciales de su propia sesión de streaming.
+Dory instala artefactos GGUF de revisiones fijas y verifica su tamaño y SHA-256. Si el nodo no tiene NeMo-Speech.cpp, lo descarga junto al primer modelo: la release fija de la variante CPU para su sistema, con tamaño y SHA-256 verificados. Busca el motor en cada uso y lo lanza en loopback. El navegador accede al motor a través de la API autenticada de Dory. Parakeet recibe una grabación WAV al terminar. Nemotron recibe PCM por WebSocket y devuelve parciales de su propia sesión de streaming.
 
 ## Consequences
 
