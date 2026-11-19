@@ -1,8 +1,9 @@
 import { useEffect, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
-import { Cpu, Microphone, PaintBrush, X, type IconProps } from "@phosphor-icons/react";
+import { Cpu, Keyboard, Microphone, PaintBrush, X, type IconProps } from "@phosphor-icons/react";
 import { ProvidersSettings } from "./settings-providers";
 import { DictationSettings } from "./settings-dictation";
+import { ShortcutsSettings } from "./settings-shortcuts";
 import { AppearanceSettings } from "./settings-appearance";
 
 type Section = { id: string; label: string; icon: ComponentType<IconProps>; component: ComponentType };
@@ -10,6 +11,7 @@ type Section = { id: string; label: string; icon: ComponentType<IconProps>; comp
 // SECTIONS are the parts of the settings, in the order of the side bar.
 const SECTIONS: Section[] = [
   { id: "providers", label: "Proveedores", icon: Cpu, component: ProvidersSettings },
+  { id: "shortcuts", label: "Atajos", icon: Keyboard, component: ShortcutsSettings },
   { id: "dictation", label: "Dictado", icon: Microphone, component: DictationSettings },
   { id: "appearance", label: "Apariencia", icon: PaintBrush, component: AppearanceSettings },
 ];

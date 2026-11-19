@@ -41,7 +41,16 @@ func (s *Store) Dependencies() Resource[Dependency] {
 func (s *Store) Plans() Resource[Plan]      { return Resource[Plan]{s, "plan"} }
 func (s *Store) Memories() Resource[Memory] { return Resource[Memory]{s, "memory"} }
 func (s *Store) Threads() Resource[Thread]  { return Resource[Thread]{s, "thread"} }
-func (s *Store) Skills() Resource[Skill]    { return Resource[Skill]{s, "skill"} }
+
+// EnsureThreadTask reuses the thread's task or creates and links one atomically.
+func (s *Store) EnsureThreadTask(ctx context.Context, thread, title, description string) (Task, error) {
+	id, err := s.log.EnsureThreadTask(ctx, thread, title, description)
+	if err != nil {
+		return Task{}, err
+	}
+	return s.Tasks().Get(ctx, id)
+}
+func (s *Store) Skills() Resource[Skill] { return Resource[Skill]{s, "skill"} }
 func (s *Store) RepositoryLocations() Resource[RepositoryLocation] {
 	return Resource[RepositoryLocation]{s, "repository_location"}
 }

@@ -2,11 +2,45 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestExternalMessagesKeepDoryContext(t *testing.T) {
+	prompt := "<dory-context kind=\"plan\" task=\"t1\">\nContexto para el agente\n</dory-context>\n\nPetición completa del usuario"
+	for _, provider := range []string{"codex", "claude", "claude-block"} {
+		t.Run(provider, func(t *testing.T) {
+			var record any
+			switch provider {
+			case "codex":
+				record = map[string]any{"type": "response_item", "payload": map[string]any{"type": "message", "id": "u1", "role": "user", "content": []any{map[string]any{"text": prompt}}}}
+			case "claude":
+				record = map[string]any{"type": "user", "uuid": "u1", "message": map[string]any{"content": prompt}}
+			default:
+				record = map[string]any{"type": "user", "uuid": "u1", "message": map[string]any{"content": []any{map[string]any{"type": "text", "text": prompt}}}}
+			}
+			line, err := json.Marshal(record)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(t.TempDir(), "session.jsonl")
+			if err := os.WriteFile(path, line, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			kind := provider
+			if kind == "claude-block" {
+				kind = "claude"
+			}
+			messages, err := ExternalMessages(External{Provider: kind, path: path})
+			if err != nil || len(messages) != 1 || messages[0].Text != prompt {
+				t.Fatalf("messages = %+v, error = %v", messages, err)
+			}
+		})
+	}
+}
 
 func TestExternalSessions(t *testing.T) {
 	home := t.TempDir()

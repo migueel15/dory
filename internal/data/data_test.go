@@ -31,6 +31,47 @@ func opCount(t *testing.T, s *Store) int {
 	return n
 }
 
+func TestEnsureThreadTask(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	p, err := s.Projects().Put(ctx, Project{Slug: "plan", Name: "Plan"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, err := s.Threads().Put(ctx, Thread{NodeID: s.log.Node(), ProjectID: &p.ID, Provider: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.EnsureThreadTask(ctx, th.ID, "Planificar", "Contexto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.EnsureThreadTask(ctx, th.ID, "Otro título", "")
+	if err != nil || second.ID != first.ID || second.Title != "Planificar" || first.ProjectID == nil || *first.ProjectID != p.ID {
+		t.Fatalf("first=%+v second=%+v err=%v", first, second, err)
+	}
+	got, err := s.Threads().Get(ctx, th.ID)
+	if err != nil || got.TaskID == nil || *got.TaskID != first.ID {
+		t.Fatalf("thread=%+v err=%v", got, err)
+	}
+	tasks, err := s.Tasks().List(ctx, Filter{})
+	if err != nil || len(tasks) != 1 {
+		t.Fatalf("tasks=%+v err=%v", tasks, err)
+	}
+	other, err := s.Tasks().Put(ctx, Task{Title: "Existente"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th2, err := s.Threads().Put(ctx, Thread{NodeID: s.log.Node(), TaskID: &other.ID, Provider: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	linked, err := s.EnsureThreadTask(ctx, th2.ID, "", "")
+	if err != nil || linked.ID != other.ID {
+		t.Fatalf("linked=%+v err=%v", linked, err)
+	}
+}
+
 func TestTaskLifecycle(t *testing.T) {
 	ctx := context.Background()
 	s := open(t)

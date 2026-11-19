@@ -9,6 +9,8 @@ import { useLaunchForm, ProviderIcon } from "../components/launch-picker";
 import { modelEffort, modelId } from "../effort";
 import { useProject } from "../project";
 import { Chip, ModelPicker, composerArea, composerFrame } from "./composer";
+import { useCommand, useShortcuts } from "../components/shortcuts";
+import { formatChord } from "../components/dictation-shortcut";
 import { planMessage } from "../lib/auto-message";
 
 
@@ -18,10 +20,12 @@ import { planMessage } from "../lib/auto-message";
 // toggle on, the chat defines a task instead.
 export function NewThread({ onCreated, centered = false }: { onCreated: (threadId: string) => void; centered?: boolean }) {
   const current = useProject();
+  const getShortcut = useShortcuts();
   const [project, setProject] = useState(current);
   const [text, setText] = useState("");
   const [plan, setPlan] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
+  useCommand("plan", () => { if (!box.current?.getClientRects().length) return false; setPlan((value) => !value); });
   const dictation = useLocalDictation(text, setText, box, { panelShortcut: true, onEnter: (draft) => latestSendDraft.current(draft) });
   const showingDictation = !!dictation.preview;
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
@@ -79,7 +83,7 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
           </button>
         )}
       </div>
-      <form data-dictation-panel className={composerFrame} onSubmit={(e) => { e.preventDefault(); submit(); }}>
+      <form data-dictation-panel data-unsaved-draft={!!text.trim() || dictation.active} className={composerFrame} onSubmit={(e) => { e.preventDefault(); submit(); }}>
         {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} className="min-h-16" />}
         <textarea ref={box} data-dictation-disabled={start.isPending || undefined} rows={2} autoFocus value={dictation.value} readOnly={dictation.active} onChange={(e) => setText(e.target.value)} aria-label="Mensaje"
           placeholder={plan ? "Describe la tarea que quieres definir…" : "¿En qué trabajamos?"}
@@ -106,7 +110,7 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
                 const model = models.find((m) => m.value === value);
                 if (model) form.selectModel(model.provider, model.model, effort);
               }} />
-            <button type="button" aria-pressed={plan} onClick={() => setPlan(!plan)}
+            <button type="button" title={`Modo plan (${formatChord(getShortcut("plan"))})`} aria-pressed={plan} onClick={() => setPlan(!plan)}
               className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium hover:bg-slate-100 aria-pressed:bg-slate-200 dark:hover:bg-raised dark:aria-pressed:bg-raised">
               <ClipboardText className="size-4" />Modo plan
             </button>
@@ -131,7 +135,7 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
             <span className="ml-auto" />
             {!!branchList.data?.branches.length && (
               <>
-                <Chip below prefix={worktree ? "Desde" : undefined} title={worktree ? "Rama de la que sale el worktree" : "Rama del checkout"} icon={<GitBranch className="size-4 shrink-0" />} value={branch} onChange={setBase}
+                <Chip below shortcutBranch prefix={worktree ? "Desde" : undefined} title={worktree ? "Rama de la que sale el worktree" : "Rama del checkout"} icon={<GitBranch className="size-4 shrink-0" />} value={branch} onChange={setBase}
                   options={branchList.data.branches.map((b) => ({ value: b, label: b }))} />
               </>
             )}
