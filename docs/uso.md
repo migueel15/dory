@@ -67,5 +67,6 @@ Dory nunca pisa una carpeta o un fichero que no escribió (por ejemplo, enlaces 
 ## Entornos y uso
 
 - **Entornos:** muestra este nodo y los emparejados, con sus agentes, su versión y si tienen sesión. Desde aquí se inicia sesión o se actualiza un agente en cualquier nodo conectado.
+  Si un agente no está instalado en el nodo, **Instalar** ejecuta allí su instalador oficial. Claude Code y Codex usan su script (`install.sh` o, en Windows, `install.ps1`). OpenCode usa su script en Linux y macOS, y `npm install -g @opencode/cli@latest` en Windows, que necesita Node. Dory busca cada agente en el PATH y, si no está, en las carpetas donde lo dejan esos instaladores, así que no hace falta reiniciar el núcleo.
   Para iniciar sesión en Claude Code desde el móvil, elige el nodo, pulsa **Iniciar sesión** en Claude y abre el enlace que aparece. Si Claude muestra un código de autorización, vuelve a Dory, pégalo en **Código de autorización** y pulsa **Confirmar código**. El código se envía al proceso de Claude Code del nodo seleccionado. La tarjeta actualiza el estado cuando el proceso termina.
 - **Uso:** muestra lo que queda en cada ventana (5 horas y semanal) según lo último que informó cada proveedor.
