@@ -30,6 +30,9 @@ type UsageTokens struct {
 	Output     int64 `json:"output"`
 	CacheWrite int64 `json:"cache_write"`
 	CacheRead  int64 `json:"cache_read"`
+	// CacheWrite1h is the part of CacheWrite kept for an hour, which costs
+	// more than the 5 minute writes (Claude Code writes its cache this way).
+	CacheWrite1h int64 `json:"cache_write_1h"`
 }
 
 func (t *UsageTokens) add(o UsageTokens) {
@@ -37,6 +40,7 @@ func (t *UsageTokens) add(o UsageTokens) {
 	t.Output += o.Output
 	t.CacheWrite += o.CacheWrite
 	t.CacheRead += o.CacheRead
+	t.CacheWrite1h += o.CacheWrite1h
 }
 
 // UsageCost is the API list price of some tokens, by type, in dollars.
@@ -127,7 +131,7 @@ func aggregateUsage(events []usageEvent, from time.Time, hourly bool, loc *time.
 			r.Cost = UsageCost{
 				Input:       float64(r.Tokens.Input) * p.Input / 1e6,
 				Output:      float64(r.Tokens.Output) * p.Output / 1e6,
-				CacheWrite:  float64(r.Tokens.CacheWrite) * p.CacheWrite / 1e6,
+				CacheWrite:  (float64(r.Tokens.CacheWrite-r.Tokens.CacheWrite1h)*p.CacheWrite + float64(r.Tokens.CacheWrite1h)*p.cacheWrite1h()) / 1e6,
 				CacheRead:   float64(r.Tokens.CacheRead) * p.CacheRead / 1e6,
 				CacheSaving: float64(r.Tokens.CacheRead) * (p.Input - p.CacheRead) / 1e6,
 			}
@@ -220,6 +224,9 @@ func readClaudeUsage(path string) []usageEvent {
 					Output     int64 `json:"output_tokens"`
 					CacheWrite int64 `json:"cache_creation_input_tokens"`
 					CacheRead  int64 `json:"cache_read_input_tokens"`
+					Creation   struct {
+						Hour int64 `json:"ephemeral_1h_input_tokens"`
+					} `json:"cache_creation"`
 				} `json:"usage"`
 			} `json:"message"`
 		}
@@ -236,7 +243,7 @@ func readClaudeUsage(path string) []usageEvent {
 			key = "claude:" + l.Message.ID + ":" + l.RequestID
 		}
 		out = append(out, usageEvent{Time: l.Timestamp, Provider: "claude", Session: s, Model: l.Message.Model, Key: key,
-			Tokens: UsageTokens{Input: u.Input, Output: u.Output, CacheWrite: u.CacheWrite, CacheRead: u.CacheRead}})
+			Tokens: UsageTokens{Input: u.Input, Output: u.Output, CacheWrite: u.CacheWrite, CacheRead: u.CacheRead, CacheWrite1h: min(u.Creation.Hour, u.CacheWrite)}})
 	})
 	return out
 }
