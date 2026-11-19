@@ -183,7 +183,13 @@ func codexSummary(line []byte, e *External) {
 // what the user wrote.
 func codexContext(text string) bool {
 	t := strings.TrimSpace(text)
-	return strings.HasPrefix(t, "<") || strings.HasPrefix(t, "# AGENTS.md")
+	return !doryMessage(t) && (strings.HasPrefix(t, "<") || strings.HasPrefix(t, "# AGENTS.md"))
+}
+
+// Dory's generated context is part of the user's message, not a harness
+// instruction. Keep it intact so the client can display the user's text.
+func doryMessage(text string) bool {
+	return strings.HasPrefix(text, "<dory-context ") || strings.HasPrefix(text, "<dory-plan ")
 }
 
 // ExternalSession finds one session by id.
@@ -246,7 +252,7 @@ func claudeRecord(line []byte, emit func(Message), out []Message, index map[stri
 	}
 	var text string
 	if json.Unmarshal(r.Message.Content, &text) == nil {
-		if r.Type == "user" && !strings.HasPrefix(strings.TrimSpace(text), "<") {
+		if r.Type == "user" && (!strings.HasPrefix(strings.TrimSpace(text), "<") || doryMessage(strings.TrimSpace(text))) {
 			emit(Message{ID: r.UUID, Role: "user", Text: text, CreatedAt: r.Timestamp})
 		}
 		return
@@ -261,7 +267,7 @@ func claudeRecord(line []byte, emit func(Message), out []Message, index map[stri
 		case "text":
 			role := "assistant"
 			if r.Type == "user" {
-				if strings.HasPrefix(strings.TrimSpace(b.Text), "<") {
+				if strings.HasPrefix(strings.TrimSpace(b.Text), "<") && !doryMessage(strings.TrimSpace(b.Text)) {
 					continue
 				}
 				role = "user"
