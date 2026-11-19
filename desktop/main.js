@@ -22,17 +22,54 @@ if (fs.existsSync(profile) || !fs.existsSync(path.join(app.getPath("userData"), 
   app.setPath("userData", profile);
 }
 
-// The binary shipped with the app, or the one on PATH.
+const exe = process.platform === "win32" ? "dory.exe" : "dory";
+const bundled = path.join(process.resourcesPath || "", "bin", exe);
+// The core this app installs as a user service, next to the CLI.
+const installed = path.join(os.homedir(), ".local", "bin", exe);
+const managed = path.join(profile, "core-managed");
+
+// The installed core, the one shipped with the app, or the one on PATH.
 function doryBin() {
-  const name = process.platform === "win32" ? "dory.exe" : "dory";
-  const bundled = path.join(process.resourcesPath || "", "bin", name);
-  return fs.existsSync(bundled) ? bundled : name;
+  for (const bin of [installed, bundled]) if (fs.existsSync(bin)) return bin;
+  return exe;
 }
 
-function dory(args) {
+function run(bin, args) {
   return new Promise((resolve, reject) => {
-    execFile(doryBin(), args, { timeout: 30_000 }, (err, stdout, stderr) => (err ? reject(new Error(stderr || err.message)) : resolve(stdout.trim())));
+    execFile(bin, args, { timeout: 60_000 }, (err, stdout, stderr) => (err ? reject(new Error(stderr || err.message)) : resolve(stdout.trim())));
   });
+}
+
+const dory = (args) => run(doryBin(), args);
+
+// installCore leaves the core of the app as a user service, so it keeps
+// running with the window closed and starts with the session. It installs
+// it when there is no core yet and keeps updating the one it installed; a
+// core installed by other means is left alone.
+async function installCore() {
+  if (!app.isPackaged || process.platform === "win32" || !fs.existsSync(bundled)) return;
+  if (process.env.APPIMAGE) {
+    // dory open and the launcher find the app here.
+    const link = path.join(os.homedir(), ".local", "bin", "Dory.AppImage");
+    try {
+      if (fs.lstatSync(link, { throwIfNoEntry: false })?.isSymbolicLink() !== false) {
+        fs.mkdirSync(path.dirname(link), { recursive: true });
+        fs.rmSync(link, { force: true });
+        fs.symlinkSync(process.env.APPIMAGE, link);
+      }
+    } catch {}
+  }
+  const exists = fs.existsSync(installed);
+  if (exists && !fs.existsSync(managed)) return;
+  if (exists && (await run(installed, ["version"]).catch(() => "")) === (await run(bundled, ["version"]).catch(() => "-"))) return;
+  fs.mkdirSync(path.dirname(installed), { recursive: true });
+  const tmp = `${installed}.new`;
+  fs.copyFileSync(bundled, tmp);
+  fs.chmodSync(tmp, 0o755);
+  fs.renameSync(tmp, installed);
+  fs.writeFileSync(managed, "");
+  await run(installed, ["service", "install"]);
+  if (exists) await run(installed, ["restart"]).catch(() => {});
 }
 
 async function healthy(url) {
@@ -68,6 +105,7 @@ async function followUpdates(url) {
 }
 
 async function open() {
+  await installCore().catch((err) => console.error("dory: install core:", err.message));
   const url = await dory(["url"]).catch(() => "http://127.0.0.1:7700");
   if (!(await healthy(url))) await dory(["start"]);
   win = new BrowserWindow({

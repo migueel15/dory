@@ -33,7 +33,9 @@ chmod +x ~/.local/bin/dory && dory restart
 
 ## App de escritorio
 
-La app de Electron está en `desktop/`. Arranca el núcleo si no está en marcha, nunca lo para al cerrarse y lleva el binario dentro.
+La app de Electron está en `desktop/` y lleva el binario dentro. Basta con instalarla: en Linux y macOS, al abrirla por primera vez copia su núcleo a `~/.local/bin/dory` y lo deja como servicio de usuario (`dory service install`), así que el núcleo sigue en marcha al cerrar la ventana y arranca con la sesión. Si ya había un `dory` instalado por otra vía, la app lo respeta. En las siguientes versiones actualiza el núcleo que instaló ella. Con el AppImage, además, enlaza `~/.local/bin/Dory.AppImage` para que `dory open` y el lanzador abran la app.
+
+En Windows la app arranca el núcleo al abrirse, sin servicio.
 
 ```sh
 go build -o desktop/bin/dory ./cmd/dory
