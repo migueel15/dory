@@ -31,6 +31,9 @@ func (s *Server) mountUpdate(mux *http.ServeMux) {
 		return
 	}
 	mux.HandleFunc("GET /api/nodes/{node}/update", s.onNode(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("fresh") != "" {
+			s.Updater.Forget()
+		}
 		writeJSON(w, http.StatusOK, s.Updater.Status(r.Context()))
 	}))
 	mux.HandleFunc("POST /api/nodes/{node}/update", s.onNode(func(w http.ResponseWriter, r *http.Request) {
@@ -49,7 +52,12 @@ func (s *Server) mountUpdate(mux *http.ServeMux) {
 	}))
 	// The mesh routes reach this node and every connected peer.
 	mux.HandleFunc("GET /api/mesh/update", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, s.fanOut(r.Context(), http.MethodGet, nil))
+		// ?fresh=1 skips the cached check of every node.
+		path := ""
+		if r.URL.Query().Get("fresh") != "" {
+			path = "?fresh=1"
+		}
+		writeJSON(w, http.StatusOK, s.fanOut(r.Context(), http.MethodGet, nil, path))
 	})
 	mux.HandleFunc("POST /api/mesh/update", func(w http.ResponseWriter, r *http.Request) {
 		var opts update.Options
@@ -57,7 +65,7 @@ func (s *Server) mountUpdate(mux *http.ServeMux) {
 			return
 		}
 		body, _ := json.Marshal(opts)
-		writeJSON(w, http.StatusOK, s.fanOut(r.Context(), http.MethodPost, body))
+		writeJSON(w, http.StatusOK, s.fanOut(r.Context(), http.MethodPost, body, ""))
 	})
 	// The desktop app of this machine updates from the files the core left.
 	desktop := http.StripPrefix("/api/mesh/desktop/", http.FileServer(http.Dir(s.Updater.DesktopDir())))
@@ -66,7 +74,7 @@ func (s *Server) mountUpdate(mux *http.ServeMux) {
 
 // fanOut calls the update route of every node: this one in place, the others
 // through the mesh.
-func (s *Server) fanOut(ctx context.Context, method string, body []byte) []NodeUpdate {
+func (s *Server) fanOut(ctx context.Context, method string, body []byte, query string) []NodeUpdate {
 	nodes := []MeshNode{{ID: s.Node.ID, Name: s.Node.Name}}
 	if s.Mesh != nil {
 		nodes = append(nodes, s.Mesh(ctx)...)
@@ -77,16 +85,16 @@ func (s *Server) fanOut(ctx context.Context, method string, body []byte) []NodeU
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			out[i] = s.nodeUpdate(ctx, n, method, body)
+			out[i] = s.nodeUpdate(ctx, n, method, body, query)
 		}()
 	}
 	wg.Wait()
 	return out
 }
 
-func (s *Server) nodeUpdate(ctx context.Context, n MeshNode, method string, body []byte) NodeUpdate {
+func (s *Server) nodeUpdate(ctx context.Context, n MeshNode, method string, body []byte, query string) NodeUpdate {
 	res := NodeUpdate{Node: n.ID, Name: n.Name}
-	path := "/api/nodes/" + n.ID + "/update"
+	path := "/api/nodes/" + n.ID + "/update" + query
 	req := httptest.NewRequestWithContext(ctx, method, path, strings.NewReader(string(body)))
 	if len(body) == 0 {
 		req.ContentLength = 0
@@ -124,6 +132,9 @@ func (s *Server) nodeUpdate(ctx context.Context, n MeshNode, method string, body
 
 func (s *Server) local(w http.ResponseWriter, r *http.Request, method string) {
 	if method == http.MethodGet {
+		if r.URL.Query().Get("fresh") != "" {
+			s.Updater.Forget()
+		}
 		writeJSON(w, http.StatusOK, s.Updater.Status(r.Context()))
 		return
 	}

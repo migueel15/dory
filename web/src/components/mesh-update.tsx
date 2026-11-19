@@ -16,7 +16,7 @@ function pendingOf(n: NodeUpdate) {
 // faster while one of them is updating.
 export function useMeshUpdates(enabled = true) {
   return useQuery({
-    queryKey: ["mesh-update"], queryFn: api.meshUpdates, enabled,
+    queryKey: ["mesh-update"], queryFn: () => api.meshUpdates(), enabled,
     refetchInterval: (q) => (q.state.data?.some((n) => n.status?.state === "updating") ? 3_000 : 5 * 60_000),
   });
 }

@@ -118,7 +118,7 @@ export type ThreadActionName = "rename" | "pin" | "unpin" | "read" | "unread" | 
 export const api = {
   version: () => req<Version>("GET", "/version"),
   mesh: () => req<Mesh>("GET", "/mesh"),
-  meshUpdates: () => req<NodeUpdate[]>("GET", "/mesh/update"),
+  meshUpdates: (fresh = false) => req<NodeUpdate[]>("GET", fresh ? "/mesh/update?fresh=1" : "/mesh/update"),
   updateMesh: (opts: { providers: boolean; force: boolean }) => req<NodeUpdate[]>("POST", "/mesh/update", opts),
   pairCode: () => req<{ code: string; expires_at: string; fingerprint: string; port: number }>("POST", "/mesh/pair/code"),
   pair: (address: string, code: string) => req<Peer>("POST", "/mesh/pair", { address, code }),

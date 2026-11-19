@@ -3,7 +3,7 @@ import { useDictationInProgress } from "../components/local-dictation";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { Desktop, Plus } from "@phosphor-icons/react";
+import { ArrowsClockwise, Desktop, Plus } from "@phosphor-icons/react";
 import { EnvIconPicker } from "../components/env-icon";
 import { useMeshUpdates } from "../components/mesh-update";
 import { api, type Memory, type MemoryInput, type NodeUpdate } from "../api/client";
@@ -196,6 +196,8 @@ function MeshUpdate() {
   const [force, setForce] = useState(false);
   const list = useMeshUpdates();
   const run = useMutation({ mutationFn: () => api.updateMesh({ providers, force }), onSuccess: (data) => qc.setQueryData(["mesh-update"], data) });
+  // Checks the releases now instead of waiting for the next poll.
+  const recheck = useMutation({ mutationFn: () => api.meshUpdates(true), onSuccess: (data) => qc.setQueryData(["mesh-update"], data) });
   const nodes = list.data ?? [];
   const pending = nodes.some((n) => n.status?.available || n.status?.providers.some((p) => p.available)) || providers;
   const label = (n: NodeUpdate) => {
@@ -213,8 +215,12 @@ function MeshUpdate() {
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="font-semibold">Actualizar la malla</h2>
         <span className="text-xs text-slate-500">Cada nodo conectado instala la última versión de su canal y, si tiene la app de escritorio, la reinstala.</span>
+        <button type="button" aria-label="Buscar actualizaciones" title="Buscar actualizaciones" disabled={recheck.isPending} onClick={() => recheck.mutate()}
+          className="ml-auto grid size-8 shrink-0 place-items-center rounded-md hover:bg-slate-200 disabled:opacity-70 dark:hover:bg-raised">
+          <ArrowsClockwise className={`size-5 ${recheck.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
+        </button>
       </div>
-      <ErrorText error={list.error ?? run.error} />
+      <ErrorText error={list.error ?? recheck.error ?? run.error} />
       <div className="mt-2 space-y-1">
         {nodes.map((n) => (
           <div key={n.node} className="flex flex-wrap items-center gap-2 text-sm">

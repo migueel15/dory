@@ -144,6 +144,17 @@ func (u *Updater) Status(ctx context.Context) Status {
 	return st
 }
 
+// Forget drops the cached latest releases of the core and the harnesses, so
+// the next Status asks again.
+func (u *Updater) Forget() {
+	u.mu.Lock()
+	u.checked = time.Time{}
+	u.mu.Unlock()
+	npmCache.Lock()
+	npmCache.at = map[string]time.Time{}
+	npmCache.Unlock()
+}
+
 // Start begins an update in the background.
 func (u *Updater) Start(opts Options) error {
 	// A local build can still update its harnesses.
