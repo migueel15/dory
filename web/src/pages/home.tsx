@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowUp, ClipboardText, Desktop, Folder } from "@phosphor-icons/react";
+import { ArrowUp, ClipboardText, Desktop, Folder, FolderOpen, GitBranch, GitFork } from "@phosphor-icons/react";
 import { api } from "../api/client";
 import { DictationMic, DictationPreview, useLocalDictation } from "../components/local-dictation";
 import { ErrorText, iconButton } from "../components/ui";
@@ -30,6 +30,17 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
   const showingDictation = !!dictation.preview;
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const form = useLaunchForm({ section: "home" , project });
+  const [worktree, setWorktree] = useState(false);
+  const [base, setBase] = useState("");
+  const branchList = useQuery({
+    queryKey: ["project-branches", form.value.node, project], queryFn: () => api.projectBranches(form.value.node, project!),
+    enabled: !!project, retry: false,
+  });
+  const checkoutBranch = branchList.data?.current ?? "";
+  const baseBranch = base && branchList.data?.branches.includes(base) ? base : checkoutBranch;
+  // workspace is where the first message starts the thread: the checkout as it
+  // is, or a new worktree with its own branch made from baseBranch.
+  const workspace = project && worktree ? { worktree: true, base_branch: baseBranch } : {};
   useLayoutEffect(() => { const el = box.current; if (el && !showingDictation) { el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 240)}px`; } }, [dictation.value, showingDictation]);
   const start = useMutation({
     mutationFn: async (draft: string) => {
@@ -37,9 +48,9 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
       const body = draft.trim();
       if (plan) {
         const task = await api.tasks.create({ project_id: project || null, title: body.split("\n")[0].slice(0, 80), description: body });
-        return api.createThread({ ...form.value, project_id: project || null, task_id: task.id, title: `Definir: ${task.title}`, text: definePrompt(task.id, body) });
+        return api.createThread({ ...form.value, ...workspace, project_id: project || null, task_id: task.id, title: `Definir: ${task.title}`, text: definePrompt(task.id, body) });
       }
-      return api.createThread({ ...form.value, project_id: project || null, text: body });
+      return api.createThread({ ...form.value, ...workspace, project_id: project || null, text: body });
     },
     onSuccess: (r) => { setText(""); onCreated(r.thread_id); },
   });
@@ -115,8 +126,20 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
         <span aria-hidden="true" className="h-4 w-px bg-slate-200 dark:bg-border" />
         <Chip below title="Proyecto" icon={<Folder className="size-4 shrink-0" />} value={project} onChange={setProject}
           options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
+        {project && (
+          <>
+            <Chip below title="Espacio de trabajo" icon={worktree ? <GitFork className="size-4 shrink-0" /> : <FolderOpen className="size-4 shrink-0" />}
+              value={worktree ? "worktree" : "checkout"} onChange={(v) => setWorktree(v === "worktree")}
+              options={[{ value: "checkout", label: "Checkout actual" }, { value: "worktree", label: "Nuevo worktree" }]} />
+            <span className="ml-auto" />
+            {worktree && branchList.data?.branches.length
+              ? <Chip below title="Rama base del worktree" icon={<GitBranch className="size-4 shrink-0" />} value={baseBranch} onChange={setBase}
+                  options={branchList.data.branches.map((b) => ({ value: b, label: b }))} />
+              : checkoutBranch && <span title={worktree ? "Rama base del worktree" : "Rama del checkout"} className="inline-flex h-8 items-center gap-1.5 px-2.5"><GitBranch className="size-4 shrink-0" />{checkoutBranch}</span>}
+          </>
+        )}
       </div>
-      <ErrorText error={start.error ?? dictation.error ?? form.error ?? projects.error} />
+      <ErrorText error={start.error ?? dictation.error ?? form.error ?? projects.error ?? branchList.error} />
     </div>
   );
 }

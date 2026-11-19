@@ -161,6 +161,7 @@ export const api = {
   memories: resource<Memory, MemoryInput>("/memories"),
   threads: (filter?: Record<string, unknown>, archived = false) => req<Thread[]>("GET", "/threads" + q(filter, archived)),
   thread: (id: string) => req<ThreadView>("GET", `/threads/${id}`),
+  projectBranches: (node: string, project: string) => req<{ current: string; branches: string[] }>("GET", `/nodes/${node || "local"}/projects/${project}/branches`),
   createThread: ({ node, ...body }: NewThread) => req<{ thread_id: string }>("POST", `/nodes/${node || "local"}/threads`, body),
   send: (id: string, text: string, files: string[] = []) => req<void>("POST", `/threads/${id}/messages`, { text, files }),
   upload: async (id: string, file: File) => {
