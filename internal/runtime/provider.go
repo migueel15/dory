@@ -60,12 +60,13 @@ type Event struct {
 
 // Turn is one message of the user and everything the agent does after it.
 type Turn struct {
-	RunID   string
-	Dir     string
-	Text    string
-	Model   string
-	Effort  string
-	Session string
+	RunID       string
+	Dir         string
+	Text        string
+	Model       string
+	Effort      string
+	Session     string
+	Attachments []Attachment
 	// FullAccess skips the harness approval prompts.
 	FullAccess bool
 	// MCPURL and MCPToken point the agent at the Dory MCP of this node.

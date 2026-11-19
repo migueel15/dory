@@ -1,6 +1,6 @@
 # Dory
 
-Dory es tu entorno de trabajo con agentes de IA: chats con Claude Code, Codex y OpenCode, proyectos y repositorios, tareas en un kanban ligado a issues y pull requests de GitHub, memoria compartida y skills.
+Dory es tu entorno de trabajo con agentes de IA: chats con Claude Code, Codex, OpenCode y Antigravity, proyectos y repositorios, tareas en un kanban ligado a issues y pull requests de GitHub, memoria compartida y skills.
 
 Cada máquina ejecuta un nodo completo, que funciona sin red y se sincroniza con tus otros nodos cuando se ven. El servidor 24/7 es un nodo más, y desde él entra el móvil.
 

@@ -5,6 +5,7 @@ const logo = (name: string) => files[`../assets/model-logos/${name}.svg`];
 
 // Ordered: the first pattern that matches the provider (driver), then the model, wins.
 const rules: [RegExp, string][] = [
+  [/antigravity/, "antigravity"],
   [/opencode/, "opencode"],
   [/codex/, "openai"],
   [/claude|anthropic|opus|sonnet|haiku|fable/, "claude"],

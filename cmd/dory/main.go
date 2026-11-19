@@ -59,6 +59,9 @@ func run() error {
 	if len(os.Args) < 2 {
 		return errors.New(usage)
 	}
+	if os.Args[1] == "mcp-stdio" && len(os.Args) == 3 {
+		return mcp.RelayStdio(context.Background(), os.Args[2])
+	}
 	if os.Args[1] == "version" {
 		v := version.Read()
 		fmt.Println(v.Short, v.Time)
@@ -100,7 +103,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	if err := store.PublishLocations(ctx); err != nil {
 		log.Printf("publish repository locations: %v", err)
 	}
-	providers := []runtime.Provider{runtime.Claude{}, runtime.Codex{}, runtime.OpenCode{}}
+	providers := []runtime.Provider{runtime.Claude{}, runtime.Codex{}, runtime.OpenCode{}, runtime.Antigravity{}}
 	rt := runtime.NewManager(store.DB(), store, log_.Node(), cfg.DataDir, providers...)
 	agentToken := auth.Secret()
 	rt.MCPURL = "http://" + loopbackAddr(cfg.Listen) + "/mcp"

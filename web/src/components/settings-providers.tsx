@@ -126,8 +126,8 @@ function ProviderDetail({ node, provider: p }: { node: string; provider: Provide
         <div className="rounded-md bg-slate-100 p-2 dark:bg-raised">
           <p className="mb-1 flex items-center gap-2 text-xs font-medium">{{ login: "Inicio de sesión", update: "Actualización", install: "Instalación" }[state.data.kind]} · {state.data.done ? (state.data.error ? `terminó con error (${state.data.error})` : "terminado") : "en curso…"}
             <button type="button" className="ml-auto text-slate-500" onClick={() => setJob(undefined)}>cerrar</button></p>
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-xs"><Linkify text={state.data.output || "Esperando salida…"} linkLabel={p.id === "claude" && state.data.kind === "login" && !state.data.done ? "Abrir Claude en el navegador" : undefined} /></pre>
-          {!state.data.done && p.id === "claude" && state.data.kind === "login" && state.data.accepts_code !== undefined && (
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-xs"><Linkify text={state.data.output || "Esperando salida…"} linkLabel={(p.id === "claude" || p.id === "antigravity") && state.data.kind === "login" && !state.data.done ? `Abrir ${p.name} en el navegador` : undefined} /></pre>
+          {!state.data.done && (p.id === "claude" || p.id === "antigravity") && state.data.kind === "login" && state.data.accepts_code !== undefined && (
             <LoginCodeForm key={job} node={node} id={job} acceptsCode={state.data.accepts_code} />
           )}
         </div>

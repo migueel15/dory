@@ -2,7 +2,7 @@ import { useState } from "react";
 
 // Provider and token-type colors, shared by dots, areas and bars so each
 // series keeps one color on the whole page. They read on light and dark.
-export const PROVIDER_COLORS: Record<string, string> = { claude: "#e07a52", codex: "#3b82f6" };
+export const PROVIDER_COLORS: Record<string, string> = { claude: "#e07a52", codex: "#3b82f6", antigravity: "#8b5cf6" };
 export const providerColor = (id: string) => PROVIDER_COLORS[id] ?? "#94a3b8";
 
 export const usd = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "USD", maximumFractionDigits: n >= 100 ? 0 : 2 });

@@ -149,7 +149,7 @@ func (m *Manager) RefreshUsage(ctx context.Context) {
 // providerOrder lists the registered providers: the known ones first, in a
 // fixed order, then any other by id.
 func (m *Manager) providerOrder() []string {
-	rank := map[string]int{"claude": 0, "codex": 1, "opencode": 2}
+	rank := map[string]int{"claude": 0, "codex": 1, "opencode": 2, antigravityID: 3}
 	ids := make([]string, 0, len(m.providers))
 	for id := range m.providers {
 		ids = append(ids, id)
@@ -470,7 +470,7 @@ func (m *Manager) start(ctx context.Context, t data.Thread, run, text string, fi
 		}
 	}
 	startedAt := now()
-	turn := Turn{RunID: run, Dir: dir, Text: prompt, Model: t.Model, Effort: t.Effort, Session: session,
+	turn := Turn{RunID: run, Dir: dir, Text: prompt, Model: t.Model, Effort: t.Effort, Session: session, Attachments: files,
 		FullAccess: t.RuntimeMode != "approval-required", MCPURL: m.mcpURL(t.ID), MCPToken: m.MCPToken}
 	var events <-chan Event
 	switch p := p.(type) {
@@ -855,7 +855,7 @@ func (m *Manager) Adopt(ctx context.Context, e External, projectID *string) (dat
 	if _, ok := m.provider(e.Provider); !ok {
 		return data.Thread{}, fmt.Errorf("%w: %s", ErrProvider, e.Provider)
 	}
-	msgs, err := ExternalMessages(e)
+	msgs, err := m.ReadExternal(ctx, e)
 	if err != nil {
 		return data.Thread{}, err
 	}

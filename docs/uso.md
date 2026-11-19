@@ -60,7 +60,7 @@ Muestra las issues y PRs de los repositorios de tus proyectos.
 
 ## Skills
 
-Un único catálogo editable para todos los nodos. Cada skill indica en qué nodos y para qué agentes se instala. Cada nodo la escribe en `~/.claude/skills`, `~/.codex/skills` o `~/.config/opencode/skills` y publica su estado: sincronizada, pendiente, conflicto o error.
+Un único catálogo editable para todos los nodos. Cada skill indica en qué nodos y para qué agentes se instala. Cada nodo la escribe en `~/.claude/skills`, `~/.codex/skills`, `~/.config/opencode/skills` o `~/.gemini/config/skills` y publica su estado: sincronizada, pendiente, conflicto o error.
 
 Dory nunca pisa una carpeta o un fichero que no escribió (por ejemplo, enlaces simbólicos a otro repositorio). Tampoco pisa una copia editada a mano: lo marca como conflicto.
 
@@ -70,6 +70,14 @@ Dory nunca pisa una carpeta o un fichero que no escribió (por ejemplo, enlaces 
   Si un agente no está instalado en el nodo, **Instalar** ejecuta allí su instalador oficial. Claude Code y Codex usan su script (`install.sh` o, en Windows, `install.ps1`). OpenCode usa su script en Linux y macOS, y `npm install -g @opencode/cli@latest` en Windows, que necesita Node. Dory busca cada agente en el PATH y, si no está, en las carpetas donde lo dejan esos instaladores, así que no hace falta reiniciar el núcleo.
   Para iniciar sesión en Claude Code desde el móvil, elige el nodo, pulsa **Iniciar sesión** en Claude y abre el enlace que aparece. Si Claude muestra un código de autorización, vuelve a Dory, pégalo en **Código de autorización** y pulsa **Confirmar código**. El código se envía al proceso de Claude Code del nodo seleccionado. La tarjeta actualiza el estado cuando el proceso termina.
 - **Uso:** muestra lo que queda en cada ventana (5 horas y semanal) según lo último que informó cada proveedor.
+
+## Antigravity
+
+En **Entornos**, instala Antigravity en el nodo donde quieras usarlo. Pulsa **Iniciar sesión**, abre el enlace de Google y pega el código de autorización si se solicita. También puedes iniciar sesión en el nodo con `agy acp --login`.
+
+Elige Antigravity al crear un hilo. Los modelos disponibles dependen de la cuenta y de la versión de la CLI. La conversación se reanuda en el mismo nodo tras reiniciar Dory. Las sesiones guardadas por la CLI aparecen en **Hilos**, donde puedes abrirlas e importarlas.
+
+Con acceso restringido, Dory aprueba las solicitudes de edición dentro del worktree. Con acceso completo, aprueba las solicitudes de permiso del arnés. La página **Uso** incluye los tokens guardados por Antigravity en el nodo. Puedes consultar las cuotas de la cuenta con `/usage` en la CLI.
 
 ## Apariencia
 

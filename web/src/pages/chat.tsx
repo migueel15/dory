@@ -141,7 +141,7 @@ export function Entry({ m, threadId = "", fresh = false, openQuestion = false }:
 }
 
 type ModelChange = { from: TurnModel; to: TurnModel; handoff: boolean };
-const providerLabels: Record<string, string> = { claude: "Claude Code", codex: "Codex", opencode: "OpenCode" };
+const providerLabels: Record<string, string> = { claude: "Claude Code", codex: "Codex", opencode: "OpenCode", antigravity: "Antigravity" };
 
 function readModelChange(detail?: string): ModelChange | undefined {
   try {

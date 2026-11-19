@@ -80,6 +80,7 @@ type UsageReport struct {
 func UsageHistory(home string, from time.Time, hourly bool, loc *time.Location) UsageReport {
 	events := usageEvents(filepath.Join(home, ".claude", "projects"), "claude", readClaudeUsage)
 	events = append(events, usageEvents(filepath.Join(home, ".codex", "sessions"), "codex", readCodexUsage)...)
+	events = append(events, antigravityUsageEvents(home, from)...)
 	return aggregateUsage(events, from, hourly, loc)
 }
 

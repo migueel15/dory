@@ -28,9 +28,10 @@ var namePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 // Dirs maps each harness to the folder where it reads skills.
 func Dirs(home string) map[string]string {
 	return map[string]string{
-		"claude":   filepath.Join(home, ".claude", "skills"),
-		"codex":    filepath.Join(home, ".codex", "skills"),
-		"opencode": filepath.Join(home, ".config", "opencode", "skills"),
+		"claude":      filepath.Join(home, ".claude", "skills"),
+		"codex":       filepath.Join(home, ".codex", "skills"),
+		"opencode":    filepath.Join(home, ".config", "opencode", "skills"),
+		"antigravity": antigravitySkillDir(home),
 	}
 }
 
@@ -167,6 +168,18 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 				continue
 			}
 			dir := filepath.Join(dirs[harness], s.Name)
+			if harness == "antigravity" {
+				dir, err = r.antigravityTarget(dir, s.Name, m, want)
+				if err != nil {
+					problems = append(problems, err.Error())
+					if !strings.HasPrefix(err.Error(), "conflicto:") {
+						st.Status = "error"
+					} else if st.Status != "error" {
+						st.Status = "conflict"
+					}
+					continue
+				}
+			}
 			files := map[string]string{"SKILL.md": render(s)}
 			for p, c := range s.Files {
 				files[p] = c
@@ -192,6 +205,15 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 	// someone edited them since.
 	for path, h := range m {
 		if want[path] {
+			continue
+		}
+		if target, ok := strings.CutPrefix(h, linkPrefix); ok {
+			if actual, err := os.Readlink(path); err == nil && actual == target {
+				if err := os.Remove(path); err != nil {
+					continue
+				}
+			}
+			delete(m, path)
 			continue
 		}
 		raw, err := os.ReadFile(path)

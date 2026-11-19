@@ -3,8 +3,11 @@ package update
 import (
 	"context"
 	"net/url"
+	"os/exec"
 	"regexp"
+	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -48,11 +51,15 @@ func providerVersions(ctx context.Context, list []Installed) []ProviderVersion {
 	out := []ProviderVersion{}
 	for _, p := range list {
 		pkg, ok := packages[p.ID]
-		if !ok {
+		if !ok && p.ID != "antigravity" {
 			continue
 		}
 		v := ProviderVersion{ID: p.ID, Name: p.Name, Current: semver.FindString(p.Version)}
-		v.Latest = npmLatest(ctx, pkg)
+		if p.ID == "antigravity" {
+			v.Latest = antigravityLatest(ctx)
+		} else {
+			v.Latest = npmLatest(ctx, pkg)
+		}
 		v.Available = v.Current != "" && v.Latest != "" && newer(v.Latest, v.Current)
 		out = append(out, v)
 	}
@@ -96,4 +103,33 @@ func newer(a, b string) bool {
 		}
 	}
 	return false
+}
+
+const antigravityManifestBase = "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/"
+
+func antigravityLatest(ctx context.Context) string {
+	platform := runtime.GOOS + "_" + runtime.GOARCH
+	if runtime.GOOS == "linux" {
+		out, _ := exec.CommandContext(ctx, "ldd", "/bin/ls").CombinedOutput()
+		if strings.Contains(string(out), "musl") {
+			platform += "_musl"
+		}
+	}
+	npmCache.Lock()
+	if time.Since(npmCache.at[platform]) < checkTTL {
+		v := npmCache.latest[platform]
+		npmCache.Unlock()
+		return v
+	}
+	npmCache.Unlock()
+	var manifest struct{ Version string }
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if getJSON(ctx, antigravityManifestBase+platform+".json", &manifest) != nil {
+		return ""
+	}
+	npmCache.Lock()
+	npmCache.at[platform], npmCache.latest[platform] = time.Now(), manifest.Version
+	npmCache.Unlock()
+	return manifest.Version
 }

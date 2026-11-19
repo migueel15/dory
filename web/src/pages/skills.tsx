@@ -7,7 +7,7 @@ import { api, type Skill, type SkillState } from "../api/client";
 import { Button, Card, ErrorText, Input, Label, Modal, PageHeader, StatusPill, type Tone } from "../components/ui";
 import { askConfirm } from "../components/confirm";
 
-const HARNESSES = [["claude", "Claude Code"], ["codex", "Codex"], ["opencode", "OpenCode"]] as const;
+const HARNESSES = [["claude", "Claude Code"], ["codex", "Codex"], ["opencode", "OpenCode"], ["antigravity", "Antigravity"]] as const;
 const STATE: Record<SkillState["status"], [string, Tone]> = {
   synced: ["sincronizada", "green"], pending: ["pendiente", "amber"], error: ["error", "red"], conflict: ["conflicto", "red"], removed: ["no instalada", "slate"],
 };

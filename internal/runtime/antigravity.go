@@ -1,0 +1,197 @@
+package runtime
+
+import (
+	"context"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+)
+
+const antigravityID = "antigravity"
+
+type Antigravity struct{ Bin string }
+
+func (Antigravity) ID() string { return antigravityID }
+
+func antigravityInstallDir(goos, home, localAppData string) string {
+	if goos == "windows" {
+		if localAppData == "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		return filepath.Join(localAppData, "agy", "bin")
+	}
+	return filepath.Join(home, ".local", "bin")
+}
+
+func (a Antigravity) bin() string {
+	if a.Bin != "" {
+		return a.Bin
+	}
+	if path, err := exec.LookPath("agy"); err == nil {
+		return path
+	}
+	home, _ := os.UserHomeDir()
+	dir := antigravityInstallDir(runtime.GOOS, home, os.Getenv("LOCALAPPDATA"))
+	if path, err := exec.LookPath(filepath.Join(dir, "agy")); err == nil {
+		return path
+	}
+	return "agy"
+}
+
+func (a Antigravity) Detect(ctx context.Context) Status {
+	version, installed := detect(ctx, a.bin())
+	s := Status{ID: a.ID(), Name: "Antigravity", Installed: installed, Version: version,
+		Models:       []Model{{Slug: "antigravity-default", Name: "Predeterminado de Antigravity"}},
+		Capabilities: []string{}}
+	if !installed {
+		return s
+	}
+	probe, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	c, err := openACP(probe, a.bin(), "", false)
+	if err != nil {
+		return s
+	}
+	defer c.close()
+	if _, err := c.initialize(probe); err != nil {
+		return s
+	}
+	// Use a temporary probe directory and close the empty session afterward.
+	dir, err := os.MkdirTemp("", "dory-agy-models-")
+	if err != nil {
+		return s
+	}
+	defer os.RemoveAll(dir)
+	dir, err = filepath.Abs(dir)
+	if err != nil {
+		return s
+	}
+	var session acpSessionInfo
+	if c.call(probe, "session/new", acpParams{"cwd": dir, "mcpServers": []any{}}, &session, nil) == nil {
+		s.Models = append(s.Models, session.models()...)
+		if session.SessionID != "" {
+			_ = c.call(probe, "session/close", acpParams{"sessionId": session.SessionID}, nil, nil)
+		}
+	}
+	return s
+}
+
+func (a Antigravity) Session(ctx context.Context) (bool, string) {
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	_, err := a.list(ctx, 1)
+	if err != nil {
+		return false, ""
+	}
+	return true, "Google"
+}
+
+func (a Antigravity) LoginCommand() []string  { return []string{a.bin(), "acp", "--login"} }
+func (a Antigravity) UpdateCommand() []string { return []string{a.bin(), "update"} }
+func (Antigravity) InstallCommand() []string {
+	if runtime.GOOS == "windows" {
+		return []string{"powershell", "-NoProfile", "-Command", `$installer = Join-Path ([System.IO.Path]::GetTempPath()) ("agy-" + [guid]::NewGuid() + ".cmd"); try { Invoke-WebRequest -ErrorAction Stop -UseBasicParsing https://antigravity.google/cli/install.cmd -OutFile $installer; & $installer; exit $LASTEXITCODE } finally { Remove-Item -LiteralPath $installer -ErrorAction SilentlyContinue }`}
+	}
+	return []string{"sh", "-c", `installer=$(mktemp) || exit; trap 'rm -f "$installer"' EXIT; curl -fsSL https://antigravity.google/cli/install.sh -o "$installer" && bash "$installer"`}
+}
+
+func (a Antigravity) Start(ctx context.Context, t Turn) (Session, error) {
+	c, err := openACP(ctx, a.bin(), t.Dir, !t.FullAccess)
+	if err != nil {
+		return nil, err
+	}
+	s := newAntigravitySession(ctx, c, t)
+	go func() {
+		defer close(s.events)
+		err := s.run()
+		c.close()
+		done := Event{Done: true}
+		if err != nil {
+			done.Err = err.Error()
+		}
+		s.events <- done
+	}()
+	return s, nil
+}
+
+func (s *antigravitySession) run() error {
+	setup, cancel := context.WithTimeout(s.ctx, 45*time.Second)
+	defer cancel()
+	info, err := s.conn.initialize(setup)
+	if err != nil {
+		return err
+	}
+	servers, err := antigravityMCP(info, s.turn)
+	if err != nil {
+		return err
+	}
+	params := acpParams{"cwd": s.turn.Dir, "mcpServers": servers}
+	method := "session/new"
+	if s.turn.Session != "" {
+		method = "session/load"
+		params["sessionId"] = s.turn.Session
+	}
+	var session acpSessionInfo
+	if err := s.conn.call(setup, method, params, &session, s.handle); err != nil {
+		var rpcErr *acpError
+		if errors.As(err, &rpcErr) && (rpcErr.Code == -32000 && strings.Contains(strings.ToLower(rpcErr.Message), "auth")) {
+			return fmt.Errorf("inicia sesión en Antigravity con agy acp --login: %w", err)
+		}
+		return err
+	}
+	s.id = session.SessionID
+	if s.id == "" {
+		s.id = s.turn.Session
+	}
+	if s.id == "" {
+		return errors.New("Antigravity no devolvió el identificador de sesión")
+	}
+	s.emit(Event{Session: s.id})
+	if err := s.configure(setup, session); err != nil {
+		return err
+	}
+	s.live = true
+	blocks := []acpParams{{"type": "text", "text": s.turn.Text}}
+	// Keep inline media bounded. The prompt also contains the attachment paths.
+	remaining := int64(8 << 20)
+	for _, file := range s.turn.Attachments {
+		if info.AgentCapabilities.PromptCapabilities.Image && strings.HasPrefix(file.Mime, "image/") {
+			if st, err := os.Stat(file.Path); err != nil || st.Size() > remaining {
+				continue
+			}
+			if raw, err := os.ReadFile(file.Path); err == nil && int64(len(raw)) <= remaining {
+				blocks = append(blocks, acpParams{"type": "image", "mimeType": file.Mime, "data": base64.StdEncoding.EncodeToString(raw)})
+				remaining -= int64(len(raw))
+			}
+		}
+	}
+	err = s.conn.call(s.ctx, "session/prompt", acpParams{"sessionId": s.id, "prompt": blocks}, nil, s.handle)
+	if s.ctx.Err() != nil {
+		_ = s.conn.send(acpParams{"method": "session/cancel", "params": acpParams{"sessionId": s.id}})
+	}
+	s.finishChunk()
+	return err
+}
+
+func antigravityMCP(info acpInitialize, t Turn) ([]acpParams, error) {
+	servers := []acpParams{}
+	if t.MCPURL == "" {
+		return servers, nil
+	}
+	if info.AgentCapabilities.MCPCapabilities.HTTP {
+		return append(servers, acpParams{"name": "dory", "type": "http", "url": t.MCPURL,
+			"headers": []acpParams{{"name": "Authorization", "value": "Bearer " + t.MCPToken}}}), nil
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	return append(servers, acpParams{"name": "dory", "command": self, "args": []string{"mcp-stdio", t.MCPURL},
+		"env": []acpParams{{"name": "DORY_MCP_TOKEN", "value": t.MCPToken}}}), nil
+}

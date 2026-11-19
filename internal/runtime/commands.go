@@ -34,6 +34,10 @@ func Commands(home, dir, provider string) (commands, skills []Entry) {
 		for _, root := range []string{filepath.Join(home, ".codex", "skills"), filepath.Join(home, ".agents", "skills"), filepath.Join(dir, ".codex", "skills"), filepath.Join(dir, ".agents", "skills")} {
 			skills = append(skills, skillEntries(root, "$")...)
 		}
+	case antigravityID:
+		for _, root := range []string{filepath.Join(home, ".gemini", "config", "skills"), filepath.Join(home, ".gemini", "antigravity-cli", "skills"), filepath.Join(dir, ".gemini", "skills"), filepath.Join(dir, ".agents", "skills")} {
+			skills = append(skills, skillEntries(root, "/")...)
+		}
 	case "opencode":
 		for _, root := range []string{filepath.Join(home, ".config", "opencode", "command"), filepath.Join(dir, ".opencode", "command")} {
 			commands = append(commands, markdownEntries(root, "/")...)

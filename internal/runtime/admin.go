@@ -111,7 +111,7 @@ func (m *Manager) StartJob(provider, kind string) (*Job, error) {
 	j := &Job{ID: strings.ToLower(rand.Text()), Provider: provider, Kind: kind, Started: time.Now()}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
-	if provider == "claude" && kind == "login" {
+	if (provider == "claude" || provider == antigravityID) && kind == "login" {
 		reader, writer, err := os.Pipe()
 		if err != nil {
 			cancel()

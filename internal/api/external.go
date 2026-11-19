@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
-	"strings"
+	"path/filepath"
 
 	"github.com/migueel15/dory/internal/runtime"
 )
@@ -27,18 +27,18 @@ func (s *Server) mountExternal(mux *http.ServeMux) {
 			return
 		}
 		out := []ExternalView{}
-		for _, e := range runtime.ExternalSessions(home) {
+		for _, e := range s.Runtime.ListExternal(r.Context(), home) {
 			out = append(out, ExternalView{External: e, ProjectID: s.projectOf(r.Context(), e.Dir), ThreadID: adopted[e.ID]})
 		}
 		writeJSON(w, http.StatusOK, out)
 	}))
 	mux.HandleFunc("GET /api/nodes/{node}/external/{provider}/{id}", s.onNode(func(w http.ResponseWriter, r *http.Request) {
-		e, err := runtime.ExternalSession(home, r.PathValue("provider"), r.PathValue("id"))
+		e, err := s.Runtime.FindExternal(r.Context(), home, r.PathValue("provider"), r.PathValue("id"))
 		if err != nil {
 			writeDataError(w, err)
 			return
 		}
-		msgs, err := runtime.ExternalMessages(e)
+		msgs, err := s.Runtime.ReadExternal(r.Context(), e)
 		if err != nil {
 			writeDataError(w, err)
 			return
@@ -46,7 +46,7 @@ func (s *Server) mountExternal(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, map[string]any{"session": e, "messages": msgs})
 	}))
 	mux.HandleFunc("POST /api/nodes/{node}/external/{provider}/{id}/adopt", s.onNode(func(w http.ResponseWriter, r *http.Request) {
-		e, err := runtime.ExternalSession(home, r.PathValue("provider"), r.PathValue("id"))
+		e, err := s.Runtime.FindExternal(r.Context(), home, r.PathValue("provider"), r.PathValue("id"))
 		if err != nil {
 			writeDataError(w, err)
 			return
@@ -67,7 +67,7 @@ func (s *Server) projectOf(ctx context.Context, dir string) *string {
 		return nil
 	}
 	for id, path := range paths {
-		if dir == path || strings.HasPrefix(dir, path+"/") {
+		if rel, err := filepath.Rel(path, dir); err == nil && filepath.IsLocal(rel) {
 			if r, err := s.Store.Repositories().Get(ctx, id); err == nil {
 				return &r.ProjectID
 			}
