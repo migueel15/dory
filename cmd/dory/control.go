@@ -276,16 +276,54 @@ func service(action string) error {
 	return errors.New("en Windows, crea una tarea programada al iniciar sesión que ejecute `dory serve`")
 }
 
+// desktopApp returns the command that opens the installed desktop app of
+// this system, or nil when there is none: the app bundles this binary in
+// resources/bin, or the system installer put it in its usual place.
+func desktopApp() *exec.Cmd {
+	home, _ := os.UserHomeDir()
+	var paths []string
+	if self, err := os.Executable(); err == nil {
+		if resources := filepath.Dir(filepath.Dir(self)); filepath.Base(resources) == "resources" || filepath.Base(resources) == "Resources" {
+			root := filepath.Dir(resources)
+			paths = append(paths, filepath.Join(root, "Dory.exe"), filepath.Join(root, "dory-desktop"), filepath.Join(filepath.Dir(root), "MacOS", "Dory"))
+		}
+	}
+	switch runtime.GOOS {
+	case "windows":
+		local := os.Getenv("LOCALAPPDATA")
+		if local == "" {
+			local = filepath.Join(home, "AppData", "Local")
+		}
+		paths = append(paths, filepath.Join(local, "Programs", "Dory", "Dory.exe"), filepath.Join(os.Getenv("ProgramFiles"), "Dory", "Dory.exe"))
+	case "darwin":
+		for _, app := range []string{"/Applications/Dory.app", filepath.Join(home, "Applications", "Dory.app")} {
+			if _, err := os.Stat(app); err == nil {
+				return exec.Command("open", "-a", app)
+			}
+		}
+	default:
+		if path, err := exec.LookPath("dory-desktop"); err == nil {
+			paths = append(paths, path)
+		}
+		paths = append(paths, "/opt/Dory/dory-desktop")
+		appimages, _ := filepath.Glob(filepath.Join(home, ".local", "bin", "Dory*.AppImage"))
+		paths = append(paths, appimages...)
+	}
+	for _, path := range paths {
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			return exec.Command(path)
+		}
+	}
+	return nil
+}
+
 // openWindow shows the interface in the desktop app, in an app window of a
 // Chromium browser, or in the default browser. The desktop app comes first
 // because browsers add their own interface, such as the link status bubble.
 func openWindow(base string) error {
-	for _, b := range []string{"dory-desktop", "Dory", "/opt/Dory/dory-desktop"} {
-		if path, err := exec.LookPath(b); err == nil {
-			cmd := exec.Command(path)
-			detach(cmd)
-			return cmd.Start()
-		}
+	if app := desktopApp(); app != nil {
+		detach(app)
+		return app.Start()
 	}
 	for _, b := range []string{"chromium", "google-chrome-stable", "google-chrome", "brave", "microsoft-edge"} {
 		if path, err := exec.LookPath(b); err == nil {
