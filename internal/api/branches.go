@@ -80,3 +80,71 @@ func switchBranch(ctx context.Context, dir, branch string) error {
 	}
 	return nil
 }
+
+// Worktree is a worktree of a project's repository a new thread can join.
+type Worktree struct {
+	Path    string `json:"path"`
+	Branch  string `json:"branch"`
+	Threads int    `json:"threads"`
+	Working int    `json:"working"`
+}
+
+// worktrees lists the worktrees of the repository at repo, without the main
+// checkout.
+func worktrees(ctx context.Context, repo string) []Worktree {
+	out := []Worktree{}
+	b, err := cmdexec.CommandContext(ctx, "git", "-C", repo, "worktree", "list", "--porcelain").Output()
+	if err != nil {
+		return out
+	}
+	for i, block := range strings.Split(strings.TrimSpace(string(b)), "\n\n") {
+		if i == 0 {
+			continue // the main checkout
+		}
+		var w Worktree
+		for _, line := range strings.Split(block, "\n") {
+			if p, ok := strings.CutPrefix(line, "worktree "); ok {
+				w.Path = p
+			} else if br, ok := strings.CutPrefix(line, "branch "); ok {
+				w.Branch = strings.TrimPrefix(br, "refs/heads/")
+			}
+		}
+		if w.Path != "" {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// defaultBranch is the branch origin points HEAD to, or main.
+func defaultBranch(ctx context.Context, repo string) string {
+	if b, err := cmdexec.CommandContext(ctx, "git", "-C", repo, "symbolic-ref", "--short", "refs/remotes/origin/HEAD").Output(); err == nil {
+		return strings.TrimPrefix(strings.TrimSpace(string(b)), "origin/")
+	}
+	return "main"
+}
+
+// mountWorktrees lists the worktrees of a project's checkout on any node.
+func (s *Server) mountWorktrees(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/nodes/{node}/projects/{id}/worktrees", s.onNode(func(w http.ResponseWriter, r *http.Request) {
+		_, path, err := s.projectCheckout(r.Context(), r.PathValue("id"))
+		if errors.Is(err, errNotCloned) {
+			writeError(w, http.StatusBadRequest, "repository_not_cloned", err.Error())
+			return
+		}
+		if err != nil {
+			writeDataError(w, err)
+			return
+		}
+		out := []Worktree{}
+		if path != "" {
+			out = worktrees(r.Context(), path)
+		}
+		for i := range out {
+			if u, err := s.Runtime.WorktreeUse(r.Context(), out[i].Path, ""); err == nil {
+				out[i].Threads, out[i].Working = u.Threads, u.Working
+			}
+		}
+		writeJSON(w, http.StatusOK, out)
+	}))
+}

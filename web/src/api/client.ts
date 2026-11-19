@@ -110,7 +110,7 @@ function resource<T extends { id: string }, I>(path: string) {
 
 export type NewThread = {
   node?: string; project_id?: string | null; task_id?: string | null; repository_id?: string; provider: string; model?: string; effort?: string;
-  runtime_mode?: Thread["runtime_mode"]; title?: string; text?: string; worktree?: boolean; branch?: string; base_branch?: string;
+  runtime_mode?: Thread["runtime_mode"]; title?: string; text?: string; worktree?: boolean; branch?: string; base_branch?: string; worktree_path?: string;
 };
 export type Launch = { provider: string; model?: string; effort?: string; runtime_mode?: Thread["runtime_mode"]; base_branch?: string; text?: string };
 export type ThreadActionName = "rename" | "pin" | "unpin" | "read" | "unread" | "settle" | "unsettle" | "snooze" | "unsnooze" | "link" | "archive";
@@ -170,6 +170,7 @@ export const api = {
   memories: resource<Memory, MemoryInput>("/memories"),
   threads: (filter?: Record<string, unknown>, archived = false) => req<Thread[]>("GET", "/threads" + q(filter, archived)),
   thread: (id: string) => req<ThreadView>("GET", `/threads/${id}`),
+  projectWorktrees: (node: string, project: string) => req<{ path: string; branch: string; threads: number; working: number }[]>("GET", `/nodes/${node || "local"}/projects/${project}/worktrees`),
   projectBranches: (node: string, project: string) => req<{ current: string; branches: string[] }>("GET", `/nodes/${node || "local"}/projects/${project}/branches`),
   createThread: ({ node, ...body }: NewThread) => req<{ thread_id: string }>("POST", `/nodes/${node || "local"}/threads`, body),
   send: (id: string, text: string, files: string[] = []) => req<void>("POST", `/threads/${id}/messages`, { text, files }),
