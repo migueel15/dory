@@ -295,14 +295,16 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
 
           <details className="group overflow-hidden rounded-xl border border-slate-200 dark:border-border">
             <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-raised">
-              <ClipboardText className="size-4" />Plan
+              <span className="inline-flex items-center gap-2">
+                <ClipboardText className="size-4" />Plan
+                {!!planDoc.data?.revision && <span className="text-xs font-medium tabular-nums text-slate-600 dark:text-muted">V{planDoc.data.revision}</span>}
+              </span>
               <span className="ml-auto flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600 dark:text-muted">
                 {planDoc.data?.accepted_at ? (
                   <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><Check weight="thin" aria-hidden="true" className="size-3.5 shrink-0" />Aceptado</span>
                 ) : planDoc.data?.body_md.trim() ? (
                   <span className="text-amber-700 dark:text-amber-400">Pendiente de aceptar</span>
                 ) : planDoc.data ? "Sin plan" : planDoc.isError ? "Estado no disponible" : "Cargando…"}
-                {!!planDoc.data?.revision && <span>Revisión {planDoc.data.revision}</span>}
                 <CaretDown className="size-4 transition-transform group-open:rotate-180" />
               </span>
             </summary>
