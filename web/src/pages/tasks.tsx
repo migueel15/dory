@@ -303,7 +303,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
           <div className="mb-3 flex items-center justify-between gap-2">
             <h3 className="text-sm font-semibold">{launchLabel}</h3>
             <button type="button" className="grid size-8 shrink-0 place-items-center bg-transparent text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white" popoverTarget={launchPopoverId} popoverTargetAction="hide" aria-label="Cerrar configuración">
-              <X weight="thin" aria-hidden="true" className="size-4" />
+              <X weight="regular" aria-hidden="true" className="size-4" />
             </button>
           </div>
           {form.nodes.length <= 1 && <p className="mb-3 text-xs text-slate-600 dark:text-muted">Entorno <span className="ml-1 font-medium">{environment}</span></p>}
