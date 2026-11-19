@@ -201,13 +201,13 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
     const trigger = launchTrigger.current;
     const popover = launchPopover.current;
     if (!trigger || !popover) return;
-    const { left, right, top, bottom } = trigger.getBoundingClientRect();
+    const { right, top, bottom } = trigger.getBoundingClientRect();
     const width = Math.min(368, window.innerWidth - 24);
     const below = Math.max(0, window.innerHeight - bottom - 20);
     const above = Math.max(0, top - 20);
     const placeAbove = below < 260 && above > below;
     popover.style.width = `${width}px`;
-    popover.style.left = `${Math.max(12, Math.min(Math.max(left, right - width), window.innerWidth - width - 12))}px`;
+    popover.style.left = `${Math.max(12, Math.min(right - width, window.innerWidth - width - 12))}px`;
     popover.style.top = placeAbove ? "auto" : `${bottom + 8}px`;
     popover.style.bottom = placeAbove ? `${window.innerHeight - top + 8}px` : "auto";
     popover.style.maxHeight = `${placeAbove ? above : below}px`;
