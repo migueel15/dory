@@ -10,6 +10,7 @@ import { ProviderIcon } from "../components/launch-picker";
 import { explicitModels, findModel, modelEffort, modelId as concreteModelId, rememberModel } from "../effort";
 import { iconBtn, MessageParts } from "./chat";
 import type { DraftQuote } from "../components/quote-selection";
+import { QuestionPanel, useQuestionFlow } from "../components/question-card";
 import { paintTokens, quoteBlock, quoteLabel, tokenRanges, type Token, type Tokens } from "../components/composer-tokens";
 
 // The composer of a thread, kept from Dory v1: attachments, @ mentions of
@@ -379,6 +380,15 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
     },
   });
   const stop = useMutation({ mutationFn: () => api.interrupt(t.id) });
+  // A question the turn waits for sits on top of the box; the box writes the
+  // free answer of the current question instead of a new message.
+  const request = t.requests?.find((r) => r.questions.length > 0);
+  const reply = useMutation({
+    mutationFn: (answers: string[][]) => api.answer(t.id, request!.id, answers),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+  });
+  const flow = useQuestionFlow(request?.id ?? "", request?.questions ?? [], (answers) => reply.mutate(answers));
+  const asking = !!request && !!flow.q;
   const settings = useMutation({
     scope: { id: `thread-settings:${t.id}` },
     mutationFn: (body: Parameters<typeof api.threadSettings>[1]) => api.threadSettings(t.id, body),
@@ -402,7 +412,14 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   };
   const latestSendDraft = useRef(sendDraft);
   useLayoutEffect(() => { latestSendDraft.current = sendDraft; });
-  const submit = () => { if (canSend) sendDraft(text); };
+  const submit = () => {
+    if (asking) {
+      const answer = text.trim();
+      if (answer && !reply.isPending) { flow.answer(answer); setText(""); }
+      return;
+    }
+    if (canSend) sendDraft(text);
+  };
   if (!t.local) return null;
   const busy = t.running;
   return (
@@ -416,6 +433,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
           if (fs.length) { e.preventDefault(); addFiles(fs); }
         }}
         className={composerFrame}>
+        {asking && <QuestionPanel flow={flow} busy={reply.isPending} error={reply.error} />}
         {!dictation.active && suggest.menu}
         {quotes.length > 0 && (
           <ul ref={quoteList} aria-label="Citas del mensaje" className="mx-2 mt-2 max-h-44 space-y-1.5 overflow-y-auto overscroll-contain px-1 py-1">
@@ -455,7 +473,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
           </div>}
           <textarea ref={area} data-dictation-disabled={send.isPending || undefined} rows={1} value={dictation.value} readOnly={dictation.active} onChange={(e) => setText(e.target.value)} onSelect={() => { if (!dictation.active) { snapSelection(); suggest.track(); } }} onClick={() => { if (!dictation.active) suggest.track(); }} aria-label="Mensaje"
             onScroll={(e) => { if (paint.current) paint.current.scrollTop = e.currentTarget.scrollTop; }}
-            placeholder={t.status === "waiting" ? "Escribe tu respuesta…" : "Escribe al hilo…"}
+            placeholder={asking ? (flow.q?.options?.length ? "Escribe otra respuesta…" : "Escribe tu respuesta…") : t.status === "waiting" ? "Escribe tu respuesta…" : "Escribe al hilo…"}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return;
               if (dictation.active) {
@@ -496,15 +514,15 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
               }} />
           </div>
           <DictationMic dictation={dictation} disabled={send.isPending} />
-          {busy && !outgoing && !files.length && !dictation.active ? (
+          {busy && !asking && !outgoing && !files.length && !dictation.active ? (
             <button type="button" onClick={() => stop.mutate()} disabled={stop.isPending} title="Parar el turno en curso" aria-label="Parar"
               className={iconButton}>
               <Stop weight="fill" className="size-3.5" />
             </button>
           ) : (
-            <button type="submit" disabled={!canSend} title={busy ? "Encolar (Enter)" : "Enviar (Enter)"} aria-label="Enviar"
+            <button type="submit" disabled={asking ? !text.trim() || reply.isPending : !canSend} title={asking ? "Responder (Enter)" : busy ? "Encolar (Enter)" : "Enviar (Enter)"} aria-label={asking ? "Responder" : "Enviar"}
               className={iconButton}>
-              {send.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : busy ? <ListBullets weight="regular" className="block size-4" /> : <ArrowUp weight="regular" className="block size-4" />}
+              {send.isPending || reply.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : busy && !asking ? <ListBullets weight="regular" className="block size-4" /> : <ArrowUp weight="regular" className="block size-4" />}
             </button>
           )}
         </div>
