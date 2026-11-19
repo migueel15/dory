@@ -9,6 +9,7 @@ import { ProviderIcon } from "../components/launch-picker";
 import { StatusDot } from "./thread";
 import { NewThread } from "./home";
 import { useThreadMenu } from "../components/thread-menu";
+import { EnvIcon } from "../components/env-icon";
 
 // Filters of the single inbox of threads (requirement RF-19).
 const FILTERS = { active: "Activos", needs: "Te necesitan", working: "Trabajando", archived: "Archivados", external: "En los agentes" } as const;
@@ -37,6 +38,13 @@ export function Threads() {
   // Conversations started in the harnesses of this node, outside Dory.
   const external = useQuery({ queryKey: ["external", "local"], queryFn: () => api.externalSessions("local"), enabled: filter === "external", refetchInterval: 30_000 });
   const local = nodes.data?.node.id;
+  const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh, staleTime: 30_000 });
+  // The environment a thread runs in, to show its icon in the list.
+  const envOf = (id: string) => {
+    if (id === local && nodes.data) return { name: nodes.data.node.name, icon: nodes.data.node.icon, os: nodes.data.node.os };
+    const p = mesh.data?.peers.find((x) => x.id === id);
+    return p ? { name: p.name, icon: p.info.node?.icon, os: p.info.node?.os } : { name: "Otro nodo" };
+  };
   // Each thread shows the repositories of its project as owner/repo.
   const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list(), staleTime: 60_000 });
   const repoOf = (projectID: string | null) => (repos.data ?? []).filter((r) => projectID && r.project_id === projectID && !r.archived_at).map((r) => repoName(r.remote_url)).join(", ");
@@ -107,7 +115,7 @@ export function Threads() {
             ))}
           {filter === "external" && external.isPending && <p className="p-3 text-sm text-slate-500">Leyendo las conversaciones…</p>}
           {filter !== "external" && <ul className="space-y-0.5">{shown.map((t) => (
-            <ThreadRow key={t.id} t={t} sub={[repoOf(t.project_id), t.node_id !== local ? "otro nodo" : ""].filter(Boolean).join(" · ")} />
+            <ThreadRow key={t.id} t={t} sub={repoOf(t.project_id)} env={envOf(t.node_id)} />
           ))}</ul>}
           {filter !== "external" && threads.isSuccess && shown.length === 0 && <p className="p-3 text-sm text-slate-500 dark:text-muted">No hay hilos aquí.</p>}
         </div>
@@ -147,7 +155,7 @@ export function ThreadsHome() {
 }
 
 // ThreadRow is one thread of the side list; right click opens its actions.
-function ThreadRow({ t, sub }: { t: Thread; sub: string }) {
+function ThreadRow({ t, sub, env }: { t: Thread; sub: string; env: { name: string; icon?: string; os?: string } }) {
   const menu = useThreadMenu(t);
   return (
     <li>
@@ -161,6 +169,7 @@ function ThreadRow({ t, sub }: { t: Thread; sub: string }) {
                 {isUnread(t) && <span className="size-2 shrink-0 rounded-full bg-blue-500" aria-label="Sin leer" />}
                 {t.pinned_at && <PushPin weight="fill" className="size-3 shrink-0 text-slate-400" aria-label="Fijado" />}
                 <span className="shrink-0"><ProviderIcon driver={t.provider} model={t.model} /></span>
+                <span className="shrink-0 text-slate-400 dark:text-muted"><EnvIcon {...env} /></span>
                 <span className="shrink-0 text-[11px] tabular-nums text-slate-400">{ago(t.last_activity_at ?? t.created_at)}</span>
               </Link>
       {menu.menu}

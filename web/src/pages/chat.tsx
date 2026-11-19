@@ -585,22 +585,47 @@ function Reasoning({ m }: { m: Message }) {
 export function useFollow(deps: unknown[]) {
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
+  // Where the last scroll left the view: only a move up is the user leaving the end.
+  const lastTop = useRef(0);
+  // True while "Ir al final" glides down, so its own steps do not unpin.
+  const chasing = useRef(false);
   const [away, setAway] = useState(false);
-  useLayoutEffect(() => {
+  const toEnd = () => {
     const el = scroller.current;
-    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+    if (el) { el.scrollTop = el.scrollHeight; lastTop.current = el.scrollTop; }
+  };
+  useLayoutEffect(() => {
+    if (pinned.current) toEnd();
   }, deps); // eslint-disable-line react-hooks/exhaustive-deps
+  // Content also grows without new messages (code highlighted late, a step
+  // opened, the composer taller): keep the end in view while pinned.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => { if (pinned.current) { chasing.current = false; toEnd(); } });
+    const watch = () => { ro.disconnect(); ro.observe(el); for (const c of Array.from(el.children)) ro.observe(c); };
+    watch();
+    const mo = new MutationObserver(watch);
+    mo.observe(el, { childList: true });
+    return () => { ro.disconnect(); mo.disconnect(); };
+  }, []);
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    pinned.current = distance < 40;
+    const up = el.scrollTop < lastTop.current - 1;
+    lastTop.current = el.scrollTop;
+    if (distance < 40) { pinned.current = true; chasing.current = false; }
+    else if (up && !chasing.current) pinned.current = false;
     setAway(distance > 200);
   };
   const follow = (smooth = false) => {
     pinned.current = true;
     const el = scroller.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth && !window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "smooth" : "auto" });
+    if (!el) return;
+    const glide = smooth && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    chasing.current = glide;
+    el.scrollTo({ top: el.scrollHeight, behavior: glide ? "smooth" : "auto" });
   };
   return { scroller, onScroll, follow, away };
 }

@@ -195,7 +195,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	}
 	net.DeviceSession = func(w http.ResponseWriter, r *http.Request) { auth.DeviceSession(w, r, store.Accounts(), cfg) }
 	net.Info = func(ctx context.Context) any {
-		return map[string]any{"node": srv.Node, "providers": rt.Providers(ctx)}
+		return map[string]any{"node": srv.Info(), "providers": rt.Providers(ctx)}
 	}
 	done := make(chan error, 2)
 	go func() { done <- server.ListenAndServe() }()
