@@ -142,7 +142,7 @@ export const api = {
   saveSkill: (s: Partial<Skill>) => (s.id ? req<Skill>("PUT", `/skills/${s.id}`, s) : req<Skill>("POST", "/skills", s)),
   archiveSkill: (id: string) => req<void>("DELETE", `/skills/${id}`),
   node: () => req<NodeStatus>("GET", "/node"),
-  usageHistory: (range: UsageRange) => req<UsageReport>("GET", `/nodes/local/usage/history?${new URLSearchParams({ range, tz: Intl.DateTimeFormat().resolvedOptions().timeZone })}`),
+  usageHistory: (range: UsageRange, node = "local") => req<UsageReport>("GET", `/nodes/${node}/usage/history?${new URLSearchParams({ range, tz: Intl.DateTimeFormat().resolvedOptions().timeZone })}`),
   search: (text: string) => req<Hit[]>("GET", `/search?q=${encodeURIComponent(text)}`),
   login: (username: string, password: string) => req<User>("POST", "/auth/login", { username, password }),
   setupNeeded: () => req<{ needed: boolean }>("GET", "/auth/setup"),
