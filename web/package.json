@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "tsc src/stack.ts src/stack.test.ts --outDir .test --module nodenext --moduleResolution nodenext --target es2022 --strict --skipLibCheck && echo '{\"type\":\"module\"}' > .test/package.json && node --test .test/stack.test.js; rm -rf .test",
+    "test": "tsc src/stack.ts src/stack.test.ts src/lib/merge3.ts src/lib/merge3.test.ts --outDir .test --module nodenext --moduleResolution nodenext --target es2022 --strict --skipLibCheck && echo '{\"type\":\"module\"}' > .test/package.json && node --test .test/stack.test.js .test/lib/merge3.test.js; rm -rf .test",
     "build": "tsc --noEmit && vite build && touch dist/.gitkeep",
     "preview": "vite preview"
   },
@@ -15,6 +15,11 @@
     "@tanstack/react-query": "^5.105.0",
     "@tanstack/react-router": "^1.170.46",
     "@tanstack/react-virtual": "^3.14.26",
+    "@tiptap/extension-list": "^3.34.0",
+    "@tiptap/markdown": "^3.34.0",
+    "@tiptap/pm": "^3.34.0",
+    "@tiptap/react": "^3.34.0",
+    "@tiptap/starter-kit": "^3.34.0",
     "katex": "^0.16.47",
     "pdfjs-dist": "^6.5.438",
     "react": "^19.3.1",

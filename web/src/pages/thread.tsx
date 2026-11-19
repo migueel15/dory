@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { hasWindowClose } from "../lib/window-close";
+import { PlanDoc } from "../components/plan-doc";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { Circle, CircleNotch, GitDiff, Kanban, WarningCircle, XCircle } from "@phosphor-icons/react";
@@ -18,11 +19,15 @@ import { useThreadMenu } from "../components/thread-menu";
 import { useThreadsFold } from "../lib/threads-fold";
 import { SidePanel, SidePanelToggle, useSidePanel, type SidePanelState } from "../components/side-panel";
 
-// ThreadView is a whole thread page: header, chat and, on demand, its changes.
+// ThreadView is a whole thread page: header, chat and, on demand, its changes
+// and the plan of its task.
 export function ThreadView() {
   const { threadId } = useParams({ strict: false }) as { threadId: string };
   const panel = useSidePanel(threadId);
-  const local = useThread(threadId).data?.local;
+  const thread = useThread(threadId).data;
+  const local = thread?.local;
+  const taskId = thread?.task_id ?? null;
+  useOpenPlanOnAgentEdit(taskId, panel);
   return (
     <div className="relative flex h-[calc(100dvh-4rem-1px)] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
       {/* The panel toggle is pinned to the page corner, so opening the panel never moves it. */}
@@ -31,9 +36,25 @@ export function ThreadView() {
         <Header threadId={threadId} panel={panel} />
         <ThreadChat threadId={threadId} />
       </div>
-      <SidePanel panel={panel} available={local ? ["diff"] : []} render={(k) => k === "diff" && <Changes threadId={threadId} />} />
+      <SidePanel panel={panel} available={[...(local ? ["diff" as const] : []), ...(taskId ? ["plan" as const] : [])]}
+        render={(k) => (k === "diff" ? <Changes threadId={threadId} /> : taskId && <PlanDoc taskId={taskId} />)} />
     </div>
   );
+}
+
+// useOpenPlanOnAgentEdit brings the plan tab to the front when the agent
+// changes the plan of the thread's task, so the user watches it being written.
+function useOpenPlanOnAgentEdit(taskId: string | null, panel: SidePanelState) {
+  const plan = useQuery({ queryKey: ["plans", taskId, "doc"], queryFn: () => api.plan(taskId!), enabled: !!taskId });
+  const seen = useRef<number | undefined>(undefined);
+  const revision = plan.data?.revision;
+  useEffect(() => { seen.current = undefined; }, [taskId]);
+  useEffect(() => {
+    if (revision === undefined) return;
+    const before = seen.current;
+    seen.current = revision;
+    if (before !== undefined && revision > before && plan.data?.author === "agent" && !(panel.open && panel.active === "plan")) panel.show("plan");
+  }, [revision]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 function useThread(threadId?: string) {

@@ -44,5 +44,6 @@ export function parseAutoMessage(text: string): AutoMessage | undefined {
 // task's own text, when it is not what the user just wrote, goes as context.
 export const planMessage = (task: { id: string; title?: string; description?: string }, user = "") => autoMessage("plan", { task: task.id, title: task.title },
   `Modo plan. Vamos a definir la tarea de Dory ${task.id} antes de implementarla. No cambies código.\n` +
-  `Haz las preguntas que necesites y propón el plan con la herramienta propose_plan del MCP de Dory (objetivo, alcance, dónde, diseño, requisitos, validación, riesgos). ` +
+  `Haz las preguntas que necesites y escribe el plan como un documento Markdown con las herramientas del MCP de Dory: plan_read para leerlo, plan_write para escribirlo entero la primera vez y plan_edit para cambiar partes concretas. ` +
+  `Yo lo veo y lo edito en el panel lateral, así que léelo de nuevo antes de cambiarlo. Usa secciones como objetivo, alcance, dónde, diseño, requisitos, validación y riesgos, y una de preguntas abiertas si las hay. ` +
   `Solo yo acepto el plan.` + (task.description !== undefined ? `\n\n# ${task.title}\n\n${task.description}` : ""), user);

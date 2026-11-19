@@ -1,10 +1,11 @@
 import { DictationField } from "../components/dictation-field";
+import { PlanDoc } from "../components/plan-doc";
 import { useDictationInProgress } from "../components/local-dictation";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ChatCircle, CircleNotch, ClipboardText, GitBranch, GitMerge, GitPullRequest, Plus, Rocket, X } from "@phosphor-icons/react";
-import { api, COLUMN_LABELS, repoName, type Card, type Column, type Plan, type Stage } from "../api/client";
+import { api, COLUMN_LABELS, repoName, type Card, type Column, type Stage } from "../api/client";
 import { Button, Card as UiCard, ErrorText, Input, Label, Md, Modal, Select } from "../components/ui";
 import { useLaunchForm } from "../components/launch-picker";
 import { useProject } from "../project";
@@ -181,8 +182,6 @@ function NewTask({ onClose, onCreated }: { onClose: () => void; onCreated: (id: 
   );
 }
 
-const SECTIONS = [["goal", "Objetivo"], ["scope", "Alcance"], ["where", "Dónde"], ["design", "Diseño"], ["requirements", "Requisitos"], ["validation", "Validación"], ["risks", "Riesgos"]] as const;
-
 function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const qc = useQueryClient();
   const dictating = useDictationInProgress();
@@ -268,7 +267,10 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
           <ErrorText error={launch.error ?? define.error} />
         </section>
 
-        <PlanEditor taskId={id} latest={latest} versions={plans.data?.length ?? 0} />
+        <section className="overflow-hidden rounded-lg border border-slate-200 dark:border-border">
+          <h3 className="flex items-center gap-1.5 px-3 pt-2 text-sm font-semibold"><ClipboardText className="size-4" />Plan</h3>
+          <PlanDoc taskId={id} />
+        </section>
 
         <section>
           <h3 className="mb-1 text-sm font-semibold">Depende de</h3>
@@ -290,36 +292,3 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   );
 }
 
-function PlanEditor({ taskId, latest, versions }: { taskId: string; latest?: Plan; versions: number }) {
-  const qc = useQueryClient();
-  const dictating = useDictationInProgress();
-  const [edit, setEdit] = useState<Record<string, string>>();
-  const done = () => { qc.invalidateQueries({ queryKey: ["plans", taskId] }); qc.invalidateQueries({ queryKey: ["card", taskId] }); qc.invalidateQueries({ queryKey: ["board"] }); };
-  const create = useMutation({ mutationFn: (sections: Record<string, string>) => api.createPlan(taskId, { sections, open_questions: latest?.open_questions ?? [] }), onSuccess: () => { setEdit(undefined); done(); } });
-  const accept = useMutation({ mutationFn: () => api.acceptPlan(taskId), onSuccess: done });
-  return (
-    <section className="rounded-lg border border-slate-200 p-3 dark:border-border">
-      <div className="mb-2 flex items-center gap-2">
-        <h3 className="flex items-center gap-1.5 text-sm font-semibold"><ClipboardText className="size-4" />Plan</h3>
-        {latest && <span className="text-xs text-slate-500">v{latest.version} de {versions} · {latest.author === "agent" ? "agente" : "tú"}{latest.accepted_at ? " · aceptado" : ""}</span>}
-        <div className="ml-auto flex gap-2">
-          {!edit && <Button variant="ghost" className="text-xs" onClick={() => setEdit({ ...(latest?.sections ?? {}) })}>{latest ? "Editar" : "Escribir plan"}</Button>}
-          {latest && !latest.accepted_at && !edit && <Button className="text-xs" onClick={() => accept.mutate()} disabled={accept.isPending}>Aceptar plan</Button>}
-        </div>
-      </div>
-      {edit ? (
-        <div className="space-y-2">
-          {SECTIONS.map(([k, label]) => <DictationField key={k} label={label} rows={2} value={edit[k] ?? ""} onValue={(value) => setEdit((current) => current && { ...current, [k]: value })} />)}
-          <div className="flex gap-2"><Button onClick={() => create.mutate(edit)} disabled={dictating || create.isPending}>Guardar versión</Button><Button variant="ghost" onClick={() => setEdit(undefined)}>Descartar</Button></div>
-        </div>
-      ) : latest ? (
-        <div className="space-y-2 text-sm">
-          {SECTIONS.filter(([k]) => latest.sections[k]).map(([k, label]) => <div key={k}><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p><Md>{latest.sections[k]}</Md></div>)}
-          {Object.entries(latest.sections).filter(([k]) => !SECTIONS.some(([s]) => s === k)).map(([k, v]) => <div key={k}><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{k}</p><Md>{String(v)}</Md></div>)}
-          {latest.open_questions.length > 0 && <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Preguntas abiertas</p><ul className="list-disc pl-5">{latest.open_questions.map((q) => <li key={q}>{q}</li>)}</ul></div>}
-        </div>
-      ) : <p className="text-sm text-slate-500 dark:text-muted">Sin plan. No es obligatorio: puedes lanzar la tarea sin él.</p>}
-      <ErrorText error={create.error ?? accept.error} />
-    </section>
-  );
-}

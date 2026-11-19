@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -70,6 +69,7 @@ func (s *Server) mountTasks(mux *http.ServeMux) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	s.planRoutes(mux)
 	mux.HandleFunc("GET /api/tasks/{id}/plans", func(w http.ResponseWriter, r *http.Request) {
 		plans, err := s.Store.Plans().List(r.Context(), data.Filter{Fields: map[string]any{"task_id": r.PathValue("id")}, Limit: 1000})
 		if err != nil {
@@ -77,21 +77,6 @@ func (s *Server) mountTasks(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, http.StatusOK, plans)
-	})
-	mux.HandleFunc("POST /api/tasks/{id}/plans", func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Sections      json.RawMessage `json:"sections"`
-			OpenQuestions []string        `json:"open_questions"`
-		}
-		if !decode(w, r, &body) {
-			return
-		}
-		p, err := s.ProposePlan(r.Context(), r.PathValue("id"), body.Sections, body.OpenQuestions, "user")
-		if err != nil {
-			writeDataError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, p)
 	})
 	mux.HandleFunc("POST /api/tasks/{id}/plan/accept", func(w http.ResponseWriter, r *http.Request) {
 		t, p, err := s.acceptPlan(r.Context(), r.PathValue("id"))
@@ -102,25 +87,6 @@ func (s *Server) mountTasks(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, map[string]any{"task": t, "plan": p})
 	})
 	mux.HandleFunc("POST /api/tasks/{id}/launch", s.launch)
-}
-
-// ProposePlan stores the next version of a task's plan.
-func (s *Server) ProposePlan(ctx context.Context, taskID string, sections json.RawMessage, questions []string, author string) (data.Plan, error) {
-	if _, err := s.Store.Tasks().Get(ctx, taskID); err != nil {
-		return data.Plan{}, err
-	}
-	plans, err := s.Store.Plans().List(ctx, data.Filter{Fields: map[string]any{"task_id": taskID}, Limit: 1000, IncludeArchived: true})
-	if err != nil {
-		return data.Plan{}, err
-	}
-	version := int64(1)
-	for _, p := range plans {
-		version = max(version, p.Version+1)
-	}
-	if len(sections) == 0 {
-		sections = json.RawMessage(`{}`)
-	}
-	return s.Store.Plans().Put(ctx, data.Plan{TaskID: taskID, Version: version, Sections: sections, OpenQuestions: questions, Author: author})
 }
 
 // planPending says whether the latest plan of a task waits for the user to
@@ -463,7 +429,7 @@ func (s *Server) taskPrompt(ctx context.Context, t data.Task) string {
 		}
 	}
 	if accepted != nil {
-		fmt.Fprintf(&b, "\nPlan aceptado:\n%s\n", accepted.Sections)
+		fmt.Fprintf(&b, "\nPlan aceptado:\n\n%s\n", planMarkdown(*accepted))
 	}
 	b.WriteString("\nUsa el MCP de Dory para leer el contexto del proyecto y guardar lo que aprendas.\n")
 	return autoMessage("implement", map[string]string{"task": t.ID, "title": t.Title, "branch": t.Branch, "issue": issue}, b.String(), "")

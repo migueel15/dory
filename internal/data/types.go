@@ -57,11 +57,14 @@ type Plan struct {
 	Version       int64           `json:"version"`
 	Sections      json.RawMessage `json:"sections"`
 	OpenQuestions []string        `json:"open_questions"`
-	Author        string          `json:"author"`
-	AcceptedAt    *string         `json:"accepted_at"`
-	CreatedAt     string          `json:"created_at"`
-	UpdatedAt     string          `json:"updated_at"`
-	ArchivedAt    *string         `json:"archived_at"`
+	// BodyMD is the plan document; Revision counts its saves.
+	BodyMD     string  `json:"body_md"`
+	Revision   int64   `json:"revision"`
+	Author     string  `json:"author"`
+	AcceptedAt *string `json:"accepted_at"`
+	CreatedAt  string  `json:"created_at"`
+	UpdatedAt  string  `json:"updated_at"`
+	ArchivedAt *string `json:"archived_at"`
 }
 
 // Memory scope is global, project or node; ScopeID is empty for global.

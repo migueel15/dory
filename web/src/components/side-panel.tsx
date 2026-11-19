@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { hasWindowClose } from "../lib/window-close";
 import { ResizeHandle } from "../pages/thread";
-import { GitDiff, Plus, SidebarSimple, X } from "@phosphor-icons/react";
+import { ClipboardText, GitDiff, Plus, SidebarSimple, X } from "@phosphor-icons/react";
 
-// A thread's side panel holds tabs of objects related to the thread. The
-// only kind today is its changes; new kinds join TAB_KINDS.
-export type TabKind = "diff";
+// A thread's side panel holds tabs of objects related to the thread: its
+// changes and the plan of its task; new kinds join TAB_KINDS.
+export type TabKind = "diff" | "plan";
 export const TAB_KINDS: Record<TabKind, { label: string; icon: ReactNode }> = {
   diff: { label: "Cambios", icon: <GitDiff className="size-4" /> },
+  plan: { label: "Plan", icon: <ClipboardText className="size-4" /> },
 };
 
 type State = { open: boolean; tabs: TabKind[]; active: TabKind | null };
