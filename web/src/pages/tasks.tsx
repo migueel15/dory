@@ -1,7 +1,7 @@
 import { DictationField } from "../components/dictation-field";
 import { PlanDoc } from "../components/plan-doc";
 import { useDictationInProgress } from "../components/local-dictation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowSquareOut, Check, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, ChatCircle, CircleNotch, ClipboardText, GitBranch, GitMerge, GitPullRequest, Plus, Rocket, X } from "@phosphor-icons/react";
@@ -193,6 +193,16 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const board = useQuery({ queryKey: ["board", ""], queryFn: () => api.board() });
   const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list() });
   const [draft, setDraft] = useState<{ title: string; description: string; issue: string; pr: string; repo: string }>();
+  const planSection = useRef<HTMLDetailsElement>(null);
+  const [creatingPlan, setCreatingPlan] = useState(false);
+  const openPlan = () => {
+    const details = planSection.current;
+    if (!details) return;
+    details.open = true;
+    details.querySelector("summary")?.focus({ preventScroll: true });
+    details.scrollIntoView({ block: "nearest" });
+  };
+  useEffect(() => { if (creatingPlan) openPlan(); }, [creatingPlan]);
   const [panel, setPanel] = useState<"edit" | "launch">();
   const c = card.data;
   useEffect(() => { if (c && !draft) setDraft({ title: c.title, description: c.description, issue: c.issue_number?.toString() ?? "", pr: c.pr_number?.toString() ?? "", repo: c.repository_id ?? "" }); }, [c]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -226,6 +236,9 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const latest = [...(plans.data ?? [])].sort((a, b) => b.version - a.version)[0];
   // The latest plan has to be accepted before the task is implemented.
   const planPending = !!latest && !latest.accepted_at;
+  const planAccepted = !!planDoc.data?.accepted_at;
+  const hasPlanContent = !!planDoc.data?.body_md.trim();
+  const planAction = planDoc.data && !planAccepted ? (hasPlanContent ? "Revisar plan" : "Crear plan") : undefined;
   const projectRepos = (repos.data ?? []).filter((r) => !c.project_id || r.project_id === c.project_id);
   const githubRepo = c.repo && /^[\w.-]+\/[\w.-]+$/.test(c.repo) ? `https://github.com/${c.repo}` : undefined;
   const pullNumber = c.pull?.number ?? c.pr_number;
@@ -238,7 +251,13 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4 dark:border-border">
         <span className={`mr-auto inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${COLUMN_TONE[c.column]}`}>{COLUMN_LABELS[c.column]}</span>
         <Button variant="bare" aria-expanded={panel === "edit"} onClick={() => setPanel(panel === "edit" ? undefined : "edit")}><PencilSimple className="size-4" />Editar tarea</Button>
-        <Button aria-expanded={panel === "launch"} onClick={() => setPanel(panel === "launch" ? undefined : "launch")}><Rocket className="size-4" />Lanzar agente</Button>
+        {planAction && (
+          <Button onClick={() => hasPlanContent || creatingPlan ? openPlan() : setCreatingPlan(true)}><ClipboardText className="size-4" />{planAction}</Button>
+        )}
+        <Button variant={planAction ? "ghost" : "default"} aria-expanded={panel === "launch"}
+          onClick={() => setPanel(panel === "launch" ? undefined : "launch")}>
+          <Rocket className="size-4" />{planAccepted && !c.blockers.length ? "Implementar" : "Lanzar agente"}
+        </Button>
       </div>
       <div className="grid items-start gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,17rem)]">
         <div className="min-w-0 space-y-5">
@@ -278,31 +297,32 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
             {c.description.trim() ? <Md>{c.description}</Md> : <p className="text-sm text-slate-500 dark:text-muted">Sin descripción.</p>}
           </section>
 
-          <section className={section}>
-            <h3 className={heading}><Chats className="size-4" />Hilos</h3>
-            {c.threads.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">Ninguno todavía.</p>}
-            {c.threads.map((t) => (
-              <Link key={t.id} to="/threads/$threadId" params={{ threadId: t.id }} className={`${row} min-h-10 gap-3`}>
-                <ThreadDot status={t.status} />
-                <span className="min-w-0 flex-1 truncate" title={t.title}>{t.title || "Hilo"}</span>
-                <span role="img" aria-label={t.provider} title={t.provider} className="shrink-0">
-                  <ModelLogo driver={t.provider} compact />
-                </span>
-                <CaretRight aria-hidden="true" className="size-3 shrink-0 text-slate-500" />
-              </Link>
-            ))}
-          </section>
+          {c.threads.length > 0 && (
+            <section className={section}>
+              <h3 className={heading}><Chats className="size-4" />Hilos</h3>
+              {c.threads.map((t) => (
+                <Link key={t.id} to="/threads/$threadId" params={{ threadId: t.id }} className={`${row} min-h-10 gap-3`}>
+                  <ThreadDot status={t.status} />
+                  <span className="min-w-0 flex-1 truncate" title={t.title}>{t.title || "Hilo"}</span>
+                  <span role="img" aria-label={t.provider} title={t.provider} className="shrink-0">
+                    <ModelLogo driver={t.provider} compact />
+                  </span>
+                  <CaretRight aria-hidden="true" className="size-3 shrink-0 text-slate-500" />
+                </Link>
+              ))}
+            </section>
+          )}
 
-          <details className="group overflow-hidden rounded-xl border border-slate-200 dark:border-border">
+          <details ref={planSection} hidden={!!planDoc.data && !hasPlanContent && !planAccepted && !creatingPlan} className="group overflow-hidden rounded-xl border border-slate-200 dark:border-border">
             <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-raised">
               <span className="inline-flex items-center gap-2">
                 <ClipboardText className="size-4" />Plan
                 {!!planDoc.data?.revision && <span className="text-xs font-medium tabular-nums text-slate-600 dark:text-muted">V{planDoc.data.revision}</span>}
               </span>
               <span className="ml-auto flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600 dark:text-muted">
-                {planDoc.data?.accepted_at ? (
+                {planAccepted ? (
                   <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><Check weight="thin" aria-hidden="true" className="size-3.5 shrink-0" />Aceptado</span>
-                ) : planDoc.data?.body_md.trim() ? (
+                ) : hasPlanContent ? (
                   <span className="text-amber-700 dark:text-amber-400">Pendiente de aceptar</span>
                 ) : planDoc.data ? "Sin plan" : planDoc.isError ? "Estado no disponible" : "Cargando…"}
                 <CaretDown className="size-4 transition-transform group-open:rotate-180" />
