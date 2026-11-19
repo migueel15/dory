@@ -6,8 +6,8 @@ import StarterKit from "@tiptap/starter-kit";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { Markdown } from "@tiptap/markdown";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { TextSelection } from "@tiptap/pm/state";
 import { api, ApiError, type Plan } from "../api/client";
+import { merge3 } from "../lib/merge3";
 import { Button, ErrorText, prose } from "./ui";
 
 // PlanDoc shows the plan of a task: one Markdown document that the user and
@@ -44,27 +44,28 @@ export function PlanDoc({ taskId }: { taskId: string }) {
         <span aria-live="polite">{doc.state === "saving" ? "Guardando…" : doc.state === "dirty" ? "Sin guardar" : ""}</span>
         {!doc.empty && !p.accepted_at && <Button className="text-xs" onClick={() => accept.mutate()} disabled={accept.isPending || doc.state !== "saved"}>Aceptar plan</Button>}
       </div>
-      {doc.state === "conflict" && (
+      {doc.notice && (
         <p className="m-3 mb-0 flex flex-wrap items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-          El plan ha cambiado mientras escribías y tus últimos cambios no se han guardado.
-          <button type="button" className="underline" onClick={doc.reload}>Cargar el plan actual</button>
+          {doc.notice}
+          <button type="button" className="underline" onClick={doc.dismiss}>Entendido</button>
         </p>
       )}
       <div className="relative flex-1">
         {doc.empty && <p className="pointer-events-none absolute left-5 top-4 text-sm text-slate-400 dark:text-muted">Escribe el plan o pide al agente que lo escriba. Usa «# » para títulos, «- » para listas y «[] » para casillas.</p>}
         <EditorContent editor={doc.editor} className={`${prose} plan-editor px-5 py-4`} />
       </div>
-      <div className="px-5 pb-3"><ErrorText error={(doc.state === "conflict" ? undefined : doc.error) ?? accept.error} /></div>
+      <div className="px-5 pb-3"><ErrorText error={doc.error ?? accept.error} /></div>
     </div>
   );
 }
 
-type SyncState = "saved" | "dirty" | "saving" | "conflict";
+type SyncState = "saved" | "dirty" | "saving";
 
 // usePlanEditor keeps the editor and the stored plan in step. Typing saves on
-// a short pause against the revision the text came from; a newer revision
-// from the agent is applied when there is nothing unsaved, and a save that
-// lost the race is reported instead of overwriting the other edit.
+// a short pause against the revision the text came from. A newer revision
+// from the agent is shown as it arrives; when there is unsaved text, the two
+// are merged by lines (lib/merge3) and the result is saved, so both writers
+// keep their changes. Where both changed the same line, both versions stay.
 function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) {
   const qc = useQueryClient();
   // base is the revision the editor text comes from; stored its Markdown.
@@ -77,13 +78,14 @@ function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) 
   const stateRef = useRef(state);
   stateRef.current = state;
   const [error, setError] = useState<unknown>();
+  const [notice, setNotice] = useState<string>();
   const [empty, setEmpty] = useState(true);
   const followRef = useRef(following);
   followRef.current = following;
 
   const save = async (ed: Editor) => {
     clearTimeout(timer.current);
-    if (stateRef.current === "conflict" || base.current === undefined) return;
+    if (base.current === undefined) return;
     const md = ed.getMarkdown().trim();
     if (md === stored.current) { setState("saved"); return; }
     const at = edits.current;
@@ -98,8 +100,15 @@ function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) 
       // Typing during the save leaves more to save.
       if (edits.current !== at) { setState("dirty"); timer.current = setTimeout(() => save(ed), 700); } else setState("saved");
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) setState("conflict");
-      else { setError(e); setState("dirty"); }
+      if (e instanceof ApiError && e.status === 409) {
+        // Someone saved first: merge with their version and save again.
+        setState("dirty");
+        try {
+          const fresh = await qc.fetchQuery({ queryKey: ["plans", taskId, "doc"], queryFn: () => api.plan(taskId), staleTime: 0 });
+          latest.current = fresh;
+          rebase(ed, fresh);
+        } catch (err) { setError(err); }
+      } else { setError(e); setState("dirty"); }
     }
   };
 
@@ -111,25 +120,52 @@ function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) 
       setEmpty(ed.isEmpty);
       if (applying.current) return;
       edits.current++;
-      if (stateRef.current !== "conflict") setState("dirty");
+      setState("dirty");
       clearTimeout(timer.current);
       timer.current = setTimeout(() => save(ed), 700);
     },
     onBlur: ({ editor: ed }) => { if (stateRef.current === "dirty") save(ed); },
   });
 
-  // set replaces the text without counting it as an edit, keeping the cursor
-  // where it was as far as the new text allows.
+  // set replaces the text without counting it as an edit. Only the stretch
+  // that differs is replaced, in one transaction, so the cursor and what the
+  // user is writing elsewhere stay in place.
   const set = (ed: Editor, md: string) => {
-    const { from, to } = ed.state.selection;
+    const next = parse(ed, md);
+    const cur = ed.state.doc;
+    const start = cur.content.findDiffStart(next.content);
+    if (start === null) return;
+    let { a: endA, b: endB } = cur.content.findDiffEnd(next.content)!;
+    const overlap = start - Math.min(endA, endB);
+    if (overlap > 0) { endA += overlap; endB += overlap; }
     applying.current = true;
-    ed.commands.setContent(md, { contentType: "markdown", emitUpdate: false });
+    ed.view.dispatch(ed.state.tr.replace(start, endA, next.slice(start, endB)).setMeta("addToHistory", false));
     applying.current = false;
-    if (ed.isFocused) {
-      const max = ed.state.doc.content.size;
-      ed.view.dispatch(ed.state.tr.setSelection(TextSelection.create(ed.state.doc, Math.min(from, max), Math.min(to, max))));
-    }
     setEmpty(ed.isEmpty);
+  };
+
+  // mark highlights the blocks that differ from old, and with scroll brings
+  // the first one into view.
+  const mark = (ed: Editor, old: PMNode, scroll: boolean) => {
+    const marks = changedBlocks(old, ed.state.doc).after.map((pos) => ed.view.nodeDOM(pos)).filter((n): n is HTMLElement => n instanceof HTMLElement);
+    marks.forEach((m) => { m.classList.remove("plan-changed"); void m.offsetWidth; m.classList.add("plan-changed"); });
+    if (scroll && marks[0]) marks[0].scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+
+  // rebase merges a newer stored version into unsaved text and saves the
+  // result. The view does not move: the user is writing.
+  const rebase = (ed: Editor, next: Plan) => {
+    const norm = (md: string) => ed.markdown!.serialize(ed.markdown!.parse(md)).trim();
+    const label = next.author === "agent" ? "Versión del agente" : "Otra versión";
+    const merged = merge3(norm(stored.current), ed.getMarkdown().trim(), norm(next.body_md), label);
+    const old = ed.state.doc;
+    set(ed, merged.text);
+    base.current = next.revision;
+    stored.current = next.body_md;
+    mark(ed, old, false);
+    if (merged.conflicts) setNotice(`El agente cambió lo mismo que tú en ${merged.conflicts === 1 ? "un punto" : `${merged.conflicts} puntos`}: he dejado tu versión y, debajo, la suya citada. Quédate con la que quieras.`);
+    edits.current++;
+    save(ed);
   };
 
   // Remote revisions: the first one loads the editor; later ones are shown
@@ -140,23 +176,23 @@ function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) 
   const apply = async (ed: Editor) => {
     const next = latest.current;
     if (busy.current || !next || next.revision === base.current) return;
-    if (base.current === undefined) { set(ed, next.body_md); base.current = next.revision; stored.current = next.body_md; return; }
+    if (base.current === undefined) { applying.current = true; ed.commands.setContent(next.body_md, { contentType: "markdown", emitUpdate: false }); applying.current = false; setEmpty(ed.isEmpty); base.current = next.revision; stored.current = next.body_md; return; }
     if (next.revision < base.current) return;
-    if (stateRef.current !== "saved") { if (stateRef.current === "dirty") setState("conflict"); return; }
+    // Unsaved text merges with it; a save in flight finds out on its own.
+    if (stateRef.current === "dirty") { rebase(ed, next); return; }
+    if (stateRef.current === "saving") return;
     busy.current = true;
     try {
       const target = followRef.current ? changedBlocks(ed.state.doc, parse(ed, next.body_md)).before[0] : undefined;
       const el = target === undefined ? null : (ed.view.nodeDOM(target) as HTMLElement | null);
       if (el) await reveal(el);
       const shown = latest.current!;
-      if (stateRef.current !== "saved") return;
+      if (stateRef.current !== "saved") { if (stateRef.current === "dirty") rebase(ed, shown); return; }
       const old = ed.state.doc;
       set(ed, shown.body_md);
       base.current = shown.revision;
       stored.current = shown.body_md;
-      const marks = changedBlocks(old, ed.state.doc).after.map((pos) => ed.view.nodeDOM(pos)).filter((n): n is HTMLElement => n instanceof HTMLElement);
-      marks.forEach((m) => { m.classList.remove("plan-changed"); void m.offsetWidth; m.classList.add("plan-changed"); });
-      if (marks[0] && followRef.current) marks[0].scrollIntoView({ behavior: "smooth", block: "nearest" });
+      mark(ed, old, followRef.current);
     } finally {
       busy.current = false;
     }
@@ -173,16 +209,8 @@ function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) 
     state,
     error,
     empty,
-    // reload drops the unsaved text and loads the stored plan.
-    reload: () => {
-      if (!editor || !latest.current) return;
-      clearTimeout(timer.current);
-      set(editor, latest.current.body_md);
-      base.current = latest.current.revision;
-      stored.current = latest.current.body_md;
-      setError(undefined);
-      setState("saved");
-    },
+    notice,
+    dismiss: () => setNotice(undefined),
   };
 }
 

@@ -12,7 +12,7 @@ Los agentes leen todo lo que necesitan del trabajo en curso, pero solo escriben 
 | `get_task` | Una tarea con sus planes y dependencias |
 | `save_task` | Crea una tarea o cambia su título, descripción, issue o PR; `depends_on` marca dependencias |
 | `plan_read` | Lee el plan de una tarea: un documento Markdown con su número de revisión |
-| `plan_write` | Escribe el plan entero; con `revision`, falla si el plan cambió desde que se leyó |
+| `plan_write` | Escribe el plan entero para empezarlo; reescribir uno existente exige la `revision` leída y falla si el plan cambió desde entonces |
 | `plan_edit` | Sustituye un fragmento exacto del plan, que debe aparecer una sola vez |
 | `remember` | Guarda o actualiza una memoria global, de proyecto o de nodo, con tipo, título y labels |
 | `recall` | Busca memorias por texto, proyecto, labels o tipo |

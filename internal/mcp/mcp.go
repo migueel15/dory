@@ -148,7 +148,16 @@ func Handler(s *api.Server) http.Handler {
 	add(srv, "plan_read", "Read the plan of a task: one Markdown document that the user and the agents edit. Returns body_md and its revision.", func(ctx context.Context, in planReadInput) (any, error) {
 		return s.PlanDocument(ctx, in.TaskID)
 	})
-	add(srv, "plan_write", "Write the whole plan of a task as Markdown. Prefer plan_edit for changes to an existing plan. Only the user accepts a plan; changing it waits for a new acceptance.", func(ctx context.Context, in planWriteInput) (any, error) {
+	add(srv, "plan_write", "Write the whole plan of a task as Markdown, to start it. To change an existing plan use plan_edit; rewriting it needs the revision from plan_read. Only the user accepts a plan; changing it waits for a new acceptance.", func(ctx context.Context, in planWriteInput) (any, error) {
+		// Rewriting an existing plan blind would drop what the user is
+		// writing, so it needs the revision the agent read.
+		if in.Revision == nil {
+			if cur, err := s.PlanDocument(ctx, in.TaskID); err != nil {
+				return nil, err
+			} else if cur.Revision > 0 {
+				return nil, errors.New("the plan already exists: change parts of it with plan_edit, or pass the revision from plan_read to rewrite it")
+			}
+		}
 		return s.WritePlan(ctx, in.TaskID, in.BodyMD, revision(in.Revision), "agent")
 	})
 	add(srv, "plan_edit", "Replace one exact piece of the plan of a task, so the user sees it change in place. old_text must appear once; read the plan again if the edit fails.", func(ctx context.Context, in planEditInput) (any, error) {

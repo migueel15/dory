@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "tsc src/stack.ts src/stack.test.ts --outDir .test --module nodenext --moduleResolution nodenext --target es2022 --strict --skipLibCheck && echo '{\"type\":\"module\"}' > .test/package.json && node --test .test/stack.test.js; rm -rf .test",
+    "test": "tsc src/stack.ts src/stack.test.ts src/lib/merge3.ts src/lib/merge3.test.ts --outDir .test --module nodenext --moduleResolution nodenext --target es2022 --strict --skipLibCheck && echo '{\"type\":\"module\"}' > .test/package.json && node --test .test/stack.test.js .test/lib/merge3.test.js; rm -rf .test",
     "build": "tsc --noEmit && vite build && touch dist/.gitkeep",
     "preview": "vite preview"
   },
