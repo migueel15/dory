@@ -164,6 +164,22 @@ function createTray() {
   tray.on("click", show);
 }
 
+// An AppImage is not integrated in the system by itself: the app installs
+// its icon and its launcher entry, pointing at the AppImage, so it shows up
+// in the application launcher with its icon.
+function integrateAppImage() {
+  if (process.platform !== "linux" || !process.env.APPIMAGE) return;
+  const share = path.join(os.homedir(), ".local", "share");
+  const icon = path.join(share, "icons", "hicolor", "512x512", "apps", "dory.png");
+  const entry = path.join(share, "applications", "dory.desktop");
+  try {
+    fs.mkdirSync(path.dirname(icon), { recursive: true });
+    fs.copyFileSync(path.join(__dirname, "build", "icon.png"), icon);
+    fs.mkdirSync(path.dirname(entry), { recursive: true });
+    fs.writeFileSync(entry, `[Desktop Entry]\nType=Application\nName=Dory\nComment=Tu entorno de trabajo con agentes\nExec="${process.env.APPIMAGE}" %U\nIcon=dory\nTerminal=false\nCategories=Development;\nStartupWMClass=Dory\n`);
+  } catch {}
+}
+
 // The app opens with the session, in the background. Linux has no login
 // items in Electron, so it gets an autostart entry.
 function startAtLogin() {
@@ -190,6 +206,7 @@ if (!app.requestSingleInstanceLock()) {
     Menu.setApplicationMenu(null);
     createTray();
     startAtLogin();
+    integrateAppImage();
     open().catch((err) => {
       dialog.showErrorBox("Dory", `No se pudo arrancar el núcleo.\n\n${err.message}\n\nInstala el binario dory o ejecuta \`dory service install\`.`);
       app.quit();
