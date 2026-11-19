@@ -283,3 +283,22 @@ func TestAskWaitsForTheAnswer(t *testing.T) {
 		t.Fatalf("requests left: %v", rs)
 	}
 }
+
+// Claude Code writes each content block of a message on its own line: the
+// text must not overwrite the thinking that came before it in the message.
+func TestClaudeParserBlockPerLine(t *testing.T) {
+	p := &claudeParser{run: "r1", texts: map[string]*Message{}, tools: map[string]*Message{}}
+	msgs, order := final(parseFile(t, "claude-split.jsonl", p.parse))
+	want := []struct{ id, role, text string }{
+		{"msg_1:0", "reasoning", "Pienso"},
+		{"msg_1:1", "assistant", "Respondo."},
+	}
+	if len(order) != len(want) {
+		t.Fatalf("messages %v", order)
+	}
+	for i, w := range want {
+		if m := msgs[order[i]]; m.ID != w.id || m.Role != w.role || m.Text != w.text || m.Streaming {
+			t.Errorf("message %d: %+v", i, m)
+		}
+	}
+}

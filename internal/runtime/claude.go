@@ -213,6 +213,11 @@ type claudeParser struct {
 	current string
 	texts   map[string]*Message
 	tools   map[string]*Message
+	// blocks counts the content blocks seen of each message. Claude Code
+	// writes each block of a message on its own line, so a block's place in
+	// its line is always 0; its place in the message is this count, the same
+	// index the streamed partial blocks use.
+	blocks map[string]int
 }
 
 type claudeBlock struct {
@@ -308,7 +313,12 @@ func (p *claudeParser) parse(line []byte, emit func(Event)) {
 			}
 			return
 		}
-		for i, b := range l.Message.Content {
+		if p.blocks == nil {
+			p.blocks = map[string]int{}
+		}
+		for _, b := range l.Message.Content {
+			i := p.blocks[l.Message.ID]
+			p.blocks[l.Message.ID]++
 			p.block(fmt.Sprintf("%s:%d", l.Message.ID, i), b, emit)
 		}
 	case "user":
