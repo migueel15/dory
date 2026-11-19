@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowSquareOut, Check, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, ChatCircle, CircleNotch, ClipboardText, GitBranch, GitMerge, GitPullRequest, Plus, Rocket, X } from "@phosphor-icons/react";
 import { api, COLUMN_LABELS, repoName, type Card, type Column, type Stage } from "../api/client";
-import { Button, Card as UiCard, ErrorText, iconButton, Input, Label, Md, Modal, Select } from "../components/ui";
+import { Button, Card as UiCard, ErrorText, Input, Label, Md, Modal, Select } from "../components/ui";
 import { useLaunchForm } from "../components/launch-picker";
 import { useProject } from "../project";
 import { ModelLogo } from "../components/model-logo";
@@ -302,8 +302,8 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
           className="fixed m-0 overflow-auto rounded-xl border border-slate-200 bg-white p-4 text-slate-900 shadow-xl dark:border-border dark:bg-surface dark:text-white">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h3 className="text-sm font-semibold">{launchLabel}</h3>
-            <button type="button" className={iconButton} popoverTarget={launchPopoverId} popoverTargetAction="hide" aria-label="Cerrar configuración">
-              <X className="size-4" />
+            <button type="button" className="grid size-8 shrink-0 place-items-center bg-transparent text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white" popoverTarget={launchPopoverId} popoverTargetAction="hide" aria-label="Cerrar configuración">
+              <X weight="thin" aria-hidden="true" className="size-4" />
             </button>
           </div>
           {form.nodes.length <= 1 && <p className="mb-3 text-xs text-slate-600 dark:text-muted">Entorno <span className="ml-1 font-medium">{environment}</span></p>}
