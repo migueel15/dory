@@ -42,6 +42,8 @@ cd desktop && npm ci && npm run dist
 
 En Windows, el instalador pide permiso de administrador una vez para abrir en el firewall el puerto de la malla (7710, TCP), por el que entran el móvil y los demás nodos. Las actualizaciones no lo vuelven a pedir.
 
+El AppImage se publica siempre como `Dory.AppImage`, sin versión. Guárdalo con ese nombre (por ejemplo en `~/Apps/Dory.AppImage`): las actualizaciones reemplazan ese mismo fichero, así que el lanzador, el arranque con la sesión y `dory open` siguen apuntando a la misma ruta. Con una versión en el nombre, el actualizador lo renombraría en cada versión.
+
 Genera AppImage en Linux (el único formato que se actualiza solo), .dmg en macOS e instalador NSIS en Windows. Las releases de GitHub las publican ya hechas.
 
 ## App de Android

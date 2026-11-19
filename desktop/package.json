@@ -32,7 +32,8 @@
         "AppImage"
       ],
       "category": "Development",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "artifactName": "${productName}.${ext}"
     },
     "mac": {
       "target": [
