@@ -263,7 +263,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
           ))}
         </section>
 
-        <details open className="overflow-hidden rounded-lg border border-slate-200 dark:border-border">
+        <details className="overflow-hidden rounded-lg border border-slate-200 dark:border-border">
           <summary className="cursor-pointer px-3 py-2 text-sm font-semibold"><ClipboardText className="mr-1 inline size-4" />Plan</summary>
           <PlanDoc taskId={id} />
         </details>

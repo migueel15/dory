@@ -39,7 +39,7 @@ En el detalle de una tarea puedes:
 
 - Usar **Editar tarea** para cambiar el título, la descripción, el repositorio, la issue o la PR.
 - Gestionar sus dependencias y usar **Acciones de la tarea** para cambiar el estado o archivar la carta.
-- Escribir, editar o aceptar su plan, un documento Markdown que también editan los agentes. El plan se abre desplegado y puedes plegarlo desde su encabezado.
+- Escribir, editar o aceptar su plan, un documento Markdown que también editan los agentes. El plan se abre plegado y puedes desplegarlo desde su encabezado.
 - En **Lanzar en este nodo**, **Implementar** crea la rama (`feat/<issue>-<título>`) y su worktree y lanza el agente.
 - En esa misma sección, **Definir con un agente** abre un hilo que escribe el plan con `plan_write` y `plan_edit`.
 
