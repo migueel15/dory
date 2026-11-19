@@ -21,7 +21,7 @@ export const composerArea = "relative block max-h-60 w-full resize-none break-wo
 export type MenuOption = { value: string; label: string; group?: string; modelId?: string; icon?: React.ReactNode };
 
 // Chip is a compact dropdown for the composer toolbar; the menu opens upwards.
-export function Chip({ value, options, onChange, title, icon, below = false }: { value: string; options: MenuOption[]; onChange: (v: string) => void; title: string; icon?: React.ReactNode; below?: boolean }) {
+export function Chip({ value, options, onChange, title, icon, below = false, prefix }: { value: string; options: MenuOption[]; onChange: (v: string) => void; title: string; icon?: React.ReactNode; below?: boolean; prefix?: string }) {
   const [open, setOpen] = useState(false);
   const box = useOutside(open, () => setOpen(false));
   const current = options.find((o) => o.value === value);
@@ -30,7 +30,7 @@ export function Chip({ value, options, onChange, title, icon, below = false }: {
       <button type="button" title={title} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}
         onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
         className="inline-flex h-8 max-w-[11rem] items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white">
-        {current?.icon ?? icon}<span className="truncate">{current?.label ?? value}</span><CaretDown weight="regular" className="size-3 shrink-0 opacity-60" />
+        {current?.icon ?? icon}<span className="truncate">{prefix && `${prefix} `}{current?.label ?? value}</span><CaretDown weight="regular" className="size-3 shrink-0 opacity-60" />
       </button>
       {open && (
         <ul role="listbox" className={`absolute left-0 z-20 max-h-72 min-w-[12rem] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-border dark:bg-surface ${below ? "top-full mt-2" : "bottom-full mb-2"}`}>

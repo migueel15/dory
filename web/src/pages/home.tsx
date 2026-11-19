@@ -134,8 +134,7 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
             <span className="ml-auto" />
             {!!branchList.data?.branches.length && (
               <>
-                {worktree && <span className="pl-1">desde</span>}
-                <Chip below title={worktree ? "Rama de la que sale el worktree" : "Rama del checkout"} icon={<GitBranch className="size-4 shrink-0" />} value={branch} onChange={setBase}
+                <Chip below prefix={worktree ? "Desde" : undefined} title={worktree ? "Rama de la que sale el worktree" : "Rama del checkout"} icon={<GitBranch className="size-4 shrink-0" />} value={branch} onChange={setBase}
                   options={branchList.data.branches.map((b) => ({ value: b, label: b }))} />
               </>
             )}
