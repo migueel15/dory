@@ -27,6 +27,21 @@ const keys: Record<string, string[]> = {
 
 type Update = { thread_id: string; message?: Message; status?: string; error?: string; queue?: Queued[]; reload?: boolean; last_turn_model?: TurnModel };
 
+// The node version this page was loaded against. After an update the node
+// restarts, the stream reconnects and a different version reloads the page,
+// so the interface never runs against a newer core.
+let loadedVersion: string | undefined;
+function checkVersion() {
+  fetch("/api/health", { credentials: "include", cache: "no-store" })
+    .then((r) => (r.ok ? r.json() : undefined))
+    .then((h?: { version?: string }) => {
+      if (!h?.version) return;
+      if (loadedVersion === undefined) loadedVersion = h.version;
+      else if (h.version !== loadedVersion) window.location.reload();
+    })
+    .catch(() => {});
+}
+
 // useLiveUpdates subscribes to the node event stream and invalidates the
 // affected queries, batching bursts so a sync triggers one refetch.
 export function useLiveUpdates(enabled: boolean) {
@@ -38,7 +53,11 @@ export function useLiveUpdates(enabled: boolean) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const source = new EventSource("/api/events", { withCredentials: true });
     let opened = false;
-    source.addEventListener("open", () => { if (opened) qc.invalidateQueries(); opened = true; });
+    source.addEventListener("open", () => {
+      checkVersion();
+      if (opened) qc.invalidateQueries();
+      opened = true;
+    });
     source.addEventListener("change", (e) => {
       const { entity } = JSON.parse((e as MessageEvent).data) as { entity: string };
       for (const k of keys[entity] ?? []) pending.add(k);
