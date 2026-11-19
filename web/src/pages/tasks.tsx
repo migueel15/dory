@@ -90,7 +90,7 @@ export function Tasks() {
         })}
       </div>
       {adding && <NewTask onClose={() => setAdding(false)} onCreated={(id) => { setAdding(false); open(id); }} />}
-      {search.task && <TaskDetail id={search.task} onClose={() => open()} />}
+      {search.task && <TaskDetail key={search.task} id={search.task} onClose={() => open()} />}
     </div>
   );
 }
@@ -225,26 +225,34 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   // The latest plan has to be accepted before the task is implemented.
   const planPending = !!latest && !latest.accepted_at;
   const projectRepos = (repos.data ?? []).filter((r) => !c.project_id || r.project_id === c.project_id);
+  const githubRepo = c.repo && /^[\w.-]+\/[\w.-]+$/.test(c.repo) ? `https://github.com/${c.repo}` : undefined;
+  const pullNumber = c.pull?.number ?? c.pr_number;
+  const pullUrl = c.pull?.url ?? (githubRepo && pullNumber ? `${githubRepo}/pull/${pullNumber}` : undefined);
+  const section = "rounded-lg border border-slate-200 p-3 dark:border-border";
+  const summary = "cursor-pointer text-sm font-semibold";
   return (
-    <Modal title={COLUMN_LABELS[c.column]} onClose={onClose} wide>
+    <Modal title={c.title} onClose={onClose} wide>
       <div className="space-y-4">
-        <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="!text-base font-semibold" aria-label="Título" />
-        <DictationField rows={6} value={draft.description} onValue={(description) => setDraft((current) => current && { ...current, description })} aria-label="Descripción" placeholder="Qué cambiar y cómo comprobarlo" />
-        <div className="grid gap-2 sm:grid-cols-3">
-          <Label text="Repositorio"><Select value={draft.repo} onChange={(v) => setDraft({ ...draft, repo: v })} options={[{ value: "", label: projectRepos.length === 1 ? "El del proyecto" : "—" }, ...projectRepos.map((r) => ({ value: r.id, label: repoName(r.remote_url) }))]} /></Label>
-          <Label text="Issue"><Input inputMode="numeric" value={draft.issue} onChange={(e) => setDraft({ ...draft, issue: e.target.value.replace(/\D/g, "") })} /></Label>
-          <Label text="Pull request"><Input inputMode="numeric" value={draft.pr} onChange={(e) => setDraft({ ...draft, pr: e.target.value.replace(/\D/g, "") })} placeholder="Se detecta por la rama" /></Label>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {dirty && <Button onClick={() => save.mutate()} disabled={dictating || save.isPending}>Guardar</Button>}
-          {c.stage !== "ready" && c.column === "inbox" && <Button variant="ghost" onClick={() => stage.mutate("ready")}>Marcar como lista</Button>}
-          {c.stage === "ready" && c.column === "ready" && <Button variant="ghost" onClick={() => stage.mutate("inbox")}>Volver a inbox</Button>}
-          {c.stage !== "cancelled" ? <Button variant="ghost" onClick={() => stage.mutate("cancelled")}>Cancelar tarea</Button> : <Button variant="ghost" onClick={() => stage.mutate("inbox")}>Reabrir</Button>}
-          <Button variant="ghost" className="ml-auto" onClick={() => askConfirm("¿Archivar la tarea?", "Archivar").then((ok) => ok && archive.mutate())}>Archivar</Button>
-        </div>
-        <ErrorText error={save.error ?? stage.error ?? archive.error} />
+        <p className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${COLUMN_TONE[c.column]}`}>{COLUMN_LABELS[c.column]}</p>
+        <section aria-label="Descripción">
+          {c.description.trim() ? <Md>{c.description}</Md> : <p className="text-sm text-slate-500 dark:text-muted">Sin descripción.</p>}
+        </section>
 
-        {c.branch && <p className="flex items-center gap-1.5 font-mono text-xs text-slate-500"><GitBranch className="size-3.5" />{c.branch}{c.pull && <a className="hover:underline" href={c.pull.url} target="_blank" rel="noreferrer">· PR #{c.pull.number} {c.pull.draft ? "(draft)" : ""}</a>}{c.pr_state && !c.pull && c.pr_number && <span>· PR #{c.pr_number} ({c.pr_state})</span>}</p>}
+        {(c.repo || c.branch || c.issue_number || pullNumber) && (
+          <section className={section}>
+            <h3 className="mb-2 text-sm font-semibold">Referencias</h3>
+            <div className="flex flex-wrap items-center gap-2">
+              {githubRepo ? <a className={chip} href={githubRepo} target="_blank" rel="noreferrer">{c.repo}</a> : c.repo && <span className="break-all text-sm">{c.repo}</span>}
+              {c.issue_number && (githubRepo
+                ? <a className={chip} href={`${githubRepo}/issues/${c.issue_number}`} target="_blank" rel="noreferrer">Issue #{c.issue_number}</a>
+                : <span className="text-sm">Issue #{c.issue_number}</span>)}
+              {pullNumber && (pullUrl
+                ? <a className={chip} href={pullUrl} target="_blank" rel="noreferrer"><GitPullRequest className="size-4" />PR #{pullNumber}{(c.pull?.draft || c.pr_state === "draft") && " · Borrador"}</a>
+                : <span className="text-sm">PR #{pullNumber}</span>)}
+            </div>
+            {c.branch && <p className="mt-2 flex items-start gap-1.5 break-all font-mono text-xs text-slate-600 dark:text-muted"><GitBranch className="size-4 shrink-0" />{c.branch}</p>}
+          </section>
+        )}
 
         <section>
           <h3 className="mb-1 text-sm font-semibold">Hilos</h3>
@@ -254,17 +262,6 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
               <StatusDot status={t.status} /><span className="min-w-0 flex-1 truncate">{t.title}</span><span className="text-xs text-slate-500">{t.provider}</span>
             </Link>
           ))}
-        </section>
-
-        <section className="rounded-lg border border-slate-200 p-3 dark:border-border">
-          <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold"><Rocket className="size-4" />Lanzar en este nodo</h3>
-          {form.fields}
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Button onClick={() => launch.mutate()} disabled={!form.ready || launch.isPending || c.blockers.length > 0 || planPending}
-              title={planPending ? "Acepta el plan antes de implementar" : c.blockers.length ? "Depende de tareas sin terminar" : "Crea la rama y el worktree y lanza el agente"}>Implementar</Button>
-            <Button variant="ghost" onClick={() => define.mutate()} disabled={!form.ready || define.isPending}>Definir con un agente</Button>
-          </div>
-          <ErrorText error={launch.error ?? define.error} />
         </section>
 
         <section className="overflow-hidden rounded-lg border border-slate-200 dark:border-border">
@@ -278,7 +275,10 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
             const o = others.find((x) => x.id === d.depends_on_id);
             return (
               <div key={d.depends_on_id} className="flex items-center gap-2 py-1 text-sm">
-                <span className={`min-w-0 flex-1 truncate ${c.blockers.includes(d.depends_on_id) ? "" : "text-slate-400 line-through"}`}>{o?.title ?? d.depends_on_id}</span>
+                <Link to="/tasks" search={{ task: d.depends_on_id } as never}
+                  className={`min-w-0 flex-1 wrap-break-word underline underline-offset-2 ${c.blockers.includes(d.depends_on_id) ? "" : "text-slate-500 line-through dark:text-muted"}`}>
+                  {o?.title ?? d.depends_on_id}
+                </Link>
                 <button type="button" aria-label="Quitar dependencia" onClick={() => dep.mutate({ other: d.depends_on_id, add: false })}><X weight="regular" className="size-4" /></button>
               </div>
             );
@@ -287,6 +287,44 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
             options={others.filter((o) => !deps.data?.some((d) => d.depends_on_id === o.id)).map((o) => ({ value: o.id, label: o.title }))} />
           <ErrorText error={dep.error} />
         </section>
+        <details className={section}>
+          <summary className={summary}><Rocket className="mr-1 inline size-4" />Lanzar en este nodo</summary>
+          <div className="mt-3">
+            {form.fields}
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button onClick={() => launch.mutate()} disabled={!form.ready || launch.isPending || c.blockers.length > 0 || planPending}
+                title={planPending ? "Acepta el plan antes de implementar" : c.blockers.length ? "Depende de tareas sin terminar" : "Crea la rama y el worktree y lanza el agente"}>Implementar</Button>
+              <Button variant="ghost" onClick={() => define.mutate()} disabled={!form.ready || define.isPending}>Definir con un agente</Button>
+            </div>
+            <ErrorText error={launch.error ?? define.error} />
+          </div>
+        </details>
+
+        <details className={section}>
+          <summary className={summary}>Editar tarea</summary>
+          <div className="mt-3 space-y-3">
+            <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="!text-base font-semibold" aria-label="Título" />
+            <DictationField rows={6} value={draft.description} onValue={(description) => setDraft((current) => current && { ...current, description })} aria-label="Descripción" placeholder="Qué cambiar y cómo comprobarlo" />
+            <div className="grid gap-2 sm:grid-cols-3">
+              <Label text="Repositorio"><Select value={draft.repo} onChange={(v) => setDraft({ ...draft, repo: v })} options={[{ value: "", label: projectRepos.length === 1 ? "El del proyecto" : "—" }, ...projectRepos.map((r) => ({ value: r.id, label: repoName(r.remote_url) }))]} /></Label>
+              <Label text="Issue"><Input inputMode="numeric" value={draft.issue} onChange={(e) => setDraft({ ...draft, issue: e.target.value.replace(/\D/g, "") })} /></Label>
+              <Label text="Pull request"><Input inputMode="numeric" value={draft.pr} onChange={(e) => setDraft({ ...draft, pr: e.target.value.replace(/\D/g, "") })} placeholder="Se detecta por la rama" /></Label>
+            </div>
+            {dirty && <Button onClick={() => save.mutate()} disabled={dictating || save.isPending}>Guardar</Button>}
+            <ErrorText error={save.error} />
+          </div>
+        </details>
+
+        <details className={section}>
+          <summary className={summary}>Acciones de la tarea</summary>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {c.stage !== "ready" && c.column === "inbox" && <Button variant="ghost" onClick={() => stage.mutate("ready")}>Marcar como lista</Button>}
+            {c.stage === "ready" && c.column === "ready" && <Button variant="ghost" onClick={() => stage.mutate("inbox")}>Volver a inbox</Button>}
+            {c.stage !== "cancelled" ? <Button variant="ghost" onClick={() => stage.mutate("cancelled")}>Cancelar tarea</Button> : <Button variant="ghost" onClick={() => stage.mutate("inbox")}>Reabrir</Button>}
+            <Button variant="ghost" className="ml-auto" onClick={() => askConfirm("¿Archivar la tarea?", "Archivar").then((ok) => ok && archive.mutate())}>Archivar</Button>
+          </div>
+          <ErrorText error={stage.error ?? archive.error} />
+        </details>
       </div>
     </Modal>
   );
