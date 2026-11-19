@@ -19,6 +19,8 @@ if (process.platform === "linux") {
 // DORY_DESKTOP_URL opens the window over another core, such as the dev
 // server, with its own profile and without touching the installed core.
 const devURL = process.env.DORY_DESKTOP_URL;
+// The dev window shows a yellow icon so it is not mistaken for the installed app.
+const iconPath = path.join(__dirname, "build", devURL ? "icon-dev.png" : "icon.png");
 const profile = path.join(os.homedir(), ".dory", devURL ? "desktop-dev" : "desktop");
 if (devURL || fs.existsSync(profile) || !fs.existsSync(path.join(app.getPath("userData"), "Local State"))) {
   fs.mkdirSync(profile, { recursive: true, mode: 0o700 });
@@ -118,8 +120,8 @@ async function open() {
   if (!devURL && !(await healthy(url))) await dory(["start"]);
   win = new BrowserWindow({
     width: 1400, height: 900, minWidth: 380, minHeight: 500, show: !hidden,
-    title: "Dory", backgroundColor: "#0f0f11", autoHideMenuBar: true,
-    icon: path.join(__dirname, "build", "icon.png"),
+    title: devURL ? "Dory (dev)" : "Dory", backgroundColor: "#0f0f11", autoHideMenuBar: true,
+    icon: iconPath,
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true },
   });
   // Links to other sites open in the system browser.
@@ -156,7 +158,7 @@ function quit() {
 function createTray() {
   // Trays draw small icons: 16 px on Windows and macOS, 22 px on Linux.
   const size = process.platform === "linux" ? 22 : 16;
-  const icon = nativeImage.createFromPath(path.join(__dirname, "build", "icon.png"));
+  const icon = nativeImage.createFromPath(iconPath);
   tray = new Tray(icon.resize({ width: size, height: size, quality: "best" }));
   tray.setToolTip("Dory");
   tray.setContextMenu(Menu.buildFromTemplate([
