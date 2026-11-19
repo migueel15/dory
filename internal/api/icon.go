@@ -51,5 +51,8 @@ func (s *Server) setIcon(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "write_failed", err.Error())
 		return
 	}
+	if s.InfoChanged != nil {
+		s.InfoChanged()
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
