@@ -15,7 +15,7 @@ export type Task = {
   created_at: string; updated_at: string; archived_at: string | null;
 };
 export type TaskInput = Partial<Task> & { title?: string };
-export type Plan = { id: string; task_id: string; version: number; sections: Record<string, string>; open_questions: string[]; author: "agent" | "user"; accepted_at: string | null; created_at: string };
+export type Plan = { id: string; task_id: string; version: number; sections: Record<string, string>; open_questions: string[]; body_md: string; revision: number; author: "agent" | "user"; accepted_at: string | null; created_at: string; updated_at: string };
 export type Dependency = { task_id: string; depends_on_id: string; created_at: string };
 export type Memory = { id: string; scope: "global" | "project" | "node"; scope_id: string; kind: "decision" | "lesson" | "context"; title: string; content: string; labels: string[]; created_at: string; updated_at: string; archived_at: string | null };
 export type MemoryInput = Partial<Memory> & { content: string };
@@ -162,7 +162,9 @@ export const api = {
   addDependency: (id: string, dep: string) => req<Dependency>("PUT", `/tasks/${id}/dependencies/${dep}`),
   removeDependency: (id: string, dep: string) => req<void>("DELETE", `/tasks/${id}/dependencies/${dep}`),
   plans: (id: string) => req<Plan[]>("GET", `/tasks/${id}/plans`),
-  createPlan: (id: string, body: { sections: Record<string, string>; open_questions: string[] }) => req<Plan>("POST", `/tasks/${id}/plans`, body),
+  // The plan document of a task: one Markdown text with the revision it was read at.
+  plan: (id: string) => req<Plan>("GET", `/tasks/${id}/plan`),
+  savePlan: (id: string, body: { body_md: string; revision: number }) => req<Plan>("PUT", `/tasks/${id}/plan`, body),
   acceptPlan: (id: string) => req<{ task: Task; plan: Plan }>("POST", `/tasks/${id}/plan/accept`),
   launch: (id: string, body: Launch) => req<{ thread_id: string; branch: string }>("POST", `/tasks/${id}/launch`, body),
   memories: resource<Memory, MemoryInput>("/memories"),

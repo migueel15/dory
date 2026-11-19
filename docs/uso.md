@@ -36,9 +36,9 @@ A mano solo se mueven tareas entre Inbox, Ready y Cancelled. Cada tarjeta muestr
 En el detalle de una tarea puedes:
 - Editarla y ligarla a un repositorio, una issue o una PR.
 - Gestionar sus dependencias.
-- Escribir o aceptar su plan.
+- Escribir, editar o aceptar su plan, un documento Markdown que también editan los agentes.
 - **Implementar**: crea la rama (`feat/<issue>-<título>`) y su worktree y lanza el agente.
-- **Definir con un agente**: abre un hilo que propone el plan.
+- **Definir con un agente**: abre un hilo que escribe el plan con `plan_write` y `plan_edit`.
 
 Una tarea con dependencias sin terminar no se puede lanzar.
 
@@ -50,6 +50,7 @@ La bandeja reúne los hilos de todos los nodos, con filtros (activos, te necesit
 - **Hilos de otras máquinas:** se abren a través de su nodo; si ese nodo está apagado, el hilo no está disponible.
 - **Acciones:** renombrar, fijar y archivar. Archivar borra el worktree.
 - **Cambios:** ver el diff del worktree contra la rama base.
+- **Plan:** si el hilo tiene tarea, el panel lateral muestra su plan. Se actualiza en directo mientras el agente lo escribe y se abre solo cuando lo cambia. Puedes editarlo en Markdown, marcar sus casillas y aceptarlo. Si el plan cambia mientras lo editas, Dory avisa y no pisa ninguna de las dos ediciones.
 
 ## GitHub
 
