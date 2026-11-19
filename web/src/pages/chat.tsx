@@ -119,7 +119,7 @@ export function Entry({ m, threadId = "", fresh = false, openQuestion = false }:
       return <ModelChangeDivider change={readModelChange(m.detail)} />;
     case "interrupt":
       return (
-        <div role="separator" className="flex items-center gap-3 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+        <div role="separator" className="flex items-center gap-3 text-[0.6875rem] font-medium uppercase tracking-wide text-slate-400">
           <span className="h-px flex-1 bg-slate-200 dark:bg-border" /><Stop weight="fill" className="size-3" />{m.text}<span className="h-px flex-1 bg-slate-200 dark:bg-border" />
         </div>
       );
@@ -184,7 +184,7 @@ export function ModelChangeDivider({ change, pending = false }: { change?: Model
             {to.name}
           </span>
         </div>
-        {caption && <p className="mt-1 text-[11px]">{caption}</p>}
+        {caption && <p className="mt-1 text-[0.6875rem]">{caption}</p>}
       </div>
       <span className={`min-w-3 flex-1 ${rule}`} />
     </div>
@@ -228,7 +228,7 @@ export function MessageParts({ text }: { text: string }) {
     </blockquote>
   ) : (
     // Same size and line height as the answers.
-    <div key={index} className="[&>div]:!text-[16px] [&>div]:!leading-[1.7]"><Md urlTransform={keepToken} components={tokenLinks}>{tokenize(part.text)}</Md></div>
+    <div key={index} className="[&>div]:!text-[1rem] [&>div]:!leading-[1.7]"><Md urlTransform={keepToken} components={tokenLinks}>{tokenize(part.text)}</Md></div>
   ))}</>;
 }
 
@@ -268,7 +268,7 @@ function AutoStart({ msg }: { msg: AutoMessage }) {
         <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
           {open ? <CaretDown className="size-3" /> : <CaretRight className="size-3" />}Contexto enviado al agente
         </button>
-        {open && <div className="mt-1 pb-1 text-[13px] text-slate-600 dark:text-muted [&_*]:!text-inherit"><Md>{msg.context}</Md></div>}
+        {open && <div className="mt-1 pb-1 text-[0.8125rem] text-slate-600 dark:text-muted [&_*]:!text-inherit"><Md>{msg.context}</Md></div>}
       </div>
     </div>
   );
@@ -347,7 +347,7 @@ export function MessageMeta({ m }: { m: Message }) {
     if (await copyText(m.text)) { setCopied(true); setTimeout(() => setCopied(false), 1500); }
   };
   return (
-    <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-400 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+    <div className="mt-1 flex items-center gap-1 text-[0.6875rem] text-slate-400 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
       {valid && <time dateTime={m.created_at} title={fullDate.format(at)} className="cursor-default tabular-nums">{shortTime.format(at)}</time>}
       <button type="button" onClick={copy} title={copied ? "Copiado" : "Copiar mensaje"} aria-label="Copiar mensaje" className={iconBtn}>
         {copied ? <Check weight="regular" className="size-3.5" /> : <Copy className="size-3.5" />}
@@ -433,7 +433,7 @@ function QuestionStep({ m }: { m: Message }) {
   const first = qs[0]?.question ?? m.text;
   const answered = qs.some((q) => q.answer?.length);
   return (
-    <div className="text-[13px] leading-relaxed text-slate-500 dark:text-muted">
+    <div className="text-[0.8125rem] leading-relaxed text-slate-500 dark:text-muted">
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
         className="flex w-full min-w-0 items-center gap-2 text-left hover:text-slate-900 dark:hover:text-white">
         <QuestionIcon weight="regular" className="size-4 shrink-0" />
@@ -467,15 +467,15 @@ function LegacyStep({ run }: { run: Message[] }) {
     : kind === "cmd" ? `${live ? "Running" : bad ? "Failed" : "Ran"} ${commandName(m.detail) || "command"}`
     : m.title || "Tool";
   const full = (x: Message) => x.role === "tool"
-    ? <pre key={x.id} className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-100 p-2 font-mono text-[11px] dark:bg-raised">{[x.detail, x.text].filter(Boolean).join("\n\n")}</pre>
+    ? <pre key={x.id} className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-100 p-2 font-mono text-[0.6875rem] dark:bg-raised">{[x.detail, x.text].filter(Boolean).join("\n\n")}</pre>
     : <div key={x.id} className="[&_*]:!text-inherit [&_p]:my-0.5"><Md>{x.text}</Md></div>;
   return (
-    <div className={`text-[13px] leading-relaxed ${kind === "note" ? "text-slate-700 dark:text-text-secondary" : "text-slate-500 dark:text-muted"}`}>
+    <div className={`text-[0.8125rem] leading-relaxed ${kind === "note" ? "text-slate-700 dark:text-text-secondary" : "text-slate-500 dark:text-muted"}`}>
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
         className="flex w-full min-w-0 items-center gap-2 text-left hover:text-slate-900 dark:hover:text-white">
         {icon}
         <span className={`min-w-0 flex-1 truncate ${live ? "motion-safe:animate-pulse" : ""} ${bad ? "text-red-600 dark:text-red-400" : ""}`}>{line}</span>
-        {run.length > 1 && <span className="shrink-0 text-[11px] tabular-nums opacity-60">{run.length}</span>}
+        {run.length > 1 && <span className="shrink-0 text-[0.6875rem] tabular-nums opacity-60">{run.length}</span>}
       </button>
       {open && <div className="mb-1 ml-6 mt-1 space-y-1.5">{run.map(full)}</div>}
     </div>
@@ -574,7 +574,7 @@ function Reasoning({ m }: { m: Message }) {
         {open ? <CaretDown weight="regular" className="size-3 shrink-0" /> : <CaretRight weight="regular" className="size-3 shrink-0" />}
       </button>
       {open && m.text.trim() && (
-        <div className="mt-0.5 border-l-2 border-slate-200 pl-3 text-[13px] leading-relaxed text-slate-500 dark:border-border dark:text-muted [&_*]:!text-inherit"><Md>{m.text}</Md></div>
+        <div className="mt-0.5 border-l-2 border-slate-200 pl-3 text-[0.8125rem] leading-relaxed text-slate-500 dark:border-border dark:text-muted [&_*]:!text-inherit"><Md>{m.text}</Md></div>
       )}
     </div>
   );

@@ -52,8 +52,8 @@ export function CodeRefCard({ data }: { data: CodeRefData }) {
   useEffect(() => { if (lang) loadLanguage(lang).then((ok) => ok && setLoaded((n) => n + 1)); }, [lang]);
   return (
     <div className="w-[min(36rem,calc(100vw-2rem))] space-y-1.5 text-left">
-      <p className="truncate font-mono text-[11px] text-slate-300 dark:text-muted">{data.path}<span className="opacity-70">:{lineLabel(data.start, data.end)}</span></p>
-      <pre className="code-dark max-h-64 overflow-auto overscroll-contain rounded bg-[#1e1e1e] py-1.5 font-mono text-[11px] leading-4 text-[#d4d4d4]">{data.code.split("\n").map((line, i) => {
+      <p className="truncate font-mono text-[0.6875rem] text-slate-300 dark:text-muted">{data.path}<span className="opacity-70">:{lineLabel(data.start, data.end)}</span></p>
+      <pre className="code-dark max-h-64 overflow-auto overscroll-contain rounded bg-[#1e1e1e] py-1.5 font-mono text-[0.6875rem] leading-4 text-[#d4d4d4]">{data.code.split("\n").map((line, i) => {
         // Lines from a diff start with their mark: + added, - removed, space kept.
         const mark = line[0] === "+" || line[0] === "-" || line[0] === " " ? line[0] : "";
         const body = mark ? line.slice(1) : line;

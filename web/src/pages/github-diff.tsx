@@ -118,8 +118,8 @@ function Tree({ dir, jump, active, review, depth = 0 }: { dir: Dir; jump: (path:
           <button type="button" title={f.path} onClick={() => jump(f.path)} className={`flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5 text-left text-xs hover:bg-slate-100 dark:hover:bg-raised ${review.reviewed.has(f.path) ? "text-slate-400" : ""} ${active === f.path ? "bg-blue-50 font-medium text-blue-700 dark:bg-raised dark:text-accent-text" : ""}`}>
             <FileIcon aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
             <span className="min-w-0 flex-1 truncate">{f.path.split("/").pop()}</span>
-            <span className="shrink-0 font-mono text-[11px] text-green-700 dark:text-green-400">+{f.added}</span>
-            <span className="shrink-0 font-mono text-[11px] text-red-700 dark:text-red-400">−{f.removed}</span>
+            <span className="shrink-0 font-mono text-[0.6875rem] text-green-700 dark:text-green-400">+{f.added}</span>
+            <span className="shrink-0 font-mono text-[0.6875rem] text-red-700 dark:text-red-400">−{f.removed}</span>
           </button>
         </li>
       ))}
@@ -266,7 +266,7 @@ function CommentForm({ draft, placeholder, suggest, steerable = true, rangeless,
   return (
     <div data-dictation-panel className="whitespace-normal py-2 font-sans">
       <div className="flex items-start gap-2">
-        {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} className="min-w-0 flex-1 !max-h-[112px] !px-1 !py-1.5 !text-sm !leading-5" />}
+        {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} className="min-w-0 flex-1 !max-h-[7rem] !px-1 !py-1.5 !text-sm !leading-5" />}
         <textarea ref={input} autoFocus rows={1} value={dictation.value} readOnly={dictation.active} aria-label="Comentario de revisión" placeholder={placeholder}
           onFocus={(e) => keepAboveKeyboard(e.currentTarget.parentElement!)}
           onChange={(e) => setBody(e.target.value)}
@@ -275,7 +275,7 @@ function CommentForm({ draft, placeholder, suggest, steerable = true, rangeless,
             if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onCancel(); return; }
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); main(); }
           }}
-          className={showingDictation ? "sr-only" : "max-h-[112px] min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1.5 text-sm leading-5 outline-none! focus-visible:outline-none!"} />
+          className={showingDictation ? "sr-only" : "max-h-[7rem] min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1.5 text-sm leading-5 outline-none! focus-visible:outline-none!"} />
         <button type="button" onClick={onCancel} aria-label="Cancelar" title="Cancelar (Esc)" className="-mr-1 grid size-8 shrink-0 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white"><X weight="light" className="size-4" /></button>
       </div>
       <div className="mt-1 flex items-center gap-1 border-t border-slate-100 pt-1 dark:border-border">

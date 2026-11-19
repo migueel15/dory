@@ -141,17 +141,17 @@ function Layout() {
   }, [menu, !!me.data]);
   if (me.isPending) return null;
   if (!me.data) return <Login />;
-  const ico = "size-[18px] shrink-0";
+  const ico = "size-[1.125rem] shrink-0";
   // On desktop a link is 32 px tall with the icon 7 px in, so folded (32 px wide)
   // the selected link is a square and the icon never moves.
-  const link = "flex min-h-11 shrink-0 items-center gap-2.5 overflow-hidden rounded px-3 text-sm font-medium text-slate-800 dark:text-text sm:h-8 sm:min-h-0 sm:px-[7px] sm:py-0 hover:bg-slate-200 dark:hover:bg-raised [&.active]:bg-slate-900 dark:[&.active]:bg-accent [&.active]:text-white dark:[&.active]:text-white";
+  const link = "flex min-h-11 shrink-0 items-center gap-2.5 overflow-hidden rounded px-3 text-sm font-medium text-slate-800 dark:text-text sm:h-8 sm:min-h-0 sm:px-[0.4375rem] sm:py-0 hover:bg-slate-200 dark:hover:bg-raised [&.active]:bg-slate-900 dark:[&.active]:bg-accent [&.active]:text-white dark:[&.active]:text-white";
   // Group headings share the links' left padding and a rule above, so each section reads as a block.
   // A section heading is a divider plus its name. Folded, the name fades and its
   // row collapses smoothly, so the links below move up and only the divider stays.
   const group = (name: string, small = false) => (
     <div className={`border-t border-slate-200 transition-[margin,padding] duration-200 first:mt-1 first:border-t-0 first:pt-0 dark:border-border ${small ? "mt-2 mb-1 pt-2" : "mt-3 mb-1 pt-3"}`}>
       <div className={`grid transition-[grid-template-rows,opacity] duration-200 ${small ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]"}`}>
-        <span className="overflow-hidden whitespace-nowrap px-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-muted sm:px-[7px]">{name}</span>
+        <span className="overflow-hidden whitespace-nowrap px-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-muted sm:px-[0.4375rem]">{name}</span>
       </div>
     </div>
   );
@@ -178,7 +178,7 @@ function Layout() {
         <div className="flex w-56 items-center pl-3 pr-2">
           <button type="button" onClick={() => fold(!folded)} aria-label={folded ? "Expandir barra lateral" : "Plegar barra lateral"} title={folded ? "Expandir barra lateral" : "Plegar barra lateral"}
             className="grid size-8 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white">
-            <SidebarSimple weight="regular" className="size-[18px]" aria-hidden="true" />
+            <SidebarSimple weight="regular" className="size-[1.125rem]" aria-hidden="true" />
           </button>
           <div className={`flex min-w-0 flex-1 items-center transition-opacity duration-150 ${folded ? "pointer-events-none opacity-0" : ""}`}>
             <Link to="/" tabIndex={folded ? -1 : undefined} className="flex items-center gap-2 px-2 py-3 font-bold">Dory<DevBadge /></Link>
@@ -243,7 +243,7 @@ function Layout() {
           <VersionBadge />
         </div>
       </dialog>
-      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"} ${hasWindowClose && !path.startsWith("/threads") ? "sm:pr-14" : ""}`}><Outlet /></main><WindowClose /></div><CommandPalette /><TooltipHost />
+      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"} ${hasWindowClose && !path.startsWith("/threads") ? "sm:px-14" : ""}`}><Outlet /></main><WindowClose /></div><CommandPalette /><TooltipHost />
     </div>
   );
 }

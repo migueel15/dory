@@ -51,8 +51,8 @@ export function ProjectSwitcher({ compact = false, folded = false }: { compact?:
   const button = (
     <button ref={trigger} type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => { setTip(null); setOpen(!open); }} title={folded ? undefined : "Cambiar de proyecto"}
       onMouseEnter={showTip} onMouseLeave={() => setTip(null)} onFocus={showTip} onBlur={() => setTip(null)}
-      className={`flex w-full items-center overflow-hidden rounded text-left ${compact ? "min-h-11 px-2" : "h-8 px-[7px]"} text-sm font-medium text-slate-800 hover:bg-slate-200 dark:text-text dark:hover:bg-raised ${open ? "bg-slate-200 dark:bg-raised" : ""}`}>
-      {current ? <FolderSimple weight="duotone" aria-hidden="true" className="mr-2.5 size-[18px] shrink-0 opacity-80" /> : <SquaresFour weight="duotone" aria-hidden="true" className="mr-2.5 size-[18px] shrink-0 opacity-80" />}
+      className={`flex w-full items-center overflow-hidden rounded text-left ${compact ? "min-h-11 px-2" : "h-8 px-[0.4375rem]"} text-sm font-medium text-slate-800 hover:bg-slate-200 dark:text-text dark:hover:bg-raised ${open ? "bg-slate-200 dark:bg-raised" : ""}`}>
+      {current ? <FolderSimple weight="duotone" aria-hidden="true" className="mr-2.5 size-[1.125rem] shrink-0 opacity-80" /> : <SquaresFour weight="duotone" aria-hidden="true" className="mr-2.5 size-[1.125rem] shrink-0 opacity-80" />}
       <span className="min-w-0 flex-1 truncate">{name}</span>
       <CaretUpDown weight="regular" aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
     </button>
@@ -63,7 +63,7 @@ export function ProjectSwitcher({ compact = false, folded = false }: { compact?:
       {button}
       {tip && folded && !open && createPortal(
         <div role="tooltip" style={tip} className="notif-in pointer-events-none fixed z-[100] -translate-y-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-xs text-white shadow-lg dark:bg-raised dark:text-text">
-          <div className="text-[10px] uppercase tracking-wide opacity-60">Proyecto</div>
+          <div className="text-[0.625rem] uppercase tracking-wide opacity-60">Proyecto</div>
           <div className="font-medium">{name}</div>
         </div>,
         document.body,

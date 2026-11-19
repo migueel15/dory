@@ -26,7 +26,7 @@ function Header({ text, q, step, total }: { text: string; q?: Question; step?: n
   return (
     <div className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-muted">
       <QuestionIcon className="size-4" />{text}
-      {q?.header && <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] dark:bg-raised">{q.header}</span>}
+      {q?.header && <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[0.6875rem] dark:bg-raised">{q.header}</span>}
       {total !== undefined && total > 1 && <span className="ml-auto tabular-nums">{(step ?? 0) + 1}/{total}</span>}
     </div>
   );
@@ -134,7 +134,7 @@ export function QuestionPanel({ flow, busy, error }: { flow: QuestionFlow; busy:
       <div className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-muted">
         <QuestionIcon className="size-4" />
         <span>{total > 1 ? `Pregunta ${step + 1} de ${total}` : "El agente te pregunta"}</span>
-        {q.header && <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] dark:bg-raised">{q.header}</span>}
+        {q.header && <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[0.6875rem] dark:bg-raised">{q.header}</span>}
         {total > 1 && (
           <span className="ml-auto flex items-center gap-0.5">
             <button type="button" className={nav} aria-label="Pregunta anterior" title="Anterior" disabled={step === 0 || busy} onClick={flow.back}><CaretLeft className="size-4" /></button>
@@ -142,7 +142,7 @@ export function QuestionPanel({ flow, busy, error }: { flow: QuestionFlow; busy:
           </span>
         )}
       </div>
-      <p className="mb-1.5 text-[15px] font-medium text-slate-900 dark:text-white">{q.question}</p>
+      <p className="mb-1.5 text-[0.9375rem] font-medium text-slate-900 dark:text-white">{q.question}</p>
       {!!q.options?.length && (
         <div role={multi ? "group" : "radiogroup"} aria-label={q.question} className="-mx-2 space-y-0.5">
           {q.options.map((o, i) => {
@@ -151,7 +151,7 @@ export function QuestionPanel({ flow, busy, error }: { flow: QuestionFlow; busy:
               <button key={o.label} type="button" role={multi ? "checkbox" : "radio"} aria-checked={on} disabled={busy}
                 onClick={() => (multi ? flow.toggle(o.label) : flow.answer(o.label))}
                 className={`flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-slate-100 dark:hover:bg-raised ${on ? "bg-slate-100 dark:bg-raised" : ""}`}>
-                <span className="grid size-5 shrink-0 place-items-center rounded-md border border-slate-300 text-[11px] tabular-nums text-slate-500 dark:border-border-strong dark:text-muted">{i + 1}</span>
+                <span className="grid size-5 shrink-0 place-items-center rounded-md border border-slate-300 text-[0.6875rem] tabular-nums text-slate-500 dark:border-border-strong dark:text-muted">{i + 1}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm text-slate-900 dark:text-white">{o.label}</span>
                   {o.description && <span className="block text-xs text-slate-500 dark:text-muted">{o.description}</span>}

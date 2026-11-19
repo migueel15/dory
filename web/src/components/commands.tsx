@@ -8,7 +8,7 @@ type Command = { id: string; group: string; label: string; icon: ComponentType<I
 
 const OPEN_EVENT = "dory:commands";
 const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-const kbd = "rounded border border-slate-200 bg-slate-50 px-1 font-sans text-[10px] font-medium text-slate-500 dark:border-border dark:bg-raised dark:text-muted";
+const kbd = "rounded border border-slate-200 bg-slate-50 px-1 font-sans text-[0.625rem] font-medium text-slate-500 dark:border-border dark:bg-raised dark:text-muted";
 
 // CommandsButton opens the palette and shows its shortcut; it sits next to the app name.
 export function CommandsButton() {
@@ -82,7 +82,7 @@ function Palette({ commands, onClose }: { commands: Command[]; onClose: () => vo
           {shown.length === 0 && <p className="px-2 py-2 text-sm text-slate-400">Ningún comando coincide.</p>}
           {shown.map((c, i) => (
             <div key={c.id}>
-              {c.group !== shown[i - 1]?.group && <p className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-muted">{c.group}</p>}
+              {c.group !== shown[i - 1]?.group && <p className="px-2 pb-1 pt-2 text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-400 dark:text-muted">{c.group}</p>}
               <button type="button" role="option" aria-selected={i === hi} onMouseEnter={() => setHi(i)} onClick={() => run(c)}
                 className={`flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm sm:min-h-0 ${i === hi ? "bg-slate-100 dark:bg-raised" : ""}`}>
                 <c.icon weight="duotone" aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
@@ -92,7 +92,7 @@ function Palette({ commands, onClose }: { commands: Command[]; onClose: () => vo
             </div>
           ))}
         </div>
-        <div className="hidden items-center gap-3 border-t border-slate-200 px-3 py-1.5 text-[11px] text-slate-400 dark:border-border sm:flex">
+        <div className="hidden items-center gap-3 border-t border-slate-200 px-3 py-1.5 text-[0.6875rem] text-slate-400 dark:border-border sm:flex">
           <span><kbd className={kbd}>↑↓</kbd> moverse</span><span><kbd className={kbd}>Enter</kbd> ejecutar</span><span><kbd className={kbd}>Esc</kbd> cerrar</span>
         </div>
       </div>

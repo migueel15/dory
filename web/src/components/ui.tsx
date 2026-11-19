@@ -124,7 +124,7 @@ export function Select({ value, onChange, options, disabled, className, placehol
             {shown.length === 0 && <p className="px-2.5 py-2 text-sm text-slate-400">{q ? "Nada coincide" : "Sin opciones"}</p>}
             {shown.map((o, i) => (
               <div key={o.value}>
-                {o.group && o.group !== shown[i - 1]?.group && <p className="px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-muted">{o.group}</p>}
+                {o.group && o.group !== shown[i - 1]?.group && <p className="px-2.5 pb-1 pt-2 text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-400 dark:text-muted">{o.group}</p>}
                 <button type="button" role="option" data-hi={i === hi} aria-selected={o.value === value} aria-disabled={o.disabled} disabled={o.disabled} onMouseEnter={() => setHi(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(o)}
                   className={cx("flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm sm:min-h-0", i === hi ? "bg-slate-100 dark:bg-raised" : "", o.value === value ? "font-medium text-slate-900 dark:text-white" : "text-slate-700 dark:text-text-secondary", o.disabled && "cursor-not-allowed opacity-50")}>
                   <span className="grid size-4 shrink-0 place-items-center">{o.value === value && <Check aria-hidden="true" weight="bold" className="size-3.5" />}</span>
@@ -250,7 +250,7 @@ export function Md({ children, components, urlTransform, onToggle, serif = false
 
 // reading is the look of an answer, as in Claude: a serif at a comfortable
 // size and line height, with sans-serif code.
-const reading = "font-reading !text-[16px] !leading-[1.7] text-slate-800 dark:text-[#e8e6e3] [&_h1]:!border-0 [&_h2]:!border-0 [&_h1]:!text-[1.5em] [&_h2]:!text-[1.25em] [&_h3]:!text-[1.1em] [&_h1,&_h2,&_h3,&_h4]:!font-semibold [&_li]:!my-1 [&_strong]:font-semibold [&_pre]:!text-[13px] [&_table]:text-[15px] [&_.katex-display]:my-3 [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden";
+const reading = "font-reading !text-[1rem] !leading-[1.7] text-slate-800 dark:text-[#e8e6e3] [&_h1]:!border-0 [&_h2]:!border-0 [&_h1]:!text-[1.5em] [&_h2]:!text-[1.25em] [&_h3]:!text-[1.1em] [&_h1,&_h2,&_h3,&_h4]:!font-semibold [&_li]:!my-1 [&_strong]:font-semibold [&_pre]:!text-[0.8125rem] [&_table]:text-[0.9375rem] [&_.katex-display]:my-3 [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden";
 
 export function Modal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   useEffect(() => {

@@ -437,7 +437,7 @@ export function DictationPreview({ value, range, format, className = "" }: {
   const before = value.slice(0, range.start);
   const after = value.slice(range.end);
   return (
-    <div ref={viewport} aria-hidden="true" className={`max-h-60 overflow-y-auto whitespace-pre-wrap break-words px-4 pb-1 pt-3.5 text-[15px] leading-6 ${className}`}>
+    <div ref={viewport} aria-hidden="true" className={`max-h-60 overflow-y-auto whitespace-pre-wrap break-words px-4 pb-1 pt-3.5 text-[0.9375rem] leading-6 ${className}`}>
       {format ? format(before) : before}
       <span ref={provisional} className="italic text-slate-500 dark:text-muted">{value.slice(range.start, range.end)}</span>
       {format ? format(after) : after}

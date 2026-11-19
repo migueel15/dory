@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 
-// Interface scale, stored per browser and applied as CSS zoom on the root so
-// it behaves the same in the browser and the desktop app.
+// Interface scale, stored per browser and applied as the root font size, so
+// every rem-based size grows or shrinks while the layout still fills the
+// window (CSS zoom would break vh, dvh and window measurements).
 const KEY = "ui-scale";
 const EVENT = "ui-scale";
 export const SCALES = [0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
@@ -19,7 +20,11 @@ export function setScale(s: number) {
 }
 
 export function applyScale(s = stored()) {
-  document.documentElement.style.zoom = s === 1 ? "" : String(s);
+  // The desktop app zooms the page itself: breakpoints, px sizes and window
+  // measurements follow the scale, like the browser zoom.
+  const zoom = window.doryDesktop?.setZoom;
+  if (zoom) return zoom(s);
+  document.documentElement.style.fontSize = s === 1 ? "" : `${s * 100}%`;
 }
 
 // step moves one scale up or down, or back to 100% with 0.

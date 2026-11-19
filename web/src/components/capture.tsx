@@ -81,7 +81,7 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
 function Kbd({ children, inverse = false, tight = false }: { children: string; inverse?: boolean; tight?: boolean }) {
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
   return (
-    <kbd className={`${tight ? "-ml-1" : "ml-2"} hidden rounded border px-1 font-sans text-[10px] font-medium sm:inline ${inverse ? "border-white/30 text-white/80" : "border-slate-200 bg-slate-50 text-slate-500 dark:border-border dark:bg-raised dark:text-muted"}`}>
+    <kbd className={`${tight ? "-ml-1" : "ml-2"} hidden rounded border px-1 font-sans text-[0.625rem] font-medium sm:inline ${inverse ? "border-white/30 text-white/80" : "border-slate-200 bg-slate-50 text-slate-500 dark:border-border dark:bg-raised dark:text-muted"}`}>
       {mac ? children.replace("Ctrl", "⌘").replace("Alt", "⌥") : children}
     </kbd>
   );

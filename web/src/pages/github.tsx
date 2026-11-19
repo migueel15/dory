@@ -96,7 +96,7 @@ const Meta = ({ icon, children, title }: { icon: PhosphorIcon; children: React.R
 function Label({ name, color }: { name: string; color?: string }) {
   const c = color ? `#${color}` : undefined;
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:text-text" style={c ? { borderColor: `${c}88`, backgroundColor: `${c}22` } : undefined}>
+    <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.6875rem] font-medium text-slate-700 dark:text-text" style={c ? { borderColor: `${c}88`, backgroundColor: `${c}22` } : undefined}>
       <span className="size-2 rounded-full" style={{ backgroundColor: c ?? "#94a3b8" }} />{name}
     </span>
   );
@@ -155,7 +155,7 @@ const linked = (repo: string, prefix: "PR" | "Issue", refs: { number: number; ti
   return refs.map((r) => (
     <Tip key={r.number} text={r.title}>
       <Link to="/github/$owner/$repo/$kind/$number" params={{ owner, repo: name, kind: prefix === "PR" ? "pulls" : "issues", number: String(r.number) }}
-        className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 dark:border-border dark:bg-surface dark:text-text dark:hover:border-accent dark:hover:bg-accent-subtle dark:hover:text-accent-text">
+        className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[0.6875rem] font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 dark:border-border dark:bg-surface dark:text-text dark:hover:border-accent dark:hover:bg-accent-subtle dark:hover:text-accent-text">
         <Icon i={prefix === "PR" ? icons.pull : icons.issue} className="size-3" />{prefix} #{r.number}
       </Link>
     </Tip>

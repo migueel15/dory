@@ -19,7 +19,7 @@ import { paintTokens, quoteBlock, quoteLabel, tokenRanges, type Token, type Toke
 // files, model, effort and permissions, and send, queue or stop.
 
 export const composerFrame = "relative z-10 rounded-3xl border border-slate-200 bg-white shadow-md dark:border-raised dark:bg-surface";
-export const composerArea = "relative block max-h-60 w-full resize-none break-words bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 !outline-none placeholder:text-slate-400";
+export const composerArea = "relative block max-h-60 w-full resize-none break-words bg-transparent px-4 pb-1 pt-3.5 text-[0.9375rem] leading-6 !outline-none placeholder:text-slate-400";
 
 export type MenuOption = { value: string; label: string; group?: string; modelId?: string; icon?: React.ReactNode };
 
@@ -483,7 +483,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
                 <a href={f.preview} target="_blank" rel="noreferrer" aria-label={`Ver ${f.name}`} className="block size-14 cursor-zoom-in">
                   {f.mime.startsWith("image/") ? <img src={f.preview} alt="" className="size-14 shrink-0 object-cover" /> : <span className="grid size-14 shrink-0 place-items-center text-slate-400"><FileText className="size-6" /></span>}
                 </a>
-                {f.error && <span className="absolute inset-x-0 bottom-0 bg-red-500 text-center text-[9px] font-medium text-white">Error</span>}
+                {f.error && <span className="absolute inset-x-0 bottom-0 bg-red-500 text-center text-[0.5625rem] font-medium text-white">Error</span>}
                 {!f.done && !f.error && <span className="absolute inset-0 grid place-items-center bg-white/60 dark:bg-black/40"><span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /></span>}
                 <button type="button" onClick={() => removeFile(f.key)} aria-label={`Quitar ${f.name}`} className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-slate-900/70 text-white transition-opacity hover:bg-slate-900 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"><X weight="regular" className="size-3" /></button>
               </div>
@@ -493,7 +493,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
         <div className="relative">
           {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} format={(part) => paintTokens(part, tokens)} />}
           {/* Tokens show as objects: this layer paints the text under a see-through textarea, glyph for glyph, so the caret stays aligned. */}
-          {!showingDictation && ranges.length > 0 && <div ref={paint} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-4 pb-1 pt-3.5 text-[15px] leading-6">
+          {!showingDictation && ranges.length > 0 && <div ref={paint} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-4 pb-1 pt-3.5 text-[0.9375rem] leading-6">
             {paintTokens(text, tokens)}{"\u200b"}
           </div>}
           <textarea ref={area} data-dictation-disabled={send.isPending || undefined} rows={1} value={dictation.value} readOnly={dictation.active} onChange={(e) => setText(e.target.value)} onSelect={() => { if (!dictation.active) { snapSelection(); suggest.track(); } }} onClick={() => { if (!dictation.active) suggest.track(); }} aria-label="Mensaje"
@@ -608,7 +608,7 @@ function useSuggest(threadId: string, provider: string, text: string, area: Reac
   const loading = word && (word.sigil === "@" ? files.isPending : catalog.isPending);
   const menu = word && (shown.length > 0 || loading || word.sigil !== "@") && (
     <div className="absolute bottom-full left-3 z-30 mb-2 w-[min(32rem,calc(100%-1.5rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-border dark:bg-surface">
-      <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{titles[word.sigil]}</p>
+      <p className="px-3 pb-1 pt-2 text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-400">{titles[word.sigil]}</p>
       <ul role="listbox" aria-label={titles[word.sigil]} className="max-h-64 overflow-y-auto p-1">
         {shown.map((s, i) => (
           <li key={s.key}>

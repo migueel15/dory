@@ -10,7 +10,7 @@ const done = ["completed", "failed", "error", "declined", "interrupted", "cancel
 export const isLive = (m: Message) => m.streaming || !done.includes(m.status ?? "");
 export const isFailed = (m: Message) => m.status === "failed" || m.status === "error";
 const base = (p = "") => p.replace(/\/+$/, "").split("/").pop() || p;
-const mono = "font-mono text-[12px]";
+const mono = "font-mono text-[0.75rem]";
 
 function State({ m }: { m: Message }) {
   if (isLive(m)) return <CircleNotch weight="regular" className="size-3.5 shrink-0 animate-spin text-slate-400" aria-label="En curso" />;
@@ -25,7 +25,7 @@ function Row({ icon, children, body: given, m, open: initial = false }: { icon: 
   const error = isFailed(m) && m.text.trim() ? <pre className={`${mono} max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-red-50 p-2.5 text-red-700 dark:bg-red-950/40 dark:text-red-300`}>{m.text}</pre> : null;
   const body = error && !given ? error : given;
   return (
-    <div className="text-[13px] leading-relaxed text-slate-500 dark:text-muted">
+    <div className="text-[0.8125rem] leading-relaxed text-slate-500 dark:text-muted">
       <button type="button" disabled={!body} onClick={() => setOpen(!open)} aria-expanded={body ? open : undefined}
         className="flex w-full min-w-0 items-center gap-2 text-left enabled:hover:text-slate-900 dark:enabled:hover:text-white">
         <span className="shrink-0">{icon}</span>
@@ -106,7 +106,7 @@ export function TodoCard({ m }: { m: Message }) {
       <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-muted">Tareas<span className="tabular-nums">{finished}/{todos.length}</span></div>
       <ul className="space-y-1">
         {todos.map((x, i) => (
-          <li key={i} className="flex items-start gap-2 text-[13px]">
+          <li key={i} className="flex items-start gap-2 text-[0.8125rem]">
             {x.status === "completed" ? <CheckCircle weight="fill" className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
               : x.status === "in_progress" ? <CircleNotch weight="regular" className="mt-0.5 size-4 shrink-0 animate-spin text-blue-500" />
               : <Circle className="mt-0.5 size-4 shrink-0 text-slate-300 dark:text-border-strong" />}
@@ -134,7 +134,7 @@ export function GroupCard({ run }: { run: Message[] }) {
     <Row m={m} icon={read ? <FileText className="size-4" /> : <MagnifyingGlass weight="regular" className="size-4" />}
       body={<ul className="space-y-0.5">{run.map((x) => <li key={x.id} className={`${mono} truncate`} title={label(x)}>{label(x)}</li>)}</ul>}>
       <span className="shrink-0">{head}</span>{run.length === 1 && <span className={`${mono} truncate text-slate-700 dark:text-text-secondary`}>{read ? base(t.path) : t.pattern}</span>}
-      {!read && !isLive(m) && !isFailed(m) && <span className="shrink-0 text-[11px] tabular-nums opacity-70">{results(run)} resultados</span>}
+      {!read && !isLive(m) && !isFailed(m) && <span className="shrink-0 text-[0.6875rem] tabular-nums opacity-70">{results(run)} resultados</span>}
     </Row>
   );
 }
@@ -156,14 +156,14 @@ function AgentCard({ m, t }: { m: Message; t: ToolCall }) {
     <div className="rounded-xl border border-slate-200 px-3 py-2 dark:border-border">
       <Row m={m} icon={<Robot className="size-4" />} body={m.text ? <Output text={m.text} /> : undefined}>
         <span className="shrink-0 font-medium text-slate-700 dark:text-text-secondary">{t.agent || "Subagente"}</span><span className="min-w-0 flex-1 truncate">{t.summary}</span>
-        {!!t.steps && <span className="shrink-0 text-[11px] tabular-nums opacity-70">{t.steps} {t.steps === 1 ? "herramienta" : "herramientas"}</span>}
+        {!!t.steps && <span className="shrink-0 text-[0.6875rem] tabular-nums opacity-70">{t.steps} {t.steps === 1 ? "herramienta" : "herramientas"}</span>}
       </Row>
     </div>
   );
 }
 
 function McpCard({ m, t }: { m: Message; t: ToolCall }) {
-  const chip = "rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-600 dark:bg-raised dark:text-text-secondary";
+  const chip = "rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[0.6875rem] text-slate-600 dark:bg-raised dark:text-text-secondary";
   return (
     <Row m={m} icon={t.kind === "mcp" ? <Plug className="size-4" /> : <Wrench className="size-4" />}
       body={<div className="space-y-1.5">{t.input && <Output text={pretty(t.input)} />}{m.text && <Output text={m.text} />}</div>}>

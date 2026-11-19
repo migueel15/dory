@@ -53,11 +53,11 @@ export function AreaChart({ labels, series, format }: { labels: string[]; series
         {ticks.map((t) => (
           <g key={t}>
             <line x1={PAD.l} x2={W - PAD.r} y1={y(t)} y2={y(t)} className="stroke-slate-200 dark:stroke-border" strokeDasharray={t ? "3 3" : undefined} />
-            <text x={PAD.l - 6} y={y(t)} dy="0.32em" textAnchor="end" className="fill-slate-500 text-[10px] dark:fill-muted">{format(t)}</text>
+            <text x={PAD.l - 6} y={y(t)} dy="0.32em" textAnchor="end" className="fill-slate-500 text-[0.625rem] dark:fill-muted">{format(t)}</text>
           </g>
         ))}
         {labels.map((l, i) => (i % every === 0 || i === n - 1) && (i === n - 1 || n - 1 - i >= every / 2) ? (
-          <text key={i} x={x(i)} y={H - 6} textAnchor="middle" className="fill-slate-500 text-[10px] dark:fill-muted">{l}</text>
+          <text key={i} x={x(i)} y={H - 6} textAnchor="middle" className="fill-slate-500 text-[0.625rem] dark:fill-muted">{l}</text>
         ) : null)}
         {series.map((s) => {
           const pts = s.values.map((v, i) => [x(i), y(v)] as [number, number]);
