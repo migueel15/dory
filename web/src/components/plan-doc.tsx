@@ -41,7 +41,7 @@ export function PlanDoc({ taskId, showStatus = true }: { taskId: string; showSta
           className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 ${following ? "bg-accent/15 text-accent-text" : "hover:bg-slate-200/70 dark:hover:bg-raised"}`}>
           <Crosshair weight={following ? "bold" : "regular"} className="size-3.5" />Seguir
         </button>
-        {showStatus && p.accepted_at && <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><Check className="size-3.5" />Aceptado</span>}
+        {showStatus && p.accepted_at && <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><Check weight="thin" aria-hidden="true" className="size-3.5 shrink-0" />Aceptado</span>}
         <span className="flex-1" />
         <span aria-live="polite">{doc.state === "saving" ? "Guardando…" : doc.state === "dirty" ? "Sin guardar" : ""}</span>
         {!doc.empty && !p.accepted_at && <Button className="text-xs" onClick={() => accept.mutate()} disabled={accept.isPending || doc.state !== "saved"}>Aceptar plan</Button>}

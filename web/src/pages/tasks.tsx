@@ -298,7 +298,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
               <ClipboardText className="size-4" />Plan
               <span className="ml-auto flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600 dark:text-muted">
                 {planDoc.data?.accepted_at ? (
-                  <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><Check className="size-3.5" />Aceptado</span>
+                  <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><Check weight="thin" aria-hidden="true" className="size-3.5 shrink-0" />Aceptado</span>
                 ) : planDoc.data?.body_md.trim() ? (
                   <span className="text-amber-700 dark:text-amber-400">Pendiente de aceptar</span>
                 ) : planDoc.data ? "Sin plan" : planDoc.isError ? "Estado no disponible" : "Cargando…"}
