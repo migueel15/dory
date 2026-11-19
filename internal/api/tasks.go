@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/migueel15/dory/internal/data"
@@ -224,29 +225,47 @@ func (s *Server) Cards(ctx context.Context, tasks []data.Task) ([]Card, error) {
 	for _, p := range plans {
 		withPlan[p.TaskID] = true
 	}
-	cards := make([]Card, 0, len(tasks))
-	for _, t := range tasks {
-		c := Card{Task: t, Threads: byTask[t.ID], HasPlan: withPlan[t.ID], Blockers: []string{}}
-		if c.Threads == nil {
-			c.Threads = []data.Thread{}
-		}
-		if t.RepositoryID != nil {
-			c.Repo = names[*t.RepositoryID]
-		}
-		s.attachPull(ctx, &c, open)
-		blockers, err := s.Store.Blockers(ctx, t.ID)
-		if err != nil {
-			return nil, err
-		}
-		for _, b := range blockers {
-			if !s.finished(ctx, b, open, names) {
-				c.Blockers = append(c.Blockers, b.ID)
-			}
-		}
-		c.Column = column(c)
-		cards = append(cards, c)
+	// Each card may ask GitHub for the final state of its pull request, so
+	// the cards are built concurrently and keep the order of tasks.
+	cards := make([]Card, len(tasks))
+	errs := make([]error, len(tasks))
+	sem := make(chan struct{}, 8)
+	var wg sync.WaitGroup
+	for i, t := range tasks {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer func() { <-sem; wg.Done() }()
+			cards[i], errs[i] = s.card(ctx, t, byTask, withPlan, names, open)
+		}()
+	}
+	wg.Wait()
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
 	}
 	return cards, nil
+}
+
+func (s *Server) card(ctx context.Context, t data.Task, byTask map[string][]data.Thread, withPlan map[string]bool, names map[string]string, open map[string]github.Pull) (Card, error) {
+	c := Card{Task: t, Threads: byTask[t.ID], HasPlan: withPlan[t.ID], Blockers: []string{}}
+	if c.Threads == nil {
+		c.Threads = []data.Thread{}
+	}
+	if t.RepositoryID != nil {
+		c.Repo = names[*t.RepositoryID]
+	}
+	s.attachPull(ctx, &c, open)
+	blockers, err := s.Store.Blockers(ctx, t.ID)
+	if err != nil {
+		return c, err
+	}
+	for _, b := range blockers {
+		if !s.finished(ctx, b, open, names) {
+			c.Blockers = append(c.Blockers, b.ID)
+		}
+	}
+	c.Column = column(c)
+	return c, nil
 }
 
 // attachPull finds the pull request of a card: the one of its number, or

@@ -39,6 +39,8 @@ function slot(c: Card): { icon: React.ReactNode; label: string } {
 
 // Only these columns can be chosen by hand; the rest come from threads and pull requests.
 const MANUAL: Partial<Record<Column, Stage>> = { inbox: "inbox", ready: "ready", cancelled: "cancelled" };
+// COLUMNS draws the empty board before the first answer arrives.
+const COLUMNS: Column[] = ["inbox", "ready", "working", "needs_you", "in_review", "ready_to_merge", "done", "cancelled"];
 
 // Tasks is the kanban, the main view (requirement RF-28).
 export function Tasks() {
@@ -64,7 +66,7 @@ export function Tasks() {
       </div>
       <ErrorText error={board.error ?? move.error} />
       <div className="flex flex-col gap-3 pb-2 sm:flex-row sm:overflow-x-auto">
-        {(board.data?.columns ?? []).map((col) => {
+        {(board.data?.columns ?? COLUMNS).map((col) => {
           const list = cards.filter((c) => c.column === col);
           const folded = fold[col] ?? false;
           const shown = folded ? list.slice(0, 0) : col === "done" || col === "cancelled" ? list.slice(-10) : list;

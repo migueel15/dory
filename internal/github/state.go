@@ -24,7 +24,9 @@ type stateEntry struct {
 }
 
 // PullState finds a pull request by number or, without one, by head branch,
-// including closed and merged ones. Results are cached for a minute.
+// including closed and merged ones. A merged pull request never changes, so
+// it stays cached; any other answer older than a minute is still returned at
+// once while a background request refreshes it.
 func (c *Client) PullState(ctx context.Context, repo string, number *int64, branch string) (PullStatus, error) {
 	if c.Token == "" {
 		return PullStatus{}, ErrUnconfigured
@@ -33,9 +35,26 @@ func (c *Client) PullState(ctx context.Context, repo string, number *int64, bran
 	if number != nil {
 		key = fmt.Sprintf("%s#%d", repo, *number)
 	}
-	if e, ok := states.Load(key); ok && time.Since(e.(stateEntry).at) < cacheTTL {
-		return e.(stateEntry).ref, nil
+	if e, ok := states.Load(key); ok {
+		entry := e.(stateEntry)
+		if entry.ref.State != "merged" && time.Since(entry.at) >= cacheTTL {
+			if _, busy := refreshingStates.LoadOrStore(key, true); !busy {
+				go func() {
+					defer refreshingStates.Delete(key)
+					bg, cancel := context.WithTimeout(context.Background(), refreshTimeout)
+					defer cancel()
+					_, _ = c.fetchPullState(bg, key, repo, number, branch)
+				}()
+			}
+		}
+		return entry.ref, nil
 	}
+	return c.fetchPullState(ctx, key, repo, number, branch)
+}
+
+var refreshingStates sync.Map // key -> true while a background refresh runs
+
+func (c *Client) fetchPullState(ctx context.Context, key, repo string, number *int64, branch string) (PullStatus, error) {
 	type wire struct {
 		Number   int     `json:"number"`
 		State    string  `json:"state"`
