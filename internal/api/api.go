@@ -88,6 +88,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	s.mountSkills(mux)
 	s.mountFolders(mux)
 	s.mountBranches(mux)
+	s.mountWorktrees(mux)
 	s.mountExternal(mux)
 	s.mountUsageHistory(mux)
 	s.mountDictation(mux)

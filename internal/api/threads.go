@@ -290,6 +290,7 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 		Worktree     bool    `json:"worktree"`
 		Branch       string  `json:"branch"`
 		BaseBranch   string  `json:"base_branch"`
+		WorktreePath string  `json:"worktree_path"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -319,7 +320,27 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 	if body.Title == "" {
 		body.Title = shortTitle(body.Text)
 	}
-	if !body.Worktree && body.Branch != "" && path != "" {
+	if body.WorktreePath != "" {
+		// Only a worktree git knows for the project's repository is accepted.
+		var found *Worktree
+		if path != "" {
+			for _, wt := range worktrees(ctx, path) {
+				if wt.Path == body.WorktreePath {
+					found = &wt
+					break
+				}
+			}
+		}
+		if found == nil {
+			writeError(w, http.StatusBadRequest, "unknown_worktree", "el worktree no pertenece al repositorio del proyecto")
+			return
+		}
+		body.Worktree, body.Branch = false, found.Branch
+		body.BaseBranch = defaultBranch(ctx, path)
+		if u, err := s.Runtime.WorktreeUse(ctx, found.Path, ""); err == nil && u.BaseBranch != "" {
+			body.BaseBranch = u.BaseBranch
+		}
+	} else if !body.Worktree && body.Branch != "" && path != "" {
 		// The current checkout runs on the branch the user picked.
 		if err := switchBranch(ctx, path, body.Branch); err != nil {
 			writeError(w, http.StatusConflict, "branch_switch_failed", err.Error())
@@ -331,7 +352,7 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 		body.Branch = "dory/" + strings.ToLower(rand.Text()[:8])
 	}
 	t, err := s.Runtime.Create(ctx, runtime.NewThread{ProjectID: body.ProjectID, TaskID: body.TaskID, Provider: body.Provider, Model: body.Model,
-		Effort: body.Effort, RuntimeMode: body.RuntimeMode, Title: body.Title, Worktree: body.Worktree, RepoPath: path, Branch: body.Branch, BaseBranch: body.BaseBranch})
+		Effort: body.Effort, RuntimeMode: body.RuntimeMode, Title: body.Title, Worktree: body.Worktree, RepoPath: path, Branch: body.Branch, BaseBranch: body.BaseBranch, ExistingDir: body.WorktreePath})
 	if err != nil {
 		writeDataError(w, err)
 		return

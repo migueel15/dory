@@ -276,6 +276,9 @@ type NewThread struct {
 	Worktree           bool
 	RepoPath           string
 	Branch, BaseBranch string
+	// ExistingDir runs the thread in a worktree that already exists; no
+	// branch or worktree is created.
+	ExistingDir string
 }
 
 // Create registers a thread on this node and prepares its working directory.
@@ -290,7 +293,9 @@ func (m *Manager) Create(ctx context.Context, n NewThread) (data.Thread, error) 
 		return t, err
 	}
 	dir := n.RepoPath
-	if n.Worktree {
+	if n.ExistingDir != "" {
+		dir = n.ExistingDir
+	} else if n.Worktree {
 		if n.RepoPath == "" || n.Branch == "" {
 			return t, fmt.Errorf("%w: worktree needs a repository path and a branch", data.ErrInvalid)
 		}
@@ -814,7 +819,29 @@ func (m *Manager) Remove(ctx context.Context, id string) error {
 		return err
 	}
 	_ = m.Interrupt(ctx, id)
+	if users, _ := m.WorktreeUse(ctx, dir, id); users.Threads > 0 {
+		// Another thread still works in this worktree.
+		return nil
+	}
 	return cmdexec.CommandContext(ctx, "git", "-C", dir, "worktree", "remove", "--force", dir).Run()
+}
+
+// WorktreeUse tells how many threads that are not archived, apart from
+// except, run in dir, how many of them are working, and the base branch the
+// latest of them started from.
+type WorktreeUse struct {
+	Threads, Working int
+	BaseBranch       string
+}
+
+func (m *Manager) WorktreeUse(ctx context.Context, dir, except string) (WorktreeUse, error) {
+	var u WorktreeUse
+	err := m.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(t.status = 'working'), 0),
+		COALESCE((SELECT r2.base_branch FROM thread_runtime r2 JOIN threads t2 ON t2.id = r2.thread_id
+			WHERE r2.worktree_path = ? AND r2.base_branch != '' ORDER BY t2.created_at DESC LIMIT 1), '')
+		FROM thread_runtime r JOIN threads t ON t.id = r.thread_id
+		WHERE r.worktree_path = ? AND t.archived_at IS NULL AND t.id != ?`, dir, dir, except).Scan(&u.Threads, &u.Working, &u.BaseBranch)
+	return u, err
 }
 
 func newRunID() string {
