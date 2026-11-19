@@ -229,7 +229,6 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const pullNumber = c.pull?.number ?? c.pr_number;
   const pullUrl = c.pull?.url ?? (githubRepo && pullNumber ? `${githubRepo}/pull/${pullNumber}` : undefined);
   const section = "rounded-lg border border-slate-200 p-3 dark:border-border";
-  const summary = "cursor-pointer text-sm font-semibold";
   return (
     <Modal title={c.title} onClose={onClose} wide>
       <div className="space-y-4">
@@ -264,10 +263,10 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
           ))}
         </section>
 
-        <section className="overflow-hidden rounded-lg border border-slate-200 dark:border-border">
-          <h3 className="flex items-center gap-1.5 px-3 pt-2 text-sm font-semibold"><ClipboardText className="size-4" />Plan</h3>
+        <details open className="overflow-hidden rounded-lg border border-slate-200 dark:border-border">
+          <summary className="cursor-pointer px-3 py-2 text-sm font-semibold"><ClipboardText className="mr-1 inline size-4" />Plan</summary>
           <PlanDoc taskId={id} />
-        </section>
+        </details>
 
         <section>
           <h3 className="mb-1 text-sm font-semibold">Depende de</h3>
@@ -287,8 +286,8 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
             options={others.filter((o) => !deps.data?.some((d) => d.depends_on_id === o.id)).map((o) => ({ value: o.id, label: o.title }))} />
           <ErrorText error={dep.error} />
         </section>
-        <details className={section}>
-          <summary className={summary}><Rocket className="mr-1 inline size-4" />Lanzar en este nodo</summary>
+        <section className={section}>
+          <h3 className="text-sm font-semibold"><Rocket className="mr-1 inline size-4" />Lanzar en este nodo</h3>
           <div className="mt-3">
             {form.fields}
             <div className="mt-2 flex flex-wrap gap-2">
@@ -298,10 +297,10 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
             </div>
             <ErrorText error={launch.error ?? define.error} />
           </div>
-        </details>
+        </section>
 
-        <details className={section}>
-          <summary className={summary}>Editar tarea</summary>
+        <section className={section}>
+          <h3 className="text-sm font-semibold">Editar tarea</h3>
           <div className="mt-3 space-y-3">
             <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="!text-base font-semibold" aria-label="Título" />
             <DictationField rows={6} value={draft.description} onValue={(description) => setDraft((current) => current && { ...current, description })} aria-label="Descripción" placeholder="Qué cambiar y cómo comprobarlo" />
@@ -313,10 +312,10 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
             {dirty && <Button onClick={() => save.mutate()} disabled={dictating || save.isPending}>Guardar</Button>}
             <ErrorText error={save.error} />
           </div>
-        </details>
+        </section>
 
-        <details className={section}>
-          <summary className={summary}>Acciones de la tarea</summary>
+        <section className={section}>
+          <h3 className="text-sm font-semibold">Acciones de la tarea</h3>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {c.stage !== "ready" && c.column === "inbox" && <Button variant="ghost" onClick={() => stage.mutate("ready")}>Marcar como lista</Button>}
             {c.stage === "ready" && c.column === "ready" && <Button variant="ghost" onClick={() => stage.mutate("inbox")}>Volver a inbox</Button>}
@@ -324,7 +323,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
             <Button variant="ghost" className="ml-auto" onClick={() => askConfirm("¿Archivar la tarea?", "Archivar").then((ok) => ok && archive.mutate())}>Archivar</Button>
           </div>
           <ErrorText error={stage.error ?? archive.error} />
-        </details>
+        </section>
       </div>
     </Modal>
   );
