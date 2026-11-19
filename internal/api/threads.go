@@ -296,6 +296,13 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 	if body.Title == "" {
 		body.Title = shortTitle(body.Text)
 	}
+	if !body.Worktree && body.Branch != "" && path != "" {
+		// The current checkout runs on the branch the user picked.
+		if err := switchBranch(ctx, path, body.Branch); err != nil {
+			writeError(w, http.StatusConflict, "branch_switch_failed", err.Error())
+			return
+		}
+	}
 	if body.Worktree && body.Branch == "" {
 		// A new worktree gets its own branch; the agent may rename it later.
 		body.Branch = "dory/" + strings.ToLower(rand.Text()[:8])

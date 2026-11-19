@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os/exec"
 	"strings"
@@ -66,4 +67,16 @@ func branches(ctx context.Context, dir string) Branches {
 		}
 	}
 	return out
+}
+
+// switchBranch moves a checkout to branch before a thread starts in it. Git
+// refuses when local changes would be lost; its message is returned as is.
+func switchBranch(ctx context.Context, dir, branch string) error {
+	if branches(ctx, dir).Current == branch {
+		return nil
+	}
+	if out, err := exec.CommandContext(ctx, "git", "-C", dir, "switch", branch).CombinedOutput(); err != nil {
+		return fmt.Errorf("git switch %s: %s", branch, strings.TrimSpace(string(out)))
+	}
+	return nil
 }

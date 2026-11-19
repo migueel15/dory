@@ -37,10 +37,10 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
     enabled: !!project, retry: false,
   });
   const checkoutBranch = branchList.data?.current ?? "";
-  const baseBranch = base && branchList.data?.branches.includes(base) ? base : checkoutBranch;
-  // workspace is where the first message starts the thread: the checkout as it
-  // is, or a new worktree with its own branch made from baseBranch.
-  const workspace = project && worktree ? { worktree: true, base_branch: baseBranch } : {};
+  const branch = base && branchList.data?.branches.includes(base) ? base : checkoutBranch;
+  // workspace is where the first message starts the thread: the checkout,
+  // switched to branch, or a new worktree with its own branch made from it.
+  const workspace = !project || !branch ? {} : worktree ? { worktree: true, base_branch: branch } : { branch };
   useLayoutEffect(() => { const el = box.current; if (el && !showingDictation) { el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 240)}px`; } }, [dictation.value, showingDictation]);
   const start = useMutation({
     mutationFn: async (draft: string) => {
@@ -132,10 +132,13 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
               value={worktree ? "worktree" : "checkout"} onChange={(v) => setWorktree(v === "worktree")}
               options={[{ value: "checkout", label: "Checkout actual" }, { value: "worktree", label: "Nuevo worktree" }]} />
             <span className="ml-auto" />
-            {worktree && branchList.data?.branches.length
-              ? <Chip below title="Rama base del worktree" icon={<GitBranch className="size-4 shrink-0" />} value={baseBranch} onChange={setBase}
+            {!!branchList.data?.branches.length && (
+              <>
+                {worktree && <span className="pl-1">desde</span>}
+                <Chip below title={worktree ? "Rama de la que sale el worktree" : "Rama del checkout"} icon={<GitBranch className="size-4 shrink-0" />} value={branch} onChange={setBase}
                   options={branchList.data.branches.map((b) => ({ value: b, label: b }))} />
-              : checkoutBranch && <span title={worktree ? "Rama base del worktree" : "Rama del checkout"} className="inline-flex h-8 items-center gap-1.5 px-2.5"><GitBranch className="size-4 shrink-0" />{checkoutBranch}</span>}
+              </>
+            )}
           </>
         )}
       </div>

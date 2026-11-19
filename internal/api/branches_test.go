@@ -22,4 +22,7 @@ func TestBranches(t *testing.T) {
 	if b.Current != "main" || !slices.Contains(b.Branches, "main") || !slices.Contains(b.Branches, "feat/a") {
 		t.Fatalf("branches = %+v", b)
 	}
+	if err := switchBranch(context.Background(), dir, "feat/a"); err != nil || branches(context.Background(), dir).Current != "feat/a" {
+		t.Fatalf("switch: %v", err)
+	}
 }
