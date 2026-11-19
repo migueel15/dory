@@ -44,7 +44,7 @@ export function PlanDoc({ taskId }: { taskId: string }) {
   if (!p) return null;
   const empty = !p.body_md.trim();
   return (
-    <div className="flex min-h-full flex-col">
+    <div className="flex min-h-full flex-col" onWheel={follow.pause} onTouchMove={follow.pause}>
       <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-200 bg-slate-50/90 px-4 py-2 text-xs text-slate-500 backdrop-blur dark:border-border dark:bg-canvas/90 dark:text-muted">
         <span>{p.revision > 0 ? `Revisión ${p.revision} · ${p.author === "agent" ? "agente" : "tú"}` : "Sin plan"}</span>
         {p.accepted_at && <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><Check className="size-3.5" />Aceptado</span>}
@@ -70,7 +70,7 @@ export function PlanDoc({ taskId }: { taskId: string }) {
       ) : empty ? (
         <p className="p-6 text-center text-sm text-slate-500 dark:text-muted">Todavía no hay plan. Pide al agente que lo escriba o escríbelo tú.</p>
       ) : (
-        <div ref={doc} className="px-5 py-3" onWheel={follow.pause} onTouchMove={follow.pause}>
+        <div ref={doc} className="px-5 py-3">
           <Md onToggle={(line) => toggle.mutate(line)} rehypePlugins={[sourceLines]}>{p.body_md}</Md>
           {conflict ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">El plan cambió antes de guardar la casilla; vuelve a marcarla.</p> : <ErrorText error={toggle.error ?? accept.error} />}
         </div>
@@ -114,13 +114,15 @@ function changedLines(prev: string, next: string): [number, number] | undefined 
 }
 
 // useFollowChanges scrolls to and marks the blocks that changed in each new
-// version of the text. Scrolling by hand pauses it; resume follows again.
+// version of the text. Scrolling by hand pauses it and, once the agent has
+// edited, offers to follow again.
 function useFollowChanges(body: string | undefined, doc: RefObject<HTMLDivElement | null>, editing: boolean) {
   const prev = useRef(body);
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
-  const [pending, setPending] = useState(false);
+  // live: the agent has changed the plan while it is on screen, so there is something to follow.
+  const [live, setLive] = useState(false);
   useEffect(() => {
     const before = prev.current;
     prev.current = body;
@@ -133,15 +135,14 @@ function useFollowChanges(body: string | undefined, doc: RefObject<HTMLDivElemen
     const marks = hit.filter((el) => !hit.some((o) => o !== el && el.contains(o)));
     marks.forEach((el) => { el.classList.remove("plan-changed"); void el.offsetWidth; el.classList.add("plan-changed"); });
     if (!marks[0]) return;
-    if (pausedRef.current) setPending(true);
-    else marks[0].scrollIntoView({ behavior: "smooth", block: "center" });
+    setLive(true);
+    if (!pausedRef.current) marks[0].scrollIntoView({ behavior: "smooth", block: "center" });
   }, [body]); // eslint-disable-line react-hooks/exhaustive-deps
   return {
-    paused: paused && pending,
+    paused: paused && live,
     pause: () => setPaused(true),
     resume: () => {
       setPaused(false);
-      setPending(false);
       doc.current?.querySelectorAll<HTMLElement>(".plan-changed")[0]?.scrollIntoView({ behavior: "smooth", block: "center" });
     },
   };
