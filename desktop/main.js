@@ -1,7 +1,7 @@
 // Dory desktop: a thin window over the core of this machine. The core is a
 // background service; the app starts it when needed and never stops it, so
 // threads keep running with the window closed (requirement 4.4).
-const { app, BrowserWindow, shell, Menu, dialog } = require("electron");
+const { app, BrowserWindow, shell, Menu, Tray, dialog } = require("electron");
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -114,7 +114,7 @@ async function open() {
   const url = await dory(["url"]).catch(() => "http://127.0.0.1:7700");
   if (!(await healthy(url))) await dory(["start"]);
   win = new BrowserWindow({
-    width: 1400, height: 900, minWidth: 380, minHeight: 500,
+    width: 1400, height: 900, minWidth: 380, minHeight: 500, show: !hidden,
     title: "Dory", backgroundColor: "#0f0f11", autoHideMenuBar: true,
     icon: path.join(__dirname, "build", "icon.png"),
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true },
@@ -127,25 +127,72 @@ async function open() {
   win.webContents.on("will-navigate", (e, target) => {
     if (!target.startsWith(url)) { e.preventDefault(); shell.openExternal(target); }
   });
+  // Closing the window hides it: the app stays in the tray, like the core.
+  win.on("close", (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
   await win.loadURL(url);
   followUpdates(url);
+}
+
+// Started at sign-in, the app runs in the background without a window.
+const hidden = process.argv.includes("--hidden");
+let quitting = false;
+let tray;
+
+function show() {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function quit() {
+  quitting = true;
+  app.quit();
+}
+
+function createTray() {
+  tray = new Tray(path.join(__dirname, "build", "icon.png"));
+  tray.setToolTip("Dory");
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Abrir Dory", click: show },
+    { type: "separator" },
+    { label: "Salir", click: quit },
+  ]));
+  tray.on("click", show);
+}
+
+// The app opens with the session, in the background. Linux has no login
+// items in Electron, so it gets an autostart entry.
+function startAtLogin() {
+  if (!app.isPackaged) return;
+  if (process.platform !== "linux") {
+    app.setLoginItemSettings({ openAtLogin: true, args: ["--hidden"] });
+    return;
+  }
+  const exec = process.env.APPIMAGE || process.execPath;
+  const entry = path.join(os.homedir(), ".config", "autostart", "dory.desktop");
+  try {
+    fs.mkdirSync(path.dirname(entry), { recursive: true });
+    fs.writeFileSync(entry, `[Desktop Entry]\nType=Application\nName=Dory\nExec="${exec}" --hidden\nIcon=dory\nX-GNOME-Autostart-enabled=true\n`);
+  } catch {}
 }
 
 // One window per machine: a second launch focuses the first.
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
-    if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
-  });
+  app.on("second-instance", show);
+  app.on("before-quit", () => { quitting = true; });
   app.whenReady().then(() => {
     Menu.setApplicationMenu(null);
+    createTray();
+    startAtLogin();
     open().catch((err) => {
       dialog.showErrorBox("Dory", `No se pudo arrancar el núcleo.\n\n${err.message}\n\nInstala el binario dory o ejecuta \`dory service install\`.`);
       app.quit();
     });
   });
-  app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) open(); });
-  // Closing the window leaves the core running.
-  app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
+  app.on("activate", show);
+  // The window only hides; the app quits from the tray.
+  app.on("window-all-closed", () => {});
 }
