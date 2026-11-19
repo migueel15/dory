@@ -1,7 +1,7 @@
 // Package update moves this node to the latest release of its channel: the
 // core binary, the desktop app when the machine has it, and optionally the
 // harnesses. Releases are public on GitHub and are read over plain HTTPS,
-// without credentials, like T3 Code does (ADR-016).
+// without credentials (ADR-016).
 package update
 
 import (

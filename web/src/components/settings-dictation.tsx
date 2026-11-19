@@ -1,20 +1,21 @@
 import { useState } from "react";
-import { chordFromEvent, formatChord, saveDictationShortcut, useDictationShortcutSetting } from "../components/dictation-shortcut";
+import { chordFromEvent, formatChord, saveDictationShortcut, useDictationShortcutSetting } from "./dictation-shortcut";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, DownloadSimple } from "@phosphor-icons/react";
-import { downloadSpeechModel, selectSpeechModel, speechKey, useSpeechModel, useSpeechModels } from "../components/local-dictation";
-import { Button, ErrorText } from "../components/ui";
+import { downloadSpeechModel, selectSpeechModel, speechKey, useSpeechModel, useSpeechModels } from "./local-dictation";
+import { Button, ErrorText } from "./ui";
 
-export function Settings() {
+// DictationSettings is the Dictado section of the settings: the shortcut and
+// the local speech models of this node.
+export function DictationSettings() {
   const qc = useQueryClient();
   const catalog = useSpeechModels();
   const active = useSpeechModel(catalog.data);
   const download = useMutation({ mutationFn: downloadSpeechModel, onSuccess: (data) => qc.setQueryData(speechKey, data) });
   return (
-    <div className="mx-auto max-w-2xl space-y-6 px-2 py-5 sm:py-8">
-      <h1 className="text-xl font-semibold">Ajustes</h1>
+    <div className="space-y-6">
       <section aria-labelledby="dictation-title" className="space-y-3">
-        <h2 id="dictation-title" className="font-semibold">Dictado local</h2>
+        <h2 id="dictation-title" className="text-lg font-semibold">Dictado local</h2>
         <p className="text-sm text-slate-600 dark:text-muted">El audio se procesa en este nodo. Descarga un modelo y elige cuál usar en el cuadro de mensaje.</p>
         <DictationShortcutSetting />
         {catalog.data && !catalog.data.runtime && <p role="status" className="text-sm text-amber-700 dark:text-amber-400">NeMo-Speech no está disponible en este nodo.</p>}

@@ -82,11 +82,13 @@ type Model struct {
 
 // Status says whether a harness is installed on this machine.
 type Status struct {
-	ID        string  `json:"id"`
-	Name      string  `json:"name"`
-	Installed bool    `json:"installed"`
-	Version   string  `json:"version"`
-	Models    []Model `json:"models"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Installed bool   `json:"installed"`
+	// Enabled is false when the provider is turned off on this node.
+	Enabled bool    `json:"enabled"`
+	Version string  `json:"version"`
+	Models  []Model `json:"models"`
 	// Capabilities lists what the interface may offer for this provider.
 	Capabilities []string `json:"capabilities"`
 	LoggedIn     bool     `json:"logged_in"`
@@ -98,6 +100,9 @@ type Status struct {
 type Provider interface {
 	ID() string
 	Detect(ctx context.Context) Status
+	// Usage asks the harness for its usage windows without running a turn.
+	// A harness that does not report usage returns ErrNoUsage.
+	Usage(ctx context.Context) ([]Window, error)
 }
 
 // detect runs "<bin> --version" and reports its first line.

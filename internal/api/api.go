@@ -83,7 +83,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	s.mountProviders(mux)
 	s.mountSkills(mux)
 	s.mountFolders(mux)
+	s.mountBranches(mux)
 	s.mountExternal(mux)
+	s.mountUsageHistory(mux)
 	s.mountDictation(mux)
 	s.mountUpdate(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {

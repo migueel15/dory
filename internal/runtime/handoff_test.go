@@ -16,6 +16,8 @@ type capturedProvider struct {
 
 func (p capturedProvider) ID() string { return p.id }
 
+func (p capturedProvider) Usage(context.Context) ([]Window, error) { return nil, ErrNoUsage }
+
 func (p capturedProvider) Detect(context.Context) Status {
 	return Status{ID: p.id, Installed: true}
 }

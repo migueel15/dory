@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUp, CaretDown, Check, File as FileIcon, FileText, Lightning, ListBullets, MagnifyingGlass, Paperclip, PencilSimple, Quotes, Stop, TerminalWindow, Trash, X } from "@phosphor-icons/react";
-import { api, type Attachment, type ThreadView } from "../api/client";
+import { api, usable, type Attachment, type ThreadView } from "../api/client";
 import { Button, ErrorText, errMsg, iconButton, uuid } from "../components/ui";
 import { DictationField } from "../components/dictation-field";
 import { DictationMic, DictationPreview, useDictationInProgress, useLocalDictation } from "../components/local-dictation";
@@ -10,6 +10,7 @@ import { ProviderIcon } from "../components/launch-picker";
 import { explicitModels, findModel, modelEffort, modelId as concreteModelId, rememberModel } from "../effort";
 import { iconBtn, MessageParts } from "./chat";
 import type { DraftQuote } from "../components/quote-selection";
+import { askAnswerText, openAsk, QuestionPanel, useQuestionFlow } from "../components/question-card";
 import { paintTokens, quoteBlock, quoteLabel, tokenRanges, type Token, type Tokens } from "../components/composer-tokens";
 
 // The composer of a thread, kept from Dory v1: attachments, @ mentions of
@@ -18,15 +19,10 @@ import { paintTokens, quoteBlock, quoteLabel, tokenRanges, type Token, type Toke
 export const composerFrame = "relative z-10 rounded-3xl border border-slate-200 bg-white shadow-md dark:border-raised dark:bg-surface";
 export const composerArea = "relative block max-h-60 w-full resize-none break-words bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-6 !outline-none placeholder:text-slate-400";
 
-export const runtimeModes = [
-  { value: "approval-required", label: "Pedir permiso" },
-  { value: "full-access", label: "Acceso total" },
-];
-
 export type MenuOption = { value: string; label: string; group?: string; modelId?: string; icon?: React.ReactNode };
 
 // Chip is a compact dropdown for the composer toolbar; the menu opens upwards.
-export function Chip({ value, options, onChange, title, icon, below = false }: { value: string; options: MenuOption[]; onChange: (v: string) => void; title: string; icon?: React.ReactNode; below?: boolean }) {
+export function Chip({ value, options, onChange, title, icon, below = false, prefix }: { value: string; options: MenuOption[]; onChange: (v: string) => void; title: string; icon?: React.ReactNode; below?: boolean; prefix?: string }) {
   const [open, setOpen] = useState(false);
   const box = useOutside(open, () => setOpen(false));
   const current = options.find((o) => o.value === value);
@@ -35,7 +31,7 @@ export function Chip({ value, options, onChange, title, icon, below = false }: {
       <button type="button" title={title} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}
         onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
         className="inline-flex h-8 max-w-[11rem] items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white">
-        {current?.icon ?? icon}<span className="truncate">{current?.label ?? value}</span><CaretDown weight="regular" className="size-3 shrink-0 opacity-60" />
+        {current?.icon ?? icon}<span className="truncate">{prefix && `${prefix} `}{current?.label ?? value}</span><CaretDown weight="regular" className="size-3 shrink-0 opacity-60" />
       </button>
       {open && (
         <ul role="listbox" className={`absolute left-0 z-20 max-h-72 min-w-[12rem] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-border dark:bg-surface ${below ? "top-full mt-2" : "bottom-full mb-2"}`}>
@@ -356,7 +352,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
     }
   };
   const removeFile = (k: string) => setFiles((fs) => fs.filter((f) => { if (f.key === k) URL.revokeObjectURL(f.preview); return f.key !== k; }));
-  const availableProviders = (providers.data ?? []).filter((p) => p.installed && (p.id !== "replay" || p.id === t.provider));
+  const availableProviders = (providers.data ?? []).filter(usable);
   const currentProvider = availableProviders.find((p) => p.id === t.provider);
   const currentModel = findModel(currentProvider?.models ?? [], t.model);
   const selectedModel = currentModel ? concreteModelId(currentModel) : t.model;
@@ -384,6 +380,18 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
     },
   });
   const stop = useMutation({ mutationFn: () => api.interrupt(t.id) });
+  // A question the agent waits for sits on top of the box; the box writes the
+  // free answer of the current question instead of a new message. A harness
+  // question resolves its tool call; an ask_user one is answered by message.
+  const native = t.requests?.find((r) => r.questions.length > 0);
+  const ask = native ? undefined : openAsk(t.messages);
+  const question = native ?? ask;
+  const reply = useMutation({
+    mutationFn: (answers: string[][]) => native ? api.answer(t.id, native.id, answers) : api.send(t.id, askAnswerText(ask!.questions, answers)),
+    onSuccess: () => { onSent(); return qc.invalidateQueries({ queryKey: key }); },
+  });
+  const flow = useQuestionFlow(question?.id ?? "", question?.questions ?? [], (answers) => reply.mutate(answers));
+  const asking = !!question && !!flow.q;
   const settings = useMutation({
     scope: { id: `thread-settings:${t.id}` },
     mutationFn: (body: Parameters<typeof api.threadSettings>[1]) => api.threadSettings(t.id, body),
@@ -407,7 +415,14 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   };
   const latestSendDraft = useRef(sendDraft);
   useLayoutEffect(() => { latestSendDraft.current = sendDraft; });
-  const submit = () => { if (canSend) sendDraft(text); };
+  const submit = () => {
+    if (asking) {
+      const answer = text.trim();
+      if (answer && !reply.isPending) { flow.answer(answer); setText(""); }
+      return;
+    }
+    if (canSend) sendDraft(text);
+  };
   if (!t.local) return null;
   const busy = t.running;
   return (
@@ -421,6 +436,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
           if (fs.length) { e.preventDefault(); addFiles(fs); }
         }}
         className={composerFrame}>
+        {asking && <QuestionPanel flow={flow} busy={reply.isPending} error={reply.error} />}
         {!dictation.active && suggest.menu}
         {quotes.length > 0 && (
           <ul ref={quoteList} aria-label="Citas del mensaje" className="mx-2 mt-2 max-h-44 space-y-1.5 overflow-y-auto overscroll-contain px-1 py-1">
@@ -460,7 +476,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
           </div>}
           <textarea ref={area} data-dictation-disabled={send.isPending || undefined} rows={1} value={dictation.value} readOnly={dictation.active} onChange={(e) => setText(e.target.value)} onSelect={() => { if (!dictation.active) { snapSelection(); suggest.track(); } }} onClick={() => { if (!dictation.active) suggest.track(); }} aria-label="Mensaje"
             onScroll={(e) => { if (paint.current) paint.current.scrollTop = e.currentTarget.scrollTop; }}
-            placeholder={t.status === "waiting" ? "Escribe tu respuesta…" : "Escribe al hilo…"}
+            placeholder={asking ? (flow.q?.options?.length ? "Escribe otra respuesta…" : "Escribe tu respuesta…") : t.status === "waiting" ? "Escribe tu respuesta…" : "Escribe al hilo…"}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return;
               if (dictation.active) {
@@ -499,18 +515,17 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
                 if (settings.isPending || choice.provider !== t.provider || choice.model !== t.model || effort !== t.effort) settings.mutate(choice);
                 else rememberModel(choice);
               }} />
-            <Chip title="Permisos" value={t.runtime_mode} options={runtimeModes} onChange={(x) => settings.mutate({ runtime_mode: x as ThreadView["runtime_mode"] })} />
           </div>
           <DictationMic dictation={dictation} disabled={send.isPending} />
-          {busy && !outgoing && !files.length && !dictation.active ? (
+          {busy && !asking && !outgoing && !files.length && !dictation.active ? (
             <button type="button" onClick={() => stop.mutate()} disabled={stop.isPending} title="Parar el turno en curso" aria-label="Parar"
               className={iconButton}>
               <Stop weight="fill" className="size-3.5" />
             </button>
           ) : (
-            <button type="submit" disabled={!canSend} title={busy ? "Encolar (Enter)" : "Enviar (Enter)"} aria-label="Enviar"
+            <button type="submit" disabled={asking ? !text.trim() || reply.isPending : !canSend} title={asking ? "Responder (Enter)" : busy ? "Encolar (Enter)" : "Enviar (Enter)"} aria-label={asking ? "Responder" : "Enviar"}
               className={iconButton}>
-              {send.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : busy ? <ListBullets weight="regular" className="block size-4" /> : <ArrowUp weight="regular" className="block size-4" />}
+              {send.isPending || reply.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : busy && !asking ? <ListBullets weight="regular" className="block size-4" /> : <ArrowUp weight="regular" className="block size-4" />}
             </button>
           )}
         </div>

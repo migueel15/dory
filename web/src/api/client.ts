@@ -52,8 +52,10 @@ export type Column = "inbox" | "ready" | "working" | "needs_you" | "in_review" |
 export type Pull = { repo: string; number: number; title: string; url: string; draft: boolean; ci: string; review_decision: string; review_requests: string[]; mergeable: string; merge_state: string; head_ref: string };
 export type Card = Task & { column: Column; repo?: string; threads: Thread[]; pull?: Pull; pr_state?: "open" | "draft" | "merged" | "closed"; blockers: string[]; has_plan: boolean };
 export type Model = { slug: string; name: string; efforts?: string[]; resolved_model?: string };
-export type Provider = { id: string; name: string; installed: boolean; version: string; models: Model[]; capabilities: string[]; logged_in?: boolean; account?: string };
+export type Provider = { id: string; name: string; installed: boolean; enabled?: boolean; version: string; models: Model[]; capabilities: string[]; logged_in?: boolean; account?: string };
 // External is a conversation started in a harness, outside Dory.
+// usable says whether a provider can run threads: installed and not turned off.
+export const usable = (p: Provider) => p.installed && p.enabled !== false;
 export type External = { provider: string; id: string; title: string; dir: string; branch?: string; updated_at: string; project_id: string | null; thread_id?: string };
 export type Job = { id: string; provider: string; kind: "login" | "update"; output: string; done: boolean; accepts_code?: boolean; error?: string };
 export type Skill = { id: string; name: string; description: string; body_md: string; files: Record<string, string>; version: number; targets: { nodes: string[] | null; harnesses: string[] | null }; created_at: string; updated_at: string; archived_at: string | null };
@@ -62,6 +64,11 @@ export type UsageWindow = { kind: string; utilization: number; resets_at: string
 export type NodeInfo = { id: string; name: string; os: string; version: string; data_dir: string; listen: string; platform: string };
 export type Peer = { id: string; name: string; address: string; fingerprint: string; connected: boolean; last_seen: string; revoked: boolean; info: { node?: NodeInfo; providers?: Provider[] } };
 export type Mesh = { node_id: string; fingerprint: string; port: number; peers: Peer[]; discovered: { id: string; name: string; address: string }[] };
+export type UsageTokens = { input: number; output: number; cache_write: number; cache_read: number };
+export type UsageCost = UsageTokens & { cache_saving: number };
+export type UsageRow = { bucket: string; provider: string; model: string; sessions: number; tokens: UsageTokens; cost: UsageCost; priced: boolean };
+export type UsageRange = "24h" | "7d" | "30d" | "90d";
+export type UsageReport = { from: string; bucket: "hour" | "day"; rows: UsageRow[]; sessions: Record<string, number> };
 export type NodeStatus = { node: NodeInfo; providers: Provider[]; usage: Record<string, UsageWindow[]>; peers?: Peer[] };
 export type Hit = { entity: "task" | "memory"; id: string; title: string; rank: number; record: Task | Memory };
 export type User = { id: string; username: string };
@@ -125,6 +132,7 @@ export const api = {
   externalSession: (node: string, provider: string, id: string) => req<{ session: External; messages: Message[] }>("GET", `/nodes/${node}/external/${provider}/${id}`),
   adoptSession: (node: string, provider: string, id: string) => req<{ thread_id: string }>("POST", `/nodes/${node}/external/${provider}/${id}/adopt`),
   nodeProviders: (node: string) => req<Provider[]>("GET", `/nodes/${node}/providers`),
+  setProviderEnabled: (node: string, provider: string, enabled: boolean) => req<void>("PUT", `/nodes/${node}/providers/${provider}`, { enabled }),
   providerJob: (node: string, provider: string, kind: Job["kind"]) => req<Job>("POST", `/nodes/${node}/providers/${provider}/${kind}`),
   job: (node: string, id: string) => req<Job>("GET", `/nodes/${node}/jobs/${id}`),
   submitLoginCode: (node: string, id: string, code: string) => req<void>("POST", `/nodes/${node}/jobs/${id}/code`, { code }),
@@ -133,6 +141,7 @@ export const api = {
   saveSkill: (s: Partial<Skill>) => (s.id ? req<Skill>("PUT", `/skills/${s.id}`, s) : req<Skill>("POST", "/skills", s)),
   archiveSkill: (id: string) => req<void>("DELETE", `/skills/${id}`),
   node: () => req<NodeStatus>("GET", "/node"),
+  usageHistory: (range: UsageRange) => req<UsageReport>("GET", `/nodes/local/usage/history?${new URLSearchParams({ range, tz: Intl.DateTimeFormat().resolvedOptions().timeZone })}`),
   search: (text: string) => req<Hit[]>("GET", `/search?q=${encodeURIComponent(text)}`),
   login: (username: string, password: string) => req<User>("POST", "/auth/login", { username, password }),
   setupNeeded: () => req<{ needed: boolean }>("GET", "/auth/setup"),
@@ -158,6 +167,7 @@ export const api = {
   memories: resource<Memory, MemoryInput>("/memories"),
   threads: (filter?: Record<string, unknown>, archived = false) => req<Thread[]>("GET", "/threads" + q(filter, archived)),
   thread: (id: string) => req<ThreadView>("GET", `/threads/${id}`),
+  projectBranches: (node: string, project: string) => req<{ current: string; branches: string[] }>("GET", `/nodes/${node || "local"}/projects/${project}/branches`),
   createThread: ({ node, ...body }: NewThread) => req<{ thread_id: string }>("POST", `/nodes/${node || "local"}/threads`, body),
   send: (id: string, text: string, files: string[] = []) => req<void>("POST", `/threads/${id}/messages`, { text, files }),
   upload: async (id: string, file: File) => {

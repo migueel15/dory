@@ -21,7 +21,7 @@ func (c *Client) PullRefs(ctx context.Context, repo, query string) ([]PullRef, e
 	if c.Token == "" {
 		return nil, ErrUnconfigured
 	}
-	// Only followed repositories; the name may come lowercased from T3.
+	// Only followed repositories; the name may come lowercased.
 	repos, err := c.repos(ctx)
 	if err != nil {
 		return nil, err

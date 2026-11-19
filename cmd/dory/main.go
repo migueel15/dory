@@ -101,9 +101,6 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		log.Printf("publish repository locations: %v", err)
 	}
 	providers := []runtime.Provider{runtime.Claude{}, runtime.Codex{}, runtime.OpenCode{}}
-	if file := os.Getenv("DORY_REPLAY_FILE"); file != "" {
-		providers = append(providers, runtime.Replay{File: file, Delay: 30 * time.Millisecond})
-	}
 	rt := runtime.NewManager(store.DB(), store, log_.Node(), cfg.DataDir, providers...)
 	agentToken := auth.Secret()
 	rt.MCPURL = "http://" + loopbackAddr(cfg.Listen) + "/mcp"
@@ -111,6 +108,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	if err := rt.Recover(ctx); err != nil {
 		return err
 	}
+	go rt.WatchUsage(ctx, 10*time.Minute)
 	events := api.NewEvents(rt)
 	id, err := mesh.LoadIdentity(cfg.DataDir)
 	if err != nil {
@@ -125,7 +123,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		Installed: func(ctx context.Context) []string {
 			var ids []string
 			for _, p := range rt.Providers(ctx) {
-				if p.Installed && p.ID != "replay" {
+				if p.Installed {
 					ids = append(ids, p.ID)
 				}
 			}

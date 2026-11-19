@@ -86,8 +86,9 @@ func TestClaudeSessionDeniesWithoutAccess(t *testing.T) {
 // asker is an interactive provider whose turn asks one question and waits.
 type asker struct{}
 
-func (asker) ID() string                    { return "asker" }
-func (asker) Detect(context.Context) Status { return Status{ID: "asker", Installed: true} }
+func (asker) ID() string                              { return "asker" }
+func (asker) Detect(context.Context) Status           { return Status{ID: "asker", Installed: true} }
+func (asker) Usage(context.Context) ([]Window, error) { return nil, ErrNoUsage }
 func (asker) Start(ctx context.Context, t Turn) (Session, error) {
 	s := &askSession{events: make(chan Event, 8), answers: make(chan [][]string, 1)}
 	go func() {

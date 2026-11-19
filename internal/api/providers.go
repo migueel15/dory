@@ -27,6 +27,19 @@ func (s *Server) mountProviders(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/nodes/{node}/providers", here(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, s.Runtime.Providers(r.Context()))
 	}))
+	mux.HandleFunc("PUT /api/nodes/{node}/providers/{id}", here(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Enabled bool `json:"enabled"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		if err := s.Runtime.SetEnabled(r.Context(), r.PathValue("id"), body.Enabled); err != nil {
+			writeDataError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
 	mux.HandleFunc("POST /api/nodes/{node}/providers/{id}/{kind}", here(func(w http.ResponseWriter, r *http.Request) {
 		job, err := s.Runtime.StartJob(r.PathValue("id"), r.PathValue("kind"))
 		if err != nil {

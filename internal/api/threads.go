@@ -2,9 +2,11 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/migueel15/dory/internal/data"
@@ -270,14 +272,18 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	if body.RepositoryID == "" && body.ProjectID != nil {
-		repos, _ := s.Store.Repositories().List(ctx, data.Filter{Fields: map[string]any{"project_id": *body.ProjectID}})
-		if len(repos) > 0 {
-			body.RepositoryID = repos[0].ID
-		}
-	}
 	var path string
-	if body.RepositoryID != "" {
+	if body.RepositoryID == "" && body.ProjectID != nil {
+		var err error
+		body.RepositoryID, path, err = s.projectCheckout(ctx, *body.ProjectID)
+		if errors.Is(err, errNotCloned) {
+			writeError(w, http.StatusBadRequest, "repository_not_cloned", err.Error())
+			return
+		} else if err != nil {
+			writeDataError(w, err)
+			return
+		}
+	} else if body.RepositoryID != "" {
 		var err error
 		if path, err = s.Store.RepositoryPath(ctx, body.RepositoryID); errors.Is(err, data.ErrNotFound) {
 			writeError(w, http.StatusBadRequest, "repository_not_cloned", "el repositorio no está clonado en este nodo")
@@ -289,6 +295,17 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Title == "" {
 		body.Title = shortTitle(body.Text)
+	}
+	if !body.Worktree && body.Branch != "" && path != "" {
+		// The current checkout runs on the branch the user picked.
+		if err := switchBranch(ctx, path, body.Branch); err != nil {
+			writeError(w, http.StatusConflict, "branch_switch_failed", err.Error())
+			return
+		}
+	}
+	if body.Worktree && body.Branch == "" {
+		// A new worktree gets its own branch; the agent may rename it later.
+		body.Branch = "dory/" + strings.ToLower(rand.Text()[:8])
 	}
 	t, err := s.Runtime.Create(ctx, runtime.NewThread{ProjectID: body.ProjectID, TaskID: body.TaskID, Provider: body.Provider, Model: body.Model,
 		Effort: body.Effort, RuntimeMode: body.RuntimeMode, Title: body.Title, Worktree: body.Worktree, RepoPath: path, Branch: body.Branch, BaseBranch: body.BaseBranch})

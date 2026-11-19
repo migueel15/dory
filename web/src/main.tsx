@@ -12,6 +12,7 @@ import { Environments, Memories, memorySearch } from "./pages/crud";
 import { CommandPalette, CommandsButton } from "./components/commands";
 import { TooltipHost } from "./components/tooltip";
 import { MeshUpdateButton } from "./components/mesh-update";
+import { SettingsModal } from "./components/settings-modal";
 import { ProjectSwitcher } from "./components/project-switcher";
 import { NoticesToggle } from "./components/notices";
 import { Home } from "./pages/home";
@@ -67,10 +68,14 @@ function ThemeToggle() {
 }
 
 function SettingsLink() {
-  return <Link to="/settings" aria-label="Ajustes" title="Ajustes"
-    className="inline-flex min-h-11 items-center justify-center rounded-md px-3 py-1.5 hover:bg-slate-200 dark:hover:bg-raised sm:min-h-0 [&.active]:text-accent dark:[&.active]:text-accent-text">
-    <Gear weight="duotone" className="size-5" aria-hidden="true" />
-  </Link>;
+  const [open, setOpen] = useState(false);
+  return <>
+    <button type="button" aria-label="Ajustes" title="Ajustes" aria-haspopup="dialog" onClick={() => setOpen(true)}
+      className="inline-flex min-h-11 items-center justify-center rounded-md px-3 py-1.5 hover:bg-slate-200 dark:hover:bg-raised sm:min-h-0">
+      <Gear weight="duotone" className="size-5" aria-hidden="true" />
+    </button>
+    {open && <SettingsModal onClose={() => setOpen(false)} />}
+  </>;
 }
 
 function VersionBadge() {
@@ -248,7 +253,6 @@ const pages = {
   usage: () => import("./pages/usage"),
   projects: () => import("./pages/projects"),
   skills: () => import("./pages/skills"),
-  settings: () => import("./pages/settings"),
 };
 const ThreadView = lazyRouteComponent(pages.thread, "ThreadView");
 const ExternalView = lazyRouteComponent(pages.thread, "ExternalView");
@@ -257,7 +261,6 @@ const Usage = lazyRouteComponent(pages.usage, "Usage");
 const Projects = lazyRouteComponent(pages.projects, "Projects");
 const ProjectDetail = lazyRouteComponent(pages.projects, "ProjectDetail");
 const Skills = lazyRouteComponent(pages.skills, "Skills");
-const Settings = lazyRouteComponent(pages.settings, "Settings");
 const idle = (fn: () => void) => ("requestIdleCallback" in window ? window.requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 1500));
 idle(() => { for (const load of Object.values(pages)) load().catch(() => {}); });
 
@@ -269,7 +272,6 @@ const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/inbox", beforeLoad: () => { throw redirect({ to: "/tasks" }); } }),
   createRoute({ getParentRoute: () => root, path: "/usage", component: Usage }),
   createRoute({ getParentRoute: () => root, path: "/skills", component: Skills }),
-  createRoute({ getParentRoute: () => root, path: "/settings", component: Settings }),
   createRoute({ getParentRoute: () => root, path: "/github", component: Github }),
   createRoute({ getParentRoute: () => root, path: "/github/$owner/$repo/$kind/$number", component: GithubView }),
   createRoute({ getParentRoute: () => root, path: "/tasks", component: Tasks }),

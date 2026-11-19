@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowRight, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, Stop, TerminalWindow, WarningCircle, Wrench, X } from "@phosphor-icons/react";
+import { ArrowDown, ArrowRight, Brain, Question as QuestionIcon, CaretDown, CaretRight, Check, ClipboardText, Copy, FileText, ListChecks, Stop, TerminalWindow, WarningCircle, Wrench, X } from "@phosphor-icons/react";
 import { api, type Attachment, type Message, type TurnModel } from "../api/client";
 import { copyText, defaultUrlTransform, Md } from "../components/ui";
 import { TokenChip, tokenize, type TokenKind } from "../components/composer-tokens";
@@ -7,10 +7,12 @@ import { claudeModelName } from "../components/model-label";
 import { splitMessageQuotes } from "../components/message-quotes";
 import { ModelLogo } from "../components/model-logo";
 import { rehypeFade, useSmoothText } from "../components/stream";
-import { GroupCard, isAsk, TodoCard, ToolCard } from "../components/tool-card";
+import { askQuestions, GroupCard, isAsk, TodoCard, ToolCard } from "../components/tool-card";
 import { NativeQuestionCard, QuestionCard } from "../components/question-card";
+import { Link } from "@tanstack/react-router";
+import { parsePlanPrompt } from "../lib/plan-prompt";
 
-// The look of the conversation, kept from Dory v1 (as in T3 Code): user
+// The look of the conversation, kept from Dory v1: user
 // bubbles, answers as plain markdown, and each finished turn's work folded
 // into one "Worked for…" line.
 
@@ -80,13 +82,13 @@ export function Entry({ m, threadId = "", fresh = false, openQuestion = false }:
     case "reasoning":
       return <Reasoning m={m} />;
     case "tool":
-      if (isAsk(m)) return <QuestionCard m={m} threadId={threadId} open={openQuestion && !!threadId} />;
+      if (isAsk(m)) return <QuestionCard m={m} />;
       if (m.tool?.kind === "question") return <NativeQuestionCard m={m} />;
       return m.tool ? <ToolCard m={m} /> : <StepLine run={[m]} />;
     case "plan":
       return m.tool?.kind === "todo" ? <TodoCard m={m} /> : <PlanCard m={m} />;
     case "question":
-      return <QuestionCard m={m} threadId={threadId} open={openQuestion && !!threadId} />;
+      return <QuestionCard m={m} />;
     case "model-change":
       return <ModelChangeDivider change={readModelChange(m.detail)} />;
     case "interrupt":
@@ -113,7 +115,7 @@ export function Entry({ m, threadId = "", fresh = false, openQuestion = false }:
 }
 
 type ModelChange = { from: TurnModel; to: TurnModel; handoff: boolean };
-const providerLabels: Record<string, string> = { claude: "Claude Code", codex: "Codex", opencode: "OpenCode", replay: "Reproducción" };
+const providerLabels: Record<string, string> = { claude: "Claude Code", codex: "Codex", opencode: "OpenCode" };
 
 function readModelChange(detail?: string): ModelChange | undefined {
   try {
@@ -204,7 +206,26 @@ export function MessageParts({ text }: { text: string }) {
   ))}</>;
 }
 
+// PlanStart shows the first message of a plan-mode thread: a card that names
+// the task being defined, with the user's words and not the agent's
+// instructions.
+function PlanStart({ taskId, body }: { taskId: string; body: string }) {
+  return (
+    <div className="w-full max-w-[85%] overflow-hidden rounded-2xl rounded-br-md border border-slate-200 bg-white dark:border-border dark:bg-surface">
+      <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-2 text-sm dark:border-border">
+        <ClipboardText className="size-4 shrink-0 text-accent dark:text-accent-text" aria-hidden="true" />
+        <span className="font-semibold">Modo plan</span>
+        <span className="text-slate-500 dark:text-muted">· definir la tarea antes de implementarla</span>
+        <Link to="/tasks" search={{ task: taskId } as never} className="ml-auto text-xs text-slate-500 hover:underline dark:text-muted">Ver tarea</Link>
+      </div>
+      {body.trim() && <div className="px-4 py-2.5"><MessageParts text={body} /></div>}
+    </div>
+  );
+}
+
 function UserMessageBody({ text }: { text: string }) {
+  const plan = parsePlanPrompt(text);
+  if (plan) return <PlanStart taskId={plan.taskId} body={plan.body} />;
   const parts = splitMessageQuotes(text);
   const hasQuotes = parts.some((part) => part.kind === "quote");
   if (!hasQuotes) {
@@ -345,10 +366,31 @@ function stepRuns(items: Message[]): Message[][] {
   for (const m of items) {
     if (m.role === "reasoning" && !m.text.trim() && !m.streaming) continue;
     const last = out.at(-1);
-    if (last && stepKind(last[0]) === stepKind(m)) last.push(m);
+    if (last && !isQuestion(m) && !isQuestion(last[0]) && stepKind(last[0]) === stepKind(m)) last.push(m);
     else out.push([m]);
   }
   return out;
+}
+
+const isQuestion = (m: Message) => isAsk(m) || m.tool?.kind === "question" || m.role === "question";
+
+// QuestionStep is a question of the agent among the steps: one line, and the
+// card with the questions and answers when opened.
+function QuestionStep({ m }: { m: Message }) {
+  const [open, setOpen] = useState(false);
+  const qs = isAsk(m) ? askQuestions(m) : m.tool?.questions ?? [];
+  const first = qs[0]?.question ?? m.text;
+  const answered = qs.some((q) => q.answer?.length);
+  return (
+    <div className="text-[13px] leading-relaxed text-slate-500 dark:text-muted">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
+        className="flex w-full min-w-0 items-center gap-2 text-left hover:text-slate-900 dark:hover:text-white">
+        <QuestionIcon weight="regular" className="size-4 shrink-0" />
+        <span className="min-w-0 flex-1 truncate">{answered ? "Respondida" : "Pregunta"}: {oneLine(first)}{qs.length > 1 ? ` (+${qs.length - 1})` : ""}</span>
+      </button>
+      {open && <div className="mb-1 ml-6 mt-1.5">{isAsk(m) || m.role === "question" ? <QuestionCard m={m} /> : <NativeQuestionCard m={m} />}</div>}
+    </div>
+  );
 }
 
 const oneLine = (t = "") => t.replace(/[`*_#>]/g, "").replace(/\s+/g, " ").trim();
@@ -356,6 +398,7 @@ const oneLine = (t = "") => t.replace(/[`*_#>]/g, "").replace(/\s+/g, " ").trim(
 // StepLine is a run of steps of one kind: an icon and one line with the latest
 // step. A click opens every step of the run in full.
 export function StepLine({ run }: { run: Message[] }) {
+  if (isQuestion(run[0])) return <QuestionStep m={run[0]} />;
   if (run[0].tool) return run[0].tool.kind === "read" || run[0].tool.kind === "search" ? <GroupCard run={run} /> : <ToolCard m={run[0]} />;
   return <LegacyStep run={run} />;
 }
@@ -396,8 +439,8 @@ type Worked = { worked: true; id: string; items: Message[]; secs: number; live?:
 // for…" entry; the turn still running shows its steps as they come.
 function layout(ms: Message[], live: boolean): (Message | Worked)[] {
   const out: (Message | Worked)[] = [];
-  // A question stays out of the folded work: it is for the user to answer.
-  const isWork = (m: Message) => m.role === "reasoning" || (m.role === "tool" && !isAsk(m) && m.tool?.kind !== "question") || m.role === "assistant";
+  // A question is one more step: the composer is where it is answered.
+  const isWork = (m: Message) => m.role === "reasoning" || m.role === "tool" || m.role === "question" || m.role === "assistant";
   let start = 0;
   const flush = (end: number, last: boolean) => {
     const seg = ms.slice(start, end);

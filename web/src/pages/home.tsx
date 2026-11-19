@@ -1,25 +1,21 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowUp, ClipboardText, Folder, GitBranch } from "@phosphor-icons/react";
-import { api, COLUMN_LABELS, type LaunchChoice } from "../api/client";
+import { useNavigate } from "@tanstack/react-router";
+import { ArrowUp, ClipboardText, Desktop, Folder, FolderOpen, GitBranch, GitFork } from "@phosphor-icons/react";
+import { api } from "../api/client";
 import { DictationMic, DictationPreview, useLocalDictation } from "../components/local-dictation";
 import { ErrorText, iconButton } from "../components/ui";
 import { useLaunchForm, ProviderIcon } from "../components/launch-picker";
 import { modelEffort, modelId } from "../effort";
 import { useProject } from "../project";
-import { Chip, ModelPicker, composerArea, composerFrame, runtimeModes } from "./composer";
-import { StatusDot } from "./thread";
+import { Chip, ModelPicker, composerArea, composerFrame } from "./composer";
+import { planPrompt } from "../lib/plan-prompt";
 
-// definePrompt turns a chat into the definition of a task (requirement 13.3).
-const definePrompt = (taskId: string, text: string) =>
-  `Modo plan. Vamos a definir la tarea de Dory ${taskId} antes de implementarla. No cambies código.\n` +
-  `Haz las preguntas que necesites y propón el plan con la herramienta propose_plan del MCP de Dory (objetivo, alcance, dónde, diseño, requisitos, validación, riesgos). ` +
-  `Solo yo acepto el plan.\n\n${text}`;
 
-// NewThread is the chat box of the start screen (requirement 13.2): pick the
-// project and the model, then write. With the plan toggle on, the chat defines
-// a task instead.
+// NewThread is the chat box of the start screen (requirement 13.2): the
+// title names the project, the box holds the model, and below it go the
+// environment (node) and the project the thread works in. With the plan
+// toggle on, the chat defines a task instead.
 export function NewThread({ onCreated }: { onCreated: (threadId: string) => void }) {
   const current = useProject();
   const [project, setProject] = useState(current);
@@ -30,6 +26,17 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
   const showingDictation = !!dictation.preview;
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const form = useLaunchForm({ section: "home" , project });
+  const [worktree, setWorktree] = useState(false);
+  const [base, setBase] = useState("");
+  const branchList = useQuery({
+    queryKey: ["project-branches", form.value.node, project], queryFn: () => api.projectBranches(form.value.node, project!),
+    enabled: !!project, retry: false,
+  });
+  const checkoutBranch = branchList.data?.current ?? "";
+  const branch = base && branchList.data?.branches.includes(base) ? base : checkoutBranch;
+  // workspace is where the first message starts the thread: the checkout,
+  // switched to branch, or a new worktree with its own branch made from it.
+  const workspace = !project || !branch ? {} : worktree ? { worktree: true, base_branch: branch } : { branch };
   useLayoutEffect(() => { const el = box.current; if (el && !showingDictation) { el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 240)}px`; } }, [dictation.value, showingDictation]);
   const start = useMutation({
     mutationFn: async (draft: string) => {
@@ -37,9 +44,9 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
       const body = draft.trim();
       if (plan) {
         const task = await api.tasks.create({ project_id: project || null, title: body.split("\n")[0].slice(0, 80), description: body });
-        return api.createThread({ ...form.value, project_id: project || null, task_id: task.id, title: `Definir: ${task.title}`, text: definePrompt(task.id, body) });
+        return api.createThread({ ...form.value, ...workspace, project_id: project || null, task_id: task.id, title: `Definir: ${task.title}`, text: planPrompt(task.id, body) });
       }
-      return api.createThread({ ...form.value, project_id: project || null, text: body });
+      return api.createThread({ ...form.value, ...workspace, project_id: project || null, text: body });
     },
     onSuccess: (r) => { setText(""); onCreated(r.thread_id); },
   });
@@ -59,8 +66,19 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
       model,
     })),
   );
+  const projectName = (projects.data ?? []).find((p) => p.id === project)?.name;
   return (
     <div className="space-y-2">
+      <div className="mb-6 space-y-2 text-center">
+        <h1 className="text-3xl font-light tracking-tight">
+          {projectName ? <>¿Qué construimos en <span className="font-semibold">{projectName}</span>?</> : "¿Qué hacemos hoy?"}
+        </h1>
+        {projectName && (
+          <button type="button" onClick={() => setProject("")} className="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-muted dark:hover:text-slate-200">
+            o empieza sin proyecto
+          </button>
+        )}
+      </div>
       <form data-dictation-panel className={composerFrame} onSubmit={(e) => { e.preventDefault(); submit(); }}>
         {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} className="min-h-16" />}
         <textarea ref={box} data-dictation-disabled={start.isPending || undefined} rows={2} autoFocus value={dictation.value} readOnly={dictation.active} onChange={(e) => setText(e.target.value)} aria-label="Mensaje"
@@ -88,11 +106,6 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
                 const model = models.find((m) => m.value === value);
                 if (model) form.selectModel(model.provider, model.model, effort);
               }} />
-            {form.nodes.length > 1 && <Chip below title="Nodo" value={form.value.node} onChange={form.setNode} options={form.nodes} />}
-            <Chip below title="Proyecto" icon={<Folder className="size-4 shrink-0" />} value={project} onChange={setProject}
-              options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
-            <Chip below title="Permisos" value={form.value.runtime_mode} options={runtimeModes}
-              onChange={(value) => form.setRuntimeMode(value as LaunchChoice["runtime_mode"])} />
             <button type="button" aria-pressed={plan} onClick={() => setPlan(!plan)}
               className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium hover:bg-slate-100 aria-pressed:bg-slate-200 dark:hover:bg-raised dark:aria-pressed:bg-raised">
               <ClipboardText className="size-4" />Modo plan
@@ -104,53 +117,37 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
           </button>
         </div>
       </form>
-      <ErrorText error={start.error ?? dictation.error ?? form.error ?? projects.error} />
+      <div className="flex flex-wrap items-center gap-1 px-2 text-xs text-slate-500 dark:text-muted">
+        <Chip below title="Entorno" icon={<Desktop className="size-4 shrink-0" />} value={form.value.node} onChange={form.setNode} options={form.nodes} />
+        <span aria-hidden="true" className="h-4 w-px bg-slate-200 dark:bg-border" />
+        <Chip below title="Proyecto" icon={<Folder className="size-4 shrink-0" />} value={project} onChange={setProject}
+          options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
+        {project && (
+          <>
+            <Chip below title="Espacio de trabajo" icon={worktree ? <GitFork className="size-4 shrink-0" /> : <FolderOpen className="size-4 shrink-0" />}
+              value={worktree ? "worktree" : "checkout"} onChange={(v) => setWorktree(v === "worktree")}
+              options={[{ value: "checkout", label: "Checkout actual" }, { value: "worktree", label: "Nuevo worktree" }]} />
+            <span className="ml-auto" />
+            {!!branchList.data?.branches.length && (
+              <>
+                <Chip below prefix={worktree ? "Desde" : undefined} title={worktree ? "Rama de la que sale el worktree" : "Rama del checkout"} icon={<GitBranch className="size-4 shrink-0" />} value={branch} onChange={setBase}
+                  options={branchList.data.branches.map((b) => ({ value: b, label: b }))} />
+              </>
+            )}
+          </>
+        )}
+      </div>
+      <ErrorText error={start.error ?? dictation.error ?? form.error ?? projects.error ?? branchList.error} />
     </div>
   );
 }
 
-// Home is the start screen: a chat box and, below it, what moved since you
-// last looked.
+// Home is the start screen: only the chat box, centred on the page.
 export function Home() {
   const navigate = useNavigate();
-  const project = useProject();
-  const threads = useQuery({ queryKey: ["threads", "recent"], queryFn: () => api.threads() });
-  const board = useQuery({ queryKey: ["board", project], queryFn: () => api.board(project || undefined) });
-  const recent = (threads.data ?? []).filter((t) => !project || t.project_id === project)
-    .sort((a, b) => (b.last_activity_at ?? b.created_at).localeCompare(a.last_activity_at ?? a.created_at)).slice(0, 8);
-  const attention = (board.data?.cards ?? []).filter((c) => c.column === "needs_you" || c.column === "ready_to_merge");
   return (
-    <div className="mx-auto max-w-3xl space-y-6 pt-6 sm:pt-16">
-      <h1 className="text-center text-2xl font-semibold">¿Qué hacemos hoy?</h1>
+    <div className="mx-auto flex min-h-[70vh] max-w-3xl flex-col justify-center">
       <NewThread onCreated={(id) => navigate({ to: "/threads/$threadId", params: { threadId: id } })} />
-      {attention.length > 0 && (
-        <section>
-          <h2 className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-400">Te esperan</h2>
-          <div className="divide-y divide-slate-200 rounded-lg border border-slate-200 dark:divide-border dark:border-border">
-            {attention.map((c) => (
-              <Link key={c.id} to="/tasks" search={{ task: c.id } as never} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-raised">
-                <span className="min-w-0 flex-1 truncate">{c.title}</span>
-                <span className="text-xs text-slate-500">{COLUMN_LABELS[c.column]}</span>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-      {recent.length > 0 && (
-        <section>
-          <h2 className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-400">Hilos recientes</h2>
-          <div className="divide-y divide-slate-200 rounded-lg border border-slate-200 dark:divide-border dark:border-border">
-            {recent.map((t) => (
-              <Link key={t.id} to="/threads/$threadId" params={{ threadId: t.id }} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-raised">
-                <ProviderIcon driver={t.provider} model={t.model} />
-                <span className="min-w-0 flex-1 truncate">{t.title}</span>
-                {t.branch && <span className="hidden items-center gap-1 font-mono text-xs text-slate-500 sm:flex"><GitBranch className="size-3" />{t.branch}</span>}
-                <StatusDot status={t.status} />
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 }

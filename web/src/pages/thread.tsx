@@ -13,7 +13,6 @@ import { Diff } from "./github-diff";
 import { ThreadInfo } from "../components/thread-info";
 import { useThreadMenu } from "../components/thread-menu";
 import { SidePanel, SidePanelToggle, useSidePanel, type SidePanelState } from "../components/side-panel";
-import { PendingRequestPanel } from "../components/question-card";
 
 // ThreadView is a whole thread page: header, chat and, on demand, its changes.
 export function ThreadView() {
@@ -116,7 +115,6 @@ function ThreadConversation({ threadId }: { threadId: string }) {
       </div>
       <ToEnd away={away} follow={follow} />
       {pending && <div className="mx-auto w-full max-w-[55.2rem] px-3 sm:px-6"><ModelChangeDivider change={pending} pending /></div>}
-      {t?.local && !!t.requests?.length && <PendingRequestPanel key={t.requests[0].id} threadId={t.id} request={t.requests[0]} />}
       {t && <Composer t={t} onSent={follow} area={composerInput} quotes={quotes} onRemoveQuotes={removeQuotes} />}
     </section>
   );
