@@ -37,27 +37,85 @@ function Login() {
   const qc = useQueryClient();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [validationError, setValidationError] = useState<"short" | "mismatch" | null>(null);
   // A new node has no account: the first one is created from this machine.
   const setup = useQuery({ queryKey: ["setup"], queryFn: api.setupNeeded, retry: false });
   const first = !!setup.data?.needed;
+  const minimumLength = 8;
+  const action = first ? "Crear cuenta" : "Iniciar sesión";
   const login = useMutation({
     mutationFn: () => (first ? api.setup(username, password) : api.login(username, password)),
-    onSuccess: (u) => qc.setQueryData(["me"], u),
+    onSuccess: (u) => {
+      qc.setQueryData(["setup"], { needed: false });
+      qc.setQueryData(["me"], u);
+    },
   });
+  const error = validationError === "short" ? `Escribe al menos ${minimumLength} caracteres.`
+    : validationError === "mismatch" ? "Las contraseñas no coinciden."
+    : login.error instanceof ApiError && login.error.status === 401 ? "Usuario o contraseña incorrectos."
+    : errMsg(login.error);
+  const inputClass = "h-11 px-3";
   return (
-    <form
-      className="mx-auto mt-24 w-80 max-w-[calc(100%-2rem)] space-y-3 rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-surface p-5 shadow-sm"
-      onSubmit={(e) => { e.preventDefault(); login.mutate(); }}
-    >
-      <div>
-        <h1 className="flex items-center gap-2 text-xl font-bold">Dory<DevBadge /></h1>
-        <p className="text-sm text-slate-500 dark:text-muted">{first ? "Crea la cuenta de este nodo. La contraseña necesita al menos 12 caracteres." : "Tu entorno de trabajo con agentes"}</p>
-      </div>
-      <Label text="Usuario"><Input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus /></Label>
-      <Label text="Contraseña"><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></Label>
-      {login.error && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{login.error instanceof ApiError && login.error.status === 401 ? "Usuario o contraseña incorrectos." : errMsg(login.error)}</p>}
-      <Button className="w-full" disabled={login.isPending}>{first ? "Crear cuenta" : "Entrar"}</Button>
-    </form>
+    <main className="grid min-h-dvh place-items-center bg-[radial-gradient(ellipse_at_top,var(--color-indigo-100),transparent_60%)] px-4 py-8 dark:bg-[radial-gradient(ellipse_at_top,var(--color-accent-subtle),transparent_60%)]">
+      <section aria-labelledby="login-title" className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-900/5 sm:p-8 dark:border-white/10 dark:bg-surface dark:shadow-black/25">
+        <header className="space-y-4">
+          <div className="flex items-center gap-2.5 font-semibold">
+            <img src="/icon-192.png" alt="" className="size-9 rounded-lg" width="36" height="36" />
+            Dory<DevBadge />
+          </div>
+          <div>
+            <h1 id="login-title" className="text-2xl font-semibold tracking-tight">{setup.isSuccess ? action : "Acceso a Dory"}</h1>
+            {setup.isSuccess && (
+              <p className="mt-1 text-sm text-slate-600 dark:text-text-secondary">
+                {first ? "Crea la primera cuenta de este nodo." : "Tu entorno de trabajo con agentes."}
+              </p>
+            )}
+          </div>
+        </header>
+        {setup.isPending && <p role="status" className="mt-6 text-sm text-slate-600 dark:text-text-secondary">Preparando el acceso…</p>}
+        {setup.isError && (
+          <div className="mt-6 space-y-3">
+            <p role="alert" className="text-sm text-red-700 dark:text-red-300">No se pudo comprobar el estado de la cuenta.</p>
+            <Button variant="ghost" onClick={() => void setup.refetch()} disabled={setup.isFetching}>Reintentar</Button>
+          </div>
+        )}
+        {setup.isSuccess && (
+          <form className="mt-6 space-y-4" onSubmit={(e) => {
+            e.preventDefault();
+            if (login.isPending) return;
+            login.reset();
+            if (first && Array.from(password).length < minimumLength) return setValidationError("short");
+            if (first && password !== confirmation) return setValidationError("mismatch");
+            setValidationError(null);
+            login.mutate();
+          }}>
+            <Label text="Usuario">
+              <Input className={inputClass} name="username" autoComplete="username" required autoFocus value={username} onChange={(e) => setUsername(e.target.value)} />
+            </Label>
+            <div>
+              <Label text="Contraseña">
+                <Input className={inputClass} name="password" type="password" autoComplete={first ? "new-password" : "current-password"} required value={password}
+                  aria-invalid={validationError === "short"} aria-describedby={first ? "password-hint" : undefined}
+                  onChange={(e) => { setPassword(e.target.value); setValidationError(null); }} />
+              </Label>
+              {first && <p id="password-hint" className="mt-1.5 text-xs text-slate-600 dark:text-text-secondary">Mínimo de {minimumLength} caracteres.</p>}
+            </div>
+            {first && (
+              <Label text="Confirmar contraseña">
+                <Input className={inputClass} name="password-confirmation" type="password" autoComplete="new-password" required value={confirmation}
+                  aria-invalid={validationError === "mismatch"}
+                  onChange={(e) => { setConfirmation(e.target.value); setValidationError(null); }} />
+              </Label>
+            )}
+            {error && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</p>}
+            <Button type="submit" className="h-11 w-full" disabled={login.isPending}>
+              {login.isPending ? (first ? "Creando cuenta…" : "Iniciando sesión…") : action}
+            </Button>
+          </form>
+        )}
+      </section>
+    </main>
   );
 }
 

@@ -118,7 +118,7 @@ func Register(mux *http.ServeMux, svc Store, cfg config.Config) {
 			Password string `json:"password"`
 		}
 		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192))
-		if dec.Decode(&input) != nil || input.Username == "" || len(input.Password) < 12 || len(input.Password) > 4096 {
+		if dec.Decode(&input) != nil || input.Username == "" || !validNewPassword(input.Password) {
 			failure(w, 400)
 			return
 		}

@@ -36,8 +36,8 @@ func Command(ctx context.Context, args []string, svc Store) (bool, error) {
 	}
 	if args[0] == "user" {
 		password := os.Getenv("DORY_PASSWORD")
-		if len(password) < 12 || len(password) > 4096 {
-			return true, fmt.Errorf("DORY_PASSWORD must contain 12 to 4096 bytes")
+		if !validNewPassword(password) {
+			return true, fmt.Errorf("DORY_PASSWORD must contain at least %d characters and at most %d bytes", minPasswordCharacters, maxPasswordBytes)
 		}
 		if _, err := svc.FindUser(ctx, *username); err == nil {
 			return true, fmt.Errorf("user already exists")

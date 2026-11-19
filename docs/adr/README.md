@@ -20,3 +20,4 @@
 | [ADR-016](adr-016-actualizacion-de-la-malla.md) | Actualización de la malla desde las releases de GitHub | accepted |
 | [ADR-017](adr-017-proyectos-por-repositorio-y-entorno.md) | Proyectos únicos por repositorio y entornos replicados | accepted |
 | [ADR-018](adr-018-antigravity-acp.md) | Antigravity CLI mediante ACP | accepted |
+| [ADR-019](adr-019-validacion-de-contrasenas-locales.md) | Validación de contraseñas de cuentas locales | accepted |

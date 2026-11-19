@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/migueel15/dory/internal/config"
 	"golang.org/x/crypto/argon2"
@@ -21,6 +22,15 @@ import (
 
 // ErrNotFound is returned by a Store lookup that matches nothing.
 var ErrNotFound = errors.New("auth: not found")
+
+const (
+	minPasswordCharacters = 8
+	maxPasswordBytes      = 4096
+)
+
+func validNewPassword(password string) bool {
+	return len(password) <= maxPasswordBytes && utf8.RuneCountInString(password) >= minPasswordCharacters
+}
 
 // User, Session and Token live only on this node; they never replicate.
 type User struct {

@@ -10,7 +10,7 @@ scripts/install.sh
 
 El script compila la interfaz web y el binario, lo instala en `~/.local/bin/dory` y deja el núcleo como servicio de usuario (`dory service install`). El núcleo arranca con tu sesión y sigue en marcha aunque cierres la interfaz.
 
-Al abrir `http://127.0.0.1:7700` por primera vez desde la misma máquina, creas la cuenta del nodo (contraseña de 12 caracteres o más).
+Al abrir `http://127.0.0.1:7700` por primera vez desde la misma máquina, creas la cuenta del nodo. Escribe una contraseña de al menos ocho caracteres y repítela para confirmarla.
 
 Comandos del núcleo:
 
@@ -21,7 +21,7 @@ Comandos del núcleo:
 | `dory open` | Arranca el núcleo si hace falta y abre la interfaz en una ventana de app |
 | `dory service install`, `uninstall` | Servicio de usuario: systemd (Linux), LaunchAgent (macOS) o entrada de inicio de sesión sin consola (Windows) |
 | `dory update` | Instala la última versión del canal del binario (estable o nightly) desde GitHub, también la app de escritorio si la hay, y reinicia el núcleo. Para toda la malla, Entornos → «Actualizar la malla» |
-| `dory user create --username X` | Crea una cuenta (contraseña en `DORY_PASSWORD`) |
+| `dory user create --username X` | Crea una cuenta (contraseña de al menos ocho caracteres en `DORY_PASSWORD`) |
 | `dory token create --username X --name N --scopes read,write` | Crea un token para la API o el MCP |
 
 Un binario compilado en local (`scripts/install.sh`) es del canal `dev` y no se actualiza. Para pasar a la nightly la primera vez:
