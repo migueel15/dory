@@ -3,7 +3,8 @@ import { useDictationInProgress } from "../components/local-dictation";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { AppleLogo, Desktop, LinuxLogo, Plus, WindowsLogo } from "@phosphor-icons/react";
+import { Desktop, Plus } from "@phosphor-icons/react";
+import { EnvIconPicker } from "../components/env-icon";
 import { useMeshUpdates } from "../components/mesh-update";
 import { api, type Memory, type MemoryInput, type NodeUpdate } from "../api/client";
 import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, PageHeader, Select, StatusPill, csv } from "../components/ui";
@@ -93,7 +94,6 @@ function MemoryForm({ memory, onClose }: { memory?: Memory; onClose: () => void 
   );
 }
 
-const osIcon = (os = "") => (os === "darwin" ? AppleLogo : os === "windows" ? WindowsLogo : os === "linux" ? LinuxLogo : Desktop);
 
 // Environments lists the nodes of the mesh: this one and its peers, with
 // their harnesses (requirements RF-06, RF-07), and pairs new ones (RF-05).
@@ -110,7 +110,6 @@ export function Environments() {
   const devices = useQuery({ queryKey: ["devices"], queryFn: api.devices, refetchInterval: 15_000 });
   const revokeDevice = useMutation({ mutationFn: api.revokeDevice, onSuccess: () => qc.invalidateQueries({ queryKey: ["devices"] }) });
   const n = node.data;
-  const OsIcon = osIcon(n?.node.os);
   return (
     <div className="space-y-3">
       <PageHeader title="Entornos" subtitle="Los nodos de Dory en tus máquinas. Se sincronizan cuando se ven." />
@@ -119,7 +118,7 @@ export function Environments() {
       {n && (
         <Card>
           <div className="flex flex-wrap items-center gap-2">
-            <OsIcon className="size-5" />
+            <EnvIconPicker node="local" icon={n.node.icon} os={n.node.os} name={n.node.name} />
             <span className="font-semibold">{n.node.name}</span>
             <span className="font-mono text-xs text-slate-500">{n.node.platform} · {n.node.version} · huella {mesh.data?.fingerprint}</span>
           </div>
@@ -127,11 +126,10 @@ export function Environments() {
         </Card>
       )}
       {(mesh.data?.peers ?? []).filter((p) => !p.revoked).map((p) => {
-        const Icon = osIcon(p.info.node?.os);
         return (
           <Card key={p.id}>
             <div className="flex flex-wrap items-center gap-2">
-              <Icon className="size-5" />
+              <EnvIconPicker node={p.id} icon={p.info.node?.icon} os={p.info.node?.os} name={p.name} />
               <span className="font-semibold">{p.name}</span>
               <StatusPill tone={p.connected ? "green" : "slate"}>{p.connected ? "conectado" : "desconectado"}</StatusPill>
               <span className="font-mono text-xs text-slate-500">{p.address}{p.info.node?.version ? ` · ${p.info.node.version}` : ""} · huella {p.fingerprint}</span>

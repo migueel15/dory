@@ -24,6 +24,7 @@ func (s *Server) mountProviders(mux *http.ServeMux) {
 			}
 		}
 	}
+	mux.HandleFunc("PUT /api/nodes/{node}/icon", here(s.setIcon))
 	mux.HandleFunc("GET /api/nodes/{node}/providers", here(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, s.Runtime.Providers(r.Context()))
 	}))

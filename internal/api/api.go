@@ -31,6 +31,7 @@ type Node struct {
 	DataDir  string `json:"data_dir"`
 	Listen   string `json:"listen"`
 	Platform string `json:"platform"`
+	Icon     string `json:"icon"`
 }
 
 // Server holds what the handlers need.
@@ -94,7 +95,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 }
 
 func (s *Server) node(w http.ResponseWriter, r *http.Request) {
-	out := map[string]any{"node": s.Node, "providers": s.Runtime.Providers(r.Context()), "usage": s.Runtime.Usage()}
+	out := map[string]any{"node": s.Info(), "providers": s.Runtime.Providers(r.Context()), "usage": s.Runtime.Usage()}
 	if s.Peers != nil {
 		out["peers"] = s.Peers()
 	}
