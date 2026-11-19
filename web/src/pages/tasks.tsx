@@ -4,7 +4,7 @@ import { useDictationInProgress } from "../components/local-dictation";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ArrowSquareOut, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, ChatCircle, CircleNotch, ClipboardText, GitBranch, GitMerge, GitPullRequest, Plus, Rocket, X } from "@phosphor-icons/react";
+import { ArrowSquareOut, Check, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, ChatCircle, CircleNotch, ClipboardText, GitBranch, GitMerge, GitPullRequest, Plus, Rocket, X } from "@phosphor-icons/react";
 import { api, COLUMN_LABELS, repoName, type Card, type Column, type Stage } from "../api/client";
 import { Button, Card as UiCard, ErrorText, Input, Label, Md, Modal, Select } from "../components/ui";
 import { useLaunchForm } from "../components/launch-picker";
@@ -188,6 +188,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const navigate = useNavigate();
   const card = useQuery({ queryKey: ["card", id], queryFn: () => api.card(id) });
   const plans = useQuery({ queryKey: ["plans", id], queryFn: () => api.plans(id) });
+  const planDoc = useQuery({ queryKey: ["plans", id, "doc"], queryFn: () => api.plan(id) });
   const deps = useQuery({ queryKey: ["dependencies", id], queryFn: () => api.dependencies(id) });
   const board = useQuery({ queryKey: ["board", ""], queryFn: () => api.board() });
   const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list() });
@@ -288,8 +289,19 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
           </section>
 
           <details className="group overflow-hidden rounded-xl border border-slate-200 dark:border-border">
-            <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-raised"><ClipboardText className="size-4" />Plan<CaretDown className="ml-auto size-4 transition-transform group-open:rotate-180" /></summary>
-            <PlanDoc taskId={id} />
+            <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-raised">
+              <ClipboardText className="size-4" />Plan
+              <span className="ml-auto flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600 dark:text-muted">
+                {planDoc.data?.accepted_at ? (
+                  <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><Check className="size-3.5" />Aceptado</span>
+                ) : planDoc.data?.body_md.trim() ? (
+                  <span className="text-amber-700 dark:text-amber-400">Pendiente de aceptar</span>
+                ) : planDoc.data ? "Sin plan" : planDoc.isError ? "Estado no disponible" : "Cargando…"}
+                {!!planDoc.data?.revision && <span>Revisión {planDoc.data.revision}</span>}
+                <CaretDown className="size-4 transition-transform group-open:rotate-180" />
+              </span>
+            </summary>
+            <PlanDoc taskId={id} showStatus={false} />
           </details>
         </div>
         <aside className="min-w-0 space-y-4">

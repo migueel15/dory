@@ -17,7 +17,7 @@ import { Button, ErrorText, prose } from "./ui";
 // checkboxes as you type "# ", "- " or "[] "), saved by itself, and follows the
 // agent's edits live: each block that changes is marked and, with "Seguir" on,
 // the view goes there before the change is shown.
-export function PlanDoc({ taskId }: { taskId: string }) {
+export function PlanDoc({ taskId, showStatus = true }: { taskId: string; showStatus?: boolean }) {
   const qc = useQueryClient();
   const plan = useQuery({ queryKey: ["plans", taskId, "doc"], queryFn: () => api.plan(taskId) });
   const p = plan.data;
@@ -35,13 +35,13 @@ export function PlanDoc({ taskId }: { taskId: string }) {
   return (
     <div className="flex min-h-full flex-col">
       <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-200 bg-slate-50/90 px-4 py-2 text-xs text-slate-500 backdrop-blur dark:border-border dark:bg-canvas/90 dark:text-muted">
-        <span>{p.revision > 0 ? `Revisión ${p.revision} · ${p.author === "agent" ? "agente" : "tú"}` : "Sin plan"}</span>
+        {showStatus && <span>{p.revision > 0 ? `Revisión ${p.revision} · ${p.author === "agent" ? "agente" : "tú"}` : "Sin plan"}</span>}
         <button type="button" onClick={() => setFollow(!following)} aria-pressed={following}
           title={following ? "Siguiendo al agente: la vista va a cada cambio. Pulsa para dejar de seguirlo" : "Seguir al agente: llevar la vista a cada cambio"}
           className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 ${following ? "bg-accent/15 text-accent-text" : "hover:bg-slate-200/70 dark:hover:bg-raised"}`}>
           <Crosshair weight={following ? "bold" : "regular"} className="size-3.5" />Seguir
         </button>
-        {p.accepted_at && <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><Check className="size-3.5" />Aceptado</span>}
+        {showStatus && p.accepted_at && <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><Check className="size-3.5" />Aceptado</span>}
         <span className="flex-1" />
         <span aria-live="polite">{doc.state === "saving" ? "Guardando…" : doc.state === "dirty" ? "Sin guardar" : ""}</span>
         {!doc.empty && !p.accepted_at && <Button className="text-xs" onClick={() => accept.mutate()} disabled={accept.isPending || doc.state !== "saved"}>Aceptar plan</Button>}
