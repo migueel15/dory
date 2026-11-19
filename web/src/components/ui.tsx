@@ -252,7 +252,7 @@ export function Md({ children, components, urlTransform, onToggle, serif = false
 // size and line height, with sans-serif code.
 const reading = "font-reading !text-[1rem] !leading-[1.7] text-slate-800 dark:text-[#e8e6e3] [&_h1]:!border-0 [&_h2]:!border-0 [&_h1]:!text-[1.5em] [&_h2]:!text-[1.25em] [&_h3]:!text-[1.1em] [&_h1,&_h2,&_h3,&_h4]:!font-semibold [&_li]:!my-1 [&_strong]:font-semibold [&_pre]:!text-[0.8125rem] [&_table]:text-[0.9375rem] [&_.katex-display]:my-3 [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden";
 
-export function Modal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+export function Modal({ title, onClose, children, wide = false, className }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean; className?: string }) {
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
     window.addEventListener("keydown", onKey);
@@ -260,9 +260,9 @@ export function Modal({ title, onClose, children, wide = false }: { title: strin
   }, [onClose]);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 sm:p-4" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label={title} className={`max-h-full w-full max-w-lg space-y-3 overflow-auto rounded-lg bg-white dark:bg-surface p-3 sm:p-4${wide ? " lg:max-w-3xl" : ""}`} onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label={title} className={`max-h-full w-full max-w-lg space-y-3 overflow-auto rounded-lg bg-white dark:bg-surface p-3 sm:p-4${wide ? " lg:max-w-3xl" : ""} ${className ?? ""}`} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-2">
-          <h2 className="text-lg font-semibold">{title}</h2>
+          <h2 className="min-w-0 wrap-break-word text-lg font-semibold">{title}</h2>
           <button type="button" aria-label="Cerrar" onClick={onClose} className="-mr-1 grid size-8 shrink-0 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
             <X weight="regular" aria-hidden="true" className="size-4" />
           </button>

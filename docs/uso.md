@@ -33,14 +33,14 @@ El kanban tiene estas columnas, que se calculan solas a partir de los hilos y de
 
 A mano solo se mueven tareas entre Inbox, Ready y Cancelled. Cada tarjeta muestra su rama, su PR y un único icono de estado: azul trabajando, naranja te necesita, amarillo CI en curso, ámbar review, verde lista, morado fusionada, rojo fallo y gris inactiva. El tooltip explica el estado.
 
-Al abrir una carta ves su título, estado y descripción. Desde **Referencias** puedes abrir el repositorio, la issue y la PR en GitHub cuando están disponibles. Los hilos y las tareas de las que depende se abren desde sus nombres.
+Al abrir una carta ves su título, estado y descripción. Desde **Referencias** puedes abrir el repositorio, la issue y la PR en GitHub cuando están disponibles. Los hilos y las tareas de las que depende se abren desde sus nombres. En pantallas anchas, las referencias y dependencias quedan a la derecha.
 
 En el detalle de una tarea puedes:
 
 - Usar **Editar tarea** para cambiar el título, la descripción, el repositorio, la issue o la PR.
-- Gestionar sus dependencias y usar **Acciones de la tarea** para cambiar el estado o archivar la carta.
+- Gestionar sus dependencias y usar las acciones al pie de la carta para cambiar el estado o archivarla.
 - Escribir, editar o aceptar su plan, un documento Markdown que también editan los agentes. El plan se abre plegado y puedes desplegarlo desde su encabezado.
-- En **Lanzar en este nodo**, **Implementar** crea la rama (`feat/<issue>-<título>`) y su worktree y lanza el agente.
+- En **Lanzar agente**, **Implementar** crea la rama (`feat/<issue>-<título>`) y su worktree y lanza el agente.
 - En esa misma sección, **Definir con un agente** abre un hilo que escribe el plan con `plan_write` y `plan_edit`.
 
 Una tarea con dependencias sin terminar no se puede lanzar.

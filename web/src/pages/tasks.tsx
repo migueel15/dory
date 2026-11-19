@@ -4,7 +4,7 @@ import { useDictationInProgress } from "../components/local-dictation";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ChatCircle, CircleNotch, ClipboardText, GitBranch, GitMerge, GitPullRequest, Plus, Rocket, X } from "@phosphor-icons/react";
+import { ArrowSquareOut, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, ChatCircle, CircleNotch, ClipboardText, GitBranch, GitMerge, GitPullRequest, Plus, Rocket, X } from "@phosphor-icons/react";
 import { api, COLUMN_LABELS, repoName, type Card, type Column, type Stage } from "../api/client";
 import { Button, Card as UiCard, ErrorText, Input, Label, Md, Modal, Select } from "../components/ui";
 import { useLaunchForm } from "../components/launch-picker";
@@ -192,12 +192,13 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const board = useQuery({ queryKey: ["board", ""], queryFn: () => api.board() });
   const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list() });
   const [draft, setDraft] = useState<{ title: string; description: string; issue: string; pr: string; repo: string }>();
+  const [panel, setPanel] = useState<"edit" | "launch">();
   const c = card.data;
   useEffect(() => { if (c && !draft) setDraft({ title: c.title, description: c.description, issue: c.issue_number?.toString() ?? "", pr: c.pr_number?.toString() ?? "", repo: c.repository_id ?? "" }); }, [c]); // eslint-disable-line react-hooks/exhaustive-deps
   const refresh = () => { qc.invalidateQueries({ queryKey: ["card", id] }); qc.invalidateQueries({ queryKey: ["board"] }); };
   const save = useMutation({
     mutationFn: () => api.tasks.update(id, { title: draft!.title, description: draft!.description, issue_number: draft!.issue ? Number(draft!.issue) : null, pr_number: draft!.pr ? Number(draft!.pr) : null, repository_id: draft!.repo || null }),
-    onSuccess: refresh,
+    onSuccess: () => { refresh(); setPanel(undefined); },
   });
   const stage = useMutation({ mutationFn: (s: Stage) => api.tasks.update(id, { stage: s }), onSuccess: refresh });
   const dep = useMutation({
@@ -228,94 +229,107 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const githubRepo = c.repo && /^[\w.-]+\/[\w.-]+$/.test(c.repo) ? `https://github.com/${c.repo}` : undefined;
   const pullNumber = c.pull?.number ?? c.pr_number;
   const pullUrl = c.pull?.url ?? (githubRepo && pullNumber ? `${githubRepo}/pull/${pullNumber}` : undefined);
-  const section = "rounded-lg border border-slate-200 p-3 dark:border-border";
+  const section = "rounded-xl border border-slate-200 p-4 dark:border-border";
+  const heading = "mb-3 flex items-center gap-2 text-sm font-semibold";
+  const row = "flex min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-slate-100 dark:hover:bg-raised";
   return (
-    <Modal title={c.title} onClose={onClose} wide>
-      <div className="space-y-4">
-        <p className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${COLUMN_TONE[c.column]}`}>{COLUMN_LABELS[c.column]}</p>
-        <section aria-label="Descripción">
-          {c.description.trim() ? <Md>{c.description}</Md> : <p className="text-sm text-slate-500 dark:text-muted">Sin descripción.</p>}
-        </section>
-
-        {(c.repo || c.branch || c.issue_number || pullNumber) && (
-          <section className={section}>
-            <h3 className="mb-2 text-sm font-semibold">Referencias</h3>
-            <div className="flex flex-wrap items-center gap-2">
-              {githubRepo ? <a className={chip} href={githubRepo} target="_blank" rel="noreferrer">{c.repo}</a> : c.repo && <span className="break-all text-sm">{c.repo}</span>}
-              {c.issue_number && (githubRepo
-                ? <a className={chip} href={`${githubRepo}/issues/${c.issue_number}`} target="_blank" rel="noreferrer">Issue #{c.issue_number}</a>
-                : <span className="text-sm">Issue #{c.issue_number}</span>)}
-              {pullNumber && (pullUrl
-                ? <a className={chip} href={pullUrl} target="_blank" rel="noreferrer"><GitPullRequest className="size-4" />PR #{pullNumber}{(c.pull?.draft || c.pr_state === "draft") && " · Borrador"}</a>
-                : <span className="text-sm">PR #{pullNumber}</span>)}
-            </div>
-            {c.branch && <p className="mt-2 flex items-start gap-1.5 break-all font-mono text-xs text-slate-600 dark:text-muted"><GitBranch className="size-4 shrink-0" />{c.branch}</p>}
-          </section>
-        )}
-
-        <section>
-          <h3 className="mb-1 text-sm font-semibold">Hilos</h3>
-          {c.threads.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">Ninguno todavía.</p>}
-          {c.threads.map((t) => (
-            <Link key={t.id} to="/threads/$threadId" params={{ threadId: t.id }} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-raised">
-              <StatusDot status={t.status} /><span className="min-w-0 flex-1 truncate">{t.title}</span><span className="text-xs text-slate-500">{t.provider}</span>
-            </Link>
-          ))}
-        </section>
-
-        <details className="overflow-hidden rounded-lg border border-slate-200 dark:border-border">
-          <summary className="cursor-pointer px-3 py-2 text-sm font-semibold"><ClipboardText className="mr-1 inline size-4" />Plan</summary>
-          <PlanDoc taskId={id} />
-        </details>
-
-        <section>
-          <h3 className="mb-1 text-sm font-semibold">Depende de</h3>
-          {(deps.data ?? []).map((d) => {
-            const o = others.find((x) => x.id === d.depends_on_id);
-            return (
-              <div key={d.depends_on_id} className="flex items-center gap-2 py-1 text-sm">
-                <Link to="/tasks" search={{ task: d.depends_on_id } as never}
-                  className={`min-w-0 flex-1 wrap-break-word underline underline-offset-2 ${c.blockers.includes(d.depends_on_id) ? "" : "text-slate-500 line-through dark:text-muted"}`}>
-                  {o?.title ?? d.depends_on_id}
-                </Link>
-                <button type="button" aria-label="Quitar dependencia" onClick={() => dep.mutate({ other: d.depends_on_id, add: false })}><X weight="regular" className="size-4" /></button>
+    <Modal title={c.title} onClose={onClose} className="!max-w-5xl sm:!p-6 [&>div:first-child>h2]:text-2xl [&>div:first-child>h2]:leading-tight">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4 dark:border-border">
+        <span className={`mr-auto inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${COLUMN_TONE[c.column]}`}>{COLUMN_LABELS[c.column]}</span>
+        <Button variant="bare" aria-expanded={panel === "edit"} onClick={() => setPanel(panel === "edit" ? undefined : "edit")}><PencilSimple className="size-4" />Editar tarea</Button>
+        <Button aria-expanded={panel === "launch"} onClick={() => setPanel(panel === "launch" ? undefined : "launch")}><Rocket className="size-4" />Lanzar agente</Button>
+      </div>
+      <div className="grid items-start gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,17rem)]">
+        <div className="min-w-0 space-y-5">
+          {panel === "edit" && (
+            <section className={section}>
+              <h3 className={heading}>Editar tarea</h3>
+              <div className="mt-3 space-y-3">
+                <Label text="Título"><Input autoFocus value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="!text-base font-semibold" aria-label="Título" /></Label>
+                <DictationField label="Descripción" rows={6} value={draft.description} onValue={(description) => setDraft((current) => current && { ...current, description })} aria-label="Descripción" placeholder="Qué cambiar y cómo comprobarlo" />
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <Label text="Repositorio"><Select value={draft.repo} onChange={(v) => setDraft({ ...draft, repo: v })} options={[{ value: "", label: projectRepos.length === 1 ? "El del proyecto" : "—" }, ...projectRepos.map((r) => ({ value: r.id, label: repoName(r.remote_url) }))]} /></Label>
+                  <Label text="Issue"><Input inputMode="numeric" value={draft.issue} onChange={(e) => setDraft({ ...draft, issue: e.target.value.replace(/\D/g, "") })} /></Label>
+                  <Label text="Pull request"><Input inputMode="numeric" value={draft.pr} onChange={(e) => setDraft({ ...draft, pr: e.target.value.replace(/\D/g, "") })} placeholder="Se detecta por la rama" /></Label>
+                </div>
+                <Button onClick={() => save.mutate()} disabled={!dirty || dictating || save.isPending}>Guardar cambios</Button>
+                <ErrorText error={save.error} />
               </div>
-            );
-          })}
-          <Select value="" onChange={(v) => v && dep.mutate({ other: v, add: true })} placeholder="Añadir dependencia…"
-            options={others.filter((o) => !deps.data?.some((d) => d.depends_on_id === o.id)).map((o) => ({ value: o.id, label: o.title }))} />
-          <ErrorText error={dep.error} />
-        </section>
-        <section className={section}>
-          <h3 className="text-sm font-semibold"><Rocket className="mr-1 inline size-4" />Lanzar en este nodo</h3>
-          <div className="mt-3">
-            {form.fields}
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button onClick={() => launch.mutate()} disabled={!form.ready || launch.isPending || c.blockers.length > 0 || planPending}
-                title={planPending ? "Acepta el plan antes de implementar" : c.blockers.length ? "Depende de tareas sin terminar" : "Crea la rama y el worktree y lanza el agente"}>Implementar</Button>
-              <Button variant="ghost" onClick={() => define.mutate()} disabled={!form.ready || define.isPending}>Definir con un agente</Button>
-            </div>
-            <ErrorText error={launch.error ?? define.error} />
-          </div>
-        </section>
+            </section>
+          )}
+          {panel === "launch" && (
+            <section className={section}>
+              <h3 className={heading}>Configurar lanzamiento</h3>
+              <div className="mt-3">
+                {form.fields}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button onClick={() => launch.mutate()} disabled={!form.ready || launch.isPending || c.blockers.length > 0 || planPending}
+                    title={planPending ? "Acepta el plan antes de implementar" : c.blockers.length ? "Depende de tareas sin terminar" : "Crea la rama y el worktree y lanza el agente"}>Implementar</Button>
+                  <Button variant="ghost" onClick={() => define.mutate()} disabled={!form.ready || define.isPending}>Definir con un agente</Button>
+                </div>
+                {(c.blockers.length > 0 || planPending) && <p className="mt-2 text-sm text-slate-600 dark:text-muted">{c.blockers.length > 0 ? "Resuelve las dependencias para implementar." : "Acepta el plan para implementar."}</p>}
+                <ErrorText error={launch.error ?? define.error ?? form.error} />
+              </div>
+            </section>
+          )}
+          <section className={`${section} min-w-0 bg-slate-50/70 dark:bg-raised/40`}>
+            <h3 className={heading}>Descripción</h3>
+            {c.description.trim() ? <Md>{c.description}</Md> : <p className="text-sm text-slate-500 dark:text-muted">Sin descripción.</p>}
+          </section>
 
-        <section className={section}>
-          <h3 className="text-sm font-semibold">Editar tarea</h3>
-          <div className="mt-3 space-y-3">
-            <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="!text-base font-semibold" aria-label="Título" />
-            <DictationField rows={6} value={draft.description} onValue={(description) => setDraft((current) => current && { ...current, description })} aria-label="Descripción" placeholder="Qué cambiar y cómo comprobarlo" />
-            <div className="grid gap-2 sm:grid-cols-3">
-              <Label text="Repositorio"><Select value={draft.repo} onChange={(v) => setDraft({ ...draft, repo: v })} options={[{ value: "", label: projectRepos.length === 1 ? "El del proyecto" : "—" }, ...projectRepos.map((r) => ({ value: r.id, label: repoName(r.remote_url) }))]} /></Label>
-              <Label text="Issue"><Input inputMode="numeric" value={draft.issue} onChange={(e) => setDraft({ ...draft, issue: e.target.value.replace(/\D/g, "") })} /></Label>
-              <Label text="Pull request"><Input inputMode="numeric" value={draft.pr} onChange={(e) => setDraft({ ...draft, pr: e.target.value.replace(/\D/g, "") })} placeholder="Se detecta por la rama" /></Label>
-            </div>
-            {dirty && <Button onClick={() => save.mutate()} disabled={dictating || save.isPending}>Guardar</Button>}
-            <ErrorText error={save.error} />
-          </div>
-        </section>
+          <section className={section}>
+            <h3 className={heading}><Chats className="size-4" />Hilos</h3>
+            {c.threads.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">Ninguno todavía.</p>}
+            {c.threads.map((t) => (
+              <Link key={t.id} to="/threads/$threadId" params={{ threadId: t.id }} className={row}>
+                <StatusDot status={t.status} /><span className="min-w-0 flex-1 wrap-break-word">{t.title}</span><span className="text-xs text-slate-500">{t.provider}</span><CaretRight className="size-3 shrink-0 text-slate-500" />
+              </Link>
+            ))}
+          </section>
 
-        <section className={section}>
-          <h3 className="text-sm font-semibold">Acciones de la tarea</h3>
+          <details className="group overflow-hidden rounded-xl border border-slate-200 dark:border-border">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-raised"><ClipboardText className="size-4" />Plan<CaretDown className="ml-auto size-4 transition-transform group-open:rotate-180" /></summary>
+            <PlanDoc taskId={id} />
+          </details>
+        </div>
+        <aside className="min-w-0 space-y-4">
+          {(c.repo || c.branch || c.issue_number || pullNumber) && (
+            <section className={section}>
+              <h3 className={heading}><GithubLogo className="size-4" />Referencias</h3>
+              <div className="space-y-1">
+                {githubRepo ? <a className={row} href={githubRepo} target="_blank" rel="noreferrer"><span className="min-w-0 flex-1 wrap-break-word">{c.repo}</span><ArrowSquareOut className="size-4 shrink-0 text-slate-500" /></a> : c.repo && <span className="break-all text-sm">{c.repo}</span>}
+                {c.issue_number && (githubRepo
+                  ? <a className={row} href={`${githubRepo}/issues/${c.issue_number}`} target="_blank" rel="noreferrer">Issue #{c.issue_number}<ArrowSquareOut className="ml-auto size-4 shrink-0 text-slate-500" /></a>
+                  : <span className="text-sm">Issue #{c.issue_number}</span>)}
+                {pullNumber && (pullUrl
+                  ? <a className={row} href={pullUrl} target="_blank" rel="noreferrer"><GitPullRequest className="size-4" />PR #{pullNumber}{(c.pull?.draft || c.pr_state === "draft") && " · Borrador"}<ArrowSquareOut className="ml-auto size-4 shrink-0 text-slate-500" /></a>
+                  : <span className="text-sm">PR #{pullNumber}</span>)}
+              </div>
+              {c.branch && <p className="mt-2 flex items-start gap-1.5 break-all font-mono text-xs text-slate-600 dark:text-muted"><GitBranch className="size-4 shrink-0" />{c.branch}</p>}
+            </section>
+          )}
+
+          <section className={section}>
+            <h3 className={heading}><LinkSimple className="size-4" />Dependencias</h3>
+            {(deps.data ?? []).map((d) => {
+              const o = others.find((x) => x.id === d.depends_on_id);
+              return (
+                <div key={d.depends_on_id} className="flex items-center gap-2 py-1 text-sm">
+                  <Link to="/tasks" search={{ task: d.depends_on_id } as never}
+                    className={`min-w-0 flex-1 wrap-break-word underline underline-offset-2 ${c.blockers.includes(d.depends_on_id) ? "" : "text-slate-500 line-through dark:text-muted"}`}>
+                    {o?.title ?? d.depends_on_id}
+                  </Link>
+                  <button type="button" aria-label="Quitar dependencia" onClick={() => dep.mutate({ other: d.depends_on_id, add: false })}><X weight="regular" className="size-4" /></button>
+                </div>
+              );
+            })}
+            <Select plain className="mt-2" value="" disabled={dep.isPending || !deps.data || !board.data} onChange={(v) => v && dep.mutate({ other: v, add: true })} placeholder="Añadir dependencia…"
+              options={others.filter((o) => !deps.data?.some((d) => d.depends_on_id === o.id)).map((o) => ({ value: o.id, label: o.title }))} />
+            <ErrorText error={dep.error ?? deps.error ?? board.error} />
+          </section>
+        </aside>
+      </div>
+      <section aria-label="Acciones de la tarea" className="border-t border-slate-200 pt-1 dark:border-border">
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {c.stage !== "ready" && c.column === "inbox" && <Button variant="ghost" onClick={() => stage.mutate("ready")}>Marcar como lista</Button>}
             {c.stage === "ready" && c.column === "ready" && <Button variant="ghost" onClick={() => stage.mutate("inbox")}>Volver a inbox</Button>}
@@ -323,8 +337,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
             <Button variant="ghost" className="ml-auto" onClick={() => askConfirm("¿Archivar la tarea?", "Archivar").then((ok) => ok && archive.mutate())}>Archivar</Button>
           </div>
           <ErrorText error={stage.error ?? archive.error} />
-        </section>
-      </div>
+      </section>
     </Modal>
   );
 }
