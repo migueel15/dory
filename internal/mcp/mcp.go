@@ -75,10 +75,21 @@ type taskInput struct {
 	DependsOn    []string `json:"depends_on,omitempty" jsonschema:"Ids of tasks that must finish first"`
 }
 
-type planInput struct {
-	TaskID        string         `json:"task_id"`
-	Sections      map[string]any `json:"sections" jsonschema:"goal, scope, where, design, requirements, validation, risks"`
-	OpenQuestions []string       `json:"open_questions,omitempty"`
+type planReadInput struct {
+	TaskID string `json:"task_id"`
+}
+
+type planWriteInput struct {
+	TaskID   string `json:"task_id"`
+	BodyMD   string `json:"body_md" jsonschema:"The whole plan as Markdown"`
+	Revision *int64 `json:"revision,omitempty" jsonschema:"Revision returned by plan_read; the save fails if the plan changed since"`
+}
+
+type planEditInput struct {
+	TaskID   string `json:"task_id"`
+	OldText  string `json:"old_text" jsonschema:"Exact text of the plan to replace; it must appear once"`
+	NewText  string `json:"new_text"`
+	Revision *int64 `json:"revision,omitempty" jsonschema:"Revision returned by plan_read; the edit fails if the plan changed since"`
 }
 
 type memoryInput struct {
@@ -134,12 +145,14 @@ func Handler(s *api.Server) http.Handler {
 	add(srv, "save_task", "Create a task, or update the title, description, issue or pull request of one. Tasks created from one issue share its number; depends_on marks which must finish first. Agents never change the state of a task.", func(ctx context.Context, in taskInput) (any, error) {
 		return saveTask(ctx, store, in)
 	})
-	add(srv, "propose_plan", "Propose a new version of a task's plan. Only the user accepts it.", func(ctx context.Context, in planInput) (any, error) {
-		raw, err := json.Marshal(in.Sections)
-		if err != nil {
-			return nil, err
-		}
-		return s.ProposePlan(ctx, in.TaskID, raw, in.OpenQuestions, "agent")
+	add(srv, "plan_read", "Read the plan of a task: one Markdown document that the user and the agents edit. Returns body_md and its revision.", func(ctx context.Context, in planReadInput) (any, error) {
+		return s.PlanDocument(ctx, in.TaskID)
+	})
+	add(srv, "plan_write", "Write the whole plan of a task as Markdown. Prefer plan_edit for changes to an existing plan. Only the user accepts a plan; changing it waits for a new acceptance.", func(ctx context.Context, in planWriteInput) (any, error) {
+		return s.WritePlan(ctx, in.TaskID, in.BodyMD, revision(in.Revision), "agent")
+	})
+	add(srv, "plan_edit", "Replace one exact piece of the plan of a task, so the user sees it change in place. old_text must appear once; read the plan again if the edit fails.", func(ctx context.Context, in planEditInput) (any, error) {
+		return s.EditPlan(ctx, in.TaskID, in.OldText, in.NewText, revision(in.Revision), "agent")
 	})
 	add(srv, "remember", "Store or update a memory. Scope global, project (scope_id = project id) or node (scope_id = node id).", func(ctx context.Context, in memoryInput) (any, error) {
 		return remember(ctx, store, in)
@@ -387,4 +400,12 @@ func recall(ctx context.Context, store *data.Store, in recallInput) ([]data.Memo
 		}
 		return false
 	}), nil
+}
+
+// revision is the base revision of a plan save; -1 skips the check.
+func revision(r *int64) int64 {
+	if r == nil {
+		return -1
+	}
+	return *r
 }
