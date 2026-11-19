@@ -1,12 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, PencilSimple } from "@phosphor-icons/react";
+import { ArrowDown, Check, PencilSimple } from "@phosphor-icons/react";
 import { api, ApiError, type Plan } from "../api/client";
 import { Button, ErrorText, Md } from "./ui";
 
 // PlanDoc shows the plan of a task: one Markdown document that the user and
 // the agents edit. It follows the agent's edits live (the plan query refreshes
-// on every replicated change) and briefly marks the document when it changes.
+// on every replicated change): each change scrolls to the block that changed
+// and marks it, until the user scrolls away on their own.
 export function PlanDoc({ taskId }: { taskId: string }) {
   const qc = useQueryClient();
   const key = ["plans", taskId, "doc"];
@@ -14,7 +15,8 @@ export function PlanDoc({ taskId }: { taskId: string }) {
   const p = plan.data;
   // edit holds the text being written and the revision it started from.
   const [edit, setEdit] = useState<{ text: string; base: number }>();
-  const changed = useFlash(p?.revision);
+  const doc = useRef<HTMLDivElement>(null);
+  const follow = useFollowChanges(p?.body_md, doc, !!edit);
   const done = (next: Plan) => {
     qc.setQueryData(key, next);
     qc.invalidateQueries({ queryKey: ["card", taskId] });
@@ -68,28 +70,81 @@ export function PlanDoc({ taskId }: { taskId: string }) {
       ) : empty ? (
         <p className="p-6 text-center text-sm text-slate-500 dark:text-muted">Todavía no hay plan. Pide al agente que lo escriba o escríbelo tú.</p>
       ) : (
-        <div className={`m-2 rounded-lg px-3 py-2 transition-colors duration-700 ${changed ? "bg-accent/10" : "bg-transparent"}`}>
-          <Md onToggle={(line) => toggle.mutate(line)}>{p.body_md}</Md>
+        <div ref={doc} className="px-5 py-3" onWheel={follow.pause} onTouchMove={follow.pause}>
+          <Md onToggle={(line) => toggle.mutate(line)} rehypePlugins={[sourceLines]}>{p.body_md}</Md>
           {conflict ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">El plan cambió antes de guardar la casilla; vuelve a marcarla.</p> : <ErrorText error={toggle.error ?? accept.error} />}
         </div>
+      )}
+      {follow.paused && (
+        <button type="button" onClick={follow.resume}
+          className="sticky bottom-3 mx-auto mb-3 flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs shadow-md hover:bg-slate-50 dark:border-border-strong dark:bg-surface dark:hover:bg-raised">
+          <ArrowDown className="size-3.5" />Seguir al agente
+        </button>
       )}
     </div>
   );
 }
 
-// useFlash is true for a moment each time the revision moves past the first one seen.
-function useFlash(revision?: number) {
-  const seen = useRef(revision);
-  const [on, setOn] = useState(false);
+type HastNode = { type: string; tagName?: string; properties?: Record<string, unknown>; position?: { start: { line: number }; end: { line: number } }; children?: HastNode[] };
+const BLOCKS = new Set(["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "pre", "blockquote", "table", "tr", "hr"]);
+
+// sourceLines marks each rendered block with the Markdown lines it comes
+// from, so a change in the text can be found on screen.
+function sourceLines() {
+  const walk = (n: HastNode) => {
+    if (n.type === "element" && n.tagName && BLOCKS.has(n.tagName) && n.position) {
+      n.properties = { ...n.properties, "data-ls": n.position.start.line, "data-le": n.position.end.line };
+    }
+    n.children?.forEach(walk);
+  };
+  return (tree: HastNode) => walk(tree);
+}
+
+// changedLines is the range of lines of next (1-based, inclusive) that differ
+// from prev; undefined when nothing changed.
+function changedLines(prev: string, next: string): [number, number] | undefined {
+  const a = prev.split("\n"), b = next.split("\n");
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start++;
+  if (start === a.length && start === b.length) return;
+  let end = 0;
+  while (end < a.length - start && end < b.length - start && a[a.length - 1 - end] === b[b.length - 1 - end]) end++;
+  // A pure deletion has no new lines: point at the line after it.
+  return [start + 1, Math.max(start + 1, b.length - end)];
+}
+
+// useFollowChanges scrolls to and marks the blocks that changed in each new
+// version of the text. Scrolling by hand pauses it; resume follows again.
+function useFollowChanges(body: string | undefined, doc: RefObject<HTMLDivElement | null>, editing: boolean) {
+  const prev = useRef(body);
+  const [paused, setPaused] = useState(false);
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
+  const [pending, setPending] = useState(false);
   useEffect(() => {
-    if (revision === undefined) return;
-    if (seen.current === undefined || seen.current === revision) { seen.current = revision; return; }
-    seen.current = revision;
-    setOn(true);
-    const t = setTimeout(() => setOn(false), 1200);
-    return () => clearTimeout(t);
-  }, [revision]);
-  return on;
+    const before = prev.current;
+    prev.current = body;
+    if (before === undefined || body === undefined || editing || !doc.current) return;
+    const range = changedLines(before, body);
+    if (!range) return;
+    const [from, to] = range;
+    const hit = [...doc.current.querySelectorAll<HTMLElement>("[data-ls]")].filter((el) => Number(el.dataset.ls) <= to && Number(el.dataset.le) >= from);
+    // Mark the innermost blocks, so a list item is marked and not its whole list.
+    const marks = hit.filter((el) => !hit.some((o) => o !== el && el.contains(o)));
+    marks.forEach((el) => { el.classList.remove("plan-changed"); void el.offsetWidth; el.classList.add("plan-changed"); });
+    if (!marks[0]) return;
+    if (pausedRef.current) setPending(true);
+    else marks[0].scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [body]); // eslint-disable-line react-hooks/exhaustive-deps
+  return {
+    paused: paused && pending,
+    pause: () => setPaused(true),
+    resume: () => {
+      setPaused(false);
+      setPending(false);
+      doc.current?.querySelectorAll<HTMLElement>(".plan-changed")[0]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    },
+  };
 }
 
 function PlanTextarea({ value, onChange, onSubmit }: { value: string; onChange: (v: string) => void; onSubmit: () => void }) {

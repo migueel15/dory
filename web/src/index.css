@@ -119,3 +119,8 @@ body { @apply bg-slate-50 text-slate-900 dark:bg-canvas dark:text-text; }
 /* Scrolls without showing a scrollbar or reserving its width. */
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* A block of the plan that the agent just changed: a soft accent wash that fades out. */
+@keyframes plan-changed { from { background-color: color-mix(in srgb, var(--color-accent) 22%, transparent); } to { background-color: transparent; } }
+.plan-changed { animation: plan-changed 2.4s ease-out; border-radius: 0.375rem; }
+@media (prefers-reduced-motion: reduce) { .plan-changed { animation: none; } }
