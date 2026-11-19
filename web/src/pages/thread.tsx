@@ -96,7 +96,9 @@ function ThreadConversation({ threadId }: { threadId: string }) {
   ) ? { from: last, to: { provider: t.provider, model: t.model }, handoff: last.provider !== t.provider } : undefined;
   const quotes = useDraftQuotes(threadId);
   const composerInput = useRef<HTMLTextAreaElement>(null);
-  const { scroller, onScroll, follow, away } = useFollow([t?.messages, t?.queue, quotes.length]);
+  const { scroller, onScroll, follow, away } = useFollow([t?.messages, t?.queue, t?.running, quotes.length]);
+  // Opening another thread starts at its end, wherever the last one was left.
+  useLayoutEffect(() => { follow(); }, [threadId, !!t]); // eslint-disable-line react-hooks/exhaustive-deps
   // A new quote, from the chat or from the diff, takes the focus to the box.
   const quoteCount = useRef(quotes.length);
   useEffect(() => {
@@ -111,7 +113,7 @@ function ThreadConversation({ threadId }: { threadId: string }) {
       {t?.local && <QuoteSelection onQuote={quote} />}
       {/* No divider under the header: the conversation fades out as it scrolls under it. */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-10 h-10 bg-gradient-to-b from-slate-50 to-transparent dark:from-canvas" />
-      <div ref={scroller} data-scroller onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto pt-10 pb-3">
+      <div ref={scroller} data-scroller onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto pt-10 pb-3 [overflow-anchor:none]">
         <div className="mx-auto w-full max-w-[55.2rem] space-y-4 px-3 sm:px-6">
           {t && t.messages.length === 0 && <p className="py-10 text-center text-sm text-slate-500 dark:text-muted">Sin mensajes todavía. Escribe abajo para empezar.</p>}
           {t && <Messages key={t.id} threadId={t.id} messages={t.messages} running={t.running} />}

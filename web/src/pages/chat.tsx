@@ -609,6 +609,26 @@ export function useFollow(deps: unknown[]) {
     mo.observe(el, { childList: true });
     return () => { ro.disconnect(); mo.disconnect(); };
   }, []);
+  // Only the user's own gesture leaves the end: the browser also moves the
+  // view by itself (heights of messages painted late, scroll anchoring), and
+  // those moves must not unpin.
+  const touched = useRef(0);
+  const held = useRef(false);
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const mark = () => { touched.current = Date.now(); chasing.current = false; };
+    const wheel = (e: WheelEvent) => { if (e.deltaY < 0) mark(); };
+    const key = (e: KeyboardEvent) => { if (["ArrowUp", "PageUp", "Home", " "].includes(e.key)) mark(); };
+    const pointer = (e: PointerEvent) => { if (e.target === el) { held.current = true; mark(); } }; // the scrollbar
+    const release = () => { held.current = false; };
+    window.addEventListener("pointerup", release);
+    el.addEventListener("wheel", wheel, { passive: true });
+    el.addEventListener("touchmove", mark, { passive: true });
+    el.addEventListener("keydown", key);
+    el.addEventListener("pointerdown", pointer);
+    return () => { el.removeEventListener("wheel", wheel); el.removeEventListener("touchmove", mark); el.removeEventListener("keydown", key); el.removeEventListener("pointerdown", pointer); window.removeEventListener("pointerup", release); };
+  }, []);
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
@@ -616,8 +636,9 @@ export function useFollow(deps: unknown[]) {
     const up = el.scrollTop < lastTop.current - 1;
     lastTop.current = el.scrollTop;
     if (distance < 40) { pinned.current = true; chasing.current = false; }
-    else if (up && !chasing.current) pinned.current = false;
-    setAway(distance > 200);
+    else if (up && !chasing.current && (held.current || Date.now() - touched.current < 1000)) pinned.current = false;
+    else if (pinned.current) toEnd(); // the browser moved the view; go back to the end
+    setAway(!pinned.current && distance > 200);
   };
   const follow = (smooth = false) => {
     pinned.current = true;
