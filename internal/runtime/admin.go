@@ -19,6 +19,7 @@ type Admin interface {
 	Session(ctx context.Context) (bool, string)
 	LoginCommand() []string
 	UpdateCommand() []string
+	InstallCommand() []string
 }
 
 func (c Claude) Session(ctx context.Context) (bool, string) {
@@ -90,7 +91,7 @@ func (w jobOutput) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// StartJob runs the login or update command of a provider in the background.
+// StartJob runs the login, update or install command of a provider in the background.
 func (m *Manager) StartJob(provider, kind string) (*Job, error) {
 	p, ok := m.providers[provider].(Admin)
 	if !ok {
@@ -102,6 +103,8 @@ func (m *Manager) StartJob(provider, kind string) (*Job, error) {
 		args = p.LoginCommand()
 	case "update":
 		args = p.UpdateCommand()
+	case "install":
+		args = p.InstallCommand()
 	default:
 		return nil, errors.New("unknown job " + kind)
 	}

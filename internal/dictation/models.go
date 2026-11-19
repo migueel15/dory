@@ -59,16 +59,15 @@ type LocalModels struct {
 	dir string
 	bin string
 
+	engineMu  sync.Mutex
 	mu        sync.Mutex
 	downloads map[string]string
 	workers   map[string]*nemoWorker
 }
 
+// NewLocalModels takes the NeMo binary configured for the node; when empty,
+// the downloaded engine or the one on PATH is used.
 func NewLocalModels(ctx context.Context, dir, bin string) *LocalModels {
-	if bin == "" {
-		bin = "nemo-speech"
-	}
-	bin, _ = exec.LookPath(bin)
 	return &LocalModels{ctx: ctx, dir: dir, bin: bin, downloads: map[string]string{}, workers: map[string]*nemoWorker{}}
 }
 
@@ -93,7 +92,9 @@ func (m *LocalModels) installed(model localModel) bool {
 func (m *LocalModels) Catalog() ModelCatalog {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := ModelCatalog{Runtime: m.bin != "", Models: make([]ModelStatus, 0, len(localCatalog))}
+	_, supported := platformAsset()
+	engine := m.binary() != ""
+	out := ModelCatalog{Runtime: supported || engine, Models: make([]ModelStatus, 0, len(localCatalog))}
 	for _, model := range localCatalog {
 		status := ModelStatus{ID: model.ID, Name: model.Name, Bytes: model.Bytes, Streaming: model.Streaming, Status: "available"}
 		if failure, ok := m.downloads[model.ID]; ok {
@@ -101,7 +102,7 @@ func (m *LocalModels) Catalog() ModelCatalog {
 			if failure != "" {
 				status.Status = "failed"
 			}
-		} else if m.installed(model) {
+		} else if m.installed(model) && engine {
 			status.Status = "installed"
 		}
 		out.Models = append(out.Models, status)
@@ -116,12 +117,15 @@ func (m *LocalModels) Download(id string) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if failure, pending := m.downloads[id]; (pending && failure == "") || m.installed(model) {
+	if failure, pending := m.downloads[id]; (pending && failure == "") || (m.installed(model) && m.binary() != "") {
 		return nil
 	}
 	m.downloads[id] = ""
 	go func() {
-		err := m.download(model)
+		err := m.ensureEngine()
+		if err == nil && !m.installed(model) {
+			err = m.download(model)
+		}
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		if err != nil {
@@ -173,10 +177,11 @@ func (m *LocalModels) download(model localModel) error {
 }
 
 func (m *LocalModels) worker(ctx context.Context, model localModel) (*nemoWorker, error) {
-	if m.bin == "" {
-		return nil, ErrUnavailable
-	}
 	if !m.installed(model) {
+		return nil, ErrModelMissing
+	}
+	bin := m.binary()
+	if bin == "" {
 		return nil, ErrModelMissing
 	}
 	m.mu.Lock()
@@ -191,7 +196,7 @@ func (m *LocalModels) worker(ctx context.Context, model localModel) (*nemoWorker
 	if worker == nil {
 		worker = &nemoWorker{ready: make(chan struct{}), exited: make(chan struct{}), token: newID()}
 		m.workers[model.ID] = worker
-		go m.startWorker(model, worker)
+		go m.startWorker(bin, model, worker)
 	}
 	m.mu.Unlock()
 	select {
@@ -202,7 +207,7 @@ func (m *LocalModels) worker(ctx context.Context, model localModel) (*nemoWorker
 	}
 }
 
-func (m *LocalModels) startWorker(model localModel, worker *nemoWorker) {
+func (m *LocalModels) startWorker(bin string, model localModel, worker *nemoWorker) {
 	defer close(worker.ready)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -213,7 +218,7 @@ func (m *LocalModels) startWorker(model localModel, worker *nemoWorker) {
 	port := fmt.Sprint(listener.Addr().(*net.TCPAddr).Port)
 	listener.Close()
 	worker.address = &url.URL{Scheme: "http", Host: "127.0.0.1:" + port}
-	cmd := exec.CommandContext(m.ctx, m.bin, "serve", "--host", "127.0.0.1", "--port", port,
+	cmd := exec.CommandContext(m.ctx, bin, "serve", "--host", "127.0.0.1", "--port", port,
 		"--asr-model", m.path(model), "--no-ui", "--max-upload-mb", "12", "--api-key", worker.token)
 	cmd.Stderr = os.Stderr
 	if err = cmd.Start(); err != nil {

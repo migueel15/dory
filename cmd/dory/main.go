@@ -149,6 +149,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 			DataDir: cfg.DataDir, Listen: cfg.Listen, Platform: goruntime.GOOS + "/" + goruntime.GOARCH},
 	}
 	srv.Remote = net
+	srv.InfoChanged = net.Changed
 	srv.Updater = &update.Updater{DataDir: cfg.DataDir, Active: rt.Active, Providers: rt.UpdateAll, Restart: restartSelf,
 		Installed: func(ctx context.Context) []update.Installed {
 			var out []update.Installed

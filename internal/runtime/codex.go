@@ -17,7 +17,7 @@ func (c Codex) bin() string {
 	if c.Bin != "" {
 		return c.Bin
 	}
-	return "codex"
+	return resolveBin("codex")
 }
 
 func (c Codex) Detect(ctx context.Context) Status {

@@ -22,7 +22,7 @@ func (c Claude) bin() string {
 	if c.Bin != "" {
 		return c.Bin
 	}
-	return "claude"
+	return resolveBin("claude")
 }
 
 func (c Claude) Detect(ctx context.Context) Status {

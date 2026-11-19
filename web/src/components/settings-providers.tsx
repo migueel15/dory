@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Provider } from "../api/client";
+import { api, type Job, type Provider } from "../api/client";
 import { ProviderIcon, useNodes } from "./launch-picker";
 import { Button, ErrorText, Input, Select } from "./ui";
 
@@ -84,7 +84,7 @@ function ProviderDetail({ node, provider: p }: { node: string; provider: Provide
   const qc = useQueryClient();
   const [job, setJob] = useState<string>();
   const start = useMutation({
-    mutationFn: (kind: "login" | "update") => api.providerJob(node, p.id, kind),
+    mutationFn: (kind: Job["kind"]) => api.providerJob(node, p.id, kind),
     onSuccess: (j) => setJob(j.id),
   });
   const state = useQuery({
@@ -116,10 +116,15 @@ function ProviderDetail({ node, provider: p }: { node: string; provider: Provide
           <Button variant="ghost" disabled={start.isPending} onClick={() => start.mutate("update")}>Actualizar</Button>
         </div>
       )}
+      {p.capabilities.includes("install") && (
+        <div className="flex flex-wrap gap-2">
+          <Button variant="ghost" disabled={start.isPending || (!!job && !state.data?.done)} onClick={() => start.mutate("install")}>Instalar</Button>
+        </div>
+      )}
       <ErrorText error={start.error ?? state.error} />
       {job && state.data && (
         <div className="rounded-md bg-slate-100 p-2 dark:bg-raised">
-          <p className="mb-1 flex items-center gap-2 text-xs font-medium">{state.data.kind === "login" ? "Inicio de sesión" : "Actualización"} · {state.data.done ? (state.data.error ? `terminó con error (${state.data.error})` : "terminado") : "en curso…"}
+          <p className="mb-1 flex items-center gap-2 text-xs font-medium">{{ login: "Inicio de sesión", update: "Actualización", install: "Instalación" }[state.data.kind]} · {state.data.done ? (state.data.error ? `terminó con error (${state.data.error})` : "terminado") : "en curso…"}
             <button type="button" className="ml-auto text-slate-500" onClick={() => setJob(undefined)}>cerrar</button></p>
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-xs"><Linkify text={state.data.output || "Esperando salida…"} linkLabel={p.id === "claude" && state.data.kind === "login" && !state.data.done ? "Abrir Claude en el navegador" : undefined} /></pre>
           {!state.data.done && p.id === "claude" && state.data.kind === "login" && state.data.accepts_code !== undefined && (

@@ -51,6 +51,9 @@ type Server struct {
 	Updater *update.Updater
 	// Mesh lists the peers that answer now.
 	Mesh func(ctx context.Context) []MeshNode
+	// InfoChanged tells the mesh this node's description changed, so peers
+	// sync it at once; nil when there is no mesh.
+	InfoChanged func()
 }
 
 // Register mounts every /api route; auth owns /api/auth/* on the same mux.

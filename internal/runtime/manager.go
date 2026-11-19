@@ -221,6 +221,8 @@ func (m *Manager) Providers(ctx context.Context) []Status {
 		if a, ok := p.(Admin); ok && st.Installed {
 			st.LoggedIn, st.Account = a.Session(ctx)
 			st.Capabilities = append(st.Capabilities, "login", "update")
+		} else if ok {
+			st.Capabilities = append(st.Capabilities, "install")
 		}
 		out = append(out, st)
 	}
@@ -230,7 +232,7 @@ func (m *Manager) Providers(ctx context.Context) []Status {
 	return out
 }
 
-// invalidate forgets the cached harness state after a login or update.
+// invalidate forgets the cached harness state after a login, update or install.
 func (m *Manager) invalidate() {
 	m.mu.Lock()
 	m.detected = nil

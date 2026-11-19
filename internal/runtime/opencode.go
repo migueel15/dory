@@ -17,7 +17,7 @@ func (o OpenCode) bin() string {
 	if o.Bin != "" {
 		return o.Bin
 	}
-	return "opencode"
+	return resolveBin("opencode")
 }
 
 func (o OpenCode) Detect(ctx context.Context) Status {
