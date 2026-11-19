@@ -10,7 +10,7 @@ import { ProviderIcon } from "../components/launch-picker";
 import { explicitModels, findModel, modelEffort, modelId as concreteModelId, rememberModel } from "../effort";
 import { iconBtn, MessageParts } from "./chat";
 import type { DraftQuote } from "../components/quote-selection";
-import { QuestionPanel, useQuestionFlow } from "../components/question-card";
+import { askAnswerText, openAsk, QuestionPanel, useQuestionFlow } from "../components/question-card";
 import { paintTokens, quoteBlock, quoteLabel, tokenRanges, type Token, type Tokens } from "../components/composer-tokens";
 
 // The composer of a thread, kept from Dory v1: attachments, @ mentions of
@@ -380,15 +380,18 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
     },
   });
   const stop = useMutation({ mutationFn: () => api.interrupt(t.id) });
-  // A question the turn waits for sits on top of the box; the box writes the
-  // free answer of the current question instead of a new message.
-  const request = t.requests?.find((r) => r.questions.length > 0);
+  // A question the agent waits for sits on top of the box; the box writes the
+  // free answer of the current question instead of a new message. A harness
+  // question resolves its tool call; an ask_user one is answered by message.
+  const native = t.requests?.find((r) => r.questions.length > 0);
+  const ask = native ? undefined : openAsk(t.messages);
+  const question = native ?? ask;
   const reply = useMutation({
-    mutationFn: (answers: string[][]) => api.answer(t.id, request!.id, answers),
-    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+    mutationFn: (answers: string[][]) => native ? api.answer(t.id, native.id, answers) : api.send(t.id, askAnswerText(ask!.questions, answers)),
+    onSuccess: () => { onSent(); return qc.invalidateQueries({ queryKey: key }); },
   });
-  const flow = useQuestionFlow(request?.id ?? "", request?.questions ?? [], (answers) => reply.mutate(answers));
-  const asking = !!request && !!flow.q;
+  const flow = useQuestionFlow(question?.id ?? "", question?.questions ?? [], (answers) => reply.mutate(answers));
+  const asking = !!question && !!flow.q;
   const settings = useMutation({
     scope: { id: `thread-settings:${t.id}` },
     mutationFn: (body: Parameters<typeof api.threadSettings>[1]) => api.threadSettings(t.id, body),

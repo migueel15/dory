@@ -82,13 +82,13 @@ export function Entry({ m, threadId = "", fresh = false, openQuestion = false }:
     case "reasoning":
       return <Reasoning m={m} />;
     case "tool":
-      if (isAsk(m)) return <QuestionCard m={m} threadId={threadId} open={openQuestion && !!threadId} />;
+      if (isAsk(m)) return <QuestionCard m={m} />;
       if (m.tool?.kind === "question") return <NativeQuestionCard m={m} />;
       return m.tool ? <ToolCard m={m} /> : <StepLine run={[m]} />;
     case "plan":
       return m.tool?.kind === "todo" ? <TodoCard m={m} /> : <PlanCard m={m} />;
     case "question":
-      return <QuestionCard m={m} threadId={threadId} open={openQuestion && !!threadId} />;
+      return <QuestionCard m={m} />;
     case "model-change":
       return <ModelChangeDivider change={readModelChange(m.detail)} />;
     case "interrupt":
