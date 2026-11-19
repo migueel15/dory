@@ -79,21 +79,25 @@ export const askAnswerText = (questions: Question[], answers: string[][]) =>
 // composer owns it: its text box writes the free answer of the current one.
 export type QuestionFlow = ReturnType<typeof useQuestionFlow>;
 
-export function useQuestionFlow(id: string, questions: Question[], onDone: (answers: string[][]) => void) {
-  const [state, setState] = useState<{ id: string; step: number; answers: Answer[] }>({ id, step: 0, answers: [] });
-  const { step, answers } = state.id === id ? state : { step: 0, answers: [] as Answer[] };
+export function useQuestionFlow(id: string, questions: Question[], onDone: (answers: string[][], files: string[][]) => void) {
+  const [state, setState] = useState<{ id: string; step: number; answers: Answer[]; files: string[][] }>({ id, step: 0, answers: [], files: [] });
+  const { step, answers, files } = state.id === id ? state : { step: 0, answers: [] as Answer[], files: [] as string[][] };
   const q: Question | undefined = questions[step];
   const last = step === questions.length - 1;
   const current = answers[step];
   const picked = Array.isArray(current) ? current : typeof current === "string" ? [current] : [];
-  const go = (to: number, next = answers) => setState({ id, step: to, answers: next });
-  const answer = (value: Answer) => {
+  const go = (to: number, next = answers, nextFiles = files) => setState({ id, step: to, answers: next, files: nextFiles });
+  // answer sets the answer of the current question, with the ids of the files
+  // sent along with a free answer, and moves on; the last one sends them all.
+  const answer = (value: Answer, attached: string[] = []) => {
     const next = [...answers];
     next[step] = value;
+    const nextFiles = [...files];
+    nextFiles[step] = attached;
     if (last) {
-      setState({ id, step, answers: next });
-      onDone(questions.map((_, i) => { const a = next[i]; return Array.isArray(a) ? a : a ? [a] : []; }));
-    } else go(step + 1, next);
+      setState({ id, step, answers: next, files: nextFiles });
+      onDone(questions.map((_, i) => { const a = next[i]; return Array.isArray(a) ? a : a ? [a] : []; }), questions.map((_, i) => nextFiles[i] ?? []));
+    } else go(step + 1, next, nextFiles);
   };
   const toggle = (label: string) => {
     const next = [...answers];

@@ -64,6 +64,8 @@ type Manager struct {
 	queues   map[string][]Queued
 	subs     map[chan Update]string
 	usage    map[string][]Window
+	// waiters hold the ask_user calls waiting for the user, by request id.
+	waiters map[string]chan [][]string
 	// disabled holds the providers turned off on this node, under its own lock.
 	disabledMu sync.Mutex
 	disabled   map[string]bool
@@ -82,6 +84,7 @@ func NewManager(db *sql.DB, store *data.Store, node, dataDir string, providers .
 	for _, p := range providers {
 		m.providers[p.ID()] = p
 	}
+	m.waiters = map[string]chan [][]string{}
 	m.loadUsage()
 	m.loadDisabled()
 	return m
@@ -363,22 +366,41 @@ func (m *Manager) Send(ctx context.Context, id, text string, files ...Attachment
 	return nil
 }
 
-// Ask records a question of the agent and marks the thread as waiting for
-// the user; the answer arrives as the next message.
-func (m *Manager) Ask(ctx context.Context, id string, questions []Question) error {
+// Ask is Dory's ask_user: the agent's call waits until the user answers in
+// the composer, as with the questions a harness asks natively, and gets the
+// answers as its result. Leaving (the turn stops) withdraws the question.
+func (m *Manager) Ask(ctx context.Context, id string, questions []Question) ([][]string, error) {
 	if _, err := m.local(ctx, id); err != nil {
-		return err
+		return nil, err
 	}
 	var text []string
 	for _, q := range questions {
 		text = append(text, q.Question)
 	}
-	m.save(ctx, Message{ID: newRunID(), ThreadID: id, Role: "question", Title: "Pregunta", Text: strings.Join(text, "\n"), Status: "waiting", CreatedAt: now(),
-		Tool: &ToolCall{Kind: "question", Name: "ask_user", Questions: questions}})
+	msg := Message{ID: newRunID(), ThreadID: id, Role: "question", Title: "Pregunta", Text: strings.Join(text, "\n"), Status: "waiting", CreatedAt: now(),
+		Tool: &ToolCall{Kind: "question", Name: "ask_user", Questions: questions}}
+	m.save(ctx, msg)
+	req := newRunID()
+	answers := make(chan [][]string, 1)
 	m.mu.Lock()
-	m.asked[id] = true
+	m.waiters[req] = answers
 	m.mu.Unlock()
-	return nil
+	m.request(ctx, id, Request{ID: req, Kind: "question", MessageID: msg.ID, Questions: questions})
+	select {
+	case a := <-answers:
+		msg.Tool.Questions = answered(questions, a)
+		msg.Status = "done"
+		m.save(context.WithoutCancel(ctx), msg)
+		return a, nil
+	case <-ctx.Done():
+		bg := context.WithoutCancel(ctx)
+		m.mu.Lock()
+		delete(m.waiters, req)
+		m.mu.Unlock()
+		m.db.ExecContext(bg, `DELETE FROM thread_requests WHERE id = ?`, req)
+		m.publish(Update{ThreadID: id, Reload: true})
+		return nil, ctx.Err()
+	}
 }
 
 // Interrupt stops the running turn and drops the queue.

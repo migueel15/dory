@@ -241,3 +241,45 @@ func TestWorktreePerThread(t *testing.T) {
 		t.Fatalf("branch %q", out)
 	}
 }
+
+func TestAskWaitsForTheAnswer(t *testing.T) {
+	m, _ := manager(t, 0)
+	ctx := context.Background()
+	th, err := m.Create(ctx, NewThread{Provider: "replay", Title: "Pregunta"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make(chan [][]string, 1)
+	go func() {
+		a, err := m.Ask(ctx, th.ID, []Question{{Question: "¿Seguimos?", Options: []Option{{Label: "Sí"}, {Label: "No"}}}})
+		if err != nil {
+			t.Error(err)
+		}
+		got <- a
+	}()
+	var req Request
+	for range 200 {
+		if rs, _ := m.Requests(ctx, th.ID); len(rs) == 1 {
+			req = rs[0]
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if req.ID == "" {
+		t.Fatal("ask_user left no pending request")
+	}
+	if err := m.Answer(ctx, th.ID, req.ID, [][]string{{"Sí"}}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case a := <-got:
+		if len(a) != 1 || a[0][0] != "Sí" {
+			t.Fatalf("answers = %v", a)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("ask_user did not return the answer")
+	}
+	if rs, _ := m.Requests(ctx, th.ID); len(rs) != 0 {
+		t.Fatalf("requests left: %v", rs)
+	}
+}

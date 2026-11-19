@@ -81,6 +81,9 @@ func (m *Manager) Attachment(threadID, id string) (Attachment, error) {
 }
 
 // withAttachments tells the agent where the files of a message are.
+// WithAttachments is withAttachments for answers to the agent's questions.
+func WithAttachments(text string, files []Attachment) string { return withAttachments(text, files) }
+
 func withAttachments(text string, files []Attachment) string {
 	if len(files) == 0 {
 		return text

@@ -106,9 +106,32 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/threads/{id}/requests/{req}", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		var body struct {
 			Answers [][]string `json:"answers"`
+			// Files lists, per question, the attachments sent with its answer.
+			Files [][]string `json:"files"`
 		}
 		if !decode(w, r, &body) {
 			return
+		}
+		for i, ids := range body.Files {
+			if i >= len(body.Answers) || len(ids) == 0 {
+				continue
+			}
+			var files []runtime.Attachment
+			for _, id := range ids {
+				a, err := s.Runtime.Attachment(t.ID, id)
+				if err != nil {
+					writeDataError(w, err)
+					return
+				}
+				files = append(files, a)
+			}
+			// The paths go with the free answer, as in a message.
+			a := body.Answers[i]
+			if len(a) == 0 {
+				a = []string{""}
+			}
+			a[len(a)-1] = runtime.WithAttachments(a[len(a)-1], files)
+			body.Answers[i] = a
 		}
 		err := s.Runtime.Answer(r.Context(), t.ID, r.PathValue("req"), body.Answers)
 		if errors.Is(err, runtime.ErrNoRequest) {

@@ -152,7 +152,7 @@ func Handler(s *api.Server) http.Handler {
 	}) (any, error) {
 		return store.Search(ctx, in.Query, 20)
 	})
-	add(srv, "ask_user", "Ask the user one or more questions, each with options to pick (multi_select for several). The chat shows them as a form; the thread waits and the answers arrive as the next user message.", func(ctx context.Context, in askInput) (any, error) {
+	add(srv, "ask_user", "Ask the user one or more questions, each with options to pick (multi_select for several). The call waits until the user answers in the chat and returns each question with its answer.", func(ctx context.Context, in askInput) (any, error) {
 		id, _ := ctx.Value(threadKey{}).(string)
 		if id == "" {
 			return nil, errors.New("ask_user only works inside a Dory thread")
@@ -164,10 +164,19 @@ func Handler(s *api.Server) http.Handler {
 		if len(qs) == 0 {
 			return nil, errors.New("ask_user needs a question")
 		}
-		if err := s.Runtime.Ask(ctx, id, qs); err != nil {
+		answers, err := s.Runtime.Ask(ctx, id, qs)
+		if err != nil {
 			return nil, err
 		}
-		return map[string]string{"status": "asked", "note": "Finish your turn; the answer arrives as the next user message."}, nil
+		out := make([]map[string]any, len(qs))
+		for i, q := range qs {
+			var a []string
+			if i < len(answers) {
+				a = answers[i]
+			}
+			out[i] = map[string]any{"question": q.Question, "answer": a}
+		}
+		return map[string]any{"answers": out}, nil
 	})
 
 	h := sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return srv }, &sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true})

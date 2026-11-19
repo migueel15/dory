@@ -387,10 +387,12 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   const ask = native ? undefined : openAsk(t.messages);
   const question = native ?? ask;
   const reply = useMutation({
-    mutationFn: (answers: string[][]) => native ? api.answer(t.id, native.id, answers) : api.send(t.id, askAnswerText(ask!.questions, answers)),
+    mutationFn: ({ answers, files }: { answers: string[][]; files: string[][] }) => native
+      ? api.answer(t.id, native.id, answers, files)
+      : api.send(t.id, askAnswerText(ask!.questions, answers), files.flat()),
     onSuccess: () => { onSent(); return qc.invalidateQueries({ queryKey: key }); },
   });
-  const flow = useQuestionFlow(question?.id ?? "", question?.questions ?? [], (answers) => reply.mutate(answers));
+  const flow = useQuestionFlow(question?.id ?? "", question?.questions ?? [], (answers, files) => reply.mutate({ answers, files }));
   const asking = !!question && !!flow.q;
   const settings = useMutation({
     scope: { id: `thread-settings:${t.id}` },
@@ -408,7 +410,20 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   const suggest = useSuggest(t.id, t.provider, text, area, setText, addToken);
   const readyToSend = !uploading && !send.isPending && !settings.isPending;
   const canSend = (!!outgoing || files.some((file) => file.done)) && readyToSend && !dictating;
+  // answerDraft gives what the box holds (typed, dictated, files) as the free
+  // answer of the current question.
+  const answerDraft = (draft: string) => {
+    const fileIds = files.flatMap((file) => file.done ? [file.done.id] : []);
+    const answer = draft.trim();
+    if (reply.isPending || uploading || (!answer && !fileIds.length)) return;
+    flow.answer(answer || "(ver adjuntos)", fileIds);
+    setText("");
+    setTokens({});
+    files.forEach((f) => URL.revokeObjectURL(f.preview));
+    setFiles([]);
+  };
   const sendDraft = (draft: string) => {
+    if (asking) { answerDraft(draft); return; }
     const message = payload(draft);
     const fileIds = files.flatMap((file) => file.done ? [file.done.id] : []);
     if (readyToSend && (message || fileIds.length)) send.mutate({ message, fileIds, quoteIds: quotes.map(({ id }) => id) });
@@ -416,11 +431,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   const latestSendDraft = useRef(sendDraft);
   useLayoutEffect(() => { latestSendDraft.current = sendDraft; });
   const submit = () => {
-    if (asking) {
-      const answer = text.trim();
-      if (answer && !reply.isPending) { flow.answer(answer); setText(""); }
-      return;
-    }
+    if (asking) { answerDraft(text); return; }
     if (canSend) sendDraft(text);
   };
   if (!t.local) return null;
@@ -523,7 +534,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
               <Stop weight="fill" className="size-3.5" />
             </button>
           ) : (
-            <button type="submit" disabled={asking ? !text.trim() || reply.isPending : !canSend} title={asking ? "Responder (Enter)" : busy ? "Encolar (Enter)" : "Enviar (Enter)"} aria-label={asking ? "Responder" : "Enviar"}
+            <button type="submit" disabled={asking ? (!text.trim() && !files.some((file) => file.done)) || reply.isPending || uploading || dictating : !canSend} title={asking ? "Responder (Enter)" : busy ? "Encolar (Enter)" : "Enviar (Enter)"} aria-label={asking ? "Responder" : "Enviar"}
               className={iconButton}>
               {send.isPending || reply.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : busy && !asking ? <ListBullets weight="regular" className="block size-4" /> : <ArrowUp weight="regular" className="block size-4" />}
             </button>

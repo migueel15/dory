@@ -23,7 +23,9 @@ func (c Codex) Start(ctx context.Context, t Turn) (Session, error) {
 	if t.MCPURL != "" {
 		cmd.Args = append(cmd.Args,
 			"-c", fmt.Sprintf("mcp_servers.dory.url=%q", t.MCPURL),
-			"-c", `mcp_servers.dory.bearer_token_env_var="DORY_MCP_TOKEN"`)
+			"-c", `mcp_servers.dory.bearer_token_env_var="DORY_MCP_TOKEN"`,
+			// ask_user waits for the user, so a call may take long.
+			"-c", "mcp_servers.dory.tool_timeout_sec=86400")
 		cmd.Env = append(cmd.Env, "DORY_MCP_TOKEN="+t.MCPToken)
 	}
 	in, err := cmd.StdinPipe()

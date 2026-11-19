@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -70,6 +71,8 @@ func (c Claude) Start(ctx context.Context, t Turn) (Session, error) {
 	}
 	cmd := exec.CommandContext(ctx, c.bin(), args...)
 	cmd.Dir = t.Dir
+	// ask_user waits for the user, so an MCP call may take long (ms).
+	cmd.Env = append(os.Environ(), "MCP_TOOL_TIMEOUT=86400000")
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
