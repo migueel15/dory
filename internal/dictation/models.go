@@ -12,10 +12,11 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/migueel15/dory/internal/cmdexec"
 )
 
 var ErrModelMissing = errors.New("descarga el modelo de dictado antes de usarlo")
@@ -218,7 +219,7 @@ func (m *LocalModels) startWorker(bin string, model localModel, worker *nemoWork
 	port := fmt.Sprint(listener.Addr().(*net.TCPAddr).Port)
 	listener.Close()
 	worker.address = &url.URL{Scheme: "http", Host: "127.0.0.1:" + port}
-	cmd := exec.CommandContext(m.ctx, bin, "serve", "--host", "127.0.0.1", "--port", port,
+	cmd := cmdexec.CommandContext(m.ctx, bin, "serve", "--host", "127.0.0.1", "--port", port,
 		"--asr-model", m.path(model), "--no-ui", "--max-upload-mb", "12", "--api-key", worker.token)
 	cmd.Stderr = os.Stderr
 	if err = cmd.Start(); err != nil {

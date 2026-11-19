@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	goruntime "runtime"
@@ -16,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/migueel15/dory/internal/cmdexec"
 	"github.com/migueel15/dory/internal/update"
 
 	"github.com/migueel15/dory/internal/api"
@@ -248,7 +248,7 @@ func githubToken() string {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output()
+	out, err := cmdexec.CommandContext(ctx, "gh", "auth", "token").Output()
 	if err != nil {
 		log.Printf("dory: no GitHub token (DORY_GITHUB_TOKEN unset and gh not logged in)")
 		return ""

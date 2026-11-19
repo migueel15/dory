@@ -6,10 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/migueel15/dory/internal/cmdexec"
 )
 
 type acpParams map[string]any
@@ -45,7 +46,7 @@ func openACP(ctx context.Context, bin, dir string, sandbox bool) (*acpConn, erro
 	if sandbox {
 		args = append(args, "--sandbox")
 	}
-	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd := cmdexec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
 	interruptible(cmd)
 	cmd.WaitDelay = 3 * time.Second

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/migueel15/dory/internal/cmdexec"
 	"github.com/migueel15/dory/internal/update"
 
 	"github.com/migueel15/dory/internal/config"
@@ -154,7 +155,7 @@ func start(base, dataDir string) error {
 			return err
 		}
 		defer logFile.Close()
-		cmd := exec.Command(self, "serve")
+		cmd := cmdexec.Command(self, "serve")
 		cmd.Stdout, cmd.Stderr = logFile, logFile
 		detach(cmd)
 		if err = cmd.Start(); err != nil {
@@ -204,19 +205,19 @@ func serviceCtl(action string) error {
 	switch runtime.GOOS {
 	case "linux":
 		// Another program, such as an older Dory, may own a unit of the same name.
-		out, err := exec.Command("systemctl", "--user", "cat", unitName).Output()
+		out, err := cmdexec.Command("systemctl", "--user", "cat", unitName).Output()
 		self, _ := os.Executable()
 		if err != nil || !strings.Contains(string(out), "ExecStart="+self+" serve") {
 			return errors.New("el servicio no está instalado: dory service install")
 		}
-		return exec.Command("systemctl", "--user", action, unitName).Run()
+		return cmdexec.Command("systemctl", "--user", action, unitName).Run()
 	case "darwin":
 		plist := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", "net.dorlab.dory.plist")
 		verb := map[string]string{"start": "load", "stop": "unload", "restart": "load"}[action]
 		if action == "restart" {
-			exec.Command("launchctl", "unload", plist).Run()
+			cmdexec.Command("launchctl", "unload", plist).Run()
 		}
-		return exec.Command("launchctl", verb, "-w", plist).Run()
+		return cmdexec.Command("launchctl", verb, "-w", plist).Run()
 	}
 	return errors.New("en este sistema el núcleo se arranca con `dory serve`")
 }
@@ -237,10 +238,10 @@ func service(action string) error {
 		unitPath := filepath.Join(home, ".config", "systemd", "user", unitName)
 		desktop := filepath.Join(home, ".local", "share", "applications", "dory.desktop")
 		if action == "uninstall" {
-			exec.Command("systemctl", "--user", "disable", "--now", unitName).Run()
+			cmdexec.Command("systemctl", "--user", "disable", "--now", unitName).Run()
 			os.Remove(unitPath)
 			os.Remove(desktop)
-			return exec.Command("systemctl", "--user", "daemon-reload").Run()
+			return cmdexec.Command("systemctl", "--user", "daemon-reload").Run()
 		}
 		for _, p := range []string{unitPath, desktop} {
 			if err = os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -255,7 +256,7 @@ func service(action string) error {
 			os.WriteFile(desktop, []byte(fmt.Sprintf(desktopEntry, self)), 0o644)
 		}
 		for _, args := range [][]string{{"daemon-reload"}, {"enable", "--now", unitName}} {
-			if out, err := exec.Command("systemctl", append([]string{"--user"}, args...)...).CombinedOutput(); err != nil {
+			if out, err := cmdexec.Command("systemctl", append([]string{"--user"}, args...)...).CombinedOutput(); err != nil {
 				return fmt.Errorf("systemctl %s: %s", strings.Join(args, " "), out)
 			}
 		}
@@ -264,23 +265,23 @@ func service(action string) error {
 	case "darwin":
 		plist := filepath.Join(home, "Library", "LaunchAgents", "net.dorlab.dory.plist")
 		if action == "uninstall" {
-			exec.Command("launchctl", "unload", plist).Run()
+			cmdexec.Command("launchctl", "unload", plist).Run()
 			return os.Remove(plist)
 		}
 		os.MkdirAll(filepath.Dir(plist), 0o755)
 		if err = os.WriteFile(plist, []byte(fmt.Sprintf(launchAgent, self, os.Getenv("PATH"))), 0o644); err != nil {
 			return err
 		}
-		return exec.Command("launchctl", "load", "-w", plist).Run()
+		return cmdexec.Command("launchctl", "load", "-w", plist).Run()
 	case "windows":
 		// A Run entry of the user starts the core at sign-in, without a
 		// console window.
 		key := `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
 		if action == "uninstall" {
-			return exec.Command("reg", "delete", key, "/v", "Dory", "/f").Run()
+			return cmdexec.Command("reg", "delete", key, "/v", "Dory", "/f").Run()
 		}
 		value := fmt.Sprintf(`conhost.exe --headless "%s" serve`, self)
-		if out, err := exec.Command("reg", "add", key, "/v", "Dory", "/t", "REG_SZ", "/d", value, "/f").CombinedOutput(); err != nil {
+		if out, err := cmdexec.Command("reg", "add", key, "/v", "Dory", "/t", "REG_SZ", "/d", value, "/f").CombinedOutput(); err != nil {
 			return fmt.Errorf("reg add: %s", out)
 		}
 		fmt.Println("servicio instalado: el núcleo arranca con tu sesión")
@@ -408,7 +409,7 @@ func restartSelf() {
 	if err != nil {
 		return
 	}
-	cmd := exec.Command(self, "restart")
+	cmd := cmdexec.Command(self, "restart")
 	detach(cmd)
 	_ = cmd.Start()
 }

@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/migueel15/dory/internal/cmdexec"
 )
 
 // ErrNoUsage is what Provider.Usage returns when a harness does not report
@@ -25,7 +27,7 @@ const usageTimeout = 45 * time.Second
 func (c Claude) Usage(ctx context.Context) ([]Window, error) {
 	request := `{"type":"control_request","request_id":"dory-usage","request":{"subtype":"get_usage"}}`
 	var out []Window
-	err := ask(ctx, exec.Command(c.bin(), "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"), []string{request},
+	err := ask(ctx, cmdexec.Command(c.bin(), "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"), []string{request},
 		func(line []byte) (bool, error) {
 			var msg struct {
 				Type     string `json:"type"`
@@ -74,7 +76,7 @@ func (c Codex) Usage(ctx context.Context) ([]Window, error) {
 		ResetsAt           int64   `json:"resetsAt"`
 	}
 	var out []Window
-	err := ask(ctx, exec.Command(c.bin(), "app-server"), requests, func(line []byte) (bool, error) {
+	err := ask(ctx, cmdexec.Command(c.bin(), "app-server"), requests, func(line []byte) (bool, error) {
 		var msg struct {
 			ID     int                       `json:"id"`
 			Error  *struct{ Message string } `json:"error"`
@@ -127,7 +129,7 @@ func sortWindows(ws []Window) []Window {
 func ask(ctx context.Context, cmd *exec.Cmd, requests []string, read func(line []byte) (bool, error)) error {
 	ctx, cancel := context.WithTimeout(ctx, usageTimeout)
 	defer cancel()
-	full := exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+	full := cmdexec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
 	full.Dir = cmd.Dir
 	full.Env = cmd.Env
 	full.WaitDelay = 5 * time.Second

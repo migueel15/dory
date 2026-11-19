@@ -9,13 +9,13 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/migueel15/dory/internal/cmdexec"
 	"github.com/migueel15/dory/internal/data"
 )
 
@@ -304,7 +304,7 @@ func (m *Manager) Create(ctx context.Context, n NewThread) (data.Thread, error) 
 				args = append(args, n.BaseBranch)
 			}
 		}
-		if out, err := exec.CommandContext(ctx, "git", args...).CombinedOutput(); err != nil {
+		if out, err := cmdexec.CommandContext(ctx, "git", args...).CombinedOutput(); err != nil {
 			return t, fmt.Errorf("git worktree: %s", strings.TrimSpace(string(out)))
 		}
 	}
@@ -319,7 +319,7 @@ func (m *Manager) Create(ctx context.Context, n NewThread) (data.Thread, error) 
 }
 
 func exists(ctx context.Context, repo, branch string) bool {
-	return exec.CommandContext(ctx, "git", "-C", repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil
+	return cmdexec.CommandContext(ctx, "git", "-C", repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil
 }
 
 // Dir returns the working directory of a thread of this node.
@@ -777,10 +777,10 @@ func (m *Manager) DiffAgainst(ctx context.Context, id, against string) (WorkDiff
 	if err != nil {
 		return out, err
 	}
-	if exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--git-dir").Run() != nil {
+	if cmdexec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--git-dir").Run() != nil {
 		return out, nil
 	}
-	if refs, err := exec.CommandContext(ctx, "git", "-C", dir, "for-each-ref", "--format=%(refname:short)", "refs/heads").Output(); err == nil {
+	if refs, err := cmdexec.CommandContext(ctx, "git", "-C", dir, "for-each-ref", "--format=%(refname:short)", "refs/heads").Output(); err == nil {
 		for _, b := range strings.Fields(string(refs)) {
 			out.Branches = append(out.Branches, b)
 		}
@@ -794,7 +794,7 @@ func (m *Manager) DiffAgainst(ctx context.Context, id, against string) (WorkDiff
 	out.Base = against
 	ref := "HEAD"
 	if against != "HEAD" {
-		mb, err := exec.CommandContext(ctx, "git", "-C", dir, "merge-base", against, "HEAD").Output()
+		mb, err := cmdexec.CommandContext(ctx, "git", "-C", dir, "merge-base", against, "HEAD").Output()
 		if err != nil {
 			// An unknown reference falls back to the uncommitted changes.
 			out.Base = "HEAD"
@@ -802,7 +802,7 @@ func (m *Manager) DiffAgainst(ctx context.Context, id, against string) (WorkDiff
 			ref = strings.TrimSpace(string(mb))
 		}
 	}
-	diff, err := exec.CommandContext(ctx, "git", "-C", dir, "diff", ref).Output()
+	diff, err := cmdexec.CommandContext(ctx, "git", "-C", dir, "diff", ref).Output()
 	out.Diff = string(diff)
 	return out, err
 }
@@ -814,7 +814,7 @@ func (m *Manager) Remove(ctx context.Context, id string) error {
 		return err
 	}
 	_ = m.Interrupt(ctx, id)
-	return exec.CommandContext(ctx, "git", "-C", dir, "worktree", "remove", "--force", dir).Run()
+	return cmdexec.CommandContext(ctx, "git", "-C", dir, "worktree", "remove", "--force", dir).Run()
 }
 
 func newRunID() string {
@@ -822,7 +822,7 @@ func newRunID() string {
 }
 
 func gitCmd(ctx context.Context, dir string, args ...string) ([]byte, error) {
-	return exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+	return cmdexec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).CombinedOutput()
 }
 
 func (m *Manager) mcpURL(thread string) string {

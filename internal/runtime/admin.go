@@ -6,10 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/migueel15/dory/internal/cmdexec"
 )
 
 // Admin is what a harness offers to manage it from Dory: its session, its
@@ -23,7 +24,7 @@ type Admin interface {
 }
 
 func (c Claude) Session(ctx context.Context) (bool, string) {
-	out, err := exec.CommandContext(ctx, c.bin(), "auth", "status").Output()
+	out, err := cmdexec.CommandContext(ctx, c.bin(), "auth", "status").Output()
 	var st struct {
 		LoggedIn   bool   `json:"loggedIn"`
 		AuthMethod string `json:"authMethod"`
@@ -37,7 +38,7 @@ func (c Claude) LoginCommand() []string  { return []string{c.bin(), "auth", "log
 func (c Claude) UpdateCommand() []string { return []string{c.bin(), "update"} }
 
 func (c Codex) Session(ctx context.Context) (bool, string) {
-	out, err := exec.CommandContext(ctx, c.bin(), "login", "status").CombinedOutput()
+	out, err := cmdexec.CommandContext(ctx, c.bin(), "login", "status").CombinedOutput()
 	text := strings.TrimSpace(string(out))
 	return err == nil && strings.HasPrefix(text, "Logged in"), text
 }
@@ -45,7 +46,7 @@ func (c Codex) LoginCommand() []string  { return []string{c.bin(), "login", "--d
 func (c Codex) UpdateCommand() []string { return []string{c.bin(), "update"} }
 
 func (o OpenCode) Session(ctx context.Context) (bool, string) {
-	out, err := exec.CommandContext(ctx, o.bin(), "auth", "list").Output()
+	out, err := cmdexec.CommandContext(ctx, o.bin(), "auth", "list").Output()
 	lines := 0
 	for _, l := range strings.Split(string(out), "\n") {
 		if strings.Contains(l, "stored") {
@@ -110,7 +111,7 @@ func (m *Manager) StartJob(provider, kind string) (*Job, error) {
 	}
 	j := &Job{ID: strings.ToLower(rand.Text()), Provider: provider, Kind: kind, Started: time.Now()}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	cmd := cmdexec.CommandContext(ctx, args[0], args[1:]...)
 	if (provider == "claude" || provider == antigravityID) && kind == "login" {
 		reader, writer, err := os.Pipe()
 		if err != nil {
@@ -195,7 +196,7 @@ func (m *Manager) UpdateAll(ctx context.Context) map[string]string {
 		}
 		args := p.UpdateCommand()
 		run, cancel := context.WithTimeout(ctx, 10*time.Minute)
-		out, err := exec.CommandContext(run, args[0], args[1:]...).CombinedOutput()
+		out, err := cmdexec.CommandContext(run, args[0], args[1:]...).CombinedOutput()
 		cancel()
 		if err != nil {
 			failed[st.ID] = strings.TrimSpace(string(out))

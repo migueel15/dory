@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/migueel15/dory/internal/cmdexec"
 )
 
 // Message is one entry of a conversation as the interface shows it. Role is
@@ -116,7 +118,7 @@ func detect(ctx context.Context, bin string) (string, bool) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, path, "--version").Output()
+	out, err := cmdexec.CommandContext(ctx, path, "--version").Output()
 	if err != nil {
 		return "", true
 	}

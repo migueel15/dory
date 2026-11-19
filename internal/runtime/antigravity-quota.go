@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/migueel15/dory/internal/cmdexec"
 )
 
 const (
@@ -96,7 +98,7 @@ func (a Antigravity) Usage(ctx context.Context) ([]Window, error) {
 	}
 	if !token.Expiry.IsZero() && time.Until(token.Expiry) < time.Minute {
 		refresh, stop := context.WithTimeout(ctx, 12*time.Second)
-		_ = exec.CommandContext(refresh, bin, "models").Run()
+		_ = cmdexec.CommandContext(refresh, bin, "models").Run()
 		stop()
 		token = loadAgyToken(ctx)
 		if token.AccessToken == "" || (!token.Expiry.IsZero() && time.Until(token.Expiry) <= 0) {

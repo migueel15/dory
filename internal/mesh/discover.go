@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"os/exec"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/migueel15/dory/internal/cmdexec"
 )
 
 // Nodes find each other in two ways (requirement RF-04): a UDP beacon on the
@@ -81,7 +82,7 @@ func (m *Mesh) hear(ctx context.Context) {
 func (m *Mesh) tailscale(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "tailscale", "status", "--json").Output()
+	out, err := cmdexec.CommandContext(ctx, "tailscale", "status", "--json").Output()
 	if err != nil {
 		return
 	}

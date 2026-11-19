@@ -4,9 +4,10 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/migueel15/dory/internal/cmdexec"
 )
 
 // readModelCatalog keeps stdin open until the harness replies to the metadata
@@ -14,7 +15,7 @@ import (
 func readModelCatalog(ctx context.Context, bin string, args []string, requests string, read func([]byte) []Model) []Model {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd := cmdexec.CommandContext(ctx, bin, args...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil

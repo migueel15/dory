@@ -4,11 +4,12 @@ import (
 	"context"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/migueel15/dory/internal/cmdexec"
 )
 
 // Folder is a directory of a node, as the project picker lists it.
@@ -90,7 +91,7 @@ func (s *Server) mountFolders(mux *http.ServeMux) {
 func inspect(ctx context.Context, dir string) Checkout {
 	c := Checkout{Path: dir, Name: filepath.Base(dir)}
 	git := func(args ...string) string {
-		out, err := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).Output()
+		out, err := cmdexec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).Output()
 		if err != nil {
 			return ""
 		}

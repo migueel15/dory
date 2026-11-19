@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os/exec"
 	"strings"
 
+	"github.com/migueel15/dory/internal/cmdexec"
 	"github.com/migueel15/dory/internal/data"
 )
 
@@ -56,10 +56,10 @@ func (s *Server) mountBranches(mux *http.ServeMux) {
 
 func branches(ctx context.Context, dir string) Branches {
 	out := Branches{Branches: []string{}}
-	if b, err := exec.CommandContext(ctx, "git", "-C", dir, "branch", "--show-current").Output(); err == nil {
+	if b, err := cmdexec.CommandContext(ctx, "git", "-C", dir, "branch", "--show-current").Output(); err == nil {
 		out.Current = strings.TrimSpace(string(b))
 	}
-	if b, err := exec.CommandContext(ctx, "git", "-C", dir, "for-each-ref", "--sort=-committerdate", "--format=%(refname:short)", "refs/heads").Output(); err == nil {
+	if b, err := cmdexec.CommandContext(ctx, "git", "-C", dir, "for-each-ref", "--sort=-committerdate", "--format=%(refname:short)", "refs/heads").Output(); err == nil {
 		for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
 			if line != "" {
 				out.Branches = append(out.Branches, line)
@@ -75,7 +75,7 @@ func switchBranch(ctx context.Context, dir, branch string) error {
 	if branches(ctx, dir).Current == branch {
 		return nil
 	}
-	if out, err := exec.CommandContext(ctx, "git", "-C", dir, "switch", branch).CombinedOutput(); err != nil {
+	if out, err := cmdexec.CommandContext(ctx, "git", "-C", dir, "switch", branch).CombinedOutput(); err != nil {
 		return fmt.Errorf("git switch %s: %s", branch, strings.TrimSpace(string(out)))
 	}
 	return nil

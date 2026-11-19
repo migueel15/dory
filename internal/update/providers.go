@@ -3,13 +3,14 @@ package update
 import (
 	"context"
 	"net/url"
-	"os/exec"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/migueel15/dory/internal/cmdexec"
 )
 
 // Installed is a harness installed on this node and the version it reports.
@@ -110,7 +111,7 @@ const antigravityManifestBase = "https://antigravity-cli-auto-updater-9741690370
 func antigravityLatest(ctx context.Context) string {
 	platform := runtime.GOOS + "_" + runtime.GOARCH
 	if runtime.GOOS == "linux" {
-		out, _ := exec.CommandContext(ctx, "ldd", "/bin/ls").CombinedOutput()
+		out, _ := cmdexec.CommandContext(ctx, "ldd", "/bin/ls").CombinedOutput()
 		if strings.Contains(string(out), "musl") {
 			platform += "_musl"
 		}

@@ -2,9 +2,10 @@ package runtime
 
 import (
 	"context"
-	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/migueel15/dory/internal/cmdexec"
 )
 
 // OpenCode runs each turn on its own "opencode serve" (opencode_server.go);
@@ -29,7 +30,7 @@ func (o OpenCode) Detect(ctx context.Context) Status {
 	// Models depend on the providers configured in OpenCode: ask it.
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	out, _ := exec.CommandContext(ctx, o.bin(), "models").Output()
+	out, _ := cmdexec.CommandContext(ctx, o.bin(), "models").Output()
 	st.Models = append(st.Models, Model{Slug: "", Name: "Por defecto"})
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		if line = strings.TrimSpace(line); line != "" {
