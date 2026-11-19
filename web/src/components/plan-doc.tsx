@@ -1,13 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, Check, PencilSimple } from "@phosphor-icons/react";
+import { Check, Crosshair, PencilSimple } from "@phosphor-icons/react";
 import { api, ApiError, type Plan } from "../api/client";
 import { Button, ErrorText, Md } from "./ui";
 
 // PlanDoc shows the plan of a task: one Markdown document that the user and
 // the agents edit. It follows the agent's edits live (the plan query refreshes
-// on every replicated change): each change scrolls to the block that changed
-// and marks it, until the user scrolls away on their own.
+// on every replicated change) and marks each block that changes; with
+// "Seguir" on, the view also goes to each change.
 export function PlanDoc({ taskId }: { taskId: string }) {
   const qc = useQueryClient();
   const key = ["plans", taskId, "doc"];
@@ -16,7 +16,10 @@ export function PlanDoc({ taskId }: { taskId: string }) {
   // edit holds the text being written and the revision it started from.
   const [edit, setEdit] = useState<{ text: string; base: number }>();
   const doc = useRef<HTMLDivElement>(null);
-  const follow = useFollowChanges(p?.body_md, doc, !!edit);
+  // Following the agent is a choice kept in this browser; on by default.
+  const [following, setFollowing] = useState(() => { try { return localStorage.getItem("dory.plan-follow") !== "0"; } catch { return true; } });
+  const setFollow = (v: boolean) => { setFollowing(v); try { localStorage.setItem("dory.plan-follow", v ? "1" : "0"); } catch { /* per-browser only */ } };
+  const follow = useFollowChanges(p?.body_md, doc, !!edit, following);
   const done = (next: Plan) => {
     qc.setQueryData(key, next);
     qc.invalidateQueries({ queryKey: ["card", taskId] });
@@ -44,9 +47,14 @@ export function PlanDoc({ taskId }: { taskId: string }) {
   if (!p) return null;
   const empty = !p.body_md.trim();
   return (
-    <div className="flex min-h-full flex-col" onWheel={follow.pause} onTouchMove={follow.pause}>
+    <div className="flex min-h-full flex-col">
       <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-200 bg-slate-50/90 px-4 py-2 text-xs text-slate-500 backdrop-blur dark:border-border dark:bg-canvas/90 dark:text-muted">
         <span>{p.revision > 0 ? `Revisión ${p.revision} · ${p.author === "agent" ? "agente" : "tú"}` : "Sin plan"}</span>
+        <button type="button" onClick={() => setFollow(!following)} aria-pressed={following}
+          title={following ? "Siguiendo al agente: la vista va a cada cambio. Pulsa para dejar de seguirlo" : "Seguir al agente: llevar la vista a cada cambio"}
+          className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 ${following ? "bg-accent/15 text-accent-text" : "hover:bg-slate-200/70 dark:hover:bg-raised"}`}>
+          <Crosshair weight={following ? "bold" : "regular"} className="size-3.5" />Seguir
+        </button>
         {p.accepted_at && <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><Check className="size-3.5" />Aceptado</span>}
         <span className="flex-1" />
         {!edit && <Button variant="ghost" className="!px-2 text-xs" onClick={() => setEdit({ text: p.body_md, base: p.revision })}><PencilSimple className="size-3.5" />{empty ? "Escribir" : "Editar"}</Button>}
@@ -74,12 +82,6 @@ export function PlanDoc({ taskId }: { taskId: string }) {
           <Md onToggle={(line) => toggle.mutate(line)} rehypePlugins={[sourceLines]}>{follow.text}</Md>
           {conflict ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">El plan cambió antes de guardar la casilla; vuelve a marcarla.</p> : <ErrorText error={toggle.error ?? accept.error} />}
         </div>
-      )}
-      {follow.paused && (
-        <button type="button" onClick={follow.resume}
-          className="sticky bottom-3 mx-auto mb-3 flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs shadow-md hover:bg-slate-50 dark:border-border-strong dark:bg-surface dark:hover:bg-raised">
-          <ArrowDown className="size-3.5" />Seguir al agente
-        </button>
       )}
     </div>
   );
@@ -141,23 +143,19 @@ function reveal(el: HTMLElement) {
 // useFollowChanges follows the agent through the plan. A new version is not
 // shown at once: the view first scrolls, with the old text, to where it
 // changes, and only then shows the new text and marks the changed blocks.
-// Versions that arrive meanwhile are folded into the latest. Scrolling by
-// hand pauses it (changes then appear in place) and, once the agent has
-// edited, offers to follow again.
-function useFollowChanges(body: string | undefined, doc: RefObject<HTMLDivElement | null>, editing: boolean) {
+// Versions that arrive meanwhile are folded into the latest. Without
+// following, changes appear and are marked in place.
+function useFollowChanges(body: string | undefined, doc: RefObject<HTMLDivElement | null>, editing: boolean, following: boolean) {
   const [shown, setShown] = useState(body);
   const latest = useRef(body);
   latest.current = body;
   const busy = useRef(false);
-  const [paused, setPaused] = useState(false);
-  const pausedRef = useRef(paused);
-  pausedRef.current = paused;
-  // live: the agent has changed the plan while it is on screen, so there is something to follow.
-  const [live, setLive] = useState(false);
+  const followRef = useRef(following);
+  followRef.current = following;
   useEffect(() => {
     if (body === undefined || body === shown || busy.current) return;
     const range = shown === undefined ? undefined : changedLines(shown, body);
-    if (!range || editing || pausedRef.current || !doc.current) { setShown(body); return; }
+    if (!range || editing || !following || !doc.current) { setShown(body); return; }
     const target = blocksIn(doc.current, range.before)[0];
     if (!target) { setShown(body); return; }
     busy.current = true;
@@ -172,19 +170,9 @@ function useFollowChanges(body: string | undefined, doc: RefObject<HTMLDivElemen
     if (!range) return;
     const marks = blocksIn(doc.current, range.after);
     marks.forEach((el) => { el.classList.remove("plan-changed"); void el.offsetWidth; el.classList.add("plan-changed"); });
-    if (!marks[0]) return;
-    setLive(true);
-    if (!pausedRef.current) marks[0].scrollIntoView({ behavior: "smooth", block: "nearest" });
+    if (marks[0] && followRef.current) marks[0].scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [shown]); // eslint-disable-line react-hooks/exhaustive-deps
-  return {
-    text: shown ?? body ?? "",
-    paused: paused && live,
-    pause: () => setPaused(true),
-    resume: () => {
-      setPaused(false);
-      doc.current?.querySelectorAll<HTMLElement>(".plan-changed")[0]?.scrollIntoView({ behavior: "smooth", block: "center" });
-    },
-  };
+  return { text: shown ?? body ?? "" };
 }
 
 function PlanTextarea({ value, onChange, onSubmit }: { value: string; onChange: (v: string) => void; onSubmit: () => void }) {
