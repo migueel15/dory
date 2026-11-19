@@ -276,9 +276,17 @@ func service(action string) error {
 	return errors.New("en Windows, crea una tarea programada al iniciar sesión que ejecute `dory serve`")
 }
 
-// openWindow shows the interface in an app window of a Chromium browser, or
-// in the default browser.
+// openWindow shows the interface in the desktop app, in an app window of a
+// Chromium browser, or in the default browser. The desktop app comes first
+// because browsers add their own interface, such as the link status bubble.
 func openWindow(base string) error {
+	for _, b := range []string{"dory-desktop", "Dory"} {
+		if path, err := exec.LookPath(b); err == nil {
+			cmd := exec.Command(path)
+			detach(cmd)
+			return cmd.Start()
+		}
+	}
 	for _, b := range []string{"chromium", "google-chrome-stable", "google-chrome", "brave", "microsoft-edge"} {
 		if path, err := exec.LookPath(b); err == nil {
 			cmd := exec.Command(path, "--app="+base)
