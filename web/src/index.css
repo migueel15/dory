@@ -27,6 +27,10 @@
 }
 .dark :where(input, textarea)::placeholder { color: var(--color-muted); }
 
+/* Text selection: a soft neutral grey in both themes, keeping the text colour. */
+::selection { background: rgb(100 116 139 / 0.28); color: inherit; }
+.dark ::selection { background: rgb(180 180 189 / 0.26); color: inherit; }
+
 /* Tailwind v4 leaves buttons with the default cursor: show the pointer on anything clickable or draggable. */
 @layer base {
   :where(button, [role="button"], [role="option"], [role="tab"], [role="menuitem"], summary, label[for], input[type="checkbox"], input[type="radio"], select, [draggable="true"]):not(:disabled, [aria-disabled="true"]) { cursor: pointer; }

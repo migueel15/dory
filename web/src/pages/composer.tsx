@@ -413,7 +413,8 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   });
   const suggest = useSuggest(t.id, t.provider, text, area, setText, addToken);
   const readyToSend = !uploading && !send.isPending && !settings.isPending;
-  const canSend = (!!outgoing || files.some((file) => file.done)) && readyToSend && !dictating;
+  // While this box is dictating, sending finishes the dictation first and then sends it.
+  const canSend = (!!outgoing || files.some((file) => file.done) || dictation.active) && readyToSend && (!dictating || dictation.active) && dictation.phase !== "finishing";
   // answerDraft gives what the box holds (typed, dictated, files) as the free
   // answer of the current question.
   const answerDraft = (draft: string) => {
@@ -435,6 +436,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   const latestSendDraft = useRef(sendDraft);
   useLayoutEffect(() => { latestSendDraft.current = sendDraft; });
   const submit = () => {
+    if (dictation.active) { dictation.finishAndSubmit((draft) => latestSendDraft.current(draft)); return; }
     if (asking) { answerDraft(text); return; }
     if (canSend) sendDraft(text);
   };
@@ -545,7 +547,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
               <Stop weight="fill" className="size-3.5" />
             </button>
           ) : (
-            <button type="submit" disabled={asking ? (!text.trim() && !files.some((file) => file.done)) || reply.isPending || uploading || dictating : !canSend} title={asking ? "Responder (Enter)" : busy ? "Encolar (Enter)" : "Enviar (Enter)"} aria-label={asking ? "Responder" : "Enviar"}
+            <button type="submit" disabled={asking ? (!text.trim() && !files.some((file) => file.done) && !dictation.active) || reply.isPending || uploading || (dictating && !dictation.active) || dictation.phase === "finishing" : !canSend} title={asking ? "Responder (Enter)" : busy ? "Encolar (Enter)" : "Enviar (Enter)"} aria-label={asking ? "Responder" : "Enviar"}
               className={iconButton}>
               {send.isPending || reply.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : busy && !asking ? <ListBullets weight="regular" className="block size-4" /> : <ArrowUp weight="regular" className="block size-4" />}
             </button>

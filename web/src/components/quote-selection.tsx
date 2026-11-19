@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowBendUpLeft, Plus, Quotes, X } from "@phosphor-icons/react";
+import { ArrowBendUpLeft, Microphone, Plus, Quotes, X } from "@phosphor-icons/react";
 import { DictationMic, DictationPreview, useLocalDictation, useSpeechModel, useSpeechModels } from "./local-dictation";
 import { hasDictationPopupOutside, isTextInput, useDictationShortcut } from "./dictation-shortcut";
 import { ErrorText } from "./ui";
@@ -42,9 +42,30 @@ export function QuoteSelection({ onQuote }: { onQuote: (text: string, reply: str
 
   useEffect(() => {
     if (editing) return;
-    const update = () => setSelection(readSelection());
+    // While the mouse button is held down the selection is still being dragged:
+    // the actions appear only once it is released.
+    let pressed = false;
+    const update = () => { if (!pressed) setSelection(readSelection()); };
+    const down = (event: PointerEvent) => {
+      if (event.target instanceof Element && event.target.closest("[data-quote-ui]")) return;
+      pressed = true;
+      setSelection(undefined);
+    };
+    const up = () => {
+      if (!pressed) return;
+      pressed = false;
+      setSelection(readSelection());
+    };
     document.addEventListener("selectionchange", update);
-    return () => document.removeEventListener("selectionchange", update);
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("pointerup", up, true);
+    document.addEventListener("pointercancel", up, true);
+    return () => {
+      document.removeEventListener("selectionchange", update);
+      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("pointerup", up, true);
+      document.removeEventListener("pointercancel", up, true);
+    };
   }, [editing]);
 
   useDictationShortcut((event, context) => {
@@ -110,6 +131,9 @@ export function QuoteSelection({ onQuote }: { onQuote: (text: string, reply: str
           <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => setEditing("manual")} className={quoteAction}>
             <ArrowBendUpLeft weight="thin" className="size-4" />Responder
           </button>
+          {model && <button type="button" title="Responder dictando" aria-label="Responder dictando" onMouseDown={(event) => event.preventDefault()} onClick={() => setEditing("dictate")} className={`${quoteAction} !px-2`}>
+            <Microphone weight="thin" className="size-4" />
+          </button>}
         </>
       )}
     </div>,
@@ -166,7 +190,7 @@ function QuoteReply({ autoDictate, text, onCancel, onAdd }: { autoDictate: boole
           }}
           className={showingDictation ? "sr-only" : "max-h-36 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1.5 text-sm leading-5 outline-none! focus-visible:outline-none!"} />
         <DictationMic dictation={dictation} />
-        <button type="submit" disabled={dictation.active} className={`${quoteAction} disabled:opacity-40`} title="Añadir al mensaje">
+        <button type="submit" disabled={dictation.phase === "finishing"} className={`${quoteAction} disabled:opacity-40`} title={dictation.active ? "Terminar el dictado y añadir" : "Añadir al mensaje"}>
           <Plus weight="thin" className="size-4" />Añadir
         </button>
       </div>
