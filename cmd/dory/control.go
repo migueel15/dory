@@ -280,7 +280,7 @@ func service(action string) error {
 // Chromium browser, or in the default browser. The desktop app comes first
 // because browsers add their own interface, such as the link status bubble.
 func openWindow(base string) error {
-	for _, b := range []string{"dory-desktop", "Dory"} {
+	for _, b := range []string{"dory-desktop", "Dory", "/opt/Dory/dory-desktop"} {
 		if path, err := exec.LookPath(b); err == nil {
 			cmd := exec.Command(path)
 			detach(cmd)
