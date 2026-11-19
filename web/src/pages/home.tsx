@@ -9,7 +9,8 @@ import { useLaunchForm, ProviderIcon } from "../components/launch-picker";
 import { modelEffort, modelId } from "../effort";
 import { useProject } from "../project";
 import { Chip, ModelPicker, composerArea, composerFrame } from "./composer";
-import { useCommand } from "../components/shortcuts";
+import { useCommand, useShortcuts } from "../components/shortcuts";
+import { formatChord } from "../components/dictation-shortcut";
 import { planMessage } from "../lib/auto-message";
 
 
@@ -19,6 +20,7 @@ import { planMessage } from "../lib/auto-message";
 // toggle on, the chat defines a task instead.
 export function NewThread({ onCreated, centered = false }: { onCreated: (threadId: string) => void; centered?: boolean }) {
   const current = useProject();
+  const getShortcut = useShortcuts();
   const [project, setProject] = useState(current);
   const [text, setText] = useState("");
   const [plan, setPlan] = useState(false);
@@ -108,7 +110,7 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
                 const model = models.find((m) => m.value === value);
                 if (model) form.selectModel(model.provider, model.model, effort);
               }} />
-            <button type="button" aria-pressed={plan} onClick={() => setPlan(!plan)}
+            <button type="button" title={`Modo plan (${formatChord(getShortcut("plan"))})`} aria-pressed={plan} onClick={() => setPlan(!plan)}
               className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium hover:bg-slate-100 aria-pressed:bg-slate-200 dark:hover:bg-raised dark:aria-pressed:bg-raised">
               <ClipboardText className="size-4" />Modo plan
             </button>

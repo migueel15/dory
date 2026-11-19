@@ -49,13 +49,16 @@ export function ThreadView() {
 function useOpenPlanOnAgentEdit(taskId: string | null, panel: SidePanelState) {
   const plan = useQuery({ queryKey: ["plans", taskId, "doc"], queryFn: () => api.plan(taskId!), enabled: !!taskId });
   const seen = useRef<number | undefined>(undefined);
+  const previousTask = useRef(taskId);
+  const newlyLinked = useRef(false);
   const revision = plan.data?.revision;
-  useEffect(() => { seen.current = undefined; }, [taskId]);
+  useEffect(() => { newlyLinked.current = !previousTask.current && !!taskId; previousTask.current = taskId; seen.current = undefined; }, [taskId]);
   useEffect(() => {
     if (revision === undefined) return;
     const before = seen.current;
     seen.current = revision;
-    if (before !== undefined && revision > before && plan.data?.author === "agent" && !(panel.open && panel.active === "plan")) panel.show("plan");
+    if (((before !== undefined && revision > before) || (before === undefined && newlyLinked.current && revision > 0)) && plan.data?.author === "agent" && !(panel.open && panel.active === "plan")) panel.show("plan");
+    if (revision > 0) newlyLinked.current = false;
   }, [revision]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 

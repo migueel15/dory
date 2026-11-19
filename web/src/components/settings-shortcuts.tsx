@@ -14,7 +14,7 @@ export function ShortcutsSettings() {
     {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
     <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 dark:divide-border dark:border-border">
       {commands.map((command) => <li key={command.id} className="flex flex-wrap items-center gap-2 px-4 py-3">
-        <div className="min-w-0 flex-1"><p className="text-sm font-medium">{command.label}</p><p className="text-xs text-slate-500 dark:text-muted">{command.id === "dictation" ? "Según el editor y la selección" : available(command.id) ? "Disponible ahora" : "Disponible según el contexto"}</p></div>
+        <div className="min-w-0 flex-1"><p className="text-sm font-medium">{command.label}</p><p className="text-xs text-slate-500 dark:text-muted">{conflict(command.id, get(command.id)) ? `Conflicto con ${conflict(command.id, get(command.id))!.label}` : command.id === "dictation" ? "Según el editor y la selección" : available(command.id) ? "Disponible ahora" : "Disponible según el contexto"}</p></div>
         <Button type="button" variant="ghost" data-dictation-shortcut-capture aria-pressed={editing === command.id}
           onClick={(e) => { e.currentTarget.focus(); setEditing(command.id); setError(""); }} onBlur={() => setEditing(null)}
           onKeyDown={(e) => {

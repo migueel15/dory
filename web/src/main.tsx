@@ -183,8 +183,12 @@ function Layout() {
 
   useCommand("sidebar", () => fold(!folded));
   const navigateWithoutLosingDraft = async (search: boolean) => {
+    if (search && path.startsWith("/threads")) {
+      window.dispatchEvent(new Event("dory:focus-thread-search"));
+      return;
+    }
     if (document.querySelector('[data-unsaved-draft="true"]')) {
-      window.alert("Hay un borrador sin enviar. Guárdalo o envíalo antes de cambiar de vista.");
+      window.alert("Hay un borrador sin enviar. Envíalo o vacíalo antes de cambiar de vista.");
       return;
     }
     await navigate({ to: "/threads" });

@@ -11,6 +11,7 @@ Los agentes leen todo lo que necesitan del trabajo en curso, pero solo escriben 
 | `list_tasks` | Tareas con su columna, rama, PR, hilos y bloqueos; filtra por proyecto, issue o abiertas |
 | `get_task` | Una tarea con sus planes y dependencias |
 | `save_task` | Crea una tarea o cambia su título, descripción, issue o PR; `depends_on` marca dependencias |
+| `ensure_thread_task` | En un hilo, reutiliza su tarea o crea y vincula una en una transacción; admite reintentos |
 | `plan_read` | Lee el plan de una tarea: un documento Markdown con su número de revisión |
 | `plan_write` | Escribe el plan entero para empezarlo; reescribir uno existente exige la `revision` leída y falla si el plan cambió desde entonces |
 | `plan_edit` | Sustituye un fragmento exacto del plan, que debe aparecer una sola vez |

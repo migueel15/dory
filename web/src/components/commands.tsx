@@ -35,7 +35,13 @@ export function CommandPalette() {
   }, []);
   useCommand("palette", () => setOpen((o) => !o));
   const get = useShortcuts();
-  const go = (to: string) => () => navigate({ to });
+  const go = (to: string) => () => {
+    if (document.querySelector('[data-unsaved-draft="true"]')) {
+      window.alert("Hay un borrador sin enviar. Envíalo o vacíalo antes de cambiar de vista.");
+      return;
+    }
+    void navigate({ to });
+  };
   const nav = "Ir a";
   const commands: Command[] = [
     { id: "idea", group: "Crear", label: "Nueva idea", icon: Lightbulb, hint: "Al inbox", run: () => setIdea(true) },
@@ -62,9 +68,21 @@ function Palette({ commands, onClose }: { commands: Command[]; onClose: () => vo
   const previousFocus = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null);
   useEffect(() => () => { if (!document.activeElement || document.activeElement === document.body) previousFocus.current?.focus(); }, []);
   const [hi, setHi] = useState(0);
+  const get = useShortcuts();
+  const dictation: Command[] = previousFocus.current?.matches("textarea, input, [contenteditable=true]") ? [{
+    id: "dictation", group: "Acciones", label: "Dictado", icon: CommandIcon, hint: formatChord(get("dictation")), run: () => {
+      const target = previousFocus.current;
+      const chord = get("dictation");
+      window.setTimeout(() => {
+        if (!target?.isConnected) return;
+        target.focus();
+        target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, code: chord.code, key: chord.code.replace(/^(Key|Digit)/, "").toLowerCase(), ctrlKey: chord.ctrl, altKey: chord.alt, shiftKey: chord.shift, metaKey: chord.meta }));
+      }, 0);
+    },
+  }] : [];
   const list = useRef<HTMLDivElement>(null);
   const q = query.trim().toLowerCase();
-  const shown = commands.filter((c) => !q || `${c.group} ${c.label}`.toLowerCase().includes(q));
+  const shown = [...dictation, ...commands].filter((c) => !q || `${c.group} ${c.label}`.toLowerCase().includes(q));
   useEffect(() => { setHi(0); }, [q]);
   useEffect(() => { list.current?.querySelector<HTMLElement>("[aria-selected=true]")?.scrollIntoView({ block: "nearest" }); }, [hi]);
   const run = (c?: Command) => { if (!c) return; onClose(); c.run(); };

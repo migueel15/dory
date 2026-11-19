@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useShortcuts } from "./shortcuts";
+import { formatChord } from "./dictation-shortcut";
 import { hasWindowClose } from "../lib/window-close";
 import { ResizeHandle } from "../pages/thread";
 import { ClipboardText, GitDiff, Plus, SidebarSimple, X } from "@phosphor-icons/react";
@@ -40,8 +42,9 @@ export function useSidePanel(threadId: string) {
 export type SidePanelState = ReturnType<typeof useSidePanel>;
 
 export function SidePanelToggle({ panel }: { panel: SidePanelState }) {
+  const getShortcut = useShortcuts();
   return (
-    <button type="button" onClick={panel.toggle} title={panel.open ? "Cerrar el panel lateral" : "Abrir el panel lateral"} aria-label="Panel lateral" aria-pressed={panel.open}
+    <button type="button" onClick={panel.toggle} title={`${panel.open ? "Cerrar el panel lateral" : "Abrir el panel lateral"} (${formatChord(getShortcut("thread-panel"))})`} aria-label="Panel lateral" aria-pressed={panel.open}
       className={`grid size-8 place-items-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised ${panel.open ? "bg-slate-100 dark:bg-raised" : ""}`}>
       <SidebarSimple weight="regular" className="size-4 -scale-x-100" />
     </button>

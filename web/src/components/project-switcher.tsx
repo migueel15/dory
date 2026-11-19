@@ -5,7 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { setProject, useProject } from "../project";
 import { Input } from "./ui";
-import { useCommand } from "./shortcuts";
+import { useCommand, useShortcuts } from "./shortcuts";
+import { formatChord } from "./dictation-shortcut";
 
 // ProjectSwitcher picks the global project. It looks like a sidebar link and opens a
 // searchable menu; "compact" fits the phone top bar.
@@ -13,6 +14,7 @@ import { useCommand } from "./shortcuts";
 // then the caret is clipped, and the icon stays in the icon column.
 export function ProjectSwitcher({ compact = false, folded = false }: { compact?: boolean; folded?: boolean }) {
   const project = useProject();
+  const getShortcut = useShortcuts();
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const current = projects.data?.find((p) => p.id === project);
   // Forget a selection that no longer exists (archived or from another database).
@@ -52,7 +54,7 @@ export function ProjectSwitcher({ compact = false, folded = false }: { compact?:
   const pick = (id: string) => { setProject(id); setOpen(false); trigger.current?.focus(); };
 
   const button = (
-    <button ref={trigger} type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => { setTip(null); setOpen(!open); }} title={folded ? undefined : "Cambiar de proyecto"}
+    <button ref={trigger} type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => { setTip(null); setOpen(!open); }} title={folded ? undefined : `Cambiar de proyecto (${formatChord(getShortcut("project"))})`}
       onMouseEnter={showTip} onMouseLeave={() => setTip(null)} onFocus={showTip} onBlur={() => setTip(null)}
       className={`flex w-full items-center overflow-hidden rounded text-left ${compact ? "min-h-11 px-2" : "h-8 px-[0.4375rem]"} text-sm font-medium text-slate-800 hover:bg-slate-200 dark:text-text dark:hover:bg-raised ${open ? "bg-slate-200 dark:bg-raised" : ""}`}>
       {current ? <FolderSimple weight="duotone" aria-hidden="true" className="mr-2.5 size-[1.125rem] shrink-0 opacity-80" /> : <SquaresFour weight="duotone" aria-hidden="true" className="mr-2.5 size-[1.125rem] shrink-0 opacity-80" />}
