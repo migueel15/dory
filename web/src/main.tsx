@@ -1,4 +1,5 @@
 import { Threads, ThreadsHome } from "./pages/threads";
+import { WindowClose, hasWindowClose } from "./lib/window-close";
 import { UsageQuick } from "./components/usage-quick";
 import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Brain, ChartBar, ChatsCircle, FolderSimple, Gear, GithubLogo, HardDrives, House, IconContext, Kanban, Lightning, List, Moon, SidebarSimple, SignOut, Sun, X } from "@phosphor-icons/react";
@@ -242,7 +243,7 @@ function Layout() {
           <VersionBadge />
         </div>
       </dialog>
-      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /></main></div><CommandPalette /><TooltipHost />
+      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"} ${hasWindowClose && !path.startsWith("/threads") ? "sm:pr-14" : ""}`}><Outlet /></main><WindowClose /></div><CommandPalette /><TooltipHost />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { hasWindowClose } from "../lib/window-close";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { Circle, CircleNotch, GitDiff, Kanban, SidebarSimple, WarningCircle, XCircle } from "@phosphor-icons/react";
@@ -58,7 +59,7 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
   const fold = useThreadsFold();
   if (!t) return <div className="h-12 shrink-0" />;
   return (
-    <div className={`relative z-20 flex shrink-0 flex-wrap items-center gap-2 px-1 pb-2 sm:-mt-2 ${panel.open ? "lg:mr-0 sm:-mr-2" : "sm:-mr-2"}`}>
+    <div className={`relative z-20 flex shrink-0 flex-wrap items-center gap-2 px-1 pb-2 sm:-mt-2 ${hasWindowClose && !panel.open ? "sm:pr-10" : ""} ${panel.open ? "lg:mr-0 sm:-mr-2" : "sm:-mr-2"}`}>
       {fold && <button type="button" onClick={fold.toggle} title={fold.folded ? "Mostrar los hilos" : "Ocultar los hilos"} aria-label={fold.folded ? "Mostrar los hilos" : "Ocultar los hilos"}
         className="-ml-1 hidden size-8 shrink-0 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 sm:grid dark:text-text-secondary dark:hover:bg-raised"><SidebarSimple weight="regular" className="size-4" /></button>}
       {projectName && <span className="flex min-w-0 max-w-[40%] shrink items-center gap-2 text-slate-500 dark:text-muted"><span className="truncate">{projectName}</span><span aria-hidden="true">/</span></span>}

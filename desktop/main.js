@@ -16,8 +16,11 @@ if (process.platform === "linux") {
   process.env.PULSE_PROP = process.env.PULSE_PROP ? `${process.env.PULSE_PROP} ${props}` : props;
 }
 
-const profile = path.join(os.homedir(), ".dory", "desktop");
-if (fs.existsSync(profile) || !fs.existsSync(path.join(app.getPath("userData"), "Local State"))) {
+// DORY_DESKTOP_URL opens the window over another core, such as the dev
+// server, with its own profile and without touching the installed core.
+const devURL = process.env.DORY_DESKTOP_URL;
+const profile = path.join(os.homedir(), ".dory", devURL ? "desktop-dev" : "desktop");
+if (devURL || fs.existsSync(profile) || !fs.existsSync(path.join(app.getPath("userData"), "Local State"))) {
   fs.mkdirSync(profile, { recursive: true, mode: 0o700 });
   app.setPath("userData", profile);
 }
@@ -110,9 +113,9 @@ async function followUpdates(url) {
 }
 
 async function open() {
-  await installCore().catch((err) => console.error("dory: install core:", err.message));
-  const url = await dory(["url"]).catch(() => "http://127.0.0.1:7700");
-  if (!(await healthy(url))) await dory(["start"]);
+  if (!devURL) await installCore().catch((err) => console.error("dory: install core:", err.message));
+  const url = devURL || await dory(["url"]).catch(() => "http://127.0.0.1:7700");
+  if (!devURL && !(await healthy(url))) await dory(["start"]);
   win = new BrowserWindow({
     width: 1400, height: 900, minWidth: 380, minHeight: 500, show: !hidden,
     title: "Dory", backgroundColor: "#0f0f11", autoHideMenuBar: true,
@@ -130,7 +133,7 @@ async function open() {
   // Closing the window hides it: the app stays in the tray, like the core.
   win.on("close", (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
   await win.loadURL(url);
-  followUpdates(url);
+  if (!devURL) followUpdates(url);
 }
 
 // Started at sign-in, the app runs in the background without a window.
