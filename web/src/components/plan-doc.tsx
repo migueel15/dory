@@ -71,7 +71,7 @@ export function PlanDoc({ taskId }: { taskId: string }) {
         <p className="p-6 text-center text-sm text-slate-500 dark:text-muted">Todavía no hay plan. Pide al agente que lo escriba o escríbelo tú.</p>
       ) : (
         <div ref={doc} className="px-5 py-3">
-          <Md onToggle={(line) => toggle.mutate(line)} rehypePlugins={[sourceLines]}>{p.body_md}</Md>
+          <Md onToggle={(line) => toggle.mutate(line)} rehypePlugins={[sourceLines]}>{follow.text}</Md>
           {conflict ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">El plan cambió antes de guardar la casilla; vuelve a marcarla.</p> : <ErrorText error={toggle.error ?? accept.error} />}
         </div>
       )}
@@ -100,45 +100,84 @@ function sourceLines() {
   return (tree: HastNode) => walk(tree);
 }
 
-// changedLines is the range of lines of next (1-based, inclusive) that differ
-// from prev; undefined when nothing changed.
-function changedLines(prev: string, next: string): [number, number] | undefined {
+// changedLines gives the lines (1-based, inclusive) that differ between prev
+// and next, on each side; undefined when nothing changed. A pure insertion or
+// deletion points at the line after it on the side that has no lines.
+function changedLines(prev: string, next: string): { before: [number, number]; after: [number, number] } | undefined {
   const a = prev.split("\n"), b = next.split("\n");
   let start = 0;
   while (start < a.length && start < b.length && a[start] === b[start]) start++;
   if (start === a.length && start === b.length) return;
   let end = 0;
   while (end < a.length - start && end < b.length - start && a[a.length - 1 - end] === b[b.length - 1 - end]) end++;
-  // A pure deletion has no new lines: point at the line after it.
-  return [start + 1, Math.max(start + 1, b.length - end)];
+  return { before: [start + 1, Math.max(start + 1, a.length - end)], after: [start + 1, Math.max(start + 1, b.length - end)] };
 }
 
-// useFollowChanges scrolls to and marks the blocks that changed in each new
-// version of the text. Scrolling by hand pauses it and, once the agent has
+// blocksIn are the innermost rendered blocks over the given source lines, so a
+// list item is found and not its whole list. With none, the next block below.
+function blocksIn(doc: HTMLElement, [from, to]: [number, number]) {
+  const all = [...doc.querySelectorAll<HTMLElement>("[data-ls]")];
+  const hit = all.filter((el) => Number(el.dataset.ls) <= to && Number(el.dataset.le) >= from);
+  const inner = hit.filter((el) => !hit.some((o) => o !== el && el.contains(o)));
+  if (inner.length) return inner;
+  const below = all.find((el) => Number(el.dataset.ls) >= from);
+  return below ? [below] : [];
+}
+
+// reveal scrolls el into view and resolves once it is there.
+function reveal(el: HTMLElement) {
+  return new Promise<void>((done) => {
+    const r = el.getBoundingClientRect();
+    if (r.top >= 80 && r.bottom <= window.innerHeight - 40) { done(); return; }
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    let finished = false;
+    const finish = () => { if (finished) return; finished = true; seen.disconnect(); clearTimeout(timer); setTimeout(done, 120); };
+    const seen = new IntersectionObserver(([e]) => { if (e.intersectionRatio > 0.9 || e.isIntersecting && e.intersectionRect.height >= 120) finish(); }, { threshold: [0.5, 0.9, 1] });
+    seen.observe(el);
+    const timer = setTimeout(finish, 900);
+  });
+}
+
+// useFollowChanges follows the agent through the plan. A new version is not
+// shown at once: the view first scrolls, with the old text, to where it
+// changes, and only then shows the new text and marks the changed blocks.
+// Versions that arrive meanwhile are folded into the latest. Scrolling by
+// hand pauses it (changes then appear in place) and, once the agent has
 // edited, offers to follow again.
 function useFollowChanges(body: string | undefined, doc: RefObject<HTMLDivElement | null>, editing: boolean) {
-  const prev = useRef(body);
+  const [shown, setShown] = useState(body);
+  const latest = useRef(body);
+  latest.current = body;
+  const busy = useRef(false);
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
   // live: the agent has changed the plan while it is on screen, so there is something to follow.
   const [live, setLive] = useState(false);
   useEffect(() => {
-    const before = prev.current;
-    prev.current = body;
-    if (before === undefined || body === undefined || editing || !doc.current) return;
-    const range = changedLines(before, body);
+    if (body === undefined || body === shown || busy.current) return;
+    const range = shown === undefined ? undefined : changedLines(shown, body);
+    if (!range || editing || pausedRef.current || !doc.current) { setShown(body); return; }
+    const target = blocksIn(doc.current, range.before)[0];
+    if (!target) { setShown(body); return; }
+    busy.current = true;
+    reveal(target).then(() => { busy.current = false; setShown(latest.current); });
+  }, [body, shown, editing]); // eslint-disable-line react-hooks/exhaustive-deps
+  const before = useRef(shown);
+  useLayoutEffect(() => {
+    const prev = before.current;
+    before.current = shown;
+    if (prev === undefined || shown === undefined || !doc.current) return;
+    const range = changedLines(prev, shown);
     if (!range) return;
-    const [from, to] = range;
-    const hit = [...doc.current.querySelectorAll<HTMLElement>("[data-ls]")].filter((el) => Number(el.dataset.ls) <= to && Number(el.dataset.le) >= from);
-    // Mark the innermost blocks, so a list item is marked and not its whole list.
-    const marks = hit.filter((el) => !hit.some((o) => o !== el && el.contains(o)));
+    const marks = blocksIn(doc.current, range.after);
     marks.forEach((el) => { el.classList.remove("plan-changed"); void el.offsetWidth; el.classList.add("plan-changed"); });
     if (!marks[0]) return;
     setLive(true);
-    if (!pausedRef.current) marks[0].scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [body]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!pausedRef.current) marks[0].scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [shown]); // eslint-disable-line react-hooks/exhaustive-deps
   return {
+    text: shown ?? body ?? "",
     paused: paused && live,
     pause: () => setPaused(true),
     resume: () => {
