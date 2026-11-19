@@ -33,12 +33,14 @@ chmod +x ~/.local/bin/dory && dory restart
 
 ## App de escritorio
 
-La app de Electron está en `desktop/` y lleva el binario dentro. Basta con instalarla: al abrirla por primera vez copia su núcleo a `~/.local/bin/dory` (en Windows, `%LOCALAPPDATA%\Dory\bin\dory.exe`) y lo deja como servicio de usuario (`dory service install`), así que el núcleo sigue en marcha al cerrar la ventana y arranca con la sesión. Si ya había un `dory` instalado por otra vía, la app lo respeta. En las siguientes versiones actualiza el núcleo que instaló ella. Al cerrar la ventana, la app sigue en segundo plano con un icono en la bandeja del sistema; se abre desde ahí y se cierra con **Salir**. Arranca oculta al iniciar sesión, así que el móvil y la malla siempre encuentran el nodo. Con el AppImage, además, enlaza `~/.local/bin/Dory.AppImage` para que `dory open` y el lanzador abran la app.
+La app de Electron está en `desktop/` y lleva el binario dentro. Basta con instalarla: al abrirla por primera vez copia su núcleo a `~/.local/bin/dory` (en Windows, `%LOCALAPPDATA%\Dory\bin\dory.exe`) y lo deja como servicio de usuario (`dory service install`), así que el núcleo sigue en marcha al cerrar la ventana y arranca con la sesión. Si ya había un `dory` instalado por otra vía, la app lo respeta. En las siguientes versiones actualiza el núcleo que instaló ella. Al cerrar la ventana, la app sigue en segundo plano con un icono en la bandeja del sistema (en Linux necesita un panel con StatusNotifierItem, como KDE, Waybar o Quickshell; en GNOME, la extensión AppIndicator); se abre desde ahí y se cierra con **Salir**. Arranca oculta al iniciar sesión, así que el móvil y la malla siempre encuentran el nodo. Con el AppImage, además, enlaza `~/.local/bin/Dory.AppImage` para que `dory open` y el lanzador abran la app.
 
 ```sh
 go build -o desktop/bin/dory ./cmd/dory
 cd desktop && npm ci && npm run dist
 ```
+
+En Windows, el instalador pide permiso de administrador una vez para abrir en el firewall el puerto de la malla (7710, TCP), por el que entran el móvil y los demás nodos. Las actualizaciones no lo vuelven a pedir.
 
 Genera AppImage en Linux (el único formato que se actualiza solo), .dmg en macOS e instalador NSIS en Windows. Las releases de GitHub las publican ya hechas.
 

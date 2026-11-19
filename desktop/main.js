@@ -1,7 +1,7 @@
 // Dory desktop: a thin window over the core of this machine. The core is a
 // background service; the app starts it when needed and never stops it, so
 // threads keep running with the window closed (requirement 4.4).
-const { app, BrowserWindow, shell, Menu, Tray, dialog } = require("electron");
+const { app, BrowserWindow, shell, Menu, Tray, nativeImage, dialog } = require("electron");
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -151,7 +151,10 @@ function quit() {
 }
 
 function createTray() {
-  tray = new Tray(path.join(__dirname, "build", "icon.png"));
+  // Trays draw small icons: 16 px on Windows and macOS, 22 px on Linux.
+  const size = process.platform === "linux" ? 22 : 16;
+  const icon = nativeImage.createFromPath(path.join(__dirname, "build", "icon.png"));
+  tray = new Tray(icon.resize({ width: size, height: size, quality: "best" }));
   tray.setToolTip("Dory");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Abrir Dory", click: show },

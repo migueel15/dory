@@ -56,7 +56,8 @@
     ],
     "detectUpdateChannel": false,
     "nsis": {
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "include": "build/installer.nsh"
     }
   },
   "devDependencies": {
