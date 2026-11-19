@@ -19,9 +19,12 @@ import { Home } from "./pages/home";
 import { Github } from "./pages/github";
 import { Tasks } from "./pages/tasks";
 import { applyTheme, useTheme } from "./theme";
+import { applyScale, listenZoomKeys } from "./scale";
 import "./index.css";
 
 applyTheme();
+applyScale();
+listenZoomKeys();
 
 const queryClient = new QueryClient({
   // Data counts as fresh for 30 s and stays cached for 30 min: going back to a
