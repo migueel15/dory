@@ -423,7 +423,7 @@ function SidebarFooter({ folded, username, onLogout, controls, update }: { folde
         <Button variant="bare" aria-label="Cerrar sesión" title={`Cerrar sesión (${username})`} onClick={onLogout} className="grid size-8 shrink-0 place-items-center !p-0"><SignOut weight="regular" className="size-5" aria-hidden="true" /></Button>
       </div>
       {/* Below the account: the running commit and, to its right, the update button. */}
-      <div className="flex items-center gap-2">
+      <div className={`flex items-center transition-[gap] duration-200 ${folded ? "gap-0" : "gap-2"}`}>
         <div className={`grid min-w-0 flex-1 transition-[grid-template-rows,opacity] duration-200 ${folded ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]"}`}><div className="overflow-hidden whitespace-nowrap"><VersionBadge /></div></div>
         {update}
       </div>

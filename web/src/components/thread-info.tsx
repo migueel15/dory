@@ -65,14 +65,15 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false }: 
   const where = env?.name ?? mesh.data?.peers.find((p) => p.id === t.node_id)?.name ?? `entorno ${t.node_id.slice(0, 8)}`;
   const stat = diff.data ? diffStat(diff.data.diff) : undefined;
   const usage = node.data?.usage[t.provider] ?? [];
+  // Not positioned: the panel anchors to the thread header, so it opens at its far right edge.
   return (
-    <div ref={wrap} className="relative">
+    <div ref={wrap}>
       <button type="button" onClick={toggle} title="Información del hilo" aria-label="Información del hilo" aria-expanded={shown}
         className={`grid size-8 place-items-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised ${shown ? "bg-slate-100 dark:bg-raised" : ""}`}>
         <Info weight="regular" className="size-4" />
       </button>
       {shown && (
-        <div ref={panel} role="region" aria-label="Información del hilo" className="notif-in absolute right-0 top-10 z-30 w-80 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:divide-border dark:border-border dark:bg-surface">
+        <div ref={panel} role="region" aria-label="Información del hilo" className="notif-in absolute right-1 top-11 z-30 w-80 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:divide-border dark:border-border dark:bg-surface">
           <div>
             <div className={row}><span className="shrink-0 text-slate-500"><EnvIcon icon={env?.icon} os={env?.os} name={where} className="size-4" /></span><span className="min-w-0 flex-1 truncate">{where}</span>
               {t.worktree && <button type="button" onClick={() => copyText(t.worktree)} title={`Copiar la carpeta: ${t.worktree}`} aria-label="Copiar la carpeta"

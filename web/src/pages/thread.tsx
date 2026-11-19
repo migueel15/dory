@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObje
 import { hasWindowClose } from "../lib/window-close";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { Circle, CircleNotch, GitDiff, Kanban, SidebarSimple, WarningCircle, XCircle } from "@phosphor-icons/react";
+import { Circle, CircleNotch, GitDiff, Kanban, WarningCircle, XCircle } from "@phosphor-icons/react";
 import { api } from "../api/client";
 import { useThreadLive } from "../api/live";
 import { Button, ErrorText, pill, uuid } from "../components/ui";
@@ -24,7 +24,9 @@ export function ThreadView() {
   const panel = useSidePanel(threadId);
   const local = useThread(threadId).data?.local;
   return (
-    <div className="flex h-[calc(100dvh-4rem-1px)] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
+    <div className="relative flex h-[calc(100dvh-4rem-1px)] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
+      {/* The panel toggle is pinned to the page corner, so opening the panel never moves it. */}
+      <div className={`absolute right-1 top-0 z-30 sm:-top-2 ${hasWindowClose ? "sm:right-8" : "sm:-right-1"}`}><SidePanelToggle panel={panel} /></div>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Header threadId={threadId} panel={panel} />
         <ThreadChat threadId={threadId} />
@@ -59,9 +61,7 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
   const fold = useThreadsFold();
   if (!t) return <div className="h-12 shrink-0" />;
   return (
-    <div className={`relative z-20 flex shrink-0 flex-wrap items-center gap-2 px-1 pb-2 sm:-mt-2 ${hasWindowClose && !panel.open ? "sm:pr-10" : ""} ${panel.open ? "lg:mr-0 sm:-mr-2" : "sm:-mr-2"}`}>
-      {fold && <button type="button" onClick={fold.toggle} title={fold.folded ? "Mostrar los hilos" : "Ocultar los hilos"} aria-label={fold.folded ? "Mostrar los hilos" : "Ocultar los hilos"}
-        className="-ml-1 hidden size-8 shrink-0 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 sm:grid dark:text-text-secondary dark:hover:bg-raised"><SidebarSimple weight="regular" className="size-4" /></button>}
+    <div className={`relative z-20 flex shrink-0 flex-wrap items-center gap-2 pb-2 pl-1 pr-11 transition-[padding,margin] ${fold ? (fold.folded ? "sm:pl-10" : "sm:pl-2") : ""} duration-300 ease-out motion-reduce:transition-none sm:-mt-2 ${hasWindowClose ? "sm:pr-20" : ""} ${panel.open ? "lg:!pr-1" : ""} ${panel.open ? "lg:mr-0 sm:-mr-2" : "sm:-mr-2"}`}>
       {projectName && <span className="flex min-w-0 max-w-[40%] shrink items-center gap-2 text-slate-500 dark:text-muted"><span className="truncate">{projectName}</span><span aria-hidden="true">/</span></span>}
       {editing ? (
         <form className="min-w-0 flex-1" onSubmit={(e) => { e.preventDefault(); setEditing(false); if (title.trim()) act.mutate({ action: "rename", title: title.trim() }); }}>
@@ -72,7 +72,6 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
       )}
       {t.task_id && <Link to="/tasks" search={{ task: t.task_id } as never} className={`${pill} !px-2`} title="Ver la tarea"><Kanban className="size-4" /></Link>}
       <ThreadInfo t={t} popup={panel.open} diff={panel.open && panel.active === "diff"} toggleDiff={() => (panel.open && panel.active === "diff" ? panel.toggle() : panel.show("diff"))} />
-      <SidePanelToggle panel={panel} />
       <ErrorText error={act.error ?? menu.error} />
       {menu.menu}
     </div>
@@ -118,7 +117,7 @@ function ThreadConversation({ threadId }: { threadId: string }) {
       {t?.local && <QuoteSelection onQuote={quote} />}
       {/* No divider under the header: the conversation fades out as it scrolls under it. */}
       <div aria-hidden="true" className="pointer-events-none absolute left-0 right-3 top-0 z-10 h-10 bg-gradient-to-b from-slate-50 to-transparent dark:from-canvas" />
-      <div ref={scroller} data-scroller onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto pt-10 pb-3 [overflow-anchor:none]">
+      <div ref={scroller} data-scroller onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto pt-10 pb-3 [overflow-anchor:none] [scrollbar-gutter:stable]">
         <div className="mx-auto w-full max-w-[55.2rem] space-y-4 px-3 sm:px-6">
           {t && t.messages.length === 0 && <p className="py-10 text-center text-sm text-slate-500 dark:text-muted">Sin mensajes todavía. Escribe abajo para empezar.</p>}
           {t && <Messages key={t.id} threadId={t.id} messages={t.messages} running={t.running} />}
@@ -127,8 +126,11 @@ function ThreadConversation({ threadId }: { threadId: string }) {
         </div>
       </div>
       <ToEnd away={away} follow={follow} />
-      {pending && <div className="mx-auto w-full max-w-[55.2rem] px-3 sm:px-6"><ModelChangeDivider change={pending} pending /></div>}
-      {t && <Composer t={t} onSent={follow} area={composerInput} quotes={quotes} onRemoveQuotes={removeQuotes} />}
+      {/* The scroller always reserves its 10px scrollbar, so the box leaves the same 10px to line up with the messages. */}
+      <div className="pr-2.5">
+        {pending && <div className="mx-auto w-full max-w-[55.2rem] px-3 sm:px-6"><ModelChangeDivider change={pending} pending /></div>}
+        {t && <Composer t={t} onSent={follow} area={composerInput} quotes={quotes} onRemoveQuotes={removeQuotes} />}
+      </div>
     </section>
   );
 }
@@ -169,11 +171,16 @@ export function ResizeHandle({ panel, width, onResize, min = 320, rest = 420 }: 
         const body = document.body.style, prev = [body.userSelect, body.cursor];
         body.userSelect = "none";
         body.cursor = "col-resize";
+        // The panel animates its width when it opens or closes; while dragging
+        // it must follow the pointer at once, or widening lags behind the content.
+        const el = panel.current, transition = el?.style.transition ?? "";
+        if (el) el.style.transition = "none";
         const start = e.clientX, from = width;
         const right = panel.current?.getBoundingClientRect().right ?? window.innerWidth;
         const move = (ev: PointerEvent) => onResize(Math.max(min, Math.min(from + start - ev.clientX, right - rest)));
         const up = () => {
           [body.userSelect, body.cursor] = prev;
+          if (el) el.style.transition = transition;
           window.removeEventListener("pointermove", move);
           window.removeEventListener("pointerup", up);
           window.removeEventListener("pointercancel", up);

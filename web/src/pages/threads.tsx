@@ -2,7 +2,7 @@ import { ThreadsFold } from "../lib/threads-fold";
 import { useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
-import { Check, FunnelSimple, MagnifyingGlass, Plus, PushPin } from "@phosphor-icons/react";
+import { Check, FunnelSimple, MagnifyingGlass, Plus, PushPin, SidebarSimple } from "@phosphor-icons/react";
 import { api, repoName, type Thread } from "../api/client";
 import { ErrorText } from "../components/ui";
 import { useProject } from "../project";
@@ -86,13 +86,16 @@ export function Threads() {
       .sort((a, b) => (b.pinned_at ? 1 : 0) - (a.pinned_at ? 1 : 0) || (b.last_activity_at ?? b.created_at).localeCompare(a.last_activity_at ?? a.created_at));
   }, [threads.data, repos.data, filter, query, project]);
   return (
-    <div className="flex h-[calc(100dvh-4rem-1px)] min-h-0 sm:h-[calc(100dvh-3rem-2px)]" style={{ "--list-w": `${listWidth}px` } as CSSProperties}>
-      <aside inert={folded} className={`relative ${dragging ? "sm:!transition-none" : ""} min-h-0 w-full shrink-0 flex-col overflow-hidden border-slate-200 sm:-mt-2.5 sm:border-r dark:border-border sm:-ml-4 sm:items-end sm:transition-[width,border-color] sm:duration-300 sm:ease-out motion-reduce:transition-none ${folded ? "sm:w-4 sm:border-transparent" : "sm:w-[var(--list-w)]"} ${threadId ? "hidden sm:flex" : "flex"}`}>
+    <div className="relative flex h-[calc(100dvh-4rem-1px)] min-h-0 sm:h-[calc(100dvh-3rem-2px)]" style={{ "--list-w": `${listWidth}px` } as CSSProperties}>
+      {/* The list toggle is pinned to the page corner: the list slides in under it and pushes the thread aside. */}
+      {threadId && <button type="button" onClick={() => foldList(!folded)} title={folded ? "Mostrar los hilos" : "Ocultar los hilos"} aria-label={folded ? "Mostrar los hilos" : "Ocultar los hilos"}
+        className="absolute -left-2 -top-2 z-30 hidden size-8 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 sm:grid dark:text-text-secondary dark:hover:bg-raised"><SidebarSimple weight="regular" className="size-4" /></button>}
+      <aside inert={folded} className={`relative ${dragging ? "sm:!transition-none" : ""} min-h-0 w-full shrink-0 flex-col overflow-hidden border-slate-200 sm:-mt-2.5 sm:border-r dark:border-border sm:-ml-4 sm:items-end sm:transition-[width,border-color] sm:duration-300 sm:ease-out motion-reduce:transition-none ${folded ? "sm:w-4 sm:!border-r-0" : "sm:w-[var(--list-w)]"} ${threadId ? "hidden sm:flex" : "flex"}`}>
         {!folded && <div role="separator" aria-orientation="vertical" aria-label="Redimensionar lista de hilos" onPointerDown={startDrag} onDoubleClick={() => saveWidth(LIST_W)}
           className="absolute inset-y-0 right-0 z-10 hidden w-1.5 translate-x-1/2 cursor-col-resize hover:bg-accent/40 sm:block" />}
         {/* The content keeps its width while the list slides open or closed. */}
         <div className={`flex min-h-0 w-full flex-1 flex-col sm:w-[var(--list-w)] sm:shrink-0 sm:transition-[opacity,visibility] sm:duration-300 motion-reduce:transition-none ${folded ? "sm:invisible sm:opacity-0" : ""}`}>
-        <div className="flex items-center gap-1.5 px-2 pb-2">
+        <div className={`flex items-center gap-1.5 px-2 pb-2 ${threadId ? "sm:pl-11" : ""}`}>
           <div className="flex min-w-0 flex-1 items-center gap-2 px-2">
             <MagnifyingGlass weight="regular" className="size-4 shrink-0 text-slate-400" />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar hilo…" aria-label="Buscar hilos"
