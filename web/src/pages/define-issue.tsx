@@ -6,6 +6,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { api, repoName } from "../api/client";
 import { Button, ErrorText, Input, Label, Modal } from "../components/ui";
 import { useLaunchForm } from "../components/launch-picker";
+import { autoMessage } from "../lib/auto-message";
 
 // DefineIssueDialog turns an issue into tasks, by hand or with an agent that
 // splits it with the MCP, or asks an agent to resolve a pull request's
@@ -25,9 +26,10 @@ export function DefineIssueDialog({ resolve = false, repo, number, onClose }: { 
   const agent = useMutation({
     mutationFn: () => {
       form.remember();
-      const text = resolve
+      const context = resolve
         ? `Resuelve los conflictos de merge de la pull request #${number} de ${repo}. Usa \`gh pr checkout ${number}\` en un worktree aparte, fusiona la rama base, resuelve los conflictos, ejecuta los tests y sube la rama.`
         : `Analiza la issue #${number} de ${repo} (\`gh issue view ${number} --repo ${repo}\`) y el repositorio. Pártela en tareas pequeñas y bien definidas con la herramienta save_task del MCP de Dory: cada una con qué cambiar y cómo probarlo, issue_number ${number}, el project_id del proyecto y depends_on cuando una deba ir antes que otra. No implementes nada.`;
+      const text = resolve ? autoMessage("pr-conflicts", { repo, pr: number }, context) : autoMessage("issue-tasks", { repo, issue: number }, context);
       return api.createThread({ ...form.value, project_id: registered?.project_id ?? null, repository_id: registered?.id, title: resolve ? `Conflictos de ${repo}#${number}` : `Tareas de ${repo}#${number}`, text });
     },
     onSuccess: (r) => navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } }),

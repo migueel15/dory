@@ -10,7 +10,7 @@ import { useLaunchForm } from "../components/launch-picker";
 import { useProject } from "../project";
 import { StatusDot } from "./thread";
 import { askConfirm } from "../components/confirm";
-import { planPrompt } from "../lib/plan-prompt";
+import { planMessage } from "../lib/auto-message";
 
 // Fixed meaning of each state color (requirement RF-48).
 const TONE = {
@@ -212,7 +212,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const define = useMutation({
     mutationFn: () => {
       form.remember();
-      const text = planPrompt(id, `# ${c!.title}\n\n${c!.description}`);
+      const text = planMessage({ id, title: c!.title, description: c!.description });
       return api.createThread({ ...form.value, project_id: c!.project_id, task_id: id, title: `Definir: ${c!.title}`, text });
     },
     onSuccess: (r) => navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } }),

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowRight, Brain, Question as QuestionIcon, CaretDown, CaretRight, Check, ClipboardText, Copy, FileText, ListChecks, Stop, TerminalWindow, WarningCircle, Wrench, X } from "@phosphor-icons/react";
+import { ArrowDown, ArrowRight, Brain, GitMerge, GitPullRequest, Lightning, Rocket, Question as QuestionIcon, CaretDown, CaretRight, Check, ClipboardText, Copy, FileText, ListChecks, Stop, TerminalWindow, WarningCircle, Wrench, X } from "@phosphor-icons/react";
 import { api, type Attachment, type Message, type TurnModel } from "../api/client";
 import { copyText, defaultUrlTransform, Md } from "../components/ui";
 import { TokenChip, tokenize, type TokenKind } from "../components/composer-tokens";
@@ -10,7 +10,8 @@ import { rehypeFade, useSmoothText } from "../components/stream";
 import { askQuestions, GroupCard, isAsk, TodoCard, ToolCard } from "../components/tool-card";
 import { NativeQuestionCard, QuestionCard } from "../components/question-card";
 import { Link } from "@tanstack/react-router";
-import { parsePlanPrompt } from "../lib/plan-prompt";
+import { parseAutoMessage, type AutoMessage } from "../lib/auto-message";
+import { RefLink } from "../components/refs";
 
 // The look of the conversation, kept from Dory v1: user
 // bubbles, answers as plain markdown, and each finished turn's work folded
@@ -206,26 +207,51 @@ export function MessageParts({ text }: { text: string }) {
   ))}</>;
 }
 
-// PlanStart shows the first message of a plan-mode thread: a card that names
-// the task being defined, with the user's words and not the agent's
-// instructions.
-function PlanStart({ taskId, body }: { taskId: string; body: string }) {
+// AUTO names each kind of message Dory writes for the user, with its icon.
+const AUTO: Record<string, { label: string; hint: string; icon: typeof ClipboardText }> = {
+  plan: { label: "Modo plan", hint: "definir la tarea antes de implementarla", icon: ClipboardText },
+  implement: { label: "Implementar", hint: "trabajar la tarea en su rama", icon: Rocket },
+  "issue-tasks": { label: "Tareas de la issue", hint: "partir la issue en tareas", icon: ListChecks },
+  "pr-conflicts": { label: "Conflictos", hint: "resolver los conflictos de la pull request", icon: GitMerge },
+  "pr-review": { label: "Revisión", hint: "revisar la pull request", icon: GitPullRequest },
+  "pr-question": { label: "Pregunta sobre el código", hint: "", icon: GitPullRequest },
+};
+
+// AutoStart shows a message Dory wrote for the user: what it is for, a link
+// to what it is about and the user's own words. The context the agent got
+// folds below.
+function AutoStart({ msg }: { msg: AutoMessage }) {
+  const [open, setOpen] = useState(false);
+  const meta = AUTO[msg.kind] ?? { label: "Mensaje de Dory", hint: "", icon: Lightning };
+  const Icon = meta.icon;
+  const { task, title, repo, pr, issue, path, start, end } = msg.attrs;
+  const ref = pr ? `#${pr}` : issue ? `#${issue}` : "";
+  const where = path ? `${path}${start && start !== "0" ? `:${start}${end && end !== start ? `-${end}` : ""}` : ""}` : "";
   return (
     <div className="w-full max-w-[85%] overflow-hidden rounded-2xl rounded-br-md border border-slate-200 bg-white dark:border-border dark:bg-surface">
-      <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-2 text-sm dark:border-border">
-        <ClipboardText className="size-4 shrink-0 text-accent dark:text-accent-text" aria-hidden="true" />
-        <span className="font-semibold">Modo plan</span>
-        <span className="text-slate-500 dark:text-muted">· definir la tarea antes de implementarla</span>
-        <Link to="/tasks" search={{ task: taskId } as never} className="ml-auto text-xs text-slate-500 hover:underline dark:text-muted">Ver tarea</Link>
+      <div className="flex min-w-0 items-center gap-2 border-b border-slate-200 px-4 py-2 text-sm dark:border-border">
+        <Icon className="size-4 shrink-0 text-accent dark:text-accent-text" aria-hidden="true" />
+        <span className="shrink-0 font-semibold">{meta.label}</span>
+        <span className="min-w-0 truncate text-slate-500 dark:text-muted">{title ? `· ${title}` : where ? `· ${where}` : meta.hint ? `· ${meta.hint}` : ""}</span>
+        <span className="ml-auto shrink-0 text-xs text-slate-500 dark:text-muted">
+          {task && <Link to="/tasks" search={{ task } as never} className="hover:underline">Ver tarea</Link>}
+          {repo && ref && <RefLink href={`https://github.com/${repo}/${pr ? "pull" : "issues"}/${pr ?? issue}`} className="hover:underline">{repo}{ref}</RefLink>}
+        </span>
       </div>
-      {body.trim() && <div className="px-4 py-2.5"><MessageParts text={body} /></div>}
+      {msg.body.trim() && <div className="px-4 py-2.5"><MessageParts text={msg.body} /></div>}
+      <div className="border-t border-slate-200 px-4 py-1.5 dark:border-border">
+        <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
+          {open ? <CaretDown className="size-3" /> : <CaretRight className="size-3" />}Contexto enviado al agente
+        </button>
+        {open && <div className="mt-1 pb-1 text-[13px] text-slate-600 dark:text-muted [&_*]:!text-inherit"><Md>{msg.context}</Md></div>}
+      </div>
     </div>
   );
 }
 
 function UserMessageBody({ text }: { text: string }) {
-  const plan = parsePlanPrompt(text);
-  if (plan) return <PlanStart taskId={plan.taskId} body={plan.body} />;
+  const auto = parseAutoMessage(text);
+  if (auto) return <AutoStart msg={auto} />;
   const parts = splitMessageQuotes(text);
   const hasQuotes = parts.some((part) => part.kind === "quote");
   if (!hasQuotes) {

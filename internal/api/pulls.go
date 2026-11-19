@@ -148,7 +148,12 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 		}
 		var b strings.Builder
 		b.WriteString(first)
+		attrs := map[string]string{"repo": repo, "pr": fmt.Sprint(n)}
 		if body.Path != "" {
+			attrs["path"] = body.Path
+			if body.Start > 0 {
+				attrs["start"], attrs["end"] = fmt.Sprint(body.Start), fmt.Sprint(body.End)
+			}
 			if body.Start > 0 {
 				fmt.Fprintf(&b, "Sobre `%s` líneas %d-%d:\n", body.Path, body.Start, body.End)
 			} else {
@@ -158,9 +163,18 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 				fmt.Fprintf(&b, "```\n%s\n```\n", body.Snippet)
 			}
 		}
-		b.WriteString(body.Question)
-		if strings.TrimSpace(b.String()) != "" {
-			if err = s.Runtime.Send(ctx, t.ID, b.String()); err != nil {
+		// The first message and any question about some code carry their
+		// context in a block; a plain follow-up question goes as typed.
+		text := body.Question
+		if context := b.String(); strings.TrimSpace(context) != "" {
+			kind := "pr-review"
+			if body.Path != "" {
+				kind = "pr-question"
+			}
+			text = autoMessage(kind, attrs, context, body.Question)
+		}
+		if strings.TrimSpace(text) != "" {
+			if err = s.Runtime.Send(ctx, t.ID, text); err != nil {
 				writeDataError(w, err)
 				return
 			}

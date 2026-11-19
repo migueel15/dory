@@ -431,7 +431,9 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 func (s *Server) taskPrompt(ctx context.Context, t data.Task) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Implementa esta tarea de Dory (id %s) en la rama %s.\n\n# %s\n\n%s\n", t.ID, t.Branch, t.Title, t.Description)
+	issue := ""
 	if t.IssueNumber != nil {
+		issue = fmt.Sprint(*t.IssueNumber)
 		fmt.Fprintf(&b, "\nIssue de GitHub: #%d.\n", *t.IssueNumber)
 	}
 	plans, _ := s.Store.Plans().List(ctx, data.Filter{Fields: map[string]any{"task_id": t.ID}})
@@ -445,5 +447,5 @@ func (s *Server) taskPrompt(ctx context.Context, t data.Task) string {
 		fmt.Fprintf(&b, "\nPlan aceptado:\n%s\n", accepted.Sections)
 	}
 	b.WriteString("\nUsa el MCP de Dory para leer el contexto del proyecto y guardar lo que aprendas.\n")
-	return b.String()
+	return autoMessage("implement", map[string]string{"task": t.ID, "title": t.Title, "branch": t.Branch, "issue": issue}, b.String(), "")
 }

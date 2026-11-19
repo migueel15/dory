@@ -9,7 +9,7 @@ import { useLaunchForm, ProviderIcon } from "../components/launch-picker";
 import { modelEffort, modelId } from "../effort";
 import { useProject } from "../project";
 import { Chip, ModelPicker, composerArea, composerFrame } from "./composer";
-import { planPrompt } from "../lib/plan-prompt";
+import { planMessage } from "../lib/auto-message";
 
 
 // NewThread is the chat box of the start screen (requirement 13.2): the
@@ -44,7 +44,7 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
       const body = draft.trim();
       if (plan) {
         const task = await api.tasks.create({ project_id: project || null, title: body.split("\n")[0].slice(0, 80), description: body });
-        return api.createThread({ ...form.value, ...workspace, project_id: project || null, task_id: task.id, title: `Definir: ${task.title}`, text: planPrompt(task.id, body) });
+        return api.createThread({ ...form.value, ...workspace, project_id: project || null, task_id: task.id, title: `Definir: ${task.title}`, text: planMessage({ id: task.id, title: task.title }, body) });
       }
       return api.createThread({ ...form.value, ...workspace, project_id: project || null, text: body });
     },
