@@ -11,7 +11,8 @@ type Price struct {
 // Update it here when the providers change their prices; a model missing
 // from the table counts its tokens but no cost. Cache writes are the 5 minute
 // rate (1.25× input) and cache reads 0.1× input unless the provider lists
-// another value.
+// another value. OpenAI models use the standard tier for prompts up to 272K
+// tokens, with the 30 minute cache write.
 var prices = map[string]Price{
 	"claude-fable-5-2":  {8, 40, 10, 0.20},
 	"claude-mythos-5-2": {8, 40, 10, 0.20},
@@ -29,6 +30,19 @@ var prices = map[string]Price{
 	"claude-sonnet-4":   {3, 15, 3.75, 0.3},
 	"claude-haiku-5-5":  {0.10, 0.50, 0.125, 0.01},
 	"claude-haiku-4-5":  {1, 5, 1.25, 0.1},
+
+	"gpt-6.2-astra": {8, 40, 10, 0.40},
+	"gpt-6.2-sol":   {2, 10, 2.5, 0.10},
+	"gpt-6.1-terra": {1, 5, 1.25, 0.05},
+	"gpt-6.1-sol":   {2, 10, 2.5, 0.10},
+	"gpt-6-astra":   {10, 50, 12.5, 1},
+	"gpt-6-sol":     {2, 10, 2.5, 0.20},
+	"gpt-6-luna":    {0.10, 0.50, 0.125, 0.01},
+	"gpt-5.6-sol":   {4, 20, 5, 0.40},
+	"gpt-5.6-terra": {2, 12, 2.5, 0.20},
+	"gpt-5.6-luna":  {0.20, 1.20, 0.25, 0.02},
+	"gpt-5.5":       {5, 30, 0, 0.50},
+	"gpt-5.4":       {2.5, 15, 0, 0.25},
 }
 
 // priceFor finds the price of a model by the longest matching id prefix, so
