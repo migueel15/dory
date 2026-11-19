@@ -9,7 +9,7 @@ import { api, COLUMN_LABELS, repoName, type Card, type Column, type Stage } from
 import { Button, Card as UiCard, ErrorText, Input, Label, Md, Modal, Select } from "../components/ui";
 import { useLaunchForm } from "../components/launch-picker";
 import { useProject } from "../project";
-import { StatusDot } from "./thread";
+import { ModelLogo } from "../components/model-logo";
 import { askConfirm } from "../components/confirm";
 import { planMessage } from "../lib/auto-message";
 
@@ -282,8 +282,13 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
             <h3 className={heading}><Chats className="size-4" />Hilos</h3>
             {c.threads.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">Ninguno todavía.</p>}
             {c.threads.map((t) => (
-              <Link key={t.id} to="/threads/$threadId" params={{ threadId: t.id }} className={row}>
-                <StatusDot status={t.status} /><span className="min-w-0 flex-1 wrap-break-word">{t.title}</span><span className="text-xs text-slate-500">{t.provider}</span><CaretRight className="size-3 shrink-0 text-slate-500" />
+              <Link key={t.id} to="/threads/$threadId" params={{ threadId: t.id }} className={`${row} min-h-10 gap-3`}>
+                <ThreadDot status={t.status} />
+                <span className="min-w-0 flex-1 truncate" title={t.title}>{t.title || "Hilo"}</span>
+                <span role="img" aria-label={t.provider} title={t.provider} className="shrink-0">
+                  <ModelLogo driver={t.provider} compact />
+                </span>
+                <CaretRight aria-hidden="true" className="size-3 shrink-0 text-slate-500" />
               </Link>
             ))}
           </section>
