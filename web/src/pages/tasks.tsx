@@ -20,7 +20,7 @@ const TONE = {
 
 // slot is the single state icon of a card (requirement RF-47), with its meaning for the tooltip.
 function slot(c: Card): { icon: React.ReactNode; label: string } {
-  if (c.threads.some((t) => t.status === "working")) return { icon: <CircleNotch className={`size-4 animate-spin ${TONE.working}`} />, label: "Un agente está trabajando" };
+  if (c.threads.some((t) => t.status === "working")) return { icon: <CircleNotch weight="regular" className={`size-4 animate-spin ${TONE.working}`} />, label: "Un agente está trabajando" };
   const pull = c.pull;
   if (c.pr_state === "merged") return { icon: <GitMerge className={`size-4 ${TONE.merged}`} weight="fill" />, label: "PR fusionada" };
   if (c.pr_state === "closed") return { icon: <GitPullRequest className={`size-4 ${TONE.idle}`} />, label: "PR cerrada sin fusionar" };
@@ -62,7 +62,7 @@ export function Tasks() {
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <h2 className="font-semibold">Kanban <span className="hidden text-xs font-normal text-slate-500 dark:text-muted sm:inline">(clic para abrir · arrastra para cambiar de estado)</span></h2>
-        <Button className="ml-auto" onClick={() => setAdding(true)}><Plus className="size-4" />Nueva tarea</Button>
+        <Button className="ml-auto" onClick={() => setAdding(true)}><Plus weight="regular" className="size-4" />Nueva tarea</Button>
       </div>
       <ErrorText error={board.error ?? move.error} />
       <div className="flex flex-col gap-3 pb-2 sm:flex-row sm:overflow-x-auto">
@@ -277,7 +277,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
             return (
               <div key={d.depends_on_id} className="flex items-center gap-2 py-1 text-sm">
                 <span className={`min-w-0 flex-1 truncate ${c.blockers.includes(d.depends_on_id) ? "" : "text-slate-400 line-through"}`}>{o?.title ?? d.depends_on_id}</span>
-                <button type="button" aria-label="Quitar dependencia" onClick={() => dep.mutate({ other: d.depends_on_id, add: false })}><X className="size-4" /></button>
+                <button type="button" aria-label="Quitar dependencia" onClick={() => dep.mutate({ other: d.depends_on_id, add: false })}><X weight="regular" className="size-4" /></button>
               </div>
             );
           })}

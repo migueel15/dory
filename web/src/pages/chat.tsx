@@ -321,7 +321,7 @@ function SentFiles({ threadId, detail }: { threadId: string; detail?: string }) 
           className="m-auto max-h-[92dvh] max-w-[94vw] overflow-hidden rounded-xl bg-white text-slate-900 backdrop:bg-black/75 dark:bg-surface dark:text-text">
           <div className="flex items-center justify-between gap-4 px-3 py-2">
             <span className="min-w-0 truncate text-sm">{image.name}</span>
-            <button type="button" aria-label="Cerrar imagen" onClick={() => dialog.current?.close()} className={`${iconBtn} shrink-0`}><X className="size-4" /></button>
+            <button type="button" aria-label="Cerrar imagen" onClick={() => dialog.current?.close()} className="grid size-7 shrink-0 place-items-center text-slate-400 hover:text-slate-900 dark:hover:text-white"><X weight="regular" className="size-4" /></button>
           </div>
           <img src={api.attachmentUrl(threadId, image.id)} alt={image.name} className="max-h-[82dvh] max-w-full object-contain" />
         </dialog>

@@ -75,7 +75,7 @@ function Palette({ commands, onClose }: { commands: Command[]; onClose: () => vo
     <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 p-2 pt-[15vh] sm:p-4 sm:pt-[15vh]" onClick={onClose}>
       <div role="dialog" aria-modal="true" aria-label="Comandos" className="notif-in w-full max-w-lg overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-border dark:bg-surface" onClick={(e) => e.stopPropagation()}>
         <div className="relative border-b border-slate-200 p-1.5 dark:border-border">
-          <MagnifyingGlass aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <MagnifyingGlass weight="regular" aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
           <Input bare autoFocus value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={key} placeholder="Buscar comando…" aria-label="Buscar comando" className="py-2 pl-8 pr-2" />
         </div>
         <div ref={list} role="listbox" className="max-h-80 overflow-auto p-1">

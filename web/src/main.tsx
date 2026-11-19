@@ -218,7 +218,7 @@ function Layout() {
           <div>
             <h2 id="mobile-navigation-title" className="flex items-center gap-2 font-bold">Dory<DevBadge /></h2>
           </div>
-          <button type="button" autoFocus aria-label="Cerrar menú" onClick={() => setMenu(false)} className="grid size-11 place-items-center rounded-lg hover:bg-slate-100 dark:hover:bg-raised">
+          <button type="button" autoFocus aria-label="Cerrar menú" onClick={() => setMenu(false)} className="grid size-11 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
             <X weight="regular" className="size-5" aria-hidden="true" />
           </button>
         </div>

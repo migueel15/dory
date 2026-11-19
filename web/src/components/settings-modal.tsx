@@ -43,8 +43,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             <span className="text-slate-500 dark:text-muted">Ajustes</span>
             <span className="text-slate-400">/</span>
             <span className="font-semibold">{section.label}</span>
-            <button type="button" aria-label="Cerrar" onClick={onClose} className="ml-auto grid size-8 place-items-center rounded text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">
-              <X className="size-4" aria-hidden="true" />
+            <button type="button" aria-label="Cerrar" onClick={onClose} className="ml-auto grid size-8 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
+              <X weight="regular" className="size-4" aria-hidden="true" />
             </button>
           </header>
           <div className="min-h-0 flex-1 overflow-auto p-5 sm:p-8">

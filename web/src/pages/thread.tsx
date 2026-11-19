@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { Circle, CircleNotch, GitDiff, Kanban, WarningCircle, XCircle } from "@phosphor-icons/react";
+import { Circle, CircleNotch, GitDiff, Kanban, SidebarSimple, WarningCircle, XCircle } from "@phosphor-icons/react";
 import { api } from "../api/client";
 import { useThreadLive } from "../api/live";
 import { Button, ErrorText, pill, uuid } from "../components/ui";
@@ -14,6 +14,7 @@ import { setDiffBase, useDiffBase } from "../lib/diff-base";
 import { addDraftQuote, removeDraftQuotes, useDraftQuotes } from "../lib/draft-quotes";
 import { ThreadInfo } from "../components/thread-info";
 import { useThreadMenu } from "../components/thread-menu";
+import { useThreadsFold } from "../lib/threads-fold";
 import { SidePanel, SidePanelToggle, useSidePanel, type SidePanelState } from "../components/side-panel";
 
 // ThreadView is a whole thread page: header, chat and, on demand, its changes.
@@ -54,9 +55,12 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
   const projectName = t?.project_id ? projects.data?.find((p) => p.id === t.project_id)?.name : undefined;
   // Opening a thread marks it as read.
   useEffect(() => { if (t && !t.read_at && t.status !== "working") act.mutate({ action: "read" }); }, [t?.id, t?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fold = useThreadsFold();
   if (!t) return <div className="h-12 shrink-0" />;
   return (
-    <div className="relative z-20 flex shrink-0 flex-wrap items-center gap-2 px-3 py-2">
+    <div className={`relative z-20 flex shrink-0 flex-wrap items-center gap-2 px-1 pb-2 sm:-mt-2 ${panel.open ? "lg:mr-0 sm:-mr-2" : "sm:-mr-2"}`}>
+      {fold && <button type="button" onClick={fold.toggle} title={fold.folded ? "Mostrar los hilos" : "Ocultar los hilos"} aria-label={fold.folded ? "Mostrar los hilos" : "Ocultar los hilos"}
+        className="-ml-1 hidden size-8 shrink-0 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 sm:grid dark:text-text-secondary dark:hover:bg-raised"><SidebarSimple weight="regular" className="size-4" /></button>}
       {projectName && <span className="flex min-w-0 max-w-[40%] shrink items-center gap-2 text-slate-500 dark:text-muted"><span className="truncate">{projectName}</span><span aria-hidden="true">/</span></span>}
       {editing ? (
         <form className="min-w-0 flex-1" onSubmit={(e) => { e.preventDefault(); setEditing(false); if (title.trim()) act.mutate({ action: "rename", title: title.trim() }); }}>
@@ -66,7 +70,7 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
         <h1 className="min-w-0 flex-1 cursor-text truncate font-semibold" title={`${t.title} · doble clic para renombrar`} onDoubleClick={() => { setTitle(t.title); setEditing(true); }} onContextMenu={menu.open}>{t.title || "Hilo"}</h1>
       )}
       {t.task_id && <Link to="/tasks" search={{ task: t.task_id } as never} className={`${pill} !px-2`} title="Ver la tarea"><Kanban className="size-4" /></Link>}
-      <ThreadInfo t={t} diff={panel.open && panel.active === "diff"} toggleDiff={() => (panel.open && panel.active === "diff" ? panel.toggle() : panel.show("diff"))} />
+      <ThreadInfo t={t} popup={panel.open} diff={panel.open && panel.active === "diff"} toggleDiff={() => (panel.open && panel.active === "diff" ? panel.toggle() : panel.show("diff"))} />
       <SidePanelToggle panel={panel} />
       <ErrorText error={act.error ?? menu.error} />
       {menu.menu}
@@ -75,7 +79,7 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
 }
 
 export function StatusDot({ status }: { status: string }) {
-  if (status === "working") return <CircleNotch className="size-4 shrink-0 animate-spin text-blue-500" aria-label="Trabajando" />;
+  if (status === "working") return <CircleNotch weight="regular" className="size-4 shrink-0 animate-spin text-blue-500" aria-label="Trabajando" />;
   if (status === "waiting") return <WarningCircle className="size-4 shrink-0 text-orange-500" weight="fill" aria-label="Te necesita" />;
   if (status === "error") return <XCircle className="size-4 shrink-0 text-red-500" weight="fill" aria-label="Error" />;
   return <Circle className="size-3 shrink-0 text-slate-400" weight="fill" aria-label="Inactivo" />;
@@ -112,7 +116,7 @@ function ThreadConversation({ threadId }: { threadId: string }) {
     <section className="relative flex min-h-0 flex-1 flex-col">
       {t?.local && <QuoteSelection onQuote={quote} />}
       {/* No divider under the header: the conversation fades out as it scrolls under it. */}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-10 h-10 bg-gradient-to-b from-slate-50 to-transparent dark:from-canvas" />
+      <div aria-hidden="true" className="pointer-events-none absolute left-0 right-3 top-0 z-10 h-10 bg-gradient-to-b from-slate-50 to-transparent dark:from-canvas" />
       <div ref={scroller} data-scroller onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto pt-10 pb-3 [overflow-anchor:none]">
         <div className="mx-auto w-full max-w-[55.2rem] space-y-4 px-3 sm:px-6">
           {t && t.messages.length === 0 && <p className="py-10 text-center text-sm text-slate-500 dark:text-muted">Sin mensajes todavía. Escribe abajo para empezar.</p>}

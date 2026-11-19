@@ -1,7 +1,8 @@
+import { ThreadsFold } from "../lib/threads-fold";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
-import { ChatsCircle, Check, FunnelSimple, MagnifyingGlass, Plus, PushPin, SidebarSimple } from "@phosphor-icons/react";
+import { ChatsCircle, Check, FunnelSimple, MagnifyingGlass, Plus, PushPin } from "@phosphor-icons/react";
 import { api, repoName, type Thread } from "../api/client";
 import { ErrorText } from "../components/ui";
 import { useProject } from "../project";
@@ -65,26 +66,22 @@ export function Threads() {
   }, [threads.data, repos.data, filter, query, project]);
   return (
     <div className="flex h-[calc(100dvh-4rem-1px)] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
-      {folded && <div className="hidden shrink-0 border-r border-slate-200 p-2 sm:block dark:border-border">
-        <button type="button" onClick={() => foldList(false)} title="Mostrar los hilos" aria-label="Mostrar los hilos"
-          className="grid size-9 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised"><SidebarSimple weight="regular" className="size-4" /></button>
-      </div>}
-      <aside className={`min-h-0 w-full shrink-0 flex-col border-slate-200 sm:w-80 sm:border-r dark:border-border ${threadId ? (folded ? "hidden" : "hidden sm:flex") : "flex"}`}>
-        <div className="flex items-center gap-1.5 p-2">
-          {threadId && <button type="button" onClick={() => foldList(true)} title="Ocultar los hilos" aria-label="Ocultar los hilos"
-            className="hidden size-9 shrink-0 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 sm:grid dark:text-text-secondary dark:hover:bg-raised"><SidebarSimple weight="regular" className="size-4" /></button>}
-          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 focus-within:border-slate-400 dark:border-border dark:bg-surface dark:focus-within:border-muted">
-            <MagnifyingGlass className="size-4 shrink-0 text-slate-400" />
+      <aside inert={folded} className={`min-h-0 w-full shrink-0 flex-col overflow-hidden border-slate-200 sm:-mt-2.5 sm:border-r dark:border-border sm:-ml-4 sm:items-end sm:transition-[width,border-color] sm:duration-300 sm:ease-out motion-reduce:transition-none ${folded ? "sm:w-4 sm:border-transparent" : "sm:w-[21rem]"} ${threadId ? "hidden sm:flex" : "flex"}`}>
+        {/* The content keeps its width while the list slides open or closed. */}
+        <div className={`flex min-h-0 w-full flex-1 flex-col sm:w-[21rem] sm:shrink-0 sm:transition-[opacity,visibility] sm:duration-300 motion-reduce:transition-none ${folded ? "sm:invisible sm:opacity-0" : ""}`}>
+        <div className="flex items-center gap-1.5 px-2 pb-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 px-2">
+            <MagnifyingGlass weight="regular" className="size-4 shrink-0 text-slate-400" />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar hilo…" aria-label="Buscar hilos"
               className="min-h-9 w-full bg-transparent text-sm !outline-none placeholder:text-slate-400" />
           </div>
           <div className="relative shrink-0">
             {filterOpen && <div className="fixed inset-0 z-10" onClick={() => setFilterOpen(false)} />}
             <button type="button" onClick={() => setFilterOpen((v) => !v)} title={`Filtro: ${FILTERS[filter]}`} aria-label="Filtrar hilos" aria-haspopup="menu" aria-expanded={filterOpen}
-              className={`relative grid size-9 place-items-center rounded-lg border border-slate-200 hover:bg-slate-100 dark:border-border dark:hover:bg-raised ${filter === "active" ? "text-slate-600 dark:text-text-secondary" : "text-slate-900 dark:text-white"}`}>
+              className={`relative grid size-8 place-items-center rounded-lg hover:bg-slate-100 dark:hover:bg-raised ${filter === "active" ? "text-slate-600 dark:text-text-secondary" : "text-slate-900 dark:text-white"}`}>
               <FunnelSimple weight={filter === "active" ? "regular" : "fill"} className="size-4" />
             </button>
-            {filterOpen && <div role="menu" className="absolute right-0 top-10 z-20 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-border dark:bg-surface">
+            {filterOpen && <div role="menu" className="absolute right-0 top-9 z-20 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-border dark:bg-surface">
               {(Object.keys(FILTERS) as Filter[]).map((f) => (
                 <button key={f} type="button" role="menuitemradio" aria-checked={filter === f} onClick={() => { setFilter(f); setFilterOpen(false); }}
                   className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised">
@@ -94,7 +91,7 @@ export function Threads() {
             </div>}
           </div>
           <Link to="/threads" title="Nuevo hilo" aria-label="Nuevo hilo" activeOptions={{ exact: true }}
-            className="grid size-9 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-border dark:text-text-secondary dark:hover:bg-raised"><Plus weight="regular" className="size-4" /></Link>
+            className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised"><Plus weight="regular" className="size-4" /></Link>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-1">
           <ErrorText error={threads.error} />
@@ -119,8 +116,9 @@ export function Threads() {
           ))}</ul>}
           {filter !== "external" && threads.isSuccess && shown.length === 0 && <p className="p-3 text-sm text-slate-500 dark:text-muted">No hay hilos aquí.</p>}
         </div>
+        </div>
       </aside>
-      <section className={`min-h-0 min-w-0 flex-1 ${threadId ? "flex flex-col" : "hidden sm:flex sm:flex-col"}`}><Outlet /></section>
+      <section className={`min-h-0 min-w-0 flex-1 ${folded ? "sm:-ml-2" : ""} sm:transition-[margin] sm:duration-300 sm:ease-out ${threadId ? "flex flex-col" : "hidden sm:flex sm:flex-col"}`}><ThreadsFold.Provider value={threadId ? { folded, toggle: () => foldList(!folded) } : null}><Outlet /></ThreadsFold.Provider></section>
     </div>
   );
 }

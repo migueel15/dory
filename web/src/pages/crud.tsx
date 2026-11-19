@@ -32,7 +32,7 @@ export function Memories() {
   const set = (patch: Record<string, string | undefined>) => navigate({ to: "/memories", search: { ...search, ...patch } as never, replace: true });
   return (
     <div className="space-y-3">
-      <PageHeader title="Memorias" subtitle="Lo que los agentes recuerdan entre sesiones. Se replica entre nodos."><Button onClick={() => setEditing("new")}><Plus className="size-4" />Nueva</Button></PageHeader>
+      <PageHeader title="Memorias" subtitle="Lo que los agentes recuerdan entre sesiones. Se replica entre nodos."><Button onClick={() => setEditing("new")}><Plus weight="regular" className="size-4" />Nueva</Button></PageHeader>
       <div className="flex flex-wrap gap-2">
         <Input className="max-w-xs" value={search.q ?? ""} onChange={(e) => set({ q: e.target.value || undefined })} placeholder="Buscar por texto o label" />
         <Select value={search.kind ?? ""} onChange={(v) => set({ kind: v || undefined })} options={[{ value: "", label: "Todos los tipos" }, ...Object.entries(KINDS).map(([value, label]) => ({ value, label }))]} />

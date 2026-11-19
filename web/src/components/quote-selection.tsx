@@ -150,7 +150,7 @@ function QuoteReply({ autoDictate, text, onCancel, onAdd }: { autoDictate: boole
     <form data-dictation-panel onSubmit={(event) => { event.preventDefault(); add(); }}>
       <div className="mb-2 flex items-start gap-2">
         <blockquote className="line-clamp-2 min-w-0 flex-1 border-l-2 border-slate-300 pl-2 text-sm text-slate-600 dark:border-border-strong dark:text-muted">{text}</blockquote>
-        <button type="button" onClick={onCancel} title="Cancelar respuesta" aria-label="Cancelar respuesta" className={quoteAction}>
+        <button type="button" onClick={onCancel} title="Cancelar respuesta" aria-label="Cancelar respuesta" className="grid size-8 shrink-0 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
           <X weight="thin" className="size-4" />
         </button>
       </div>

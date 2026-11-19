@@ -71,7 +71,7 @@ export function ProjectSwitcher({ compact = false, folded = false }: { compact?:
       {open && createPortal(
         <div ref={panel} style={pos} className="notif-in fixed z-[100] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-border dark:bg-surface">
           <div className="relative border-b border-slate-200 p-1.5 dark:border-border">
-            <MagnifyingGlass aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <MagnifyingGlass weight="regular" aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <Input bare autoFocus value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && options[0] && pick(options[0].id)} placeholder="Buscar proyecto…" aria-label="Buscar proyecto" className="py-1.5 pl-8 pr-2" />
           </div>
           <div role="listbox" className="max-h-72 overflow-auto p-1">

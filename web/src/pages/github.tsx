@@ -313,7 +313,7 @@ export function Github() {
             ))}
           </Segmented>
           <label className="relative min-w-48 flex-1">
-            <MagnifyingGlass aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <MagnifyingGlass weight="regular" aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Buscar por título, repo, autor o etiqueta…" aria-label="Buscar"
               className="min-h-9 pl-8" />
           </label>

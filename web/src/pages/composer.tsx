@@ -166,7 +166,7 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
           }}
           className="absolute left-0 z-20 w-[min(36rem,calc(100vw-4.5rem))] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-border dark:bg-surface">
           <div className="flex items-center gap-2 border-b border-slate-200 px-3 dark:border-border">
-            <MagnifyingGlass className="size-4 shrink-0 text-slate-500 dark:text-muted" />
+            <MagnifyingGlass weight="regular" className="size-4 shrink-0 text-slate-500 dark:text-muted" />
             <input autoFocus type="search" role="combobox" aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
               aria-activedescendant={highlightedModel ? `${listId}-${highlightedIndex}` : undefined}
               value={search} placeholder="Buscar modelos…" aria-label="Buscar modelos"

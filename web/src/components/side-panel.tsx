@@ -61,21 +61,21 @@ export function SidePanel({ panel, render, available }: { panel: SidePanelState;
     // pixel width while the content stays pinned right at full width, so it
     // enters from the right edge and the chat slides aside.
     <aside ref={aside} aria-label="Panel lateral" aria-hidden={!panel.open} inert={!panel.open}
-      className={`hidden min-h-0 overflow-hidden lg:flex lg:shrink-0 lg:transition-[width] lg:duration-300 lg:ease-out motion-reduce:transition-none ${panel.open ? "lg:w-[var(--panel-w)]" : "lg:w-0"}`}
+      className={`hidden min-h-0 overflow-hidden lg:-mt-2 lg:flex lg:shrink-0 lg:transition-[width] lg:duration-300 lg:ease-out motion-reduce:transition-none ${panel.open ? "lg:w-[var(--panel-w)]" : "lg:w-0"}`}
       style={{ "--panel-w": `${width}px` } as CSSProperties}>
       <div className="ml-auto flex min-h-0 w-[var(--panel-w)] shrink-0 [contain:layout_paint]">
       <ResizeHandle panel={aside} width={width} onResize={resize} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col border-l border-slate-200 dark:border-border">
-      <div role="tablist" className="flex shrink-0 items-center gap-1 border-b border-slate-200 px-2 py-1.5 dark:border-border">
+      <div role="tablist" className="flex shrink-0 items-center gap-1 h-10 border-b border-slate-200 px-2 pb-2 dark:border-border">
         {panel.tabs.map((k) => (
           <div key={k} className={`group flex items-center rounded-md text-sm ${panel.active === k ? "bg-slate-100 font-medium dark:bg-raised" : "text-slate-500 hover:bg-slate-50 dark:text-muted dark:hover:bg-raised/60"}`}>
             <button type="button" role="tab" aria-selected={panel.active === k} onClick={() => panel.focus(k)} className="flex items-center gap-1.5 py-1 pl-2.5 pr-1">{TAB_KINDS[k].icon}{TAB_KINDS[k].label}</button>
-            <button type="button" onClick={() => panel.close(k)} aria-label={`Cerrar ${TAB_KINDS[k].label}`} className="mr-1 grid size-5 place-items-center rounded opacity-60 hover:bg-slate-200 hover:opacity-100 dark:hover:bg-hover"><X className="size-3" /></button>
+            <button type="button" onClick={() => panel.close(k)} aria-label={`Cerrar ${TAB_KINDS[k].label}`} className="mr-1 grid size-5 place-items-center opacity-60 hover:opacity-100"><X weight="regular" className="size-3" /></button>
           </div>
         ))}
         {missing.map((k) => panel.tabs.length > 0 && (
           <button key={k} type="button" onClick={() => panel.show(k)} title={`Añadir ${TAB_KINDS[k].label}`} aria-label={`Añadir ${TAB_KINDS[k].label}`}
-            className="grid size-7 place-items-center rounded-md text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised"><Plus className="size-3.5" /></button>
+            className="grid size-7 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white"><Plus weight="regular" className="size-3.5" /></button>
         ))}
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
@@ -86,7 +86,7 @@ export function SidePanel({ panel, render, available }: { panel: SidePanelState;
               {missing.map((k) => (
                 <button key={k} type="button" onClick={() => panel.show(k)}
                   className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-border dark:hover:bg-raised">
-                  <Plus className="size-3.5" />{TAB_KINDS[k].icon}{TAB_KINDS[k].label}
+                  <Plus weight="regular" className="size-3.5" />{TAB_KINDS[k].icon}{TAB_KINDS[k].label}
                 </button>
               ))}
             </div>

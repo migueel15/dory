@@ -24,7 +24,7 @@ export function Skills() {
   const name = (id: string) => nodes.find((n) => n.id === id)?.name ?? id.slice(0, 6);
   return (
     <div className="space-y-3">
-      <PageHeader title="Skills" subtitle="Un catálogo para todos los nodos. Cada nodo instala las suyas en las carpetas de sus agentes."><Button onClick={() => setEditing("new")}><Plus className="size-4" />Nueva skill</Button></PageHeader>
+      <PageHeader title="Skills" subtitle="Un catálogo para todos los nodos. Cada nodo instala las suyas en las carpetas de sus agentes."><Button onClick={() => setEditing("new")}><Plus weight="regular" className="size-4" />Nueva skill</Button></PageHeader>
       <ErrorText error={skills.error} />
       {(skills.data ?? []).map((s) => (
         <Card key={s.id}>

@@ -13,7 +13,7 @@ const base = (p = "") => p.replace(/\/+$/, "").split("/").pop() || p;
 const mono = "font-mono text-[12px]";
 
 function State({ m }: { m: Message }) {
-  if (isLive(m)) return <CircleNotch className="size-3.5 shrink-0 animate-spin text-slate-400" aria-label="En curso" />;
+  if (isLive(m)) return <CircleNotch weight="regular" className="size-3.5 shrink-0 animate-spin text-slate-400" aria-label="En curso" />;
   if (isFailed(m)) return <XCircle weight="fill" className="size-3.5 shrink-0 text-red-500" aria-label="Falló" />;
   return null;
 }
@@ -108,7 +108,7 @@ export function TodoCard({ m }: { m: Message }) {
         {todos.map((x, i) => (
           <li key={i} className="flex items-start gap-2 text-[13px]">
             {x.status === "completed" ? <CheckCircle weight="fill" className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-              : x.status === "in_progress" ? <CircleNotch className="mt-0.5 size-4 shrink-0 animate-spin text-blue-500" />
+              : x.status === "in_progress" ? <CircleNotch weight="regular" className="mt-0.5 size-4 shrink-0 animate-spin text-blue-500" />
               : <Circle className="mt-0.5 size-4 shrink-0 text-slate-300 dark:text-border-strong" />}
             <span className={x.status === "completed" ? "text-slate-400 line-through" : x.status === "in_progress" ? "font-medium text-slate-900 dark:text-white" : "text-slate-600 dark:text-text-secondary"}>{x.status === "in_progress" && x.active ? x.active : x.text}</span>
           </li>
@@ -131,7 +131,7 @@ export function GroupCard({ run }: { run: Message[] }) {
     ? `${read ? (isLive(m) ? "Leyendo" : "Leyó") : isLive(m) ? "Buscando" : "Buscó"} ${run.length} ${read ? "ficheros" : "patrones"}`
     : read ? `${isLive(m) ? "Leyendo" : "Leyó"} ` : `${isLive(m) ? "Buscando" : "Buscó"} `;
   return (
-    <Row m={m} icon={read ? <FileText className="size-4" /> : <MagnifyingGlass className="size-4" />}
+    <Row m={m} icon={read ? <FileText className="size-4" /> : <MagnifyingGlass weight="regular" className="size-4" />}
       body={<ul className="space-y-0.5">{run.map((x) => <li key={x.id} className={`${mono} truncate`} title={label(x)}>{label(x)}</li>)}</ul>}>
       <span className="shrink-0">{head}</span>{run.length === 1 && <span className={`${mono} truncate text-slate-700 dark:text-text-secondary`}>{read ? base(t.path) : t.pattern}</span>}
       {!read && !isLive(m) && !isFailed(m) && <span className="shrink-0 text-[11px] tabular-nums opacity-70">{results(run)} resultados</span>}

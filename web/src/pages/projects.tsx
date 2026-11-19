@@ -126,7 +126,7 @@ export function Projects() {
   const [adding, setAdding] = useState(false);
   return (
     <div className="space-y-3">
-      <PageHeader title="Proyectos"><Button onClick={() => setAdding(true)}><Plus className="size-4" />Nuevo proyecto</Button></PageHeader>
+      <PageHeader title="Proyectos"><Button onClick={() => setAdding(true)}><Plus weight="regular" className="size-4" />Nuevo proyecto</Button></PageHeader>
       <ErrorText error={projects.error} />
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {(projects.data ?? []).map((p) => (

@@ -116,7 +116,7 @@ export function Select({ value, onChange, options, disabled, className, placehol
         <div ref={list} style={pos} className="notif-in fixed z-[100] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-border dark:bg-surface">
           {searchable && (
             <div className="relative border-b border-slate-200 p-1.5 dark:border-border">
-              <MagnifyingGlass aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+              <MagnifyingGlass weight="regular" aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
               <Input bare autoFocus value={query} onChange={(e) => { setQuery(e.target.value); setHi(0); }} onKeyDown={key} placeholder="Buscar…" aria-label="Buscar opción" className="py-1.5 pl-8 pr-2" />
             </div>
           )}
@@ -263,7 +263,7 @@ export function Modal({ title, onClose, children, wide = false }: { title: strin
       <div role="dialog" aria-modal="true" aria-label={title} className={`max-h-full w-full max-w-lg space-y-3 overflow-auto rounded-lg bg-white dark:bg-surface p-3 sm:p-4${wide ? " lg:max-w-3xl" : ""}`} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-2">
           <h2 className="text-lg font-semibold">{title}</h2>
-          <button type="button" aria-label="Cerrar" onClick={onClose} className="-mr-1 grid size-8 shrink-0 place-items-center rounded text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">
+          <button type="button" aria-label="Cerrar" onClick={onClose} className="-mr-1 grid size-8 shrink-0 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
             <X weight="regular" aria-hidden="true" className="size-4" />
           </button>
         </div>
