@@ -124,3 +124,13 @@ body { @apply bg-slate-50 text-slate-900 dark:bg-canvas dark:text-text; }
 @keyframes plan-changed { from { background-color: color-mix(in srgb, var(--color-accent) 22%, transparent); } to { background-color: transparent; } }
 .plan-changed { animation: plan-changed 2.4s ease-out; border-radius: 0.375rem; }
 @media (prefers-reduced-motion: reduce) { .plan-changed { animation: none; } }
+
+/* The plan editor (TipTap) uses the same look as rendered Markdown. */
+.plan-editor .ProseMirror { outline: none; min-height: 12rem; }
+.plan-editor .ProseMirror > * + * { margin-top: 0.75rem; }
+.plan-editor li > p { margin: 0; }
+.plan-editor ul[data-type="taskList"] { list-style: none; margin-left: 0; }
+.plan-editor ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.5rem; }
+.plan-editor ul[data-type="taskList"] li > label { flex-shrink: 0; margin-top: 0.1rem; user-select: none; }
+.plan-editor ul[data-type="taskList"] li > div { flex: 1; min-width: 0; }
+.plan-editor ul[data-type="taskList"] li[data-checked="true"] > div { color: var(--color-muted); text-decoration: line-through; }

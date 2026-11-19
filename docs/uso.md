@@ -50,7 +50,7 @@ La bandeja reúne los hilos de todos los nodos, con filtros (activos, te necesit
 - **Hilos de otras máquinas:** se abren a través de su nodo; si ese nodo está apagado, el hilo no está disponible.
 - **Acciones:** renombrar, fijar y archivar. Archivar borra el worktree.
 - **Cambios:** ver el diff del worktree contra la rama base.
-- **Plan:** si el hilo tiene tarea, el panel lateral muestra su plan. Se actualiza en directo mientras el agente lo escribe y se abre solo cuando lo cambia. Puedes editarlo en Markdown, marcar sus casillas y aceptarlo. Si el plan cambia mientras lo editas, Dory avisa y no pisa ninguna de las dos ediciones.
+- **Plan:** si el hilo tiene tarea, el panel lateral muestra su plan. Se actualiza en directo mientras el agente lo escribe y se abre solo cuando lo cambia. Se edita directamente sobre el texto con formato: «# » crea un título, «- » una lista y «[] » una casilla. Se guarda solo al dejar de escribir. Con **Seguir** activado, la vista va a cada cambio del agente antes de mostrarlo. Si el plan cambia mientras escribes, Dory avisa y no pisa ninguna de las dos ediciones.
 
 ## GitHub
 

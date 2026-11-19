@@ -165,7 +165,7 @@ export function toggleTask(md: string, line: number) {
   return lines.join("\n");
 }
 
-const prose = [
+export const prose = [
   "space-y-3 break-words text-sm leading-relaxed text-slate-700 dark:text-text",
   "[&_h1]:border-b [&_h1]:border-slate-200 [&_h1]:pb-1 [&_h1]:text-xl [&_h1]:font-bold dark:[&_h1]:border-border",
   "[&_h2]:border-b [&_h2]:border-slate-200 [&_h2]:pb-1 [&_h2]:text-lg [&_h2]:font-semibold dark:[&_h2]:border-border",

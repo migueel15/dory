@@ -20,4 +20,4 @@ Hasta ahora, cada propuesta del agente con `propose_plan` era una versión cerra
 
 - Sustituye la parte del ADR-004 sobre versiones cerradas, secciones fijas y `propose_plan`. Se mantiene que solo el usuario acepta el plan.
 - Las columnas nuevas se replican con el registro de operaciones; los nodos antiguos las ignoran. Dos ediciones simultáneas en nodos distintos se resuelven por última escritura del documento completo.
-- La edición es en Markdown plano; un editor visual queda para más adelante.
+- Se edita con un editor visual (TipTap) que guarda Markdown; los agentes siguen leyendo y escribiendo Markdown.
