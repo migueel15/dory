@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Crosshair } from "@phosphor-icons/react";
-import { EditorContent, useEditor, type Editor } from "@tiptap/react";
+import { EditorContent, Extension, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Markdown } from "@tiptap/markdown";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { api, ApiError, type Plan } from "../api/client";
@@ -116,7 +118,7 @@ function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) 
   };
 
   const editor = useEditor({
-    extensions: [StarterKit.configure({ link: { openOnClick: false } }), TaskList, TaskItem.configure({ nested: true }), Markdown],
+    extensions: [StarterKit.configure({ link: { openOnClick: false } }), TaskList, TaskItem.configure({ nested: true }), Markdown, Flash],
     content: "",
     contentType: "markdown",
     onUpdate: ({ editor: ed }) => {
@@ -150,10 +152,21 @@ function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) 
 
   // mark highlights the blocks that differ from old, and with scroll brings
   // the first one into view.
+  const flashes = useRef(0);
   const mark = (ed: Editor, old: PMNode, scroll: boolean) => {
-    const marks = changedBlocks(old, ed.state.doc).after.map((pos) => ed.view.nodeDOM(pos)).filter((n): n is HTMLElement => n instanceof HTMLElement);
-    marks.forEach((m) => { m.classList.remove("plan-changed"); void m.offsetWidth; m.classList.add("plan-changed"); });
-    if (scroll && marks[0]) marks[0].scrollIntoView({ behavior: "smooth", block: "nearest" });
+    const doc = ed.state.doc;
+    const ranges = changedBlocks(old, doc).after.flatMap((pos) => { const n = doc.nodeAt(pos); return n ? [{ from: pos, to: pos + n.nodeSize }] : []; });
+    if (!ranges.length) return;
+    // A decoration, not a class on the DOM: the editor redraws its nodes and
+    // would drop a class it does not know. Clearing first restarts the blink.
+    applying.current = true;
+    ed.view.dispatch(ed.state.tr.setMeta(flashKey, "clear").setMeta("addToHistory", false));
+    ed.view.dispatch(ed.state.tr.setMeta(flashKey, ranges).setMeta("addToHistory", false));
+    applying.current = false;
+    const n = ++flashes.current;
+    setTimeout(() => { if (n === flashes.current && !ed.isDestroyed) ed.view.dispatch(ed.state.tr.setMeta(flashKey, "clear").setMeta("addToHistory", false)); }, 2600);
+    const first = ed.view.nodeDOM(ranges[0].from);
+    if (scroll && first instanceof HTMLElement) first.scrollIntoView({ behavior: "smooth", block: "nearest" });
   };
 
   // rebase merges a newer stored version into unsaved text and saves the
@@ -225,6 +238,28 @@ function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) 
     dismiss: () => setNotice(undefined),
   };
 }
+
+// Flash draws the blocks just changed by someone else with the plan-changed
+// class, as node decorations that follow the document as it changes.
+const flashKey = new PluginKey<DecorationSet>("plan-flash");
+const Flash = Extension.create({
+  name: "planFlash",
+  addProseMirrorPlugins() {
+    return [new Plugin<DecorationSet>({
+      key: flashKey,
+      state: {
+        init: () => DecorationSet.empty,
+        apply(tr, set) {
+          const meta = tr.getMeta(flashKey) as "clear" | { from: number; to: number }[] | undefined;
+          if (meta === "clear") return DecorationSet.empty;
+          if (meta) return DecorationSet.create(tr.doc, meta.map(({ from, to }) => Decoration.node(from, to, { class: "plan-changed" })));
+          return set.map(tr.mapping, tr.doc);
+        },
+      },
+      props: { decorations: (state) => flashKey.getState(state) },
+    })];
+  },
+});
 
 function parse(ed: Editor, md: string): PMNode {
   return ed.schema.nodeFromJSON(ed.markdown!.parse(md));
