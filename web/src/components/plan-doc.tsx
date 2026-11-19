@@ -87,9 +87,10 @@ function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) 
     clearTimeout(timer.current);
     if (base.current === undefined) return;
     const md = ed.getMarkdown().trim();
-    if (md === stored.current) { setState("saved"); return; }
+    if (md === stored.current) { setState("saved"); stateRef.current = "saved"; apply(ed); return; }
     const at = edits.current;
     setState("saving");
+    stateRef.current = "saving";
     try {
       const next = await api.savePlan(taskId, { body_md: md, revision: base.current });
       base.current = next.revision;
@@ -98,11 +99,13 @@ function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) 
       qc.invalidateQueries({ queryKey: ["card", taskId] });
       setError(undefined);
       // Typing during the save leaves more to save.
-      if (edits.current !== at) { setState("dirty"); timer.current = setTimeout(() => save(ed), 700); } else setState("saved");
+      if (edits.current !== at) { setState("dirty"); stateRef.current = "dirty"; timer.current = setTimeout(() => save(ed), 700); }
+      else { setState("saved"); stateRef.current = "saved"; apply(ed); }
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         // Someone saved first: merge with their version and save again.
         setState("dirty");
+        stateRef.current = "dirty";
         try {
           const fresh = await qc.fetchQuery({ queryKey: ["plans", taskId, "doc"], queryFn: () => api.plan(taskId), staleTime: 0 });
           latest.current = fresh;
@@ -121,6 +124,7 @@ function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) 
       if (applying.current) return;
       edits.current++;
       setState("dirty");
+      stateRef.current = "dirty";
       clearTimeout(timer.current);
       timer.current = setTimeout(() => save(ed), 700);
     },
@@ -164,12 +168,17 @@ function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) 
     stored.current = next.body_md;
     mark(ed, old, false);
     if (merged.conflicts) setNotice(`El agente cambió lo mismo que tú en ${merged.conflicts === 1 ? "un punto" : `${merged.conflicts} puntos`}: he dejado tu versión y, debajo, la suya citada. Quédate con la que quieras.`);
+    // The merged text is not saved yet: mark it so before saving it.
+    stateRef.current = "dirty";
     edits.current++;
     save(ed);
   };
 
   // Remote revisions: the first one loads the editor; later ones are shown
-  // one at a time, scrolling first to where they change when following.
+  // one at a time and every changed block blinks. The user is writing while
+  // the editor has the focus: then a change waits for the user's next save,
+  // merges with it and the view does not move. Otherwise it shows at once
+  // and, when following, the view first goes to where it changes.
   const latest = useRef(p);
   latest.current = p;
   const busy = useRef(false);
@@ -178,26 +187,29 @@ function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) 
     if (busy.current || !next || next.revision === base.current) return;
     if (base.current === undefined) { applying.current = true; ed.commands.setContent(next.body_md, { contentType: "markdown", emitUpdate: false }); applying.current = false; setEmpty(ed.isEmpty); base.current = next.revision; stored.current = next.body_md; return; }
     if (next.revision < base.current) return;
-    // Unsaved text merges with it; a save in flight finds out on its own.
-    if (stateRef.current === "dirty") { rebase(ed, next); return; }
+    // A save in flight runs this again when it ends; its conflict merges.
     if (stateRef.current === "saving") return;
+    // Unsaved text is saved first (now, or at the writer's pause), and the
+    // save merges with the newer version.
+    if (stateRef.current === "dirty") { if (!ed.isFocused) save(ed); return; }
+    const follow = followRef.current && !ed.isFocused;
     busy.current = true;
     try {
-      const target = followRef.current ? changedBlocks(ed.state.doc, parse(ed, next.body_md)).before[0] : undefined;
+      const target = follow ? changedBlocks(ed.state.doc, parse(ed, next.body_md)).before[0] : undefined;
       const el = target === undefined ? null : (ed.view.nodeDOM(target) as HTMLElement | null);
       if (el) await reveal(el);
       const shown = latest.current!;
-      if (stateRef.current !== "saved") { if (stateRef.current === "dirty") rebase(ed, shown); return; }
+      if (stateRef.current !== "saved") return;
       const old = ed.state.doc;
       set(ed, shown.body_md);
       base.current = shown.revision;
       stored.current = shown.body_md;
-      mark(ed, old, followRef.current);
+      mark(ed, old, follow);
     } finally {
       busy.current = false;
     }
     // A revision that arrived meanwhile comes next.
-    if (latest.current && latest.current.revision !== base.current) apply(ed);
+    if (latest.current && latest.current.revision > (base.current ?? 0) && stateRef.current === "saved") apply(ed);
   };
   useEffect(() => { if (editor) apply(editor); }, [editor, p?.revision]); // eslint-disable-line react-hooks/exhaustive-deps
 
