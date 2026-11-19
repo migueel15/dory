@@ -97,6 +97,8 @@ function ThreadConversation({ threadId }: { threadId: string }) {
   const quotes = useDraftQuotes(threadId);
   const composerInput = useRef<HTMLTextAreaElement>(null);
   const { scroller, onScroll, follow, away } = useFollow([t?.messages, t?.queue, t?.running, quotes.length]);
+  // Opening another thread starts at its end, wherever the last one was left.
+  useLayoutEffect(() => { follow(); }, [threadId, !!t]); // eslint-disable-line react-hooks/exhaustive-deps
   // A new quote, from the chat or from the diff, takes the focus to the box.
   const quoteCount = useRef(quotes.length);
   useEffect(() => {
