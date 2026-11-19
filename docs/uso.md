@@ -77,7 +77,7 @@ En **Entornos**, instala Antigravity en el nodo donde quieras usarlo. Pulsa **In
 
 Elige Antigravity al crear un hilo. Los modelos disponibles dependen de la cuenta y de la versión de la CLI. La conversación se reanuda en el mismo nodo tras reiniciar Dory. Las sesiones guardadas por la CLI aparecen en **Hilos**, donde puedes abrirlas e importarlas.
 
-Con acceso restringido, Dory aprueba las solicitudes de edición dentro del worktree. Con acceso completo, aprueba las solicitudes de permiso del arnés. La página **Uso** incluye los tokens guardados por Antigravity en el nodo. Puedes consultar las cuotas de la cuenta con `/usage` en la CLI.
+Con acceso restringido, Dory aprueba las solicitudes de edición dentro del worktree. Con acceso completo, aprueba las solicitudes de permiso del arnés. La página **Uso** incluye los tokens guardados en el nodo y las cuotas de la cuenta de Antigravity por grupo de modelos. Dory consulta los saldos con la sesión de `agy` cada 10 minutos y conserva la última lectura en el nodo. En Linux, accede a Secret Service con `secret-tool` si `agy` guarda allí la sesión.
 
 ## Apariencia
 

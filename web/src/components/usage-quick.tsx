@@ -4,7 +4,7 @@ import { ArrowClockwise, PushPin } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { api, type UsageWindow } from "../api/client";
-import { expectedRemaining, paceTitle, WINDOWS } from "../lib/usage-pace";
+import { expectedRemaining, paceTitle, windowLabel, windowMinutes, windowReset } from "../lib/usage-pace";
 import { ProviderIcon } from "./launch-picker";
 import { HoverCard } from "./tooltip";
 import { Arrow } from "./ui";
@@ -12,8 +12,6 @@ import { Arrow } from "./ui";
 const pinKey = "dory-usage-provider";
 const readPin = () => { try { return localStorage.getItem(pinKey) ?? ""; } catch { return ""; } };
 const time = (iso: string) => new Date(iso).toLocaleString("es-ES", { weekday: "short", hour: "2-digit", minute: "2-digit" });
-const minutesOf = (w: UsageWindow) => WINDOWS[w.kind]?.[1] ?? 0;
-const labelOf = (w: UsageWindow) => WINDOWS[w.kind]?.[0] ?? w.kind;
 const usedOf = (w: UsageWindow) => Math.round(w.utilization * 100);
 
 // Dial draws remaining allowance on one split circle: the top 40 % is the
@@ -37,7 +35,8 @@ function Dial({ short, long }: { short?: number; long?: number }) {
 }
 
 // until formats the time to reset: minutes for short windows, days and hours for long ones.
-function until(iso: string, short: boolean) {
+function until(iso: string | null, short: boolean) {
+  if (!iso) return "";
   const ms = Date.parse(iso) - Date.now();
   if (!Number.isFinite(ms)) return "";
   const min = Math.max(0, Math.round(ms / 60_000));
@@ -59,10 +58,12 @@ export function UsageQuick() {
   const list = Object.entries(node.data?.usage ?? {}).filter(([, ws]) => ws.length > 0).sort(([a], [b]) => a.localeCompare(b));
   const [pin, setPin] = useState(readPin);
   const shown = list.find(([id]) => id === pin) ?? list[0];
-  const byLength = [...(shown?.[1] ?? [])].sort((a, b) => minutesOf(a) - minutesOf(b) || Number(b.kind === "seven_day") - Number(a.kind === "seven_day"));
+  const byLength = [...(shown?.[1] ?? [])].sort((a, b) => windowMinutes(a) - windowMinutes(b) || Number(b.kind === "seven_day") - Number(a.kind === "seven_day"));
   const inner = byLength[0];
-  const outer = byLength.length > 1 ? byLength.find((w) => w.kind === "seven_day") ?? byLength[byLength.length - 1] : undefined;
-  const rows = byLength.map((w) => ({ label: labelOf(w), left: `queda ${100 - usedOf(w)} %`, reset: until(w.resets_at, minutesOf(w) <= 300) }));
+  const outer = byLength.find((w) => w.kind === "seven_day" && w !== inner)
+    ?? (inner?.window_minutes ? byLength.find((w) => windowMinutes(w) === 7 * 24 * 60 && w !== inner) : undefined)
+    ?? (byLength.length > 1 ? byLength[byLength.length - 1] : undefined);
+  const rows = byLength.map((w) => ({ label: windowLabel(w), left: `queda ${100 - usedOf(w)} %`, reset: until(windowReset(w), windowMinutes(w) <= 300) }));
   const summary = shown ? `${names.get(shown[0]) ?? shown[0]}. ${rows.map((r) => `${r.label}: ${r.left}${r.reset ? `, se reinicia en ${r.reset}` : ""}`).join(". ")}` : "Límites restantes";
   const pinProvider = (id: string) => { setPin(id); try { localStorage.setItem(pinKey, id); } catch { /* per-viewer only */ } };
 
@@ -106,11 +107,12 @@ export function UsageQuick() {
               </div>
               {windows.map((w) => {
                 const used = usedOf(w);
-                const pace = expectedRemaining({ resets_at: w.resets_at, window_minutes: minutesOf(w) || null });
+                const reset = windowReset(w);
+                const pace = expectedRemaining({ resets_at: reset, window_minutes: windowMinutes(w) || null });
                 const bar = used >= 95 ? "bg-red-600" : used >= 80 ? "bg-amber-500" : "bg-emerald-600";
                 return (
-                  <div key={w.kind} className="grid grid-cols-[minmax(0,6rem)_1fr_2.5rem] items-center gap-2 text-xs" title={`Se reinicia ${time(w.resets_at)}${paceTitle(pace)}`}>
-                    <span className="truncate text-slate-600 dark:text-text-secondary">{labelOf(w)}</span>
+                  <div key={w.kind} className="grid grid-cols-[minmax(0,6rem)_1fr_2.5rem] items-center gap-2 text-xs" title={reset ? `Se reinicia ${time(reset)}${paceTitle(pace)}` : windowLabel(w)}>
+                    <span className="truncate text-slate-600 dark:text-text-secondary">{windowLabel(w)}</span>
                     <div className="relative h-1.5 rounded bg-slate-200 dark:bg-hover"><div className={`h-full rounded ${bar}`} style={{ width: `${Math.max(0, 100 - used)}%` }} />{pace !== null && <div aria-hidden="true" className="absolute -bottom-0.5 -top-0.5 w-0.5 -translate-x-1/2 bg-slate-900 dark:bg-white" style={{ left: `${pace}%` }} />}</div>
                     <span className="text-right tabular-nums">{100 - used} %</span>
                   </div>

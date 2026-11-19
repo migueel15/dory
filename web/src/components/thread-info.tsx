@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useDiffBase } from "../lib/diff-base";
 import { Copy, Folder, GitBranch, GitDiff, Info } from "@phosphor-icons/react";
 import { api, type ThreadView, type UsageWindow } from "../api/client";
-import { expectedRemaining, WINDOWS } from "../lib/usage-pace";
+import { expectedRemaining, windowLabel, windowMinutes, windowReset } from "../lib/usage-pace";
 import { HoverCard } from "./tooltip";
 import { EnvIcon } from "./env-icon";
 import { copyText } from "./ui";
@@ -80,7 +80,7 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff }: { t: ThreadView
               return (
                 <div key={w.kind} className={`grid grid-cols-[5.5rem_1fr_2.5rem] items-center gap-3 rounded-md px-1.5 py-1.5 text-xs transition-colors hover:bg-slate-100 dark:hover:bg-raised`}
                   onMouseEnter={(e) => setHover({ el: e.currentTarget, w })} onMouseLeave={() => setHover(null)}>
-                  <span className="truncate text-slate-500 dark:text-muted">{WINDOWS[w.kind]?.[0] ?? w.kind}</span>
+                  <span className="truncate text-slate-500 dark:text-muted">{windowLabel(w)}</span>
                   <div className="h-1 rounded bg-slate-200 dark:bg-hover"><div className="h-full rounded bg-slate-700 dark:bg-slate-200" style={{ width: `${left}%` }} /></div>
                   <span className="text-right tabular-nums">{left} %</span>
                 </div>
@@ -94,10 +94,9 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff }: { t: ThreadView
   );
 }
 
-const minutesOf = (w: UsageWindow) => WINDOWS[w.kind]?.[1] ?? 0;
-
 // until formats the time to reset: hours and minutes, or days and hours.
-function until(iso: string) {
+function until(iso: string | null) {
+  if (!iso) return "";
   const ms = Date.parse(iso) - Date.now();
   if (!Number.isFinite(ms)) return "";
   const min = Math.max(0, Math.round(ms / 60_000));
@@ -109,10 +108,10 @@ function until(iso: string) {
 // whether the spending keeps pace with the time left in the window.
 function WindowCard({ w }: { w: UsageWindow }) {
   const left = Math.max(0, 100 - Math.round(w.utilization * 100));
-  const pace = expectedRemaining({ resets_at: w.resets_at, window_minutes: minutesOf(w) || null });
-  const reset = until(w.resets_at);
+  const pace = expectedRemaining({ resets_at: windowReset(w), window_minutes: windowMinutes(w) || null });
+  const reset = until(windowReset(w));
   const date = new Date(w.resets_at);
-  const at = minutesOf(w) > 0 && minutesOf(w) <= 1440
+  const at = windowMinutes(w) > 0 && windowMinutes(w) <= 1440
     ? date.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
     : date.toLocaleString("es-ES", { weekday: "short", hour: "2-digit", minute: "2-digit" });
   // pace is the share that should be left if usage were spread evenly over
@@ -123,7 +122,7 @@ function WindowCard({ w }: { w: UsageWindow }) {
     : { text: "Al ritmo", tone: "" };
   return (
     <div className="space-y-0.5 text-left">
-      <div className="font-medium">{WINDOWS[w.kind]?.[0] ?? w.kind}: queda {left} %</div>
+      <div className="font-medium">{windowLabel(w)}: queda {left} %</div>
       {reset && <div className="opacity-70">Se reinicia en {reset} · {at}</div>}
       {status && pace !== null && <div><span className={status.tone}>{status.text}</span><span className="opacity-70"> · debería quedar {Math.round(pace)} %</span></div>}
     </div>

@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"context"
 	"database/sql"
 	"encoding/binary"
 	"io/fs"
@@ -12,10 +11,6 @@ import (
 	"strings"
 	"time"
 )
-
-// ACP's usage updates describe context size. Google exposes subscription
-// quotas separately, so those updates cannot populate Dory's quota windows.
-func (Antigravity) Usage(context.Context) ([]Window, error) { return nil, ErrNoUsage }
 
 func antigravityDataRoots(goos, home, appData, localAppData, xdgConfig string) []string {
 	if home == "" {

@@ -15,4 +15,4 @@ El arnés usa su modo `default`. Dory aprueba las solicitudes de permiso con acc
 
 ## Consequences
 
-Cada nodo usa su propia sesión de Google y el binario oficial de su plataforma. Las skills del catálogo se enlazan en `~/.gemini/config/skills`. Si Windows impide crear un enlace, Dory instala una copia gestionada. El historial de tokens se obtiene de la metadata protobuf de las bases SQLite locales, abierta en modo de solo lectura. Las cuotas de suscripción requieren una fuente distinta del historial de tokens.
+Cada nodo usa su propia sesión de Google y el binario oficial de su plataforma. Las skills del catálogo se enlazan en `~/.gemini/config/skills`. Si Windows impide crear un enlace, Dory instala una copia gestionada. El historial de tokens se obtiene de la metadata protobuf de las bases SQLite locales, abierta en modo de solo lectura. Dory consulta los saldos de suscripción a Google con el token de acceso de la sesión local de `agy`. La CLI se encarga de renovar la sesión. Dory guarda los saldos por ventana y omite las ventanas vencidas hasta obtener una lectura actual.

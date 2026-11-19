@@ -4,7 +4,7 @@ import { api, usable, type UsageRange, type UsageReport, type UsageRow, type Usa
 import { Card, ErrorText, Select, iconButton } from "../components/ui";
 import { AreaChart, StackedBar, compact, percent, providerColor, usd } from "../components/usage-charts";
 import { ProviderIcon, useNodes } from "../components/launch-picker";
-import { expectedRemaining, paceTitle, WINDOWS } from "../lib/usage-pace";
+import { expectedRemaining, paceTitle, windowLabel, windowMinutes, windowReset } from "../lib/usage-pace";
 
 
 const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(" ");
@@ -12,18 +12,19 @@ const date = (iso: string) => new Date(iso).toLocaleString("es-ES", { dateStyle:
 
 // Limit shows what is left of one usage window and the expected pace.
 export function Limit({ w }: { w: UsageWindow }) {
-  const [label, minutes] = WINDOWS[w.kind] ?? [w.kind, 0];
+  const reset = windowReset(w);
+  const resetLabel = reset ? `Se reinicia el ${date(reset)}` : undefined;
   const used = Math.round(w.utilization * 100);
-  const pace = expectedRemaining({ resets_at: w.resets_at, window_minutes: minutes || null });
+  const pace = expectedRemaining({ resets_at: reset, window_minutes: windowMinutes(w) || null });
   const tone = used >= 95 ? "bg-red-600" : used >= 80 ? "bg-amber-500" : "bg-emerald-600";
   return (
-    <div className="space-y-1 text-sm" title={`Se reinicia el ${date(w.resets_at)}${paceTitle(pace)}`}>
-      <div className="flex justify-between gap-3"><span>{label}</span><span>Queda {100 - used} %</span></div>
+    <div className="space-y-1 text-sm" title={resetLabel && resetLabel + paceTitle(pace)}>
+      <div className="flex justify-between gap-3"><span>{windowLabel(w)}</span><span>Queda {100 - used} %</span></div>
       <div className="relative h-2 rounded bg-slate-200 dark:bg-hover">
         <div className={`h-full rounded ${tone}`} style={{ width: `${Math.max(0, 100 - used)}%` }} />
         {pace !== null && <div aria-hidden="true" className="absolute -bottom-0.5 -top-0.5 w-0.5 -translate-x-1/2 bg-slate-900 dark:bg-white" style={{ left: `${pace}%` }} />}
       </div>
-      <p className="text-xs text-slate-500 dark:text-muted">Se reinicia el {date(w.resets_at)}</p>
+      {resetLabel && <p className="text-xs text-slate-500 dark:text-muted">{resetLabel}</p>}
     </div>
   );
 }

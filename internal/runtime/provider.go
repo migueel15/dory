@@ -33,6 +33,8 @@ type Message struct {
 // Window is how much of one usage window of a provider is used, 0 to 1.
 type Window struct {
 	Kind        string    `json:"kind"`
+	Label       string    `json:"label,omitempty"`
+	Minutes     int       `json:"window_minutes,omitempty"`
 	Utilization float64   `json:"utilization"`
 	ResetsAt    time.Time `json:"resets_at"`
 }

@@ -48,7 +48,7 @@ func (a Antigravity) Detect(ctx context.Context) Status {
 	version, installed := detect(ctx, a.bin())
 	s := Status{ID: a.ID(), Name: "Antigravity", Installed: installed, Version: version,
 		Models:       []Model{{Slug: "antigravity-default", Name: "Predeterminado de Antigravity"}},
-		Capabilities: []string{}}
+		Capabilities: []string{"usage"}}
 	if !installed {
 		return s
 	}

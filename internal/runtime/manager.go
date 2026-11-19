@@ -249,13 +249,17 @@ func (m *Manager) Usage() map[string][]Window {
 		if !m.Enabled(k) {
 			continue
 		}
-		ws := make([]Window, len(v))
-		for i, w := range v {
-			// A window that already reset starts again unused.
+		ws := make([]Window, 0, len(v))
+		for _, w := range v {
 			if !w.ResetsAt.IsZero() && w.ResetsAt.Before(now) {
+				// Antigravity balances come from a snapshot. A reset does
+				// not tell us how much was consumed in the new window.
+				if k == antigravityID {
+					continue
+				}
 				w.Utilization = 0
 			}
-			ws[i] = w
+			ws = append(ws, w)
 		}
 		out[k] = ws
 	}
