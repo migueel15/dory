@@ -56,7 +56,7 @@ export type Option = { value: string; label: string; group?: string; icon?: Reac
 
 // Select replaces the native <select>: a button that opens a floating, keyboard-navigable
 // list. Long lists get a search box; groups, icons and disabled options are supported.
-export function Select({ value, onChange, options, disabled, className, placeholder = "—", plain, buttonRef }: { buttonRef?: React.Ref<HTMLButtonElement>; value: string; onChange: (v: string) => void; options: Option[]; disabled?: boolean; className?: string; placeholder?: string; plain?: boolean }) {
+export function Select({ value, onChange, options, disabled, className, placeholder = "—", plain, borderless, buttonRef }: { buttonRef?: React.Ref<HTMLButtonElement>; value: string; onChange: (v: string) => void; options: Option[]; disabled?: boolean; className?: string; placeholder?: string; plain?: boolean; borderless?: boolean }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<CSSProperties>({});
   const [hi, setHi] = useState(0);
@@ -106,11 +106,12 @@ export function Select({ value, onChange, options, disabled, className, placehol
     <div ref={box} className={cx("relative", className ?? "w-full")}>
       <button ref={buttonRef} type="button" disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? setOpen(false) : show())} onKeyDown={key}
         className={cx(
-          plain ? "flex min-h-11 items-center gap-1 rounded-md px-2 py-1 text-left text-sm hover:bg-slate-200 dark:hover:bg-raised sm:min-h-0"
+          borderless ? "group flex min-h-11 w-full items-center justify-between gap-2 rounded-sm bg-transparent py-1 text-left text-sm font-medium text-slate-600 transition-colors enabled:hover:text-slate-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50 dark:text-text-secondary dark:enabled:hover:text-white sm:min-h-8"
+            : plain ? "flex min-h-11 items-center gap-1 rounded-md px-2 py-1 text-left text-sm hover:bg-slate-200 dark:hover:bg-raised sm:min-h-0"
             : "flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-left text-sm shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50 dark:border-border-strong dark:bg-surface dark:hover:border-muted dark:hover:bg-raised sm:min-h-0",
-          !plain && open && "border-slate-500 bg-slate-50 dark:border-muted dark:bg-raised")}>
+          !borderless && !plain && open && "border-slate-500 bg-slate-50 dark:border-muted dark:bg-raised")}>
         <span className={cx("flex min-w-0 items-center gap-2 truncate", !current && "text-slate-400 dark:text-muted")}>{current?.icon}{current?.label ?? placeholder}</span>
-        <CaretUpDown weight="regular" aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
+        <CaretUpDown weight="regular" aria-hidden="true" className={cx("size-4 shrink-0", borderless ? "opacity-70 transition-opacity group-hover:opacity-100" : "text-slate-400")} />
       </button>
       {open && createPortal(
         <div ref={list} style={pos} className="notif-in fixed z-[100] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-border dark:bg-surface">

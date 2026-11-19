@@ -40,7 +40,7 @@ export function useProjectNodes(project?: string | null) {
 // useLaunchForm picks provider, model, effort and access for a new thread.
 // The last selected model is shared across launch forms. Permissions stay per section.
 // With a project, only the environments that keep its repository are offered.
-export function useLaunchForm({ section, project }: { section: string; repo?: string; project?: string | null }) {
+export function useLaunchForm({ section, project, borderless }: { section: string; repo?: string; project?: string | null; borderless?: boolean }) {
   const [picked, setNode] = useState("local");
   const all = useNodes();
   const homes = useProjectNodes(project);
@@ -71,19 +71,19 @@ export function useLaunchForm({ section, project }: { section: string; repo?: st
     <div className="grid gap-2 sm:grid-cols-2">
       {nodes.length > 1 && (
         <Label text="Nodo">
-          <Select value={node} onChange={setNode} options={nodes} />
+          <Select borderless={borderless} value={node} onChange={setNode} options={nodes} />
         </Label>
       )}
       <Label text="Agente">
-        <Select value={value.provider} onChange={(v) => { const first = list.find((p) => p.id === v)?.models[0]; if (first) selectModel(v, first); }}
+        <Select borderless={borderless} value={value.provider} onChange={(v) => { const first = list.find((p) => p.id === v)?.models[0]; if (first) selectModel(v, first); }}
           options={list.map((p) => ({ value: p.id, label: `${p.name}${p.version ? ` · ${p.version.split(" ")[0]}` : ""}`, icon: <ProviderIcon driver={p.id} /> }))} />
       </Label>
       <Label text="Modelo">
-        <Select value={value.model} onChange={(v) => { const selected = findModel(provider?.models ?? [], v); if (selected) selectModel(value.provider, selected); }} options={(provider?.models ?? []).map((m) => ({ value: modelId(m), label: m.name }))} />
+        <Select borderless={borderless} value={value.model} onChange={(v) => { const selected = findModel(provider?.models ?? [], v); if (selected) selectModel(value.provider, selected); }} options={(provider?.models ?? []).map((m) => ({ value: modelId(m), label: m.name }))} />
       </Label>
       {!!model?.efforts?.length && (
         <Label text="Razonamiento">
-          <Select value={value.effort} onChange={(v) => selectModel(value.provider, model, v)} options={model.efforts.map((e) => ({ value: e, label: e }))} />
+          <Select borderless={borderless} value={value.effort} onChange={(v) => selectModel(value.provider, model, v)} options={model.efforts.map((e) => ({ value: e, label: e }))} />
         </Label>
       )}
     </div>
