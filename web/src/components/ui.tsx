@@ -12,7 +12,7 @@ export const iconButton = "inline-flex h-8 min-w-8 shrink-0 items-center justify
 
 const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(" ");
 
-export function Button({ variant = "default", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "default" | "ghost" | "bare" | "danger" }) {
+export function Button({ variant = "default", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { ref?: Ref<HTMLButtonElement>; variant?: "default" | "ghost" | "bare" | "danger" }) {
   const v = {
     default: "bg-slate-900 dark:bg-accent text-white dark:text-white hover:bg-slate-700 dark:hover:bg-accent-hover",
     ghost: "border border-slate-300 dark:border-border-strong hover:bg-slate-100 dark:hover:bg-raised",
@@ -134,8 +134,8 @@ export function Select({ value, onChange, options, disabled, className, placehol
             ))}
           </div>
         </div>,
-        // Un <dialog> modal vive en la top layer: la lista debe montarse dentro para quedar por encima.
-        box.current?.closest("dialog") ?? document.body,
+        // Keep the menu inside its dialog or popover so it appears in the same top layer.
+        box.current?.closest("dialog, [popover]:popover-open") ?? document.body,
       )}
     </div>
   );

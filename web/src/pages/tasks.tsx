@@ -1,12 +1,12 @@
 import { DictationField } from "../components/dictation-field";
 import { PlanDoc } from "../components/plan-doc";
 import { useDictationInProgress } from "../components/local-dictation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowSquareOut, Check, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, ChatCircle, CircleNotch, ClipboardText, GitBranch, GitMerge, GitPullRequest, Plus, Rocket, X } from "@phosphor-icons/react";
 import { api, COLUMN_LABELS, repoName, type Card, type Column, type Stage } from "../api/client";
-import { Button, Card as UiCard, ErrorText, Input, Label, Md, Modal, Select } from "../components/ui";
+import { Button, Card as UiCard, ErrorText, iconButton, Input, Label, Md, Modal, Select } from "../components/ui";
 import { useLaunchForm } from "../components/launch-picker";
 import { useProject } from "../project";
 import { ModelLogo } from "../components/model-logo";
@@ -194,7 +194,35 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list() });
   const [draft, setDraft] = useState<{ title: string; description: string; issue: string; pr: string; repo: string }>();
   const planSection = useRef<HTMLDetailsElement>(null);
-  const [creatingPlan, setCreatingPlan] = useState(false);
+  const launchPopoverId = useId();
+  const launchTrigger = useRef<HTMLButtonElement>(null);
+  const launchPopover = useRef<HTMLDivElement>(null);
+  const placeLaunchPopover = () => {
+    const trigger = launchTrigger.current;
+    const popover = launchPopover.current;
+    if (!trigger || !popover) return;
+    const { left, right, top, bottom } = trigger.getBoundingClientRect();
+    const width = Math.min(368, window.innerWidth - 24);
+    const below = Math.max(0, window.innerHeight - bottom - 20);
+    const above = Math.max(0, top - 20);
+    const placeAbove = below < 260 && above > below;
+    popover.style.width = `${width}px`;
+    popover.style.left = `${Math.max(12, Math.min(Math.max(left, right - width), window.innerWidth - width - 12))}px`;
+    popover.style.top = placeAbove ? "auto" : `${bottom + 8}px`;
+    popover.style.bottom = placeAbove ? `${window.innerHeight - top + 8}px` : "auto";
+    popover.style.maxHeight = `${placeAbove ? above : below}px`;
+  };
+  useEffect(() => {
+    const reposition = () => {
+      if (launchPopover.current?.matches(":popover-open")) placeLaunchPopover();
+    };
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, []);
   const openPlan = () => {
     const details = planSection.current;
     if (!details) return;
@@ -202,14 +230,13 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
     details.querySelector("summary")?.focus({ preventScroll: true });
     details.scrollIntoView({ block: "nearest" });
   };
-  useEffect(() => { if (creatingPlan) openPlan(); }, [creatingPlan]);
-  const [panel, setPanel] = useState<"edit" | "launch">();
+  const [editing, setEditing] = useState(false);
   const c = card.data;
   useEffect(() => { if (c && !draft) setDraft({ title: c.title, description: c.description, issue: c.issue_number?.toString() ?? "", pr: c.pr_number?.toString() ?? "", repo: c.repository_id ?? "" }); }, [c]); // eslint-disable-line react-hooks/exhaustive-deps
   const refresh = () => { qc.invalidateQueries({ queryKey: ["card", id] }); qc.invalidateQueries({ queryKey: ["board"] }); };
   const save = useMutation({
     mutationFn: () => api.tasks.update(id, { title: draft!.title, description: draft!.description, issue_number: draft!.issue ? Number(draft!.issue) : null, pr_number: draft!.pr ? Number(draft!.pr) : null, repository_id: draft!.repo || null }),
-    onSuccess: () => { refresh(); setPanel(undefined); },
+    onSuccess: () => { refresh(); setEditing(false); },
   });
   const stage = useMutation({ mutationFn: (s: Stage) => api.tasks.update(id, { stage: s }), onSuccess: refresh });
   const dep = useMutation({
@@ -238,7 +265,12 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const planPending = !!latest && !latest.accepted_at;
   const planAccepted = !!planDoc.data?.accepted_at;
   const hasPlanContent = !!planDoc.data?.body_md.trim();
-  const planAction = planDoc.data && !planAccepted ? (hasPlanContent ? "Revisar plan" : "Crear plan") : undefined;
+  const reviewPlan = hasPlanContent && !planAccepted;
+  const launchLabel = planAccepted ? "Implementar" : "Definir plan";
+  const launchAction = planAccepted ? launch : define;
+  const launchPending = launch.isPending || define.isPending;
+  const launchBlocked = planAccepted && (c.blockers.length > 0 || planPending);
+  const environment = form.nodes.find((node) => node.value === form.value.node)?.label ?? "Este nodo";
   const projectRepos = (repos.data ?? []).filter((r) => !c.project_id || r.project_id === c.project_id);
   const githubRepo = c.repo && /^[\w.-]+\/[\w.-]+$/.test(c.repo) ? `https://github.com/${c.repo}` : undefined;
   const pullNumber = c.pull?.number ?? c.pr_number;
@@ -250,18 +282,44 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
     <Modal title={c.title} onClose={onClose} className="!max-w-5xl sm:!p-6 [&>div:first-child>h2]:text-2xl [&>div:first-child>h2]:leading-tight">
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4 dark:border-border">
         <span className={`mr-auto inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${COLUMN_TONE[c.column]}`}>{COLUMN_LABELS[c.column]}</span>
-        <Button variant="bare" aria-expanded={panel === "edit"} onClick={() => setPanel(panel === "edit" ? undefined : "edit")}><PencilSimple className="size-4" />Editar tarea</Button>
-        {planAction && (
-          <Button onClick={() => hasPlanContent || creatingPlan ? openPlan() : setCreatingPlan(true)}><ClipboardText className="size-4" />{planAction}</Button>
+        <Button variant="bare" aria-expanded={editing} onClick={() => setEditing(!editing)}><PencilSimple className="size-4" />Editar tarea</Button>
+        {reviewPlan && (
+          <Button onClick={openPlan}><ClipboardText className="size-4" />Revisar plan</Button>
         )}
-        <Button variant={planAction ? "ghost" : "default"} aria-expanded={panel === "launch"}
-          onClick={() => setPanel(panel === "launch" ? undefined : "launch")}>
-          <Rocket className="size-4" />{planAccepted && !c.blockers.length ? "Implementar" : "Lanzar agente"}
+        <Button ref={launchTrigger} type="button" variant={reviewPlan ? "ghost" : "default"}
+          popoverTarget={launchPopoverId} disabled={!planDoc.data || launchPending}
+          onClick={() => { launchAction.reset(); placeLaunchPopover(); }}>
+          <Rocket className="size-4" />{launchLabel}
         </Button>
+        <div ref={launchPopover} id={launchPopoverId} popover="auto" role="dialog" aria-label={launchLabel}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            launchPopover.current?.hidePopover();
+            launchTrigger.current?.focus();
+          }}
+          className="fixed m-0 overflow-auto rounded-xl border border-slate-200 bg-white p-4 text-slate-900 shadow-xl dark:border-border dark:bg-surface dark:text-white">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">{launchLabel}</h3>
+            <button type="button" className={iconButton} popoverTarget={launchPopoverId} popoverTargetAction="hide" aria-label="Cerrar configuración">
+              <X className="size-4" />
+            </button>
+          </div>
+          {form.nodes.length <= 1 && <p className="mb-3 text-xs text-slate-600 dark:text-muted">Entorno <span className="ml-1 font-medium">{environment}</span></p>}
+          {form.fields}
+          {launchBlocked && <p className="mt-3 text-sm text-slate-600 dark:text-muted">{c.blockers.length ? "Resuelve las dependencias para implementar." : "Acepta el plan para implementar."}</p>}
+          <ErrorText error={launchAction.error ?? form.error} />
+          <div className="mt-4 flex justify-end">
+            <Button onClick={() => launchAction.mutate()} disabled={!form.ready || launchPending || launchBlocked}>
+              {launchPending ? "Abriendo hilo…" : "Abrir hilo"}
+            </Button>
+          </div>
+        </div>
       </div>
       <div className="grid items-start gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,17rem)]">
         <div className="min-w-0 space-y-5">
-          {panel === "edit" && (
+          {editing && (
             <section className={section}>
               <h3 className={heading}>Editar tarea</h3>
               <div className="mt-3 space-y-3">
@@ -274,21 +332,6 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
                 </div>
                 <Button onClick={() => save.mutate()} disabled={!dirty || dictating || save.isPending}>Guardar cambios</Button>
                 <ErrorText error={save.error} />
-              </div>
-            </section>
-          )}
-          {panel === "launch" && (
-            <section className={section}>
-              <h3 className={heading}>Configurar lanzamiento</h3>
-              <div className="mt-3">
-                {form.fields}
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Button onClick={() => launch.mutate()} disabled={!form.ready || launch.isPending || c.blockers.length > 0 || planPending}
-                    title={planPending ? "Acepta el plan antes de implementar" : c.blockers.length ? "Depende de tareas sin terminar" : "Crea la rama y el worktree y lanza el agente"}>Implementar</Button>
-                  <Button variant="ghost" onClick={() => define.mutate()} disabled={!form.ready || define.isPending}>Definir con un agente</Button>
-                </div>
-                {(c.blockers.length > 0 || planPending) && <p className="mt-2 text-sm text-slate-600 dark:text-muted">{c.blockers.length > 0 ? "Resuelve las dependencias para implementar." : "Acepta el plan para implementar."}</p>}
-                <ErrorText error={launch.error ?? define.error ?? form.error} />
               </div>
             </section>
           )}
@@ -313,7 +356,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
             </section>
           )}
 
-          <details ref={planSection} hidden={!!planDoc.data && !hasPlanContent && !planAccepted && !creatingPlan} className="group overflow-hidden rounded-xl border border-slate-200 dark:border-border">
+          <details ref={planSection} hidden={!!planDoc.data && !hasPlanContent && !planAccepted} className="group overflow-hidden rounded-xl border border-slate-200 dark:border-border">
             <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-raised">
               <span className="inline-flex items-center gap-2">
                 <ClipboardText className="size-4" />Plan
