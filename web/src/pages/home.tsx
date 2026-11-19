@@ -9,12 +9,8 @@ import { useLaunchForm, ProviderIcon } from "../components/launch-picker";
 import { modelEffort, modelId } from "../effort";
 import { useProject } from "../project";
 import { Chip, ModelPicker, composerArea, composerFrame } from "./composer";
+import { planPrompt } from "../lib/plan-prompt";
 
-// definePrompt turns a chat into the definition of a task (requirement 13.3).
-const definePrompt = (taskId: string, text: string) =>
-  `Modo plan. Vamos a definir la tarea de Dory ${taskId} antes de implementarla. No cambies código.\n` +
-  `Haz las preguntas que necesites y propón el plan con la herramienta propose_plan del MCP de Dory (objetivo, alcance, dónde, diseño, requisitos, validación, riesgos). ` +
-  `Solo yo acepto el plan.\n\n${text}`;
 
 // NewThread is the chat box of the start screen (requirement 13.2): the
 // title names the project, the box holds the model, and below it go the
@@ -48,7 +44,7 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
       const body = draft.trim();
       if (plan) {
         const task = await api.tasks.create({ project_id: project || null, title: body.split("\n")[0].slice(0, 80), description: body });
-        return api.createThread({ ...form.value, ...workspace, project_id: project || null, task_id: task.id, title: `Definir: ${task.title}`, text: definePrompt(task.id, body) });
+        return api.createThread({ ...form.value, ...workspace, project_id: project || null, task_id: task.id, title: `Definir: ${task.title}`, text: planPrompt(task.id, body) });
       }
       return api.createThread({ ...form.value, ...workspace, project_id: project || null, text: body });
     },

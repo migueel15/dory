@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowRight, Brain, CaretDown, CaretRight, Check, Copy, FileText, ListChecks, Stop, TerminalWindow, WarningCircle, Wrench, X } from "@phosphor-icons/react";
+import { ArrowDown, ArrowRight, Brain, CaretDown, CaretRight, Check, ClipboardText, Copy, FileText, ListChecks, Stop, TerminalWindow, WarningCircle, Wrench, X } from "@phosphor-icons/react";
 import { api, type Attachment, type Message, type TurnModel } from "../api/client";
 import { copyText, defaultUrlTransform, Md } from "../components/ui";
 import { TokenChip, tokenize, type TokenKind } from "../components/composer-tokens";
@@ -9,6 +9,8 @@ import { ModelLogo } from "../components/model-logo";
 import { rehypeFade, useSmoothText } from "../components/stream";
 import { GroupCard, isAsk, TodoCard, ToolCard } from "../components/tool-card";
 import { NativeQuestionCard, QuestionCard } from "../components/question-card";
+import { Link } from "@tanstack/react-router";
+import { parsePlanPrompt } from "../lib/plan-prompt";
 
 // The look of the conversation, kept from Dory v1: user
 // bubbles, answers as plain markdown, and each finished turn's work folded
@@ -204,7 +206,26 @@ export function MessageParts({ text }: { text: string }) {
   ))}</>;
 }
 
+// PlanStart shows the first message of a plan-mode thread: a card that names
+// the task being defined, with the user's words and not the agent's
+// instructions.
+function PlanStart({ taskId, body }: { taskId: string; body: string }) {
+  return (
+    <div className="w-full max-w-[85%] overflow-hidden rounded-2xl rounded-br-md border border-slate-200 bg-white dark:border-border dark:bg-surface">
+      <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-2 text-sm dark:border-border">
+        <ClipboardText className="size-4 shrink-0 text-accent dark:text-accent-text" aria-hidden="true" />
+        <span className="font-semibold">Modo plan</span>
+        <span className="text-slate-500 dark:text-muted">· definir la tarea antes de implementarla</span>
+        <Link to="/tasks" search={{ task: taskId } as never} className="ml-auto text-xs text-slate-500 hover:underline dark:text-muted">Ver tarea</Link>
+      </div>
+      {body.trim() && <div className="px-4 py-2.5"><MessageParts text={body} /></div>}
+    </div>
+  );
+}
+
 function UserMessageBody({ text }: { text: string }) {
+  const plan = parsePlanPrompt(text);
+  if (plan) return <PlanStart taskId={plan.taskId} body={plan.body} />;
   const parts = splitMessageQuotes(text);
   const hasQuotes = parts.some((part) => part.kind === "quote");
   if (!hasQuotes) {
