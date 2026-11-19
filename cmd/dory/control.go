@@ -272,8 +272,21 @@ func service(action string) error {
 			return err
 		}
 		return exec.Command("launchctl", "load", "-w", plist).Run()
+	case "windows":
+		// A Run entry of the user starts the core at sign-in, without a
+		// console window.
+		key := `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+		if action == "uninstall" {
+			return exec.Command("reg", "delete", key, "/v", "Dory", "/f").Run()
+		}
+		value := fmt.Sprintf(`conhost.exe --headless "%s" serve`, self)
+		if out, err := exec.Command("reg", "add", key, "/v", "Dory", "/t", "REG_SZ", "/d", value, "/f").CombinedOutput(); err != nil {
+			return fmt.Errorf("reg add: %s", out)
+		}
+		fmt.Println("servicio instalado: el núcleo arranca con tu sesión")
+		return nil
 	}
-	return errors.New("en Windows, crea una tarea programada al iniciar sesión que ejecute `dory serve`")
+	return errors.New("este sistema no tiene servicio de usuario: ejecuta `dory serve`")
 }
 
 // desktopApp returns the command that opens the installed desktop app of

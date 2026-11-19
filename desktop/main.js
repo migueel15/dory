@@ -25,7 +25,9 @@ if (fs.existsSync(profile) || !fs.existsSync(path.join(app.getPath("userData"), 
 const exe = process.platform === "win32" ? "dory.exe" : "dory";
 const bundled = path.join(process.resourcesPath || "", "bin", exe);
 // The core this app installs as a user service, next to the CLI.
-const installed = path.join(os.homedir(), ".local", "bin", exe);
+const installed = process.platform === "win32"
+  ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "Dory", "bin", exe)
+  : path.join(os.homedir(), ".local", "bin", exe);
 const managed = path.join(profile, "core-managed");
 
 // The installed core, the one shipped with the app, or the one on PATH.
@@ -47,7 +49,7 @@ const dory = (args) => run(doryBin(), args);
 // it when there is no core yet and keeps updating the one it installed; a
 // core installed by other means is left alone.
 async function installCore() {
-  if (!app.isPackaged || process.platform === "win32" || !fs.existsSync(bundled)) return;
+  if (!app.isPackaged || !fs.existsSync(bundled)) return;
   if (process.env.APPIMAGE) {
     // dory open and the launcher find the app here.
     const link = path.join(os.homedir(), ".local", "bin", "Dory.AppImage");
@@ -66,7 +68,10 @@ async function installCore() {
   const tmp = `${installed}.new`;
   fs.copyFileSync(bundled, tmp);
   fs.chmodSync(tmp, 0o755);
+  // Windows keeps a running executable locked but lets it be renamed.
+  if (exists && process.platform === "win32") fs.renameSync(installed, `${installed}.old`);
   fs.renameSync(tmp, installed);
+  fs.rmSync(`${installed}.old`, { force: true });
   fs.writeFileSync(managed, "");
   await run(installed, ["service", "install"]);
   if (exists) await run(installed, ["restart"]).catch(() => {});

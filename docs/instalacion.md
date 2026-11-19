@@ -19,7 +19,7 @@ Comandos del núcleo:
 | `dory status` | Dice si el núcleo está en marcha, con su nombre y versión |
 | `dory start`, `stop`, `restart` | Controla el núcleo: con el servicio si está instalado; si no, `start` lo lanza en segundo plano |
 | `dory open` | Arranca el núcleo si hace falta y abre la interfaz en una ventana de app |
-| `dory service install`, `uninstall` | Servicio de usuario de systemd (Linux) o LaunchAgent (macOS) |
+| `dory service install`, `uninstall` | Servicio de usuario: systemd (Linux), LaunchAgent (macOS) o entrada de inicio de sesión sin consola (Windows) |
 | `dory update` | Instala la última versión del canal del binario (estable o nightly) desde GitHub, también la app de escritorio si la hay, y reinicia el núcleo. Para toda la malla, Entornos → «Actualizar la malla» |
 | `dory user create --username X` | Crea una cuenta (contraseña en `DORY_PASSWORD`) |
 | `dory token create --username X --name N --scopes read,write` | Crea un token para la API o el MCP |
@@ -33,9 +33,7 @@ chmod +x ~/.local/bin/dory && dory restart
 
 ## App de escritorio
 
-La app de Electron está en `desktop/` y lleva el binario dentro. Basta con instalarla: en Linux y macOS, al abrirla por primera vez copia su núcleo a `~/.local/bin/dory` y lo deja como servicio de usuario (`dory service install`), así que el núcleo sigue en marcha al cerrar la ventana y arranca con la sesión. Si ya había un `dory` instalado por otra vía, la app lo respeta. En las siguientes versiones actualiza el núcleo que instaló ella. Con el AppImage, además, enlaza `~/.local/bin/Dory.AppImage` para que `dory open` y el lanzador abran la app.
-
-En Windows la app arranca el núcleo al abrirse, sin servicio.
+La app de Electron está en `desktop/` y lleva el binario dentro. Basta con instalarla: al abrirla por primera vez copia su núcleo a `~/.local/bin/dory` (en Windows, `%LOCALAPPDATA%\Dory\bin\dory.exe`) y lo deja como servicio de usuario (`dory service install`), así que el núcleo sigue en marcha al cerrar la ventana y arranca con la sesión. Si ya había un `dory` instalado por otra vía, la app lo respeta. En las siguientes versiones actualiza el núcleo que instaló ella. Con el AppImage, además, enlaza `~/.local/bin/Dory.AppImage` para que `dory open` y el lanzador abran la app.
 
 ```sh
 go build -o desktop/bin/dory ./cmd/dory
