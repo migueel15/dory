@@ -28,8 +28,9 @@ const match = (s: string) => rules.find(([re]) => re.test(s.toLowerCase()))?.[1]
 
 // ModelLogo shows the logo of the provider running a model (Claude, OpenAI for Codex, OpenCode…);
 // the model only decides when the provider is unknown. Falls back to the initial.
-export function ModelLogo({ driver, model = "" }: { driver: string; model?: string }) {
+export function ModelLogo({ driver, model = "", compact = false }: { driver: string; model?: string; compact?: boolean }) {
   const svg = logo(match(driver) ?? match(model) ?? "");
-  if (!svg) return <span className="grid size-5 shrink-0 place-items-center rounded bg-slate-500 text-[10px] font-bold text-white">{driver.slice(0, 1).toUpperCase() || "?"}</span>;
-  return <span aria-hidden="true" className="grid size-5 shrink-0 place-items-center text-slate-900 dark:text-white [&>svg]:size-4" dangerouslySetInnerHTML={{ __html: svg }} />;
+  const box = `grid shrink-0 place-items-center ${compact ? "size-3.5" : "size-5"}`;
+  if (!svg) return <span className={`${box} rounded bg-slate-500 text-[0.625rem] font-bold text-white ${compact ? "leading-none" : ""}`}>{driver.slice(0, 1).toUpperCase() || "?"}</span>;
+  return <span aria-hidden="true" className={`${box} text-slate-900 dark:text-white ${compact ? "[&>svg]:size-3.5" : "[&>svg]:size-4"}`} dangerouslySetInnerHTML={{ __html: svg }} />;
 }

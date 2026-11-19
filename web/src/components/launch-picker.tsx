@@ -5,7 +5,7 @@ import { Label, Select } from "./ui";
 import { explicitModels, findModel, lastModel, modelEffort, modelId, rememberModel } from "../effort";
 import { ModelLogo } from "./model-logo";
 
-export const ProviderIcon = ({ driver, model }: { driver: string; model?: string }) => <ModelLogo driver={driver} model={model} />;
+export const ProviderIcon = (props: Parameters<typeof ModelLogo>[0]) => <ModelLogo {...props} />;
 
 const KEY = "dory.launch";
 const stored = (section: string): Partial<LaunchChoice> => {

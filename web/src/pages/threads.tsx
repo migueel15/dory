@@ -1,20 +1,24 @@
 import { ThreadsFold } from "../lib/threads-fold";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
-import { ChatsCircle, Check, FunnelSimple, MagnifyingGlass, Plus, PushPin } from "@phosphor-icons/react";
+import { Check, FunnelSimple, MagnifyingGlass, Plus, PushPin } from "@phosphor-icons/react";
 import { api, repoName, type Thread } from "../api/client";
 import { ErrorText } from "../components/ui";
 import { useProject } from "../project";
 import { ProviderIcon } from "../components/launch-picker";
 import { StatusDot } from "./thread";
 import { NewThread } from "./home";
+import { RefChip, useThreadRefs, type GhRef } from "../components/thread-refs";
 import { useThreadMenu } from "../components/thread-menu";
 import { EnvIcon } from "../components/env-icon";
 
 // Filters of the single inbox of threads (requirement RF-19).
 const FILTERS = { active: "Activos", needs: "Te necesitan", working: "Trabajando", archived: "Archivados", external: "En los agentes" } as const;
 type Filter = keyof typeof FILTERS;
+
+const LIST_W = 336;
+const clampList = (w: number) => Math.round(Math.min(Math.max(w, 240), 560));
 
 export const isUnread = (t: Thread) => !t.read_at && t.status !== "working" && !!t.last_activity_at;
 const snoozed = (t: Thread) => !!t.snoozed_until && new Date(t.snoozed_until) > new Date();
@@ -30,6 +34,21 @@ export function Threads() {
   const [listFolded, setListFolded] = useState(() => { try { return localStorage.getItem("dory.threads-folded") === "1"; } catch { return false; } });
   const foldList = (v: boolean) => { setListFolded(v); try { localStorage.setItem("dory.threads-folded", v ? "1" : "0"); } catch { /* per-browser only */ } };
   const folded = listFolded && !!threadId;
+  // The list width is dragged from its right edge and kept per browser.
+  const [listWidth, setListWidth] = useState(() => { try { return clampList(Number(localStorage.getItem("dory.threads-width")) || LIST_W); } catch { return LIST_W; } });
+  const [dragging, setDragging] = useState(false);
+  const saveWidth = (w: number) => { setListWidth(w); try { localStorage.setItem("dory.threads-width", String(w)); } catch { /* per-browser only */ } };
+  const startDrag = (e: ReactPointerEvent) => {
+    e.preventDefault();
+    const x0 = e.clientX, w0 = listWidth;
+    let w = w0;
+    setDragging(true);
+    const move = (ev: PointerEvent) => { w = clampList(w0 + ev.clientX - x0); setListWidth(w); };
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); document.body.style.cursor = ""; setDragging(false); saveWidth(w); };
+    document.body.style.cursor = "col-resize";
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
   const threads = useQuery({
     queryKey: ["threads", filter],
     queryFn: () => api.threads(undefined, filter === "archived"),
@@ -44,8 +63,10 @@ export function Threads() {
   const envOf = (id: string) => {
     if (id === local && nodes.data) return { name: nodes.data.node.name, icon: nodes.data.node.icon, os: nodes.data.node.os };
     const p = mesh.data?.peers.find((x) => x.id === id);
-    return p ? { name: p.name, icon: p.info.node?.icon, os: p.info.node?.os } : { name: "Otro nodo" };
+    return p ? { name: p.name, icon: p.info.node?.icon, os: p.info.node?.os, offline: !p.connected } : { name: "Otro nodo", offline: !!(mesh.data && nodes.data) };
   };
+  // Pull requests and issues of each thread, through its task.
+  const refsOf = useThreadRefs();
   // Each thread shows the repositories of its project as owner/repo.
   const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list(), staleTime: 60_000 });
   const repoOf = (projectID: string | null) => (repos.data ?? []).filter((r) => projectID && r.project_id === projectID && !r.archived_at).map((r) => repoName(r.remote_url)).join(", ");
@@ -65,10 +86,12 @@ export function Threads() {
       .sort((a, b) => (b.pinned_at ? 1 : 0) - (a.pinned_at ? 1 : 0) || (b.last_activity_at ?? b.created_at).localeCompare(a.last_activity_at ?? a.created_at));
   }, [threads.data, repos.data, filter, query, project]);
   return (
-    <div className="flex h-[calc(100dvh-4rem-1px)] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
-      <aside inert={folded} className={`min-h-0 w-full shrink-0 flex-col overflow-hidden border-slate-200 sm:-mt-2.5 sm:border-r dark:border-border sm:-ml-4 sm:items-end sm:transition-[width,border-color] sm:duration-300 sm:ease-out motion-reduce:transition-none ${folded ? "sm:w-4 sm:border-transparent" : "sm:w-[21rem]"} ${threadId ? "hidden sm:flex" : "flex"}`}>
+    <div className="flex h-[calc(100dvh-4rem-1px)] min-h-0 sm:h-[calc(100dvh-3rem-2px)]" style={{ "--list-w": `${listWidth}px` } as CSSProperties}>
+      <aside inert={folded} className={`relative ${dragging ? "sm:!transition-none" : ""} min-h-0 w-full shrink-0 flex-col overflow-hidden border-slate-200 sm:-mt-2.5 sm:border-r dark:border-border sm:-ml-4 sm:items-end sm:transition-[width,border-color] sm:duration-300 sm:ease-out motion-reduce:transition-none ${folded ? "sm:w-4 sm:border-transparent" : "sm:w-[var(--list-w)]"} ${threadId ? "hidden sm:flex" : "flex"}`}>
+        {!folded && <div role="separator" aria-orientation="vertical" aria-label="Redimensionar lista de hilos" onPointerDown={startDrag} onDoubleClick={() => saveWidth(LIST_W)}
+          className="absolute inset-y-0 right-0 z-10 hidden w-1.5 translate-x-1/2 cursor-col-resize hover:bg-accent/40 sm:block" />}
         {/* The content keeps its width while the list slides open or closed. */}
-        <div className={`flex min-h-0 w-full flex-1 flex-col sm:w-[21rem] sm:shrink-0 sm:transition-[opacity,visibility] sm:duration-300 motion-reduce:transition-none ${folded ? "sm:invisible sm:opacity-0" : ""}`}>
+        <div className={`flex min-h-0 w-full flex-1 flex-col sm:w-[var(--list-w)] sm:shrink-0 sm:transition-[opacity,visibility] sm:duration-300 motion-reduce:transition-none ${folded ? "sm:invisible sm:opacity-0" : ""}`}>
         <div className="flex items-center gap-1.5 px-2 pb-2">
           <div className="flex min-w-0 flex-1 items-center gap-2 px-2">
             <MagnifyingGlass weight="regular" className="size-4 shrink-0 text-slate-400" />
@@ -93,7 +116,7 @@ export function Threads() {
           <Link to="/threads" title="Nuevo hilo" aria-label="Nuevo hilo" activeOptions={{ exact: true }}
             className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised"><Plus weight="regular" className="size-4" /></Link>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-1">
+        <div className="min-h-0 flex-1 no-scrollbar overflow-y-auto p-1">
           <ErrorText error={threads.error} />
           {filter === "external" && <ErrorText error={external.error} />}
           {filter === "external" && (external.data ?? []).filter((e) => !project || e.project_id === project)
@@ -105,14 +128,14 @@ export function Threads() {
                 <ProviderIcon driver={e.provider} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{e.title}</span>
-                  <span className="block truncate font-mono text-[11px] text-slate-500 dark:text-muted">{e.dir.replace(/^\/home\/[^/]+/, "~")}</span>
+                  <span className="block truncate font-mono text-[0.6875rem] text-slate-500 dark:text-muted">{e.dir.replace(/^\/home\/[^/]+/, "~")}</span>
                 </span>
-                {e.thread_id && <span className="shrink-0 text-[10px] text-slate-500">en Dory</span>}
+                {e.thread_id && <span className="shrink-0 text-[0.625rem] text-slate-500">en Dory</span>}
               </Link>
             ))}
           {filter === "external" && external.isPending && <p className="p-3 text-sm text-slate-500">Leyendo las conversaciones…</p>}
           {filter !== "external" && <ul className="space-y-0.5">{shown.map((t) => (
-            <ThreadRow key={t.id} t={t} sub={repoOf(t.project_id)} env={envOf(t.node_id)} />
+            <ThreadRow key={t.id} t={t} sub={repoOf(t.project_id)} refs={refsOf(t.task_id)} env={envOf(t.node_id)} listVisible={!folded} />
           ))}</ul>}
           {filter !== "external" && threads.isSuccess && shown.length === 0 && <p className="p-3 text-sm text-slate-500 dark:text-muted">No hay hilos aquí.</p>}
         </div>
@@ -121,14 +144,6 @@ export function Threads() {
       <section className={`min-h-0 min-w-0 flex-1 ${folded ? "sm:-ml-2" : ""} sm:transition-[margin] sm:duration-300 sm:ease-out ${threadId ? "flex flex-col" : "hidden sm:flex sm:flex-col"}`}><ThreadsFold.Provider value={threadId ? { folded, toggle: () => foldList(!folded) } : null}><Outlet /></ThreadsFold.Provider></section>
     </div>
   );
-}
-
-// ListDot is the v1 state of a thread in the list.
-function ListDot({ status }: { status: string }) {
-  if (status === "working") return <span className="size-3 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" aria-label="Trabajando" />;
-  if (status === "waiting") return <span className="size-2 rounded-full bg-amber-500 motion-safe:animate-pulse" aria-label="Te necesita" />;
-  if (status === "error") return <span className="size-2 rounded-full bg-red-500" aria-label="Error" />;
-  return <ChatsCircle className="size-4 text-slate-300 dark:text-muted" aria-label="Inactivo" />;
 }
 
 // ago writes how long ago something happened: "ahora", "5m", "3h", "2d".
@@ -143,8 +158,9 @@ function ago(iso: string) {
 // ThreadsHome fills the right side when no thread is open: a new chat.
 export function ThreadsHome() {
   const navigate = useNavigate();
+  // The main frame pads the right edge too: drop it here so the chat sits centred between the list and the window edge.
   return (
-    <div className="grid h-full place-items-center p-4">
+    <div className="grid h-full place-items-center p-4 sm:-mr-4">
       <div className="w-full max-w-3xl">
         <NewThread onCreated={(id) => navigate({ to: "/threads/$threadId", params: { threadId: id } })} />
       </div>
@@ -153,24 +169,52 @@ export function ThreadsHome() {
 }
 
 // ThreadRow is one thread of the side list; right click opens its actions.
-function ThreadRow({ t, sub, env }: { t: Thread; sub: string; env: { name: string; icon?: string; os?: string } }) {
+function ThreadRow({ t, sub, refs, env: { offline, ...env }, listVisible }: { t: Thread; sub: string; refs: GhRef[]; env: { name: string; icon?: string; os?: string; offline?: boolean }; listVisible: boolean }) {
   const menu = useThreadMenu(t);
+  const unread = isUnread(t);
+  const icons = <>
+    {refs.map((r) => <RefChip key={r.kind} r={r} listVisible={listVisible} />)}
+    <span className="flex shrink-0 items-center text-slate-400 dark:text-muted"><EnvIcon {...env} /></span>
+    <ProviderIcon driver={t.provider} model={t.model} compact />
+  </>;
+  const body = <>
+        {/* Repository, then the state: a pending action replaces the time. */}
+        <span className="flex h-4 min-w-0 items-center gap-2 text-[0.6875rem] text-slate-500 dark:text-muted">
+          <span className="min-w-0 flex-1 truncate">{sub || "Sin proyecto"}</span>
+          {t.pinned_at && <PushPin weight="fill" className="size-3 shrink-0 text-slate-400" aria-label="Fijado" />}
+          <RowState t={t} unread={unread} offline={offline} />
+        </span>
+        {/* Without a branch the last line goes away and its icons join the title. */}
+        <span className="flex min-w-0 items-center gap-2">
+          <span className={`min-w-0 flex-1 truncate text-sm ${unread ? "font-semibold" : ""}`}>{t.title || "Hilo"}</span>
+          {!t.branch && icons}
+        </span>
+        {t.branch && <span className="flex h-4 min-w-0 items-center gap-2">
+          <span className="min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-slate-500 dark:text-muted">{t.branch}</span>
+          {icons}
+        </span>}
+  </>;
   return (
     <li>
-              <Link to="/threads/$threadId" params={{ threadId: t.id }} onContextMenu={menu.open}
-                className="group flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-100 dark:hover:bg-raised/60 [&.active]:bg-slate-200 dark:[&.active]:bg-raised">
-                <span className="grid w-4 shrink-0 place-items-center"><ListDot status={t.status} /></span>
-                <span className="min-w-0 flex-1">
-                  <span className={`block truncate text-sm ${isUnread(t) ? "font-semibold" : ""}`}>{t.title || "Hilo"}</span>
-                  {sub && <span className="block truncate font-mono text-[11px] text-slate-500 dark:text-muted">{sub}</span>}
-                </span>
-                {isUnread(t) && <span className="size-2 shrink-0 rounded-full bg-blue-500" aria-label="Sin leer" />}
-                {t.pinned_at && <PushPin weight="fill" className="size-3 shrink-0 text-slate-400" aria-label="Fijado" />}
-                <span className="shrink-0"><ProviderIcon driver={t.provider} model={t.model} /></span>
-                <span className="shrink-0 text-slate-400 dark:text-muted"><EnvIcon {...env} /></span>
-                <span className="shrink-0 text-[11px] tabular-nums text-slate-400">{ago(t.last_activity_at ?? t.created_at)}</span>
-              </Link>
+      {/* A thread whose node is offline stays listed but cannot be opened. */}
+      {offline ? <div aria-disabled title={`${env.name} no está conectado: este hilo no se puede abrir ahora`} onContextMenu={menu.open}
+        className="flex min-w-0 cursor-not-allowed flex-col gap-0.5 rounded-lg px-3 py-2.5 opacity-50">{body}</div>
+      : <Link to="/threads/$threadId" params={{ threadId: t.id }} onContextMenu={menu.open}
+        className="group flex min-w-0 flex-col gap-0.5 rounded-lg px-3 py-2.5 transition-colors hover:bg-slate-100 dark:hover:bg-raised/60 [&.active]:bg-slate-200 dark:[&.active]:bg-raised">{body}</Link>}
       {menu.menu}
     </li>
   );
+}
+
+// RowState shows what a thread needs, or how long ago it was active when it needs nothing.
+function RowState({ t, unread, offline }: { t: Thread; unread: boolean; offline?: boolean }) {
+  const pill = (dot: ReactNode, label: string, tone: string) => (
+    <span className={`inline-flex shrink-0 items-center gap-1.5 font-medium ${tone}`}>{dot}{label}</span>
+  );
+  if (offline) return pill(<span className="size-2 rounded-full bg-slate-400" />, "Sin conexión", "text-slate-500 dark:text-muted");
+  if (t.status === "working") return pill(<span className="size-2.5 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />, "En marcha", "text-blue-600 dark:text-blue-400");
+  if (t.status === "waiting") return pill(<span className="size-2 rounded-full bg-amber-500 motion-safe:animate-pulse" />, "Te necesita", "text-amber-600 dark:text-amber-400");
+  if (t.status === "error") return pill(<span className="size-2 rounded-full bg-red-500" />, "Error", "text-red-600 dark:text-red-400");
+  if (unread) return pill(<span className="size-2 rounded-full bg-emerald-500" />, "Terminado", "text-emerald-600 dark:text-emerald-400");
+  return <span className="shrink-0 tabular-nums text-slate-400">{ago(t.last_activity_at ?? t.created_at)}</span>;
 }
