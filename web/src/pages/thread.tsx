@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useCommand } from "../components/shortcuts";
 import { hasWindowClose } from "../lib/window-close";
 import { PlanDoc } from "../components/plan-doc";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,6 +25,7 @@ import { SidePanel, SidePanelToggle, useSidePanel, type SidePanelState } from ".
 export function ThreadView() {
   const { threadId } = useParams({ strict: false }) as { threadId: string };
   const panel = useSidePanel(threadId);
+  useCommand("thread-panel", panel.toggle);
   const thread = useThread(threadId).data;
   const local = thread?.local;
   const taskId = thread?.task_id ?? null;

@@ -5,11 +5,12 @@ import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Brain, ChartBar, ChatsCircle, FolderSimple, Gear, GithubLogo, HardDrives, House, IconContext, Kanban, Lightning, List, Moon, SidebarSimple, SignOut, Sun, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Outlet, useLocation, RouterProvider, createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, useNavigate, RouterProvider, createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect } from "@tanstack/react-router";
 import { ApiError, api } from "./api/client";
 import { useLiveUpdates } from "./api/live";
 import { Button, Input, Label, errMsg } from "./components/ui";
 import { Environments, Memories, memorySearch } from "./pages/crud";
+import { listenShortcuts, useCommand } from "./components/shortcuts";
 import { CommandPalette, CommandsButton } from "./components/commands";
 import { TooltipHost } from "./components/tooltip";
 import { MeshUpdateButton } from "./components/mesh-update";
@@ -162,6 +163,7 @@ function Layout() {
   const attention = (threads.data ?? []).filter((t) => t.status === "waiting" || t.status === "error").length;
 
   const path = useLocation({ select: (l) => l.pathname });
+  const navigate = useNavigate();
   const [menu, setMenu] = useState(false);
   // Notifications mount once (sidebar on desktop, top bar on phones) so toasts never repeat.
   const [desktop, setDesktop] = useState(() => window.matchMedia("(min-width: 640px)").matches);
@@ -179,6 +181,22 @@ function Layout() {
     try { localStorage.setItem("dory.sidebar-folded", v ? "1" : "0"); } catch { /* per-browser only */ }
   };
 
+  useCommand("sidebar", () => fold(!folded));
+  const navigateWithoutLosingDraft = async (search: boolean) => {
+    if (document.querySelector('[data-unsaved-draft="true"]')) {
+      window.alert("Hay un borrador sin enviar. Guárdalo o envíalo antes de cambiar de vista.");
+      return;
+    }
+    await navigate({ to: "/threads" });
+    if (search) window.setTimeout(() => window.dispatchEvent(new Event("dory:focus-thread-search")), 0);
+  };
+  useCommand("new-thread", () => { void navigateWithoutLosingDraft(false); });
+  useCommand("search-threads", () => { void navigateWithoutLosingDraft(true); });
+  useEffect(() => {
+    if (!me.data) return;
+    window.addEventListener("keydown", listenShortcuts);
+    return () => window.removeEventListener("keydown", listenShortcuts);
+  }, [!!me.data]);
   useEffect(() => { setMenu(false); }, [path]);
   useEffect(() => {
     if (!menu || !me.data) return;

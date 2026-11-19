@@ -3,20 +3,22 @@ import { useNavigate } from "@tanstack/react-router";
 import { Brain, ChartBar, Command as CommandIcon, FolderSimple, GithubLogo, HardDrives, House, Kanban, Lightbulb, MagnifyingGlass, Robot, type IconProps } from "@phosphor-icons/react";
 import { IdeaModal } from "./capture";
 import { Input } from "./ui";
+import { commands as shortcutCommands, useCommand, useShortcuts, available, runCommand } from "./shortcuts";
+import { formatChord } from "./dictation-shortcut";
 
 type Command = { id: string; group: string; label: string; icon: ComponentType<IconProps>; hint?: string; run: () => void };
 
 const OPEN_EVENT = "dory:commands";
-const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const kbd = "rounded border border-slate-200 bg-slate-50 px-1 font-sans text-[0.625rem] font-medium text-slate-500 dark:border-border dark:bg-raised dark:text-muted";
 
 // CommandsButton opens the palette and shows its shortcut; it sits next to the app name.
 export function CommandsButton() {
+  const get = useShortcuts();
   return (
     <button type="button" onClick={() => window.dispatchEvent(new Event(OPEN_EVENT))} title="Comandos" aria-label="Abrir comandos"
       className="ml-auto flex items-center gap-1 rounded px-1.5 py-1 font-normal text-slate-500 hover:bg-slate-200 dark:text-muted dark:hover:bg-raised">
       <CommandIcon aria-hidden="true" className="size-4" />
-      <kbd className={kbd}>{mac ? "⌘K" : "Ctrl K"}</kbd>
+      <kbd className={kbd}>{formatChord(get("palette"))}</kbd>
     </button>
   );
 }
@@ -27,14 +29,12 @@ export function CommandPalette() {
   const [idea, setIdea] = useState(false);
   const navigate = useNavigate();
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setOpen((o) => !o); }
-    };
     const onOpen = () => setOpen(true);
-    window.addEventListener("keydown", onKey);
     window.addEventListener(OPEN_EVENT, onOpen);
-    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener(OPEN_EVENT, onOpen); };
+    return () => window.removeEventListener(OPEN_EVENT, onOpen);
   }, []);
+  useCommand("palette", () => setOpen((o) => !o));
+  const get = useShortcuts();
   const go = (to: string) => () => navigate({ to });
   const nav = "Ir a";
   const commands: Command[] = [
@@ -48,9 +48,10 @@ export function CommandPalette() {
     { id: "environments", group: nav, label: "Entornos", icon: HardDrives, run: go("/environments") },
     { id: "memories", group: nav, label: "Memorias", icon: Brain, run: go("/memories") },
   ];
+  const contextual: Command[] = shortcutCommands.filter((c) => c.id !== "palette" && c.id !== "dictation" && available(c.id)).map((c) => ({ id: c.id, group: "Acciones", label: c.label, icon: CommandIcon, hint: formatChord(get(c.id)), run: () => { runCommand(c.id); } }));
   return (
     <>
-      {open && <Palette commands={commands} onClose={() => setOpen(false)} />}
+      {open && <Palette commands={[...contextual, ...commands]} onClose={() => setOpen(false)} />}
       {idea && <IdeaModal onClose={() => setIdea(false)} />}
     </>
   );
@@ -58,6 +59,8 @@ export function CommandPalette() {
 
 function Palette({ commands, onClose }: { commands: Command[]; onClose: () => void }) {
   const [query, setQuery] = useState("");
+  const previousFocus = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  useEffect(() => () => { if (!document.activeElement || document.activeElement === document.body) previousFocus.current?.focus(); }, []);
   const [hi, setHi] = useState(0);
   const list = useRef<HTMLDivElement>(null);
   const q = query.trim().toLowerCase();

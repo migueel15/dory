@@ -13,6 +13,7 @@ import { HoverCard } from "../components/tooltip";
 import { CodeRefCard, codeRefText } from "../components/code-ref";
 import type { DraftQuote } from "../components/quote-selection";
 import { askAnswerText, openAsk, QuestionPanel, useQuestionFlow } from "../components/question-card";
+import { useCommand } from "../components/shortcuts";
 import { paintTokens, quoteBlock, quoteLabel, tokenRanges, type Token, type Tokens } from "../components/composer-tokens";
 
 // The composer of a thread, kept from Dory v1: attachments, @ mentions of
@@ -24,23 +25,35 @@ export const composerArea = "relative block max-h-60 w-full resize-none break-wo
 export type MenuOption = { value: string; label: string; group?: string; modelId?: string; icon?: React.ReactNode };
 
 // Chip is a compact dropdown for the composer toolbar; the menu opens upwards.
-export function Chip({ value, options, onChange, title, icon, below = false, prefix }: { value: string; options: MenuOption[]; onChange: (v: string) => void; title: string; icon?: React.ReactNode; below?: boolean; prefix?: string }) {
+export function Chip({ value, options, onChange, title, icon, below = false, prefix, shortcutBranch = false }: { value: string; options: MenuOption[]; onChange: (v: string) => void; title: string; icon?: React.ReactNode; below?: boolean; prefix?: string; shortcutBranch?: boolean }) {
   const [open, setOpen] = useState(false);
   const box = useOutside(open, () => setOpen(false));
   const current = options.find((o) => o.value === value);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [query, setQuery] = useState("");
+  const [highlight, setHighlight] = useState(0);
+  const filtered = options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()));
+  const close = () => { setOpen(false); setQuery(""); trigger.current?.focus(); };
+  useCommand("branch", () => { if (!trigger.current?.getClientRects().length) return false; setQuery(""); setHighlight(0); setOpen(true); }, shortcutBranch);
   return (
     <div ref={box} className="relative">
-      <button type="button" title={title} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}
+      <button ref={trigger} type="button" title={title} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}
         onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
         className="inline-flex h-8 max-w-[11rem] items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white">
         {current?.icon ?? icon}<span className="truncate">{prefix && `${prefix} `}{current?.label ?? value}</span><CaretDown weight="regular" className="size-3 shrink-0 opacity-60" />
       </button>
       {open && (
         <ul role="listbox" className={`absolute left-0 z-20 max-h-72 min-w-[12rem] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-border dark:bg-surface ${below ? "top-full mt-2" : "bottom-full mb-2"}`}>
-          {options.map((o) => (
+          {shortcutBranch && <li><input autoFocus aria-label="Buscar rama" value={query} onChange={(e) => { setQuery(e.target.value); setHighlight(0); }} onKeyDown={(e) => {
+            if (e.key === "Escape") { e.stopPropagation(); close(); }
+            else if (e.key === "ArrowDown") { e.preventDefault(); setHighlight((i) => Math.min(i + 1, filtered.length - 1)); }
+            else if (e.key === "ArrowUp") { e.preventDefault(); setHighlight((i) => Math.max(i - 1, 0)); }
+            else if (e.key === "Enter" && filtered[highlight]) { e.preventDefault(); onChange(filtered[highlight].value); close(); }
+          }} className="w-full rounded bg-transparent px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500" /></li>}
+          {filtered.map((o, i) => (
             <li key={o.value}>
-              <button type="button" role="option" aria-selected={o.value === value} onClick={() => { onChange(o.value); setOpen(false); }}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised">
+              <button type="button" role="option" aria-selected={o.value === value} onClick={() => { onChange(o.value); close(); }}
+                className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised ${shortcutBranch && i === highlight ? "bg-slate-100 dark:bg-raised" : ""}`}>
                 {o.icon}<span className="min-w-0 flex-1 truncate">{o.label}</span>{o.value === value && <Check weight="regular" className="size-3.5" />}
               </button>
             </li>
@@ -136,6 +149,7 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
     setNavigationIndex(undefined);
     setOpen(true);
   };
+  useCommand("model", () => { if (!trigger.current?.getClientRects().length) return false; toggle(); });
   const claude = claudeModelName(modelId);
   const modelLabel = claude ||
     (modelId === (current?.modelId ?? selected) ? current?.label : undefined) ||
@@ -444,7 +458,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   const busy = t.running;
   return (
     <div className="mx-auto w-full max-w-[55.2rem] px-3 pb-4 pt-2 sm:px-6">
-      <form data-quote-ui data-dictation-panel onSubmit={(e) => { e.preventDefault(); submit(); }}
+      <form data-quote-ui data-dictation-panel data-unsaved-draft={!!text.trim() || files.length > 0 || quotes.length > 0 || dictation.active} onSubmit={(e) => { e.preventDefault(); submit(); }}
         onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
         onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); addFiles(e.dataTransfer.files); } }}
         onPaste={(e) => {
