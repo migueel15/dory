@@ -1,9 +1,9 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { api, usable, type UsageRange, type UsageReport, type UsageRow, type UsageWindow } from "../api/client";
 import { Card, ErrorText, Select, iconButton } from "../components/ui";
 import { AreaChart, StackedBar, compact, percent, providerColor, usd } from "../components/usage-charts";
-import { ProviderIcon } from "../components/launch-picker";
+import { ProviderIcon, useNodes } from "../components/launch-picker";
 import { expectedRemaining, paceTitle, WINDOWS } from "../lib/usage-pace";
 
 
@@ -49,7 +49,7 @@ function Limits({ only }: { only: string }) {
 }
 
 type Tab = "cost" | "tokens" | "limits";
-type Search = { tab?: Tab; range?: UsageRange; provider?: string; by?: "model" | "day" };
+type Search = { tab?: Tab; range?: UsageRange; provider?: string; by?: "model" | "day"; envs?: string };
 const RANGES: [UsageRange, string][] = [["24h", "24 h"], ["7d", "7 días"], ["30d", "30 días"], ["90d", "90 días"]];
 const TABS: [Tab, string][] = [["cost", "Coste"], ["tokens", "Tokens"], ["limits", "Límites"]];
 const PROVIDER_NAMES: Record<string, string> = { claude: "Claude Code", codex: "Codex" };
@@ -83,6 +83,15 @@ function buckets(report: UsageReport) {
   return out;
 }
 
+// merge adds up the reports of several environments; rows of the same
+// bucket, provider and model are kept apart, the charts sum them anyway.
+function merge(reports: UsageReport[]): UsageReport {
+  const sessions: Record<string, number> = {};
+  for (const r of reports) for (const [p, n] of Object.entries(r.sessions)) sessions[p] = (sessions[p] ?? 0) + n;
+  const from = reports.map((r) => r.from).sort()[0];
+  return { from, bucket: reports[0].bucket, rows: reports.flatMap((r) => r.rows), sessions };
+}
+
 // Usage shows the API-equivalent cost and the tokens read from the harness
 // logs of this machine, and the current limits of each provider.
 export function Usage() {
@@ -90,7 +99,22 @@ export function Usage() {
   const navigate = useNavigate();
   const set = (patch: Search) => navigate({ to: "/usage", search: { ...search, ...patch } as never, replace: true });
   const tab = search.tab ?? "cost", range = search.range ?? "30d", provider = search.provider ?? "", by = search.by ?? "model";
-  const history = useQuery({ queryKey: ["usage-history", range], queryFn: () => api.usageHistory(range), enabled: tab !== "limits" });
+  const nodes = useNodes();
+  // Every active environment counts by default; envs narrows the selection.
+  const picked = search.envs ? search.envs.split(",") : null;
+  const selected = nodes.filter((n) => !picked || picked.includes(n.value));
+  const toggle = (id: string) => {
+    const current = selected.map((n) => n.value);
+    const next = current.includes(id) ? current.filter((v) => v !== id) : [...current, id];
+    set({ envs: next.length === nodes.length || !next.length ? undefined : next.join(",") });
+  };
+  const results = useQueries({ queries: selected.map((n) => ({ queryKey: ["usage-history", range, n.value], queryFn: () => api.usageHistory(range, n.value), enabled: tab !== "limits" })) });
+  const loaded = results.filter((r) => r.data).map((r) => r.data!);
+  const history = {
+    isFetching: results.some((r) => r.isFetching),
+    error: results.find((r) => r.error)?.error ?? null,
+    data: results.length && results.every((r) => !r.isPending) && loaded.length ? merge(loaded) : undefined,
+  };
   const qc = useQueryClient();
   const providers = Object.keys(PROVIDER_NAMES);
   return (
@@ -110,6 +134,16 @@ export function Usage() {
           </button>
         </div>
       </div>
+      {tab !== "limits" && nodes.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-slate-500 dark:text-muted">Entornos:</span>
+          {nodes.map((n) => {
+            const on = selected.some((s) => s.value === n.value);
+            return <button key={n.value} type="button" aria-pressed={on} onClick={() => toggle(n.value)}
+              className={cx("min-h-11 rounded-full border px-2.5 py-1 sm:min-h-0", on ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900" : "border-slate-300 text-slate-500 dark:border-border dark:text-muted")}>{n.label}</button>;
+          })}
+        </div>
+      )}
       {tab === "limits" ? <Limits only={provider} /> : (
         <>
           <ErrorText error={history.error} />
