@@ -221,6 +221,8 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const dirty = draft.title !== c.title || draft.description !== c.description || draft.issue !== (c.issue_number?.toString() ?? "") || draft.pr !== (c.pr_number?.toString() ?? "") || draft.repo !== (c.repository_id ?? "");
   const others = (board.data?.cards ?? []).filter((o) => o.id !== id && (!c.project_id || o.project_id === c.project_id));
   const latest = [...(plans.data ?? [])].sort((a, b) => b.version - a.version)[0];
+  // The latest plan has to be accepted before the task is implemented.
+  const planPending = !!latest && !latest.accepted_at;
   const projectRepos = (repos.data ?? []).filter((r) => !c.project_id || r.project_id === c.project_id);
   return (
     <Modal title={COLUMN_LABELS[c.column]} onClose={onClose} wide>
@@ -257,7 +259,8 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
           <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold"><Rocket className="size-4" />Lanzar en este nodo</h3>
           {form.fields}
           <div className="mt-2 flex flex-wrap gap-2">
-            <Button onClick={() => launch.mutate()} disabled={!form.ready || launch.isPending || c.blockers.length > 0} title={c.blockers.length ? "Depende de tareas sin terminar" : "Crea la rama y el worktree y lanza el agente"}>Implementar</Button>
+            <Button onClick={() => launch.mutate()} disabled={!form.ready || launch.isPending || c.blockers.length > 0 || planPending}
+              title={planPending ? "Acepta el plan antes de implementar" : c.blockers.length ? "Depende de tareas sin terminar" : "Crea la rama y el worktree y lanza el agente"}>Implementar</Button>
             <Button variant="ghost" onClick={() => define.mutate()} disabled={!form.ready || define.isPending}>Definir con un agente</Button>
           </div>
           <ErrorText error={launch.error ?? define.error} />

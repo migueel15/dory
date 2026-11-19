@@ -122,6 +122,22 @@ func (s *Server) ProposePlan(ctx context.Context, taskID string, sections json.R
 	return s.Store.Plans().Put(ctx, data.Plan{TaskID: taskID, Version: version, Sections: sections, OpenQuestions: questions, Author: author})
 }
 
+// planPending says whether the latest plan of a task waits for the user to
+// accept it. A task without a plan is not pending.
+func (s *Server) planPending(ctx context.Context, taskID string) (bool, error) {
+	plans, err := s.Store.Plans().List(ctx, data.Filter{Fields: map[string]any{"task_id": taskID}, Limit: 1000})
+	if err != nil || len(plans) == 0 {
+		return false, err
+	}
+	latest := plans[0]
+	for _, p := range plans {
+		if p.Version > latest.Version {
+			latest = p
+		}
+	}
+	return latest.AcceptedAt == nil, nil
+}
+
 // acceptPlan marks the latest plan accepted and the task ready.
 func (s *Server) acceptPlan(ctx context.Context, taskID string) (data.Task, data.Plan, error) {
 	plans, err := s.Store.Plans().List(ctx, data.Filter{Fields: map[string]any{"task_id": taskID}, Limit: 1000})
@@ -356,6 +372,13 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 	t, err := s.Store.Tasks().Get(ctx, r.PathValue("id"))
 	if err != nil {
 		writeDataError(w, err)
+		return
+	}
+	if pending, err := s.planPending(ctx, t.ID); err != nil {
+		writeDataError(w, err)
+		return
+	} else if pending {
+		writeError(w, http.StatusConflict, "plan_not_accepted", "acepta el plan de la tarea antes de implementarla")
 		return
 	}
 	var repoPath string
