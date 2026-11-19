@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDiffBase } from "../lib/diff-base";
-import { Cloud, Copy, Folder, GitBranch, GitDiff, Info } from "@phosphor-icons/react";
+import { Copy, Folder, GitBranch, GitDiff, Info } from "@phosphor-icons/react";
 import { api, type ThreadView, type UsageWindow } from "../api/client";
 import { expectedRemaining, WINDOWS } from "../lib/usage-pace";
 import { HoverCard } from "./tooltip";
+import { EnvIcon } from "./env-icon";
 import { copyText } from "./ui";
 
 // diffStat counts added and removed lines of a unified diff.
@@ -42,7 +43,11 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff }: { t: ThreadView
   const projectName = t.project_id ? projects.data?.find((p) => p.id === t.project_id)?.name : undefined;
   const base = useDiffBase(t.id);
   const diff = useQuery({ queryKey: ["thread-diff", t.id, base], queryFn: () => api.threadDiff(t.id, base), enabled: open && t.local, refetchInterval: open ? 5000 : false });
-  const where = t.local ? node.data?.node.name ?? "este nodo" : `otro nodo (${t.node_id})`;
+  // The environment the thread runs in, which may be a peer of this node.
+  const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh, staleTime: 60_000, enabled: open });
+  const self = node.data?.node;
+  const env = self && t.node_id === self.id ? self : mesh.data?.peers.find((p) => p.id === t.node_id)?.info.node;
+  const where = env?.name ?? mesh.data?.peers.find((p) => p.id === t.node_id)?.name ?? `entorno ${t.node_id.slice(0, 8)}`;
   const stat = diff.data ? diffStat(diff.data.diff) : undefined;
   const usage = node.data?.usage[t.provider] ?? [];
   return (
@@ -54,7 +59,7 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff }: { t: ThreadView
       {open && (
         <div ref={panel} role="region" aria-label="Información del hilo" className="notif-in absolute right-0 top-10 z-30 w-80 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:divide-border dark:border-border dark:bg-surface">
           <div>
-            <div className={row}><Cloud weight="regular" className="size-4 shrink-0 text-slate-500" /><span className="min-w-0 flex-1 truncate">{where}</span>
+            <div className={row}><span className="shrink-0 text-slate-500"><EnvIcon icon={env?.icon} os={env?.os} name={where} className="size-4" /></span><span className="min-w-0 flex-1 truncate">{where}</span>
               {t.worktree && <button type="button" onClick={() => copyText(t.worktree)} title={`Copiar la carpeta: ${t.worktree}`} aria-label="Copiar la carpeta"
                 className="grid size-6 place-items-center rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-raised"><Copy weight="regular" className="size-3.5" /></button>}
             </div>
