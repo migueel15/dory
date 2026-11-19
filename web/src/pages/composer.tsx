@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, CaretDown, Check, File as FileIcon, FileText, Lightning, ListBullets, MagnifyingGlass, Paperclip, PencilSimple, Quotes, Stop, TerminalWindow, Trash, X } from "@phosphor-icons/react";
+import { ArrowUp, CaretDown, Check, Code, File as FileIcon, FileText, Lightning, ListBullets, MagnifyingGlass, Paperclip, PencilSimple, Quotes, Stop, TerminalWindow, Trash, X } from "@phosphor-icons/react";
 import { api, usable, type Attachment, type ThreadView } from "../api/client";
 import { Button, ErrorText, errMsg, iconButton, uuid } from "../components/ui";
 import { DictationField } from "../components/dictation-field";
@@ -9,6 +9,8 @@ import { claudeModelName } from "../components/model-label";
 import { ProviderIcon } from "../components/launch-picker";
 import { explicitModels, findModel, modelEffort, modelId as concreteModelId, rememberModel } from "../effort";
 import { iconBtn, MessageParts } from "./chat";
+import { HoverCard } from "../components/tooltip";
+import { CodeRefCard, codeRefText } from "../components/code-ref";
 import type { DraftQuote } from "../components/quote-selection";
 import { askAnswerText, openAsk, QuestionPanel, useQuestionFlow } from "../components/question-card";
 import { paintTokens, quoteBlock, quoteLabel, tokenRanges, type Token, type Tokens } from "../components/composer-tokens";
@@ -264,6 +266,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   const picker = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<Draft[]>([]);
   const quoteList = useRef<HTMLUListElement>(null);
+  const codeTip = useCodeTip();
   const latestQuote = quotes.at(-1)?.id;
   useLayoutEffect(() => {
     const list = quoteList.current;
@@ -290,6 +293,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
     }, draft).trim();
     return [
       ...quotes.map((quote) => {
+        if (quote.code) return codeRefText({ ...quote.code, code: quote.text, comment: quote.reply });
         const block = quoteBlock(quoteLabel(quote.text).replaceAll("»", "›"), quote.text).trim();
         return quote.reply ? `${block}\n\n**Respuesta a la cita**\n\n${quote.reply}` : block;
       }),
@@ -449,15 +453,22 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
         className={composerFrame}>
         {asking && <QuestionPanel flow={flow} busy={reply.isPending} error={reply.error} />}
         {!dictation.active && suggest.menu}
+        {codeTip.card}
         {quotes.length > 0 && (
           <ul ref={quoteList} aria-label="Citas del mensaje" className="mx-2 mt-2 max-h-44 space-y-1.5 overflow-y-auto overscroll-contain px-1 py-1">
             {quotes.map((quote) => (
-              <li key={quote.id} title={quote.reply ? `${quote.text}\n\n${quote.reply}` : quote.text}
+              <li key={quote.id} title={quote.code ? undefined : quote.reply ? `${quote.text}\n\n${quote.reply}` : quote.text}
+                onPointerEnter={quote.code ? (e) => codeTip.show(e.currentTarget, quote) : undefined} onPointerLeave={quote.code ? codeTip.hide : undefined}
                 className="flex min-w-0 items-center gap-2 rounded-lg bg-slate-50 px-2 py-1.5 text-sm dark:bg-raised">
-                <Quotes weight="thin" aria-hidden="true" className="size-4 shrink-0 text-slate-500 dark:text-muted" />
-                <span className="min-w-0 flex-1 truncate">{quote.text}</span>
-                {quote.reply && <span className="shrink-0 text-xs text-slate-500 dark:text-muted">Con respuesta</span>}
-                <button type="button" onClick={() => onRemoveQuotes([quote.id])} aria-label={`Quitar cita ${quoteLabel(quote.text)}`}
+                {quote.code ? <>
+                  <Code weight="thin" aria-hidden="true" className="size-4 shrink-0 text-slate-500 dark:text-muted" />
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs">{quote.code.path.split("/").pop()}<span className="text-slate-500 dark:text-muted">:{quote.code.start === quote.code.end ? quote.code.start : `${quote.code.start}-${quote.code.end}`}</span>{quote.reply && <span className="ml-2 font-sans text-sm">{quote.reply}</span>}</span>
+                </> : <>
+                  <Quotes weight="thin" aria-hidden="true" className="size-4 shrink-0 text-slate-500 dark:text-muted" />
+                  <span className="min-w-0 flex-1 truncate">{quote.text}</span>
+                  {quote.reply && <span className="shrink-0 text-xs text-slate-500 dark:text-muted">Con respuesta</span>}
+                </>}
+                <button type="button" onClick={() => onRemoveQuotes([quote.id])} aria-label={quote.code ? `Quitar referencia ${quote.code.path}` : `Quitar cita ${quoteLabel(quote.text)}`}
                   className="grid size-6 shrink-0 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
                   <X weight="thin" className="size-4" />
                 </button>
@@ -665,4 +676,20 @@ function QueuedRow({ text, files, canSteer, onSteer, onCancel, onEdit }: { text:
       </div>
     </div>
   );
+}
+
+// useCodeTip shows a code reference of the message box in full when the
+// pointer rests on it, after the same wait as a tooltip: the file and lines,
+// the code as it is in the file, and the comment, each in its own part.
+function useCodeTip() {
+  const [tip, setTip] = useState<{ el: HTMLElement; quote: DraftQuote } | null>(null);
+  const wait = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(wait.current), []);
+  const show = (el: HTMLElement, quote: DraftQuote) => { clearTimeout(wait.current); if (tip?.el === el) return; wait.current = setTimeout(() => setTip({ el, quote }), 700); };
+  // Leaving the reference waits a moment, so the pointer can reach the card and scroll its code.
+  const hide = () => { clearTimeout(wait.current); wait.current = setTimeout(() => setTip(null), 200); };
+  const keep = () => clearTimeout(wait.current);
+  const code = tip?.quote.code;
+  const card = tip && code && <HoverCard anchor={tip.el} interactive onPointerEnter={keep} onPointerLeave={hide}><CodeRefCard data={{ ...code, code: tip.quote.text, comment: tip.quote.reply }} /></HoverCard>;
+  return { show, hide, card };
 }

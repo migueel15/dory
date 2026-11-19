@@ -1,11 +1,10 @@
-import { createContext, memo, useCallback, useContext, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, memo, useCallback, useContext, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { createPortal } from "react-dom";
-import { ArrowsIn, CaretDown, ArrowsOut, CaretRight, Columns, Rows, SidebarSimple, ChatCircle, TreeView, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
+import { ArrowUp, GithubLogo, Lightning, X, ArrowsIn, CaretDown, ArrowsOut, CaretRight, Columns, Rows, SidebarSimple, ChatCircle, TreeView, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import { DictationField } from "../components/dictation-field";
-import { useDictationInProgress } from "../components/local-dictation";
+import { DictationMic, DictationPreview, useEnterFinishesDictation, useLocalDictation } from "../components/local-dictation";
 import { Button, ErrorText, Input, keepAboveKeyboard } from "../components/ui";
 import { Modal } from "../components/ui";
 import { useLaunchForm } from "../components/launch-picker";
@@ -239,36 +238,57 @@ const FileHead = memo(function FileHead({ f, folded, hits, gh, reviewed, onFold,
 
 // CommentForm owns the text being typed, so typing never re-renders the diff rows.
 // The draft survives the form unmounting when it scrolls out of the virtual list.
-function CommentForm({ draft, placeholder, suggest, rangeless, pending, agentPending, agentAvailable, onAsk, onSuggest, onPublish, onCancel }: {
-  draft: { current: string }; placeholder: string; suggest: boolean; rangeless: boolean; pending: boolean; agentPending: boolean; agentAvailable: boolean;
+const formAction = "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent dark:text-text-secondary dark:hover:bg-raised";
+
+// CommentForm writes a note on the selected lines. It looks like the reply to
+// a quote in the chat: a card with a borderless box that grows, and the
+// dictation and main action on its right; the rest goes in a quiet row below.
+function CommentForm({ draft, placeholder, suggest, steerable = true, rangeless, pending, agentPending, agentAvailable, onAsk, onSuggest, onPublish, onCancel }: {
+  draft: { current: string }; placeholder: string; suggest: boolean; steerable?: boolean; rangeless: boolean; pending: boolean; agentPending: boolean; agentAvailable: boolean;
   onAsk: (body: string) => void; onSuggest: (body: string, steer: boolean) => void; onPublish: (body: string) => void; onCancel: () => void;
 }) {
-  const [body, setBody] = useState(draft.current);
-  const dictating = useDictationInProgress();
+  const [body, setBodyState] = useState(draft.current);
+  const setBody = (text: string) => { setBodyState(text); draft.current = text; };
+  const input = useRef<HTMLTextAreaElement>(null);
+  const dictation = useLocalDictation(body, setBody, input);
+  useEnterFinishesDictation(dictation, input);
+  const showingDictation = !!dictation.preview;
+  useLayoutEffect(() => {
+    const area = input.current;
+    if (!area || showingDictation) return;
+    area.style.height = "auto";
+    area.style.height = `${area.scrollHeight}px`;
+  }, [body, showingDictation]);
+  const empty = !body.trim();
+  // A reference to code can go into the message box without a comment.
+  const mainDisabled = dictation.active || pending || (empty && (!suggest || steerable)) || (suggest ? rangeless : agentPending);
+  const main = () => { if (!mainDisabled) { if (suggest) onSuggest(body, false); else onAsk(body); } };
   return (
-    <div className="my-2 whitespace-normal font-sans">
-      <DictationField aria-label="Comentario de revisión" autoFocus onFocus={(e) => keepAboveKeyboard(e.currentTarget.parentElement!)} value={body} onValue={(text) => { setBody(text); draft.current = text; }} rows={3} placeholder={placeholder} className="p-2"
-        onKeyDown={(e) => {
-          // Ctrl/Cmd+Enter always goes to the agent; Escape cancels. GitHub only by its button.
-          if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onCancel(); return; }
-          if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey) || dictating || !body.trim()) return;
-          e.preventDefault();
-          if (suggest) { if (!rangeless && !pending) onSuggest(body, false); }
-          else if (!pending && !agentPending) onAsk(body);
-        }} />
-      <div className="mt-2 flex gap-2">
-        {suggest ? (
-          <>
-            <Button disabled={dictating || pending || !body.trim() || rangeless} onClick={() => onSuggest(body, false)} title="Envía la sugerencia al hilo; si está trabajando, se encola">Sugerir al chat</Button>
-            <Button variant="ghost" disabled={dictating || pending || !body.trim() || rangeless} onClick={() => onSuggest(body, true)} title="Inyecta la sugerencia en el turno en curso">Steer</Button>
-          </>
-        ) : <>
-          <Button disabled={dictating || pending || !body.trim() || agentPending} onClick={() => onAsk(body)}
-            title={`${agentAvailable ? "Consulta privada al hilo de revisión de la PR" : "La primera pregunta crea el hilo de revisión de la PR"}; no se publica en GitHub (Ctrl+Enter)`}>Preguntar al agente</Button>
-          <PublishButton disabled={dictating || pending || !body.trim()} onPublish={() => onPublish(body)} />
-        </>}
-        <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
+    <div data-dictation-panel className="whitespace-normal py-2 font-sans">
+      <div className="flex items-start gap-2">
+        {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} className="min-w-0 flex-1 !max-h-[112px] !px-1 !py-1.5 !text-sm !leading-5" />}
+        <textarea ref={input} autoFocus rows={1} value={dictation.value} readOnly={dictation.active} aria-label="Comentario de revisión" placeholder={placeholder}
+          onFocus={(e) => keepAboveKeyboard(e.currentTarget.parentElement!)}
+          onChange={(e) => setBody(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter sends to the agent or chat, like the chat box (Shift+Enter adds a line); Escape cancels. GitHub only by its button.
+            if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onCancel(); return; }
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); main(); }
+          }}
+          className={showingDictation ? "sr-only" : "max-h-[112px] min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1.5 text-sm leading-5 outline-none! focus-visible:outline-none!"} />
+        <button type="button" onClick={onCancel} aria-label="Cancelar" title="Cancelar (Esc)" className="-mr-1 grid size-8 shrink-0 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white"><X weight="light" className="size-4" /></button>
       </div>
+      <div className="mt-1 flex items-center gap-1 border-t border-slate-100 pt-1 dark:border-border">
+        {suggest && steerable && <button type="button" disabled={dictation.active || pending || empty || rangeless} onClick={() => onSuggest(body, true)} className={formAction} title="Inyecta el comentario en el turno en curso"><Lightning weight="light" className="size-4" />Steer</button>}
+        {!suggest && <PublishButton disabled={dictation.active || pending || empty} onPublish={() => onPublish(body)} />}
+        <span className="flex-1" />
+        <DictationMic dictation={dictation} />
+        <button type="button" disabled={mainDisabled} onClick={main} aria-label={suggest ? (steerable ? "Enviar" : "Añadir al mensaje") : "Preguntar al agente"} className={`${formAction} w-8 justify-center px-0`}
+          title={suggest ? (steerable ? "Envía el comentario al hilo; si está trabajando, se encola (Enter)" : "Añade la referencia al mensaje del hilo, sin enviarlo (Enter)") : `${agentAvailable ? "Consulta privada al hilo de revisión de la PR" : "La primera pregunta crea el hilo de revisión de la PR"}; no se publica en GitHub (Enter)`}>
+          <ArrowUp weight="light" className="size-4" />
+        </button>
+      </div>
+      <ErrorText error={dictation.error} />
     </div>
   );
 }
@@ -290,7 +310,7 @@ export const FullscreenHost = createContext<HTMLElement | null>(null);
 // onAsked runs after a question reaches the pull request's review thread.
 // focus opens a file on a line (or range) and scrolls to it, each time its seq changes.
 // Only the rows near the viewport are in the DOM; search and jumps work on the parsed files.
-export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, onAsked, focus, fill = false, toolsHost }: { repo?: string; pr?: number; text?: string; onSuggest?: (s: Suggestion) => Promise<void>; onAsked?: () => void; focus?: FileRef & { seq: number }; fill?: boolean; toolsHost?: HTMLElement | null }) {
+export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, steerable = true, onAsked, focus, fill = false, toolsHost }: { repo?: string; pr?: number; text?: string; onSuggest?: (s: Suggestion) => Promise<void>; steerable?: boolean; onAsked?: () => void; focus?: FileRef & { seq: number }; fill?: boolean; toolsHost?: HTMLElement | null }) {
   const qc = useQueryClient();
   const gh = !onSuggest && !!repo && !!pr;
   const diff = useQuery({ queryKey: ["github-diff", repo, pr], queryFn: () => api.githubDiff(repo, pr), enabled: text === undefined });
@@ -303,7 +323,8 @@ export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, onA
   const [open, setOpen] = useState(false);
   const [full, setFull] = useState(false);
   // The last chosen layout is remembered in this browser for every diff.
-  const [panelOpen, setPanelOpen] = useState(true);
+  // In a side panel (fill) the file explorer starts closed to leave room for the diff.
+  const [panelOpen, setPanelOpen] = useState(!fill);
   const [split, setSplitState] = useState(() => { try { return localStorage.getItem("dory.diff-view") === "split"; } catch { return false; } });
   const setSplit = (f: (v: boolean) => boolean) => setSplitState((v) => {
     const next = f(v);
@@ -520,8 +541,8 @@ export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, onA
       const p = pick!;
       const label = it.whole ? `Comentario sobre ${f.path}…` : `Comentario en líneas ${number(f.lines[p.start])}–${number(f.lines[p.end])}…`;
       return (
-        <div className={`${box} px-3`}>
-          <CommentForm draft={draft} placeholder={label} suggest={!!onSuggest} rangeless={p.start < 0} pending={onSuggest ? suggest.isPending : ask.isPending} agentPending={agent.isPending} agentAvailable={!!agent.data?.available}
+        <div className={`${box} border-y px-3`}>
+          <CommentForm draft={draft} placeholder={label} suggest={!!onSuggest} steerable={steerable} rangeless={p.start < 0} pending={onSuggest ? suggest.isPending : ask.isPending} agentPending={agent.isPending} agentAvailable={!!agent.data?.available}
             onAsk={(body) => askOrLaunch(f, p, body)} onSuggest={(body, steer) => suggest.mutate({ f, p, body, steer })} onPublish={(body) => publish(f, p, body)} onCancel={() => setPick(undefined)} />
         </div>
       );
@@ -579,7 +600,7 @@ export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, onA
     <div className={full ? `${host ? "absolute" : "fixed h-dvh"} inset-0 z-50 overflow-hidden overscroll-none bg-slate-50 p-3 dark:bg-canvas` : fill ? "h-full min-h-0" : ""}>
     {/* A host (the thread's changes panel) can take the buttons into its own header. */}
     {toolsHost && !full && createPortal(tools, toolsHost)}
-    <div className={`grid gap-3 ${panelOpen ? "md:grid-cols-[16rem_1fr]" : toolsHost && !full ? "" : "md:grid-cols-[2.25rem_1fr]"} ${full || fill ? "h-full grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1" : ""}`}>
+    <div className={`grid gap-3 ${panelOpen ? "md:grid-cols-[16rem_1fr]" : toolsHost && !full ? "" : fill && !full ? "md:grid-cols-[3rem_1fr]" : "md:grid-cols-[2.25rem_1fr]"} ${full || fill ? "h-full grid-rows-[auto_minmax(0,1fr)] md:grid-rows-1" : ""}`}>
       {panelOpen ? (
       <aside className={`${full || fill ? "h-[30vh] md:h-auto" : "h-[30vh] md:h-[80vh]"} ${panel} flex min-h-0 flex-col overflow-hidden`}>
           <div className="flex shrink-0 gap-1.5 p-2">
@@ -590,7 +611,7 @@ export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, onA
           <div className="min-h-0 flex-1 overflow-auto overscroll-contain px-2 pb-2">{loading ? treeSkeleton : treeEl}</div>
       </aside>
       ) : (
-      (!toolsHost || full) && <aside className="flex gap-1.5 md:flex-col">{tools}</aside>
+      (!toolsHost || full) && <aside className={`flex gap-1.5 md:flex-col ${fill && !full ? "justify-center p-2 md:items-center md:justify-start md:px-0" : ""}`}>{tools}</aside>
       )}
       <div className={`flex min-h-0 min-w-0 flex-col gap-3 ${full || fill ? "" : "h-[80vh]"}`}>
         <ErrorText error={diff.error ?? comment.error ?? ask.error ?? suggest.error ?? mark.error} />
@@ -635,7 +656,7 @@ export function ReviewLaunch({ pr, busy, error, onClose, onLaunch }: { repo?: st
 function PublishButton({ disabled, onPublish }: { disabled: boolean; onPublish: () => void }) {
   const [armed, click] = useArm(onPublish);
   return (
-    <Button variant="ghost" disabled={disabled} onClick={click} title="Publica el comentario en GitHub; pide confirmación"
-      className={armed ? "!border-amber-400 !text-amber-700 dark:!text-amber-400" : ""}>{armed ? "Confirmar publicación" : "Publicar en GitHub"}</Button>
+    <button type="button" disabled={disabled} onClick={click} title="Publica el comentario en GitHub; pide confirmación"
+      className={`${formAction} ${armed ? "!text-amber-700 dark:!text-amber-400" : ""}`}><GithubLogo weight="light" className="size-4" />{armed ? "Confirmar publicación" : "Publicar en GitHub"}</button>
   );
 }

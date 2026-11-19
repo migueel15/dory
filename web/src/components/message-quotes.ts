@@ -1,4 +1,6 @@
-type MessagePart = { kind: "text" | "quote"; text: string };
+import { readCodeRef, type CodeRefData } from "./code-ref";
+
+type MessagePart = { kind: "text" | "quote"; text: string } | { kind: "code"; text: string; ref: CodeRefData };
 
 export function splitMessageQuotes(message: string): MessagePart[] {
   const lines = message.split("\n");
@@ -19,6 +21,16 @@ export function splitMessageQuotes(message: string): MessagePart[] {
       if (!fence) fence = marker[1];
       else if (marker[1].startsWith(fence) && !marker[2].trim()) fence = undefined;
       continue;
+    }
+    if (!fence) {
+      const found = readCodeRef(lines, index);
+      if (found) {
+        appendText(index);
+        parts.push({ kind: "code", text: lines.slice(index, found.last + 1).join("\n"), ref: found.ref });
+        index = found.last;
+        textStart = index + 1;
+        continue;
+      }
     }
     if (fence || !/^> «[^»]+»$/.test(lines[index]) || !lines[index + 1]?.startsWith(">")) continue;
 

@@ -1,6 +1,6 @@
 import { Link as RouterLink } from "@tanstack/react-router";
 import { ArrowBendUpLeft, ArrowCounterClockwise, CaretDown, ChatCircle, Check, CheckCircle, Clock, Code, Eye, File, Flag, GitBranch, GitMerge, GitPullRequest, GithubLogo, PencilSimple, Plus, RadioButton, User, X, type Icon as PhosphorIcon, type IconWeight } from "@phosphor-icons/react";
-import { DictationMic, DictationPreview, useLocalDictation } from "./local-dictation";
+import { DictationMic, DictationPreview, useLocalDictation, useEnterFinishesDictation } from "./local-dictation";
 import { ErrorText, defaultUrlTransform, Md, Textarea } from "./ui";
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject, type ReactNode, type Ref, type TextareaHTMLAttributes } from "react";
 
@@ -247,6 +247,7 @@ function options(mark: string, query: string, people: string[], links: Link[]): 
 export function MentionArea({ value, onValue, people, links = [], boxRef, onKeyDown, className, ...rest }: MentionProps) {
   const own = useRef<HTMLTextAreaElement | null>(null);
   const dictation = useLocalDictation(value, onValue, own);
+  useEnterFinishesDictation(dictation, own);
   const [m, setM] = useState<{ mark: string; start: number; query: string; x: number; y: number; top: number }>();
   const found = m ? options(m.mark, m.query, people, links) : [];
   const list = useRef<HTMLDivElement>(null);

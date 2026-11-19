@@ -60,12 +60,13 @@ export function NativeQuestionCard({ m }: { m: Message }) {
   );
 }
 
-// openAsk finds a question asked through Dory's ask_user that nothing the
-// user sent has answered yet. Its answers go back as the next user message.
+// openAsk finds a question asked through Dory's ask_user that is still
+// waiting: the call is running and nothing the user sent came after it. An
+// answered call has finished, since ask_user returns the answers itself.
 export function openAsk(messages: Message[]): { id: string; questions: Question[] } | undefined {
   const viaTool = messages.some(isAsk);
   let open: Message | undefined;
-  for (const m of messages) open = m.role === "user" ? undefined : isAsk(m) || (!viaTool && m.role === "question") ? m : open;
+  for (const m of messages) open = m.role === "user" ? undefined : isAsk(m) ? (m.status === "running" ? m : undefined) : (!viaTool && m.role === "question") ? m : open;
   if (!open) return undefined;
   const asked = isAsk(open) ? askQuestions(open) : open.tool?.questions ?? [];
   return { id: open.id, questions: asked.length ? asked : [{ question: open.text }] };

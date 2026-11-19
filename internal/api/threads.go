@@ -229,12 +229,12 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, runtime.Files(r.Context(), dir, r.URL.Query().Get("q"), 30))
 	}))
 	mux.HandleFunc("GET /api/threads/{id}/diff", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
-		diff, err := s.Runtime.Diff(r.Context(), t.ID)
+		d, err := s.Runtime.DiffAgainst(r.Context(), t.ID, r.URL.Query().Get("base"))
 		if err != nil {
 			writeDataError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"diff": diff, "branch": t.Branch})
+		writeJSON(w, http.StatusOK, map[string]any{"diff": d.Diff, "branch": t.Branch, "base": d.Base, "branches": d.Branches})
 	}))
 	// Organisation of a thread replicates, so any node can change it.
 	mux.HandleFunc("POST /api/threads/{id}/actions", func(w http.ResponseWriter, r *http.Request) {

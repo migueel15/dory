@@ -4,7 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { api } from "../api/client";
 import { Button, ErrorText, Modal, Select, Textarea, uuid } from "./ui";
 import { useProject } from "../project";
-import { DictationMic, DictationPreview, useDictationInProgress, useLocalDictation } from "./local-dictation";
+import { DictationMic, DictationPreview, useDictationInProgress, useLocalDictation, useEnterFinishesDictation } from "./local-dictation";
 
 // createIdea saves raw text as an inbox task: the first line is its title.
 function createIdea(raw: string, projectId: string) {
@@ -23,6 +23,7 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
   useEffect(() => { setProject(projectId || current); }, [projectId, current]);
   const box = useRef<HTMLTextAreaElement>(null);
   const dictation = useLocalDictation(text, setText, box);
+  useEnterFinishesDictation(dictation, box);
   const dictating = useDictationInProgress();
   const showingDictation = !!dictation.preview;
   const picker = useRef<HTMLButtonElement>(null);

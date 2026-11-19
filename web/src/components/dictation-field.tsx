@@ -1,5 +1,5 @@
 import { useId, useRef, type ComponentProps } from "react";
-import { DictationMic, DictationPreview, useLocalDictation } from "./local-dictation";
+import { DictationMic, DictationPreview, useLocalDictation, useEnterFinishesDictation } from "./local-dictation";
 import { ErrorText, Textarea } from "./ui";
 
 type Props = Omit<ComponentProps<typeof Textarea>, "value" | "onChange" | "ref"> & {
@@ -13,6 +13,7 @@ export function DictationField({ value, onValue, label, id, className, disabled,
   const inputId = id ?? fallbackId;
   const input = useRef<HTMLTextAreaElement>(null);
   const dictation = useLocalDictation(value, onValue, input);
+  useEnterFinishesDictation(dictation, input);
   return (
     <div data-dictation-panel className="min-w-0 space-y-1">
       {label && <label htmlFor={inputId} className="block text-sm text-slate-600 dark:text-text-secondary">{label}</label>}

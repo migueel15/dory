@@ -499,3 +499,41 @@ export function DictationMic({ dictation, disabled }: {
     </button>
   );
 }
+
+// useEnterFinishesDictation makes Enter (and Ctrl/Cmd+Enter) work while
+// dictating in a field that does not handle it itself: the key finishes the
+// dictation, and once the text is in it is pressed again on the field, so the
+// field's own shortcut (send, save, publish…) runs with the final text.
+// Shift+Enter alone still only adds a line. The key counts when the focus is
+// in the field or elsewhere in its dictation panel (the microphone button).
+export function useEnterFinishesDictation(dictation: { active: boolean; finishAndSubmit: (submit: (text: string) => void) => void }, area: RefObject<HTMLTextAreaElement | null>) {
+  const pending = useRef<KeyboardEventInit | null>(null);
+  const latest = useRef(dictation);
+  latest.current = dictation;
+  useEffect(() => {
+    if (!dictation.active) return;
+    const handle = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" || e.isComposing || (e.shiftKey && !e.ctrlKey && !e.metaKey)) return;
+      const box = area.current;
+      const target = e.target instanceof Element ? e.target : null;
+      const panel = box?.closest("[data-dictation-panel]");
+      if (!box || !target || (target !== box && !(panel?.contains(target) && !isTextInput(target)))) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.repeat || pending.current) return;
+      pending.current = { key: "Enter", code: "Enter", ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey, altKey: e.altKey };
+      latest.current.finishAndSubmit(() => {});
+    };
+    window.addEventListener("keydown", handle, true);
+    return () => window.removeEventListener("keydown", handle, true);
+  }, [dictation.active, area]);
+  useEffect(() => {
+    if (!pending.current || dictation.active) return;
+    const init = pending.current;
+    pending.current = null;
+    const box = area.current;
+    if (!box) return;
+    box.focus();
+    box.dispatchEvent(new KeyboardEvent("keydown", { ...init, bubbles: true, cancelable: true }));
+  });
+}

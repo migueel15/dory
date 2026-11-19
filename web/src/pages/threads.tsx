@@ -70,8 +70,6 @@ export function Threads() {
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar hilo…" aria-label="Buscar hilos"
               className="min-h-9 w-full bg-transparent text-sm !outline-none placeholder:text-slate-400" />
           </div>
-          <Link to="/threads" title="Nuevo hilo" aria-label="Nuevo hilo" activeOptions={{ exact: true }}
-            className="grid size-9 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-border dark:text-text-secondary dark:hover:bg-raised"><Plus weight="regular" className="size-4" /></Link>
           <div className="relative shrink-0">
             {filterOpen && <div className="fixed inset-0 z-10" onClick={() => setFilterOpen(false)} />}
             <button type="button" onClick={() => setFilterOpen((v) => !v)} title={`Filtro: ${FILTERS[filter]}`} aria-label="Filtrar hilos" aria-haspopup="menu" aria-expanded={filterOpen}
@@ -87,6 +85,8 @@ export function Threads() {
               ))}
             </div>}
           </div>
+          <Link to="/threads" title="Nuevo hilo" aria-label="Nuevo hilo" activeOptions={{ exact: true }}
+            className="grid size-9 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-border dark:text-text-secondary dark:hover:bg-raised"><Plus weight="regular" className="size-4" /></Link>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-1">
           <ErrorText error={threads.error} />

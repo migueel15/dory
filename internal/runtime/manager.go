@@ -745,25 +745,60 @@ func (m *Manager) publishLocked(u Update) {
 // Diff returns the changes of a thread's worktree against its base branch,
 // including uncommitted work.
 func (m *Manager) Diff(ctx context.Context, id string) (string, error) {
+	d, err := m.DiffAgainst(ctx, id, "")
+	return d.Diff, err
+}
+
+// WorkDiff is the diff of a thread's folder and what it was compared with:
+// Base is the reference chosen ("" for the uncommitted changes, HEAD), and
+// Branches are the local branches it can be compared with instead.
+type WorkDiff struct {
+	Diff     string   `json:"diff"`
+	Base     string   `json:"base"`
+	Branches []string `json:"branches"`
+}
+
+// DiffAgainst compares the thread's folder with against: a branch, from the
+// point the work left it (merge-base), or "HEAD" for only what is not
+// committed. Empty against uses the base branch the thread started from.
+func (m *Manager) DiffAgainst(ctx context.Context, id, against string) (WorkDiff, error) {
+	out := WorkDiff{Branches: []string{}}
 	var dir, base string
 	err := m.db.QueryRowContext(ctx, `SELECT worktree_path, base_branch FROM thread_runtime WHERE thread_id = ?`, id).Scan(&dir, &base)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", ErrNotFound
+		return out, ErrNotFound
 	}
 	if err != nil {
-		return "", err
+		return out, err
 	}
 	if exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--git-dir").Run() != nil {
-		return "", nil
+		return out, nil
 	}
-	ref := "HEAD"
-	if base != "" {
-		if out, err := exec.CommandContext(ctx, "git", "-C", dir, "merge-base", base, "HEAD").Output(); err == nil {
-			ref = strings.TrimSpace(string(out))
+	if refs, err := exec.CommandContext(ctx, "git", "-C", dir, "for-each-ref", "--format=%(refname:short)", "refs/heads").Output(); err == nil {
+		for _, b := range strings.Fields(string(refs)) {
+			out.Branches = append(out.Branches, b)
 		}
 	}
-	out, err := exec.CommandContext(ctx, "git", "-C", dir, "diff", ref).Output()
-	return string(out), err
+	if against == "" {
+		against = base
+	}
+	if against == "" || strings.HasPrefix(against, "-") {
+		against = "HEAD"
+	}
+	out.Base = against
+	ref := "HEAD"
+	if against != "HEAD" {
+		mb, err := exec.CommandContext(ctx, "git", "-C", dir, "merge-base", against, "HEAD").Output()
+		if err != nil {
+			// An unknown reference falls back to the uncommitted changes.
+			out.Base = "HEAD"
+		} else {
+			ref = strings.TrimSpace(string(mb))
+		}
+	}
+	diff, err := exec.CommandContext(ctx, "git", "-C", dir, "diff", ref).Output()
+	out.Diff = string(diff)
+	return out, err
 }
 
 // Remove deletes the worktree of a thread when it is archived.

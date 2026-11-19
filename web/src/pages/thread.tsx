@@ -1,15 +1,17 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { Circle, CircleNotch, Kanban, WarningCircle, XCircle } from "@phosphor-icons/react";
+import { Circle, CircleNotch, GitDiff, Kanban, WarningCircle, XCircle } from "@phosphor-icons/react";
 import { api } from "../api/client";
 import { useThreadLive } from "../api/live";
 import { Button, ErrorText, pill, uuid } from "../components/ui";
 import { Messages, ModelChangeDivider, ToEnd, useFollow } from "./chat";
-import { Composer, Queue } from "./composer";
-import { QuoteSelection, type DraftQuote } from "../components/quote-selection";
+import { Chip, Composer, Queue } from "./composer";
+import { QuoteSelection } from "../components/quote-selection";
 import { ProviderIcon } from "../components/launch-picker";
-import { Diff } from "./github-diff";
+import { Diff, type Suggestion } from "./github-diff";
+import { setDiffBase, useDiffBase } from "../lib/diff-base";
+import { addDraftQuote, removeDraftQuotes, useDraftQuotes } from "../lib/draft-quotes";
 import { ThreadInfo } from "../components/thread-info";
 import { useThreadMenu } from "../components/thread-menu";
 import { SidePanel, SidePanelToggle, useSidePanel, type SidePanelState } from "../components/side-panel";
@@ -48,12 +50,14 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
     },
   });
   const menu = useThreadMenu(t);
+  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
+  const projectName = t?.project_id ? projects.data?.find((p) => p.id === t.project_id)?.name : undefined;
   // Opening a thread marks it as read.
   useEffect(() => { if (t && !t.read_at && t.status !== "working") act.mutate({ action: "read" }); }, [t?.id, t?.status]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!t) return <div className="h-12 shrink-0" />;
   return (
     <div className="relative z-20 flex shrink-0 flex-wrap items-center gap-2 px-3 py-2">
-      <ProviderIcon driver={t.provider} model={t.model} />
+      {projectName && <span className="flex min-w-0 max-w-[40%] shrink items-center gap-2 text-slate-500 dark:text-muted"><span className="truncate">{projectName}</span><span aria-hidden="true">/</span></span>}
       {editing ? (
         <form className="min-w-0 flex-1" onSubmit={(e) => { e.preventDefault(); setEditing(false); if (title.trim()) act.mutate({ action: "rename", title: title.trim() }); }}>
           <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => setEditing(false)} onKeyDown={(e) => { if (e.key === "Escape") setEditing(false); }} className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-sm dark:border-border-strong" />
@@ -62,7 +66,7 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
         <h1 className="min-w-0 flex-1 cursor-text truncate font-semibold" title={`${t.title} · doble clic para renombrar`} onDoubleClick={() => { setTitle(t.title); setEditing(true); }} onContextMenu={menu.open}>{t.title || "Hilo"}</h1>
       )}
       {t.task_id && <Link to="/tasks" search={{ task: t.task_id } as never} className={`${pill} !px-2`} title="Ver la tarea"><Kanban className="size-4" /></Link>}
-      <ThreadInfo t={t} diff={panel.open && panel.active === "diff"} toggleDiff={() => panel.show("diff")} />
+      <ThreadInfo t={t} diff={panel.open && panel.active === "diff"} toggleDiff={() => (panel.open && panel.active === "diff" ? panel.toggle() : panel.show("diff"))} />
       <SidePanelToggle panel={panel} />
       <ErrorText error={act.error ?? menu.error} />
       {menu.menu}
@@ -90,22 +94,24 @@ function ThreadConversation({ threadId }: { threadId: string }) {
     last.provider !== t.provider ||
     ((last.model !== null || (last.reported_model && t.model)) && last.model !== t.model && last.reported_model !== t.model)
   ) ? { from: last, to: { provider: t.provider, model: t.model }, handoff: last.provider !== t.provider } : undefined;
-  const [quotes, setQuotes] = useState<DraftQuote[]>([]);
+  const quotes = useDraftQuotes(threadId);
   const composerInput = useRef<HTMLTextAreaElement>(null);
   const { scroller, onScroll, follow, away } = useFollow([t?.messages, t?.queue, quotes.length]);
-  const quote = (text: string, reply: string) => {
-    const item = { id: uuid(), text, reply };
-    setQuotes((current) => [...current, item]);
-    composerInput.current?.focus({ preventScroll: true });
-  };
-  const removeQuotes = (ids: string[]) => setQuotes((current) => current.filter((item) => !ids.includes(item.id)));
+  // A new quote, from the chat or from the diff, takes the focus to the box.
+  const quoteCount = useRef(quotes.length);
+  useEffect(() => {
+    if (quotes.length > quoteCount.current) composerInput.current?.focus({ preventScroll: true });
+    quoteCount.current = quotes.length;
+  }, [quotes.length]);
+  const quote = (text: string, reply: string) => addDraftQuote(threadId, { id: uuid(), text, reply });
+  const removeQuotes = (ids: string[]) => removeDraftQuotes(threadId, ids);
   if (view.error) return <div className="p-4"><ErrorText error={view.error} /></div>;
   return (
     <section className="relative flex min-h-0 flex-1 flex-col">
       {t?.local && <QuoteSelection onQuote={quote} />}
       {/* No divider under the header: the conversation fades out as it scrolls under it. */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-10 h-10 bg-gradient-to-b from-slate-50 to-transparent dark:from-canvas" />
-      <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto py-3">
+      <div ref={scroller} data-scroller onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto pt-10 pb-3">
         <div className="mx-auto w-full max-w-[55.2rem] space-y-4 px-3 sm:px-6">
           {t && t.messages.length === 0 && <p className="py-10 text-center text-sm text-slate-500 dark:text-muted">Sin mensajes todavía. Escribe abajo para empezar.</p>}
           {t && <Messages key={t.id} threadId={t.id} messages={t.messages} running={t.running} />}
@@ -121,12 +127,25 @@ function ThreadConversation({ threadId }: { threadId: string }) {
 }
 
 function Changes({ threadId }: { threadId: string }) {
-  const diff = useQuery({ queryKey: ["thread-diff", threadId], queryFn: () => api.threadDiff(threadId), refetchInterval: 5000 });
+  const base = useDiffBase(threadId);
+  // The diff's buttons (files, view, full screen) go in this header, beside the choice of base.
+  const [tools, setTools] = useState<HTMLElement | null>(null);
+  // A comment on selected lines is added to the thread's message box as a
+  // reference to that code; it goes with the next message the user sends.
+  const comment = useCallback(async (s: Suggestion) => {
+    addDraftQuote(threadId, { id: uuid(), text: s.snippet, reply: s.question, code: { path: s.path, start: s.start, end: s.end } });
+  }, [threadId]);
+  const diff = useQuery({ queryKey: ["thread-diff", threadId, base], queryFn: () => api.threadDiff(threadId, base), refetchInterval: 5000 });
   return (
     <>
-      {diff.data?.branch && <div className="border-b border-slate-200 px-3 py-1.5 font-mono text-xs text-slate-500 dark:border-border">{diff.data.branch}</div>}
+      {diff.data?.branch && <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-1.5 text-xs text-slate-500 dark:border-border">
+        {diff.data.base && <Chip below title="Contra qué se comparan los cambios" icon={<GitDiff className="size-4 shrink-0" />} value={diff.data.base} onChange={(v) => setDiffBase(threadId, v)}
+          options={[{ value: "HEAD", label: "Sin commitear" }, ...[...new Set([...(diff.data.branches ?? []), ...(diff.data.base !== "HEAD" ? [diff.data.base] : [])])].map((b) => ({ value: b, label: `Contra ${b}` }))]} />}
+        <span ref={setTools} className="flex items-center gap-1.5" />
+        <span className="ml-auto min-w-0 truncate font-mono">{diff.data.branch}</span>
+      </div>}
       <ErrorText error={diff.error} />
-      {diff.data && (diff.data.diff ? <Diff text={diff.data.diff} fill /> : <p className="p-4 text-sm text-slate-500 dark:text-muted">Sin cambios todavía.</p>)}
+      {diff.data && (diff.data.diff ? <Diff text={diff.data.diff} fill toolsHost={tools} onSuggest={comment} steerable={false} /> : <p className="p-4 text-sm text-slate-500 dark:text-muted">Sin cambios todavía.</p>)}
     </>
   );
 }
@@ -167,7 +186,7 @@ export function ExternalView() {
         {s?.dir && <span className="hidden truncate font-mono text-xs text-slate-500 sm:block">{s.dir}</span>}
         <Button onClick={() => adopt.mutate()} disabled={adopt.isPending}>Continuar en Dory</Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div data-scroller className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[55.2rem] space-y-4 px-3 py-3 sm:px-6">
           <ErrorText error={view.error ?? adopt.error} />
           <p className="rounded-md bg-slate-100 px-3 py-2 text-xs text-slate-600 dark:bg-raised dark:text-muted">Conversación iniciada en {provider === "claude" ? "Claude Code" : "Codex"}. Se muestra en solo lectura; al continuarla en Dory, el agente retoma la misma sesión en su carpeta.</p>

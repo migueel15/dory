@@ -5,10 +5,12 @@ import { DictationMic, DictationPreview, useLocalDictation, useSpeechModel, useS
 import { hasDictationPopupOutside, isTextInput, useDictationShortcut } from "./dictation-shortcut";
 import { ErrorText } from "./ui";
 
-export type DraftQuote = { id: string; text: string; reply: string };
+// A quote is a piece of the chat or, with code, lines of a file in the diff.
+export type CodeRef = { path: string; start: number; end: number };
+export type DraftQuote = { id: string; text: string; reply: string; code?: CodeRef };
 type Selection = { text: string; range: Range };
 
-const quoteAction = "inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised";
+const quoteAction = "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised";
 
 function readSelection(): Selection | undefined {
   const selected = document.getSelection();
@@ -153,7 +155,7 @@ function QuoteReply({ autoDictate, text, onCancel, onAdd }: { autoDictate: boole
         </button>
       </div>
       <div className="flex items-end gap-2">
-        {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} className="min-w-0 flex-1 !max-h-36 !px-1 !py-1 !text-sm !leading-5" />}
+        {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} className="min-w-0 flex-1 !max-h-36 !px-1 !py-1.5 !text-sm !leading-5" />}
         <textarea ref={input} autoFocus rows={1} value={dictation.value} readOnly={dictation.active} aria-label="Respuesta a la cita" placeholder="Responder a la cita…"
           onChange={(event) => setReply(event.target.value)}
           onKeyDown={(event) => {
@@ -162,7 +164,7 @@ function QuoteReply({ autoDictate, text, onCancel, onAdd }: { autoDictate: boole
               add();
             }
           }}
-          className={showingDictation ? "sr-only" : "max-h-36 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1 text-sm outline-none! focus-visible:outline-none!"} />
+          className={showingDictation ? "sr-only" : "max-h-36 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1.5 text-sm leading-5 outline-none! focus-visible:outline-none!"} />
         <DictationMic dictation={dictation} />
         <button type="submit" disabled={dictation.active} className={`${quoteAction} disabled:opacity-40`} title="Añadir al mensaje">
           <Plus weight="thin" className="size-4" />Añadir

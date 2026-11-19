@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Cloud, Copy, GitBranch, GitDiff, Info } from "@phosphor-icons/react";
+import { useDiffBase } from "../lib/diff-base";
+import { Cloud, Copy, Folder, GitBranch, GitDiff, Info } from "@phosphor-icons/react";
 import { api, type ThreadView, type UsageWindow } from "../api/client";
 import { expectedRemaining, WINDOWS } from "../lib/usage-pace";
 import { HoverCard } from "./tooltip";
@@ -37,7 +38,10 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff }: { t: ThreadView
   const setHover = (h: { el: HTMLElement; w: UsageWindow } | null) => { clearTimeout(wait.current); if (h) wait.current = setTimeout(() => setHoverNow(h), 500); else setHoverNow(null); };
   useEffect(() => () => clearTimeout(wait.current), []);
   const node = useQuery({ queryKey: ["node"], queryFn: api.node, staleTime: 60_000 });
-  const diff = useQuery({ queryKey: ["thread-diff", t.id], queryFn: () => api.threadDiff(t.id), enabled: open && t.local, refetchInterval: open ? 5000 : false });
+  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
+  const projectName = t.project_id ? projects.data?.find((p) => p.id === t.project_id)?.name : undefined;
+  const base = useDiffBase(t.id);
+  const diff = useQuery({ queryKey: ["thread-diff", t.id, base], queryFn: () => api.threadDiff(t.id, base), enabled: open && t.local, refetchInterval: open ? 5000 : false });
   const where = t.local ? node.data?.node.name ?? "este nodo" : `otro nodo (${t.node_id})`;
   const stat = diff.data ? diffStat(diff.data.diff) : undefined;
   const usage = node.data?.usage[t.provider] ?? [];
@@ -54,12 +58,15 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff }: { t: ThreadView
               {t.worktree && <button type="button" onClick={() => copyText(t.worktree)} title={`Copiar la carpeta: ${t.worktree}`} aria-label="Copiar la carpeta"
                 className="grid size-6 place-items-center rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-raised"><Copy weight="regular" className="size-3.5" /></button>}
             </div>
+            {projectName && <div className={row}><Folder weight="regular" className="size-4 shrink-0 text-slate-500" /><span className="min-w-0 flex-1 truncate">{projectName}</span></div>}
           </div>
           <div>
             <div className={row}><GitBranch weight="regular" className="size-4 shrink-0 text-slate-500" /><span className="min-w-0 flex-1 truncate font-medium">{t.branch || "Sin rama"}</span></div>
             {t.local && <button type="button" onClick={toggleDiff} aria-pressed={showingDiff} title={showingDiff ? "Cerrar los cambios" : "Ver los cambios al lado"}
-              className={`${row} w-full text-left hover:bg-slate-50 dark:hover:bg-raised ${showingDiff ? "bg-slate-50 dark:bg-raised" : ""}`}><GitDiff weight="regular" className="size-4 shrink-0 text-slate-500" /><span className="flex-1 font-medium">Cambios</span>
-              {stat ? <span className="font-mono tabular-nums"><span className="text-emerald-600 dark:text-emerald-400">+{stat.add.toLocaleString("es-ES")}</span> <span className="text-red-600 dark:text-red-400">-{stat.del.toLocaleString("es-ES")}</span></span> : <span className="text-xs text-slate-400">…</span>}
+              className={`${row} w-full text-left hover:bg-slate-50 dark:hover:bg-raised ${showingDiff ? "bg-slate-50 dark:bg-raised" : ""}`}><GitDiff weight="regular" className="size-4 shrink-0 text-slate-500" /><span className="font-medium">Cambios</span>
+              {diff.data?.base && diff.data.base !== "HEAD" && <span className="min-w-0 truncate text-xs text-slate-500 dark:text-muted">contra {diff.data.base}</span>}
+              <span className="flex-1" />
+              {stat ? <span className="shrink-0 font-mono tabular-nums"><span className="text-emerald-600 dark:text-emerald-400">+{stat.add.toLocaleString("es-ES")}</span> <span className="text-red-600 dark:text-red-400">-{stat.del.toLocaleString("es-ES")}</span></span> : <span className="text-xs text-slate-400">…</span>}
             </button>}
           </div>
           {usage.length > 0 && <div className="space-y-1 px-2.5 py-2">

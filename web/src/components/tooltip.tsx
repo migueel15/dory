@@ -80,7 +80,7 @@ export function TooltipHost() {
   if (!target) return null;
   return createPortal(
     <div ref={tip} role="tooltip" style={pos ?? { left: 0, top: 0, visibility: "hidden" }}
-      className="tip-in pointer-events-none fixed z-[100] max-w-xs whitespace-pre-line rounded-md bg-slate-900 px-2.5 py-1.5 text-center text-xs font-medium leading-snug text-white shadow-lg dark:bg-text dark:text-canvas">
+      className={`tip-in pointer-events-none fixed z-[100] max-w-xs whitespace-pre-line rounded-md bg-slate-900 px-2.5 py-1.5 ${target.text.includes("\n") ? "text-left" : "text-center"} text-xs font-medium leading-snug text-white shadow-lg dark:bg-raised dark:text-text`}>
       {target.text}
     </div>,
     document.body,
@@ -93,7 +93,9 @@ export function TooltipHost() {
 // With side="left" it sits beside the anchor instead, or on its right when
 // the left is short.
 // `edge` lends its sides when the anchor sits inside a box the card must clear.
-export function HoverCard({ anchor, children, side = "top", edge, gap: sideGap = 8 }: { anchor: HTMLElement | null; children: React.ReactNode; side?: "top" | "left"; edge?: HTMLElement | null; gap?: number }) {
+// With `interactive` the pointer can go into the card (to scroll it); the
+// pointer callbacks let the owner keep it open while it is there.
+export function HoverCard({ anchor, children, side = "top", edge, gap: sideGap = 8, interactive = false, onPointerEnter, onPointerLeave }: { anchor: HTMLElement | null; children: React.ReactNode; side?: "top" | "left"; edge?: HTMLElement | null; gap?: number; interactive?: boolean; onPointerEnter?: () => void; onPointerLeave?: () => void }) {
   const card = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   useLayoutEffect(() => {
@@ -109,8 +111,8 @@ export function HoverCard({ anchor, children, side = "top", edge, gap: sideGap =
   }, [anchor, side, edge, sideGap]);
   if (!anchor) return null;
   return createPortal(
-    <div ref={card} role="tooltip" style={pos ?? { left: 0, top: 0, visibility: "hidden" }}
-      className="tip-in pointer-events-none fixed z-[100] rounded-md bg-slate-900 px-2.5 py-1.5 text-xs text-white shadow-lg dark:bg-raised dark:text-text">
+    <div ref={card} role="tooltip" style={pos ?? { left: 0, top: 0, visibility: "hidden" }} data-hover-card onPointerEnter={onPointerEnter} onPointerLeave={onPointerLeave}
+      className={`tip-in ${interactive ? "" : "pointer-events-none"} fixed z-[100] rounded-md bg-slate-900 px-2.5 py-1.5 text-xs text-white shadow-lg dark:bg-raised dark:text-text`}>
       {children}
     </div>,
     anchor.closest("dialog") ?? document.body,

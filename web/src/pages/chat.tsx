@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowRight, Brain, GitMerge, GitPullRequest, Lightning, Rocket, Question as QuestionIcon, CaretDown, CaretRight, Check, ClipboardText, Copy, FileText, ListChecks, Stop, TerminalWindow, WarningCircle, Wrench, X } from "@phosphor-icons/react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, ArrowRight, Brain, ChatText, GitMerge, GitPullRequest, Lightning, Rocket, Question as QuestionIcon, CaretDown, CaretRight, Check, ClipboardText, Copy, FileText, ListChecks, Stop, TerminalWindow, WarningCircle, Wrench, X } from "@phosphor-icons/react";
 import { api, type Attachment, type Message, type TurnModel } from "../api/client";
 import { copyText, defaultUrlTransform, Md } from "../components/ui";
 import { TokenChip, tokenize, type TokenKind } from "../components/composer-tokens";
@@ -7,6 +7,7 @@ import { claudeModelName } from "../components/model-label";
 import { splitMessageQuotes } from "../components/message-quotes";
 import { ModelLogo } from "../components/model-logo";
 import { rehypeFade, useSmoothText } from "../components/stream";
+import { CodeRefChip } from "../components/code-ref";
 import { askQuestions, GroupCard, isAsk, TodoCard, ToolCard } from "../components/tool-card";
 import { NativeQuestionCard, QuestionCard } from "../components/question-card";
 import { Link } from "@tanstack/react-router";
@@ -32,7 +33,33 @@ export const shortTime = new Intl.DateTimeFormat("es-ES", { hour: "2-digit", min
 
 // Messages lays out a conversation; running is whether its last turn is live.
 // Only messages that arrive after it mounts animate in.
+// Messages off screen skip layout and paint (content-visibility), so a long
+// conversation does not reflow whole while the side panel slides its width.
+// "auto" remembers each one's last real height once painted.
 const offscreen = { contentVisibility: "auto", containIntrinsicSize: "auto 160px" } as const;
+
+// usePrepaint paints once each message that comes within 2000px of the
+// visible area, so its real height is known before it scrolls into view and
+// the page does not jump; afterwards it is skipped again with that height.
+function usePrepaint() {
+  const observer = useRef<IntersectionObserver | null>(null);
+  useEffect(() => () => observer.current?.disconnect(), []);
+  return useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    if (!observer.current) {
+      observer.current = new IntersectionObserver((entries) => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          const target = e.target as HTMLElement;
+          observer.current?.unobserve(target);
+          target.style.contentVisibility = "visible";
+          requestAnimationFrame(() => requestAnimationFrame(() => { target.style.contentVisibility = "auto"; }));
+        }
+      }, { root: el.closest("[data-scroller]"), rootMargin: "2000px 0px" });
+    }
+    observer.current.observe(el);
+  }, []);
+}
 
 export function Messages({ threadId, messages: all, running }: { threadId: string; messages: Message[]; running: boolean }) {
   const initial = useRef<Set<string> | null>(null);
@@ -46,11 +73,9 @@ export function Messages({ threadId, messages: all, running }: { threadId: strin
   }, [all]);
   // A question is open while nothing the user sent came after it.
   let openQuestion: string | undefined;
-  for (const m of messages) openQuestion = m.role === "user" ? undefined : m.role === "question" || isAsk(m) ? m.id : openQuestion;
-  // Messages off screen skip layout and paint (content-visibility), so a long
-  // conversation does not reflow whole while the side panel slides its width.
-  // "auto" keeps each one's last real height, so scrolling stays the same.
-  return <>{layout(messages, running).map((m) => <div key={m.id} style={offscreen}>{"worked" in m ? <WorkedBlock items={m.items} secs={m.secs} live={m.live} since={m.since} />
+  for (const m of messages) openQuestion = m.role === "user" ? undefined : isAsk(m) ? (m.status === "running" ? m.id : undefined) : m.role === "question" ? m.id : openQuestion;
+  const prepaint = usePrepaint();
+  return <>{layout(messages, running).map((m) => <div key={m.id} ref={prepaint} style={offscreen}>{"worked" in m ? <WorkedBlock items={m.items} secs={m.secs} live={m.live} since={m.since} />
     : <Entry m={m} threadId={threadId} fresh={!initial.current?.has(m.id)} openQuestion={m.id === openQuestion} />}</div>)}</>;
 }
 
@@ -197,7 +222,7 @@ const tokenLinks = {
 
 // MessageParts renders a user message, with its quotes as a bar on the left.
 export function MessageParts({ text }: { text: string }) {
-  return <>{splitMessageQuotes(text).map((part, index) => part.kind === "quote" ? (
+  return <>{splitMessageQuotes(text).map((part, index) => part.kind === "code" ? <CodeRefChip key={index} data={part.ref} /> : part.kind === "quote" ? (
     <blockquote key={index} className="min-w-0 whitespace-pre-wrap break-words border-l-2 border-slate-300 pl-2.5 text-sm leading-relaxed text-slate-600 dark:border-border-strong dark:text-muted">
       {part.text}
     </blockquote>
@@ -253,7 +278,7 @@ function UserMessageBody({ text }: { text: string }) {
   const auto = parseAutoMessage(text);
   if (auto) return <AutoStart msg={auto} />;
   const parts = splitMessageQuotes(text);
-  const hasQuotes = parts.some((part) => part.kind === "quote");
+  const hasQuotes = parts.some((part) => part.kind !== "text");
   if (!hasQuotes) {
     return (
       <div className="max-w-[85%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-2.5 text-white shadow-sm dark:bg-accent [&_*]:!text-inherit [&_code]:!bg-white/15 [&_pre]:!border-white/15 [&_pre]:!bg-white/10 [&_pre_code]:!bg-transparent">
@@ -262,7 +287,7 @@ function UserMessageBody({ text }: { text: string }) {
     );
   }
   return (
-    <div className="flex max-w-[85%] flex-col rounded-2xl rounded-br-md bg-slate-100 px-4 py-2.5 dark:bg-raised">
+    <div className="flex max-w-[85%] flex-col gap-1.5 rounded-2xl rounded-br-md bg-slate-100 px-4 py-2.5 dark:bg-raised">
       <MessageParts text={text} />
     </div>
   );
@@ -436,7 +461,7 @@ function LegacyStep({ run }: { run: Message[] }) {
   const kind = stepKind(m);
   const live = running(m), bad = failed(m);
   const icon = kind === "think" ? <Brain weight="regular" className="size-4 shrink-0" /> : kind === "cmd" ? <TerminalWindow weight="regular" className="size-4 shrink-0" />
-    : kind === "note" ? <span className="size-4 shrink-0" /> : <Wrench weight="regular" className="size-4 shrink-0" />;
+    : kind === "note" ? <ChatText weight="regular" className="size-4 shrink-0" /> : <Wrench weight="regular" className="size-4 shrink-0" />;
   const line = kind === "think" ? (oneLine(m.text) || "Thinking…")
     : kind === "note" ? oneLine(m.text)
     : kind === "cmd" ? `${live ? "Running" : bad ? "Failed" : "Ran"} ${commandName(m.detail) || "command"}`
@@ -516,7 +541,11 @@ function WorkedBlock({ items, secs, live = false, since }: { items: Message[]; s
           <span className="shrink-0 font-medium tabular-nums">Working for {Number.isFinite(from) ? elapsed((now - from) / 1000) : "…"}</span>
           <span className="h-px flex-1 bg-slate-200 dark:bg-border" />
         </div>
-        {stepRuns(items).map((r) => <StepLine key={r[0].id} run={r} />)}
+        {/* While the turn runs, what the agent writes between steps reads as a
+            normal answer; once it ends it folds into "Worked for…" with the rest. */}
+        {stepRuns(items).map((r) => stepKind(r[0]) === "note" && !r[0].tool
+          ? <div key={r[0].id} className="space-y-4">{r.map((m) => <Entry key={m.id} m={m} />)}</div>
+          : <StepLine key={r[0].id} run={r} />)}
       </div>
     );
   }
@@ -568,15 +597,19 @@ export function useFollow(deps: unknown[]) {
     pinned.current = distance < 40;
     setAway(distance > 200);
   };
-  const follow = () => { pinned.current = true; const el = scroller.current; if (el) el.scrollTop = el.scrollHeight; };
+  const follow = (smooth = false) => {
+    pinned.current = true;
+    const el = scroller.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth && !window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "smooth" : "auto" });
+  };
   return { scroller, onScroll, follow, away };
 }
 
 // ToEnd is the floating "Ir al final" button.
-export function ToEnd({ away, follow }: { away: boolean; follow: () => void }) {
+export function ToEnd({ away, follow }: { away: boolean; follow: (smooth?: boolean) => void }) {
   return (
     <div className="relative h-0">
-      <button type="button" onClick={follow} aria-label="Ir al final" aria-hidden={!away} tabIndex={away ? 0 : -1}
+      <button type="button" onClick={() => follow(true)} aria-label="Ir al final" aria-hidden={!away} tabIndex={away ? 0 : -1}
         className={`absolute bottom-3 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1.5 transition-[translate,opacity] duration-200 ease-out ${away ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0"} rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-md hover:bg-slate-50 hover:text-slate-900 dark:border-border-strong dark:bg-surface dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white`}>
         <ArrowDown weight="bold" className="size-3.5" />Ir al final
       </button>

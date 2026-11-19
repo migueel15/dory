@@ -16,7 +16,7 @@ import { planMessage } from "../lib/auto-message";
 // title names the project, the box holds the model, and below it go the
 // environment (node) and the project the thread works in. With the plan
 // toggle on, the chat defines a task instead.
-export function NewThread({ onCreated }: { onCreated: (threadId: string) => void }) {
+export function NewThread({ onCreated, centered = false }: { onCreated: (threadId: string) => void; centered?: boolean }) {
   const current = useProject();
   const [project, setProject] = useState(current);
   const [text, setText] = useState("");
@@ -68,8 +68,8 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
   );
   const projectName = (projects.data ?? []).find((p) => p.id === project)?.name;
   return (
-    <div className="space-y-2">
-      <div className="mb-6 space-y-2 text-center">
+    <div className={centered ? "relative" : "space-y-2"}>
+      <div className={`mb-6 space-y-2 text-center ${centered ? "absolute inset-x-0 bottom-full" : ""}`}>
         <h1 className="text-3xl font-light tracking-tight">
           {projectName ? <>¿Qué construimos en <span className="font-semibold">{projectName}</span>?</> : "¿Qué hacemos hoy?"}
         </h1>
@@ -117,6 +117,7 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
           </button>
         </div>
       </form>
+      <div className={centered ? "absolute inset-x-0 top-full space-y-2 pt-2" : "space-y-2"}>
       <div className="flex flex-wrap items-center gap-1 px-2 text-xs text-slate-500 dark:text-muted">
         <Chip below title="Entorno" icon={<Desktop className="size-4 shrink-0" />} value={form.value.node} onChange={form.setNode} options={form.nodes} />
         <span aria-hidden="true" className="h-4 w-px bg-slate-200 dark:bg-border" />
@@ -138,6 +139,7 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
         )}
       </div>
       <ErrorText error={start.error ?? dictation.error ?? form.error ?? projects.error ?? branchList.error} />
+      </div>
     </div>
   );
 }
@@ -146,8 +148,8 @@ export function NewThread({ onCreated }: { onCreated: (threadId: string) => void
 export function Home() {
   const navigate = useNavigate();
   return (
-    <div className="mx-auto flex min-h-[70vh] max-w-3xl flex-col justify-center">
-      <NewThread onCreated={(id) => navigate({ to: "/threads/$threadId", params: { threadId: id } })} />
+    <div className="mx-auto flex min-h-[calc(100dvh-1rem)] max-w-3xl flex-col justify-center sm:min-h-[calc(100dvh-2rem)]">
+      <NewThread centered onCreated={(id) => navigate({ to: "/threads/$threadId", params: { threadId: id } })} />
     </div>
   );
 }
