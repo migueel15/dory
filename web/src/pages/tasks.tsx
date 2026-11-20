@@ -235,6 +235,8 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
     details.scrollIntoView({ block: "nearest" });
   };
   const [editing, setEditing] = useState(false);
+  // mode is what the launch popover opens: a thread to define the plan or one to implement.
+  const [mode, setMode] = useState<"define" | "implement">("define");
   const c = card.data;
   useEffect(() => { if (c && !draft) setDraft({ title: c.title, description: c.description, issue: c.issue_number?.toString() ?? "", pr: c.pr_number?.toString() ?? "", repo: c.repository_id ?? "" }); }, [c]); // eslint-disable-line react-hooks/exhaustive-deps
   const refresh = () => { qc.invalidateQueries({ queryKey: ["card", id] }); qc.invalidateQueries({ queryKey: ["board"] }); };
@@ -270,17 +272,19 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const planAccepted = !!planDoc.data?.accepted_at;
   const hasPlanContent = !!planDoc.data?.body_md.trim();
   const reviewPlan = hasPlanContent && !planAccepted;
-  const launchLabel = planAccepted ? "Implementar" : "Definir plan";
-  const launchAction = planAccepted ? launch : define;
+  const launchLabel = mode === "implement" ? "Implementar" : "Definir plan";
+  const launchAction = mode === "implement" ? launch : define;
   const launchPending = launch.isPending || define.isPending;
-  const launchBlocked = planAccepted && (c.blockers.length > 0 || planPending);
+  const launchBlocked = mode === "implement" && (c.blockers.length > 0 || planPending);
   const environment = form.nodes.find((node) => node.value === form.value.node)?.label ?? "Este nodo";
   const projectRepos = (repos.data ?? []).filter((r) => !c.project_id || r.project_id === c.project_id);
   const githubRepo = c.repo && /^[\w.-]+\/[\w.-]+$/.test(c.repo) ? `https://github.com/${c.repo}` : undefined;
   const pullNumber = c.pull?.number ?? c.pr_number;
   const pullUrl = c.pull?.url ?? (githubRepo && pullNumber ? `${githubRepo}/pull/${pullNumber}` : undefined);
-  const openLaunch = (anchor: HTMLElement | null) => {
-    launchAction.reset();
+  const openLaunch = (anchor: HTMLElement | null, next: "define" | "implement") => {
+    setMode(next);
+    launch.reset();
+    define.reset();
     launchAnchor.current = anchor;
     menu.current?.hidePopover();
     launchPopover.current?.showPopover();
@@ -310,8 +314,8 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const threadLink = (t: { id: string }, label: string) => (
     <Link to="/threads/$threadId" params={{ threadId: t.id }} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-accent dark:hover:bg-accent-hover"><Chats className="size-4" />{label}</Link>
   );
-  const launchButton = (label: string, disabled = false) => (
-    <Button ref={launchTrigger} onClick={(e) => openLaunch(e.currentTarget)} disabled={disabled || !planDoc.data || launchPending}><Rocket className="size-4" />{label}</Button>
+  const launchButton = (label: string, next: "define" | "implement", disabled = false, variant: "default" | "ghost" = "default") => (
+    <Button variant={variant} onClick={(e) => openLaunch(e.currentTarget, next)} disabled={disabled || !planDoc.data || launchPending}>{next === "define" ? <ClipboardText className="size-4" /> : <Rocket className="size-4" />}{label}</Button>
   );
   const prLink = pullUrl && <a href={pullUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-accent dark:hover:bg-accent-hover"><GitPullRequest className="size-4" />Abrir PR<ArrowSquareOut className="size-3.5" /></a>;
   const next: Next =
@@ -322,14 +326,14 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
     : failed && !c.pull ? { tone: tones.bad, title: "El hilo falló", detail: "Revisa el error o lanza otro hilo.", action: threadLink(failed, "Ver hilo") }
     : c.pull ? { tone: c.pull.ci === "FAILURE" || c.pull.ci === "ERROR" || c.pull.mergeable === "CONFLICTING" ? tones.bad : c.pull.draft ? tones.info : tones.ok, title: `PR #${pullNumber}: ${slot(c).label}`, detail: c.pull.draft ? "La PR sigue en borrador hasta que la marques como lista." : undefined, action: prLink }
     : reviewPlan ? { tone: tones.warn, title: `Revisa y acepta el plan${planDoc.data?.revision ? ` V${planDoc.data.revision}` : ""}`, detail: "Hasta aceptarlo no se puede implementar.", action: <Button onClick={openPlan}><ClipboardText className="size-4" />Revisar plan</Button> }
-    : !planAccepted ? { tone: tones.idle, title: "Define el plan", detail: c.description.trim() ? "Un agente propondrá un plan a partir de la descripción." : "Añade una descripción para que el agente sepa qué hacer.", action: launchButton("Definir plan") }
-    : c.blockers.length ? { tone: tones.warn, title: `Bloqueada por ${c.blockers.length === 1 ? "una dependencia" : `${c.blockers.length} dependencias`}`, detail: `Termina antes: ${blockerTitles.join(", ")}.`, action: launchButton("Implementar", true) }
-    : { tone: tones.ok, title: "Lista para implementar", detail: "El plan está aceptado y no hay bloqueos.", action: launchButton("Implementar") };
+    : !planAccepted ? { tone: tones.idle, title: "Define el plan o implementa directamente", detail: c.blockers.length ? `El plan es opcional. Para implementar, termina antes: ${blockerTitles.join(", ")}.` : c.description.trim() ? "Se recomienda un plan para tareas complejas; si es sencilla, mándala a implementar." : "Añade una descripción para que el agente sepa qué hacer.", action: <div className="flex flex-wrap gap-2">{launchButton("Definir plan", "define")}{launchButton("Implementar directamente", "implement", c.blockers.length > 0, "ghost")}</div> }
+    : c.blockers.length ? { tone: tones.warn, title: `Bloqueada por ${c.blockers.length === 1 ? "una dependencia" : `${c.blockers.length} dependencias`}`, detail: `Termina antes: ${blockerTitles.join(", ")}.`, action: launchButton("Implementar", "implement", true) }
+    : { tone: tones.ok, title: "Lista para implementar", detail: "El plan está aceptado y no hay bloqueos.", action: launchButton("Implementar", "implement") };
   // steps shows where the task is in its path: description, plan, implementation and pull request.
   const steps: { label: string; state: "done" | "now" | "todo" }[] = [
     { label: "Descripción", state: c.description.trim() ? "done" : "now" },
-    { label: "Plan", state: planAccepted ? "done" : hasPlanContent ? "now" : c.description.trim() ? "now" : "todo" },
-    { label: "Implementación", state: c.pull ? "done" : planAccepted ? "now" : "todo" },
+    { label: hasPlanContent || planAccepted ? "Plan" : "Plan (opcional)", state: planAccepted || c.pull || working ? "done" : hasPlanContent ? "now" : c.description.trim() ? "now" : "todo" },
+    { label: "Implementación", state: c.pull ? "done" : planAccepted || working ? "now" : "todo" },
     { label: "PR", state: merged ? "done" : c.pull ? "now" : "todo" },
   ];
   const chip = "inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-border dark:text-text-secondary dark:hover:bg-raised";
@@ -347,7 +351,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
         <button ref={menuTrigger} type="button" popoverTarget={menuId} onClick={openMenu} aria-label="Más acciones" className={`${iconButton} ml-auto`}><DotsThree weight="bold" className="size-5" /></button>
         <div ref={menu} id={menuId} popover="auto" role="menu" className="fixed m-0 w-56 rounded-xl border border-slate-200 bg-white p-1 text-slate-900 shadow-xl dark:border-border dark:bg-surface dark:text-white">
           <button type="button" role="menuitem" className={menuItem} onClick={() => { setEditing(true); menu.current?.hidePopover(); }}><PencilSimple className="size-4" />Editar tarea</button>
-          <button type="button" role="menuitem" className={menuItem} disabled={!planDoc.data || launchPending} onClick={() => openLaunch(menuTrigger.current)}><Rocket className="size-4" />Abrir otro hilo</button>
+          <button type="button" role="menuitem" className={menuItem} disabled={!planDoc.data || launchPending} onClick={() => openLaunch(menuTrigger.current, planAccepted || !hasPlanContent ? "implement" : "define")}><Rocket className="size-4" />Abrir otro hilo</button>
           {c.stage !== "ready" && c.column === "inbox" && <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("ready")}>Marcar como lista</button>}
           {c.stage === "ready" && c.column === "ready" && <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("inbox")}>Volver a inbox</button>}
           {c.stage !== "cancelled" ? <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("cancelled")}>Cancelar tarea</button> : <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("inbox")}>Reabrir</button>}
@@ -396,6 +400,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
         </div>
         {form.nodes.length <= 1 && <p className="mb-3 text-xs text-slate-600 dark:text-muted">Entorno <span className="ml-1 font-medium">{environment}</span></p>}
         {form.fields}
+        {mode === "implement" && !hasPlanContent && !planAccepted && <p className="mb-3 text-xs text-slate-600 dark:text-muted">Se implementará sin plan, a partir de la descripción.</p>}
         {launchBlocked && <p className="mt-3 text-sm text-slate-600 dark:text-muted">{c.blockers.length ? "Resuelve las dependencias para implementar." : "Acepta el plan para implementar."}</p>}
         <ErrorText error={launchAction.error ?? form.error} />
         <div className="mt-4 flex justify-end">
