@@ -67,10 +67,12 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
         <div className="flex min-w-0 items-center gap-1">
           <Select plain buttonRef={picker} className="min-w-0 max-w-48 [&>button]:max-w-full" value={project} onChange={(v) => { setProject(v); box.current?.focus(); }} options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
           <Kbd>Alt P</Kbd>
-          <DictationMic dictation={dictation} disabled={save.isPending} />
         </div>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-          <Button type="button" disabled={!text.trim() || save.isPending || dictating} onClick={() => submit(false)} title="Guardar en inbox">Guardar en inbox<Kbd inverse>Ctrl ↵</Kbd></Button>
+          <div className="flex items-center gap-2">
+            <DictationMic dictation={dictation} disabled={save.isPending} />
+            <Button type="button" disabled={!text.trim() || save.isPending || dictating} onClick={() => submit(false)} title="Guardar en inbox">Guardar en inbox<Kbd inverse>Ctrl ↵</Kbd></Button>
+          </div>
           <Button type="button" variant="ghost" disabled={!text.trim() || save.isPending || dictating} onClick={() => submit(true)} title="Guardar y definir">Guardar y definir<Kbd>Ctrl ⇧ ↵</Kbd></Button>
         </div>
       </div>
