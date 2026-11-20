@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { noteThreadUpdate } from "./activity";
 import type { Message, Queued, ThreadView, TurnModel } from "./client";
 
 // useVisible tracks whether this tab is on screen. Live streams only stay open
@@ -67,6 +68,8 @@ export function useLiveUpdates(enabled: boolean) {
         pending.clear();
       }, 250);
     });
+    // What each working thread is doing, shown on the board cards.
+    source.addEventListener("thread", (e) => noteThreadUpdate(JSON.parse((e as MessageEvent).data)));
     return () => { clearTimeout(timer); source.close(); };
   }, [enabled, visible, qc]);
   const [seen, setSeen] = useState(visible);
