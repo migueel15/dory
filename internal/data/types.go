@@ -173,3 +173,12 @@ type Notice struct {
 	UpdatedAt  string  `json:"updated_at"`
 	ArchivedAt *string `json:"archived_at"`
 }
+
+// Setting is a value shared by the whole mesh; ID is its key.
+type Setting struct {
+	ID         string  `json:"id"`
+	Value      string  `json:"value"`
+	CreatedAt  string  `json:"created_at"`
+	UpdatedAt  string  `json:"updated_at"`
+	ArchivedAt *string `json:"archived_at"`
+}

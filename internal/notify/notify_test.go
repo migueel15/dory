@@ -108,3 +108,19 @@ func TestDeliveryCombinesLocalAndPeers(t *testing.T) {
 		t.Fatal("closed beat must remove the interface")
 	}
 }
+
+func TestSettingsMode(t *testing.T) {
+	ctx := context.Background()
+	n, store := open(t)
+	if n.Mode(ctx, "thread.idle") != ModeAuto {
+		t.Fatal("default must be automatic")
+	}
+	store.Settings().Put(ctx, data.Setting{ID: settingPrefix + "thread.idle", Value: ModeOff})
+	store.Settings().Put(ctx, data.Setting{ID: settingPrefix + "plan.ready", Value: ModePush})
+	n.Emit(ctx, "thread.idle", "t", "1", "", "")
+	n.Emit(ctx, "plan.ready", "t", "1", "", "")
+	list, _ := store.Notices().List(ctx, data.Filter{})
+	if len(list) != 1 || list[0].Kind != "plan.ready" || n.Mode(ctx, "plan.ready") != ModePush {
+		t.Fatalf("a silenced kind must not create notices: %+v", list)
+	}
+}

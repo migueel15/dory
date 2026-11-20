@@ -32,6 +32,9 @@ var titles = map[string]string{
 	"task.ready_to_merge": "Tarea lista para mergear",
 }
 
+// kinds lists the events in the order the settings show them.
+var kinds = []string{"thread.idle", "thread.error", "thread.waiting", "plan.ready", "plan.accepted", "task.ready_to_merge"}
+
 // fresh is how recent an event must be to notify. Older ones come from
 // replication catching up and are already history.
 const fresh = 2 * time.Minute
@@ -223,6 +226,9 @@ func (n *Notifier) Emit(ctx context.Context, kind, subject, stamp, body, url str
 	if title == "" {
 		return
 	}
+	if n.Mode(ctx, kind) == ModeOff {
+		return
+	}
 	sum := sha256.Sum256([]byte(kind + "\x00" + subject + "\x00" + stamp))
 	id := hex.EncodeToString(sum[:16])
 	if _, err := n.store.Notices().Get(ctx, id); err == nil {
@@ -245,9 +251,14 @@ func (n *Notifier) deliver(id string) {
 	if at, err := time.Parse(time.RFC3339Nano, nt.CreatedAt); err != nil || time.Since(at) > fresh {
 		return
 	}
-	// With an interface in focus the notice shows in the app, not as a push.
-	if n.Delivery(ctx).Focus {
+	// By default, with an interface in focus the notice shows in the app, not as a push.
+	switch n.Mode(ctx, nt.Kind) {
+	case ModeOff, ModeApp:
 		return
+	case ModeAuto:
+		if n.Delivery(ctx).Focus {
+			return
+		}
 	}
 	n.mu.Lock()
 	done := n.pushed[id]
@@ -296,6 +307,7 @@ func (n *Notifier) Send(ctx context.Context, title, body, url, tag string) {
 // Mount adds the subscription routes.
 func (n *Notifier) Mount(mux *http.ServeMux) {
 	n.mountPresence(mux)
+	n.mountSettings(mux)
 	mux.HandleFunc("GET /api/push/key", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"key": n.public})

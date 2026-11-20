@@ -37,6 +37,7 @@ export function NoticesToggle() {
   );
 }
 
+type NoticeSetting = { kind: string; title: string; mode: "auto" | "push" | "app" | "off" };
 type Notice = { id: string; kind: string; title: string; body: string; url: string; read_at: string | null; created_at: string };
 
 // useNotices lists the inbox, newest first; it is shared by every device of the mesh.
@@ -137,14 +138,18 @@ export function NoticeAlerts() {
     if (!known) return;
     const fresh = notices.data.filter((n) => !n.read_at && !known.has(n.id) && Date.now() - Date.parse(n.created_at) < 120_000);
     if (fresh.length === 0) return;
-    if (document.hasFocus()) {
-      setToasts((t) => [...fresh, ...t].slice(0, 3));
-      for (const n of fresh) setTimeout(() => setToasts((t) => t.filter((x) => x.id !== n.id)), 8000);
-      return;
-    }
-    req<{ focus: boolean; push: boolean }>("GET", "/presence").then((d) => {
-      if (d.focus || d.push || !("Notification" in window) || Notification.permission !== "granted") return;
-      for (const n of fresh) new Notification(n.title, { body: n.body, tag: n.id, icon: "/icon-192.png" }).onclick = () => { window.focus(); if (n.url) location.assign(n.url); };
+    const focused = document.hasFocus();
+    Promise.all([req<NoticeSetting[]>("GET", "/notice-settings"), focused ? Promise.resolve(undefined) : req<{ focus: boolean; push: boolean }>("GET", "/presence")]).then(([settings, d]) => {
+      const mode = (n: Notice) => settings.find((s) => s.kind === n.kind)?.mode ?? "auto";
+      if (focused) {
+        const shown = fresh.filter((n) => mode(n) === "auto" || mode(n) === "app");
+        if (shown.length === 0) return;
+        setToasts((t) => [...shown, ...t].slice(0, 3));
+        for (const n of shown) setTimeout(() => setToasts((t) => t.filter((x) => x.id !== n.id)), 8000);
+        return;
+      }
+      if (!d || d.focus || d.push || !("Notification" in window) || Notification.permission !== "granted") return;
+      for (const n of fresh.filter((n) => mode(n) === "auto")) new Notification(n.title, { body: n.body, tag: n.id, icon: "/icon-192.png" }).onclick = () => { window.focus(); if (n.url) location.assign(n.url); };
     }).catch(() => {});
   }, [notices.data]);
   if (toasts.length === 0) return null;
