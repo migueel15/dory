@@ -4,9 +4,9 @@ import { useDictationInProgress } from "../components/local-dictation";
 import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ArrowSquareOut, Check, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, ChatCircle, CircleNotch, ClipboardText, GitBranch, GitMerge, GitPullRequest, Plus, Rocket, X } from "@phosphor-icons/react";
+import { ArrowSquareOut, Check, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, ChatCircle, CircleNotch, ClipboardText, DotsThree, GitBranch, GitMerge, GitPullRequest, Plus, Rocket, X } from "@phosphor-icons/react";
 import { api, COLUMN_LABELS, repoName, type Card, type Column, type Stage } from "../api/client";
-import { Button, Card as UiCard, ErrorText, Input, Label, Md, Modal, Select } from "../components/ui";
+import { Button, Card as UiCard, ErrorText, iconButton, Input, Label, Md, Modal, Select } from "../components/ui";
 import { useLaunchForm } from "../components/launch-picker";
 import { useProject } from "../project";
 import { ModelLogo } from "../components/model-logo";
@@ -197,8 +197,12 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const launchPopoverId = useId();
   const launchTrigger = useRef<HTMLButtonElement>(null);
   const launchPopover = useRef<HTMLDivElement>(null);
+  const launchAnchor = useRef<HTMLElement | null>(null);
+  const menuId = useId();
+  const menuTrigger = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
   const placeLaunchPopover = () => {
-    const trigger = launchTrigger.current;
+    const trigger = launchAnchor.current ?? launchTrigger.current;
     const popover = launchPopover.current;
     if (!trigger || !popover) return;
     const { right, top, bottom } = trigger.getBoundingClientRect();
@@ -275,54 +279,141 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const githubRepo = c.repo && /^[\w.-]+\/[\w.-]+$/.test(c.repo) ? `https://github.com/${c.repo}` : undefined;
   const pullNumber = c.pull?.number ?? c.pr_number;
   const pullUrl = c.pull?.url ?? (githubRepo && pullNumber ? `${githubRepo}/pull/${pullNumber}` : undefined);
-  const section = "rounded-xl border border-slate-200 p-4 dark:border-border";
-  const heading = "mb-3 flex items-center gap-2 text-sm font-semibold";
+  const openLaunch = (anchor: HTMLElement | null) => {
+    launchAction.reset();
+    launchAnchor.current = anchor;
+    menu.current?.hidePopover();
+    launchPopover.current?.showPopover();
+    placeLaunchPopover();
+  };
+  const openMenu = () => {
+    const trigger = menuTrigger.current, popover = menu.current;
+    if (!trigger || !popover) return;
+    const { right, bottom } = trigger.getBoundingClientRect();
+    popover.style.top = `${bottom + 6}px`;
+    popover.style.left = `${Math.max(12, right - 224)}px`;
+  };
+  const working = c.threads.find((t) => t.status === "working");
+  const waiting = c.threads.find((t) => t.status === "waiting");
+  const failed = c.threads.find((t) => t.status === "error");
+  const merged = c.pr_state === "merged";
+  const blockerTitles = c.blockers.map((b) => others.find((o) => o.id === b)?.title ?? b);
+  // next is the single step the task needs now: what happens, why and the one action that moves it on.
+  type Next = { tone: string; title: string; detail?: React.ReactNode; action?: React.ReactNode };
+  const tones = {
+    info: "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/40",
+    warn: "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40",
+    ok: "border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40",
+    bad: "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40",
+    idle: "border-slate-200 bg-slate-50 dark:border-border dark:bg-raised/40",
+  };
+  const threadLink = (t: { id: string }, label: string) => (
+    <Link to="/threads/$threadId" params={{ threadId: t.id }} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-accent dark:hover:bg-accent-hover"><Chats className="size-4" />{label}</Link>
+  );
+  const launchButton = (label: string, disabled = false) => (
+    <Button ref={launchTrigger} onClick={(e) => openLaunch(e.currentTarget)} disabled={disabled || !planDoc.data || launchPending}><Rocket className="size-4" />{label}</Button>
+  );
+  const prLink = pullUrl && <a href={pullUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-accent dark:hover:bg-accent-hover"><GitPullRequest className="size-4" />Abrir PR<ArrowSquareOut className="size-3.5" /></a>;
+  const next: Next =
+    c.column === "cancelled" ? { tone: tones.idle, title: "Tarea cancelada", detail: "No se trabajará en ella salvo que la reabras.", action: <Button variant="ghost" onClick={() => stage.mutate("inbox")}>Reabrir</Button> }
+    : merged ? { tone: tones.ok, title: "Completada", detail: `La PR #${pullNumber} está fusionada.`, action: prLink }
+    : waiting ? { tone: tones.warn, title: "Un agente necesita tu respuesta", detail: waiting.title, action: threadLink(waiting, "Responder") }
+    : working ? { tone: tones.info, title: "Un agente está trabajando", detail: working.title, action: threadLink(working, "Ver hilo") }
+    : failed && !c.pull ? { tone: tones.bad, title: "El hilo falló", detail: "Revisa el error o lanza otro hilo.", action: threadLink(failed, "Ver hilo") }
+    : c.pull ? { tone: c.pull.ci === "FAILURE" || c.pull.ci === "ERROR" || c.pull.mergeable === "CONFLICTING" ? tones.bad : c.pull.draft ? tones.info : tones.ok, title: `PR #${pullNumber}: ${slot(c).label}`, detail: c.pull.draft ? "La PR sigue en borrador hasta que la marques como lista." : undefined, action: prLink }
+    : reviewPlan ? { tone: tones.warn, title: `Revisa y acepta el plan${planDoc.data?.revision ? ` V${planDoc.data.revision}` : ""}`, detail: "Hasta aceptarlo no se puede implementar.", action: <Button onClick={openPlan}><ClipboardText className="size-4" />Revisar plan</Button> }
+    : !planAccepted ? { tone: tones.idle, title: "Define el plan", detail: c.description.trim() ? "Un agente propondrá un plan a partir de la descripción." : "Añade una descripción para que el agente sepa qué hacer.", action: launchButton("Definir plan") }
+    : c.blockers.length ? { tone: tones.warn, title: `Bloqueada por ${c.blockers.length === 1 ? "una dependencia" : `${c.blockers.length} dependencias`}`, detail: `Termina antes: ${blockerTitles.join(", ")}.`, action: launchButton("Implementar", true) }
+    : { tone: tones.ok, title: "Lista para implementar", detail: "El plan está aceptado y no hay bloqueos.", action: launchButton("Implementar") };
+  // steps shows where the task is in its path: description, plan, implementation and pull request.
+  const steps: { label: string; state: "done" | "now" | "todo" }[] = [
+    { label: "Descripción", state: c.description.trim() ? "done" : "now" },
+    { label: "Plan", state: planAccepted ? "done" : hasPlanContent ? "now" : c.description.trim() ? "now" : "todo" },
+    { label: "Implementación", state: c.pull ? "done" : planAccepted ? "now" : "todo" },
+    { label: "PR", state: merged ? "done" : c.pull ? "now" : "todo" },
+  ];
+  const chip = "inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-border dark:text-text-secondary dark:hover:bg-raised";
+  const heading = "mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-muted";
   const row = "flex min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-slate-100 dark:hover:bg-raised";
+  const menuItem = "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-raised";
   return (
     <Modal title={c.title} onClose={onClose} className="!max-w-5xl sm:!p-6 [&>div:first-child>h2]:text-2xl [&>div:first-child>h2]:leading-tight">
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4 dark:border-border">
-        <span className={`mr-auto inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${COLUMN_TONE[c.column]}`}>{COLUMN_LABELS[c.column]}</span>
-        <Button variant="bare" aria-expanded={editing} onClick={() => setEditing(!editing)}><PencilSimple className="size-4" />Editar tarea</Button>
-        {reviewPlan && (
-          <Button onClick={openPlan}><ClipboardText className="size-4" />Revisar plan</Button>
-        )}
-        <Button ref={launchTrigger} type="button" variant={reviewPlan ? "ghost" : "default"}
-          popoverTarget={launchPopoverId} disabled={!planDoc.data || launchPending}
-          onClick={() => { launchAction.reset(); placeLaunchPopover(); }}>
-          <Rocket className="size-4" />{launchLabel}
-        </Button>
-        <div ref={launchPopover} id={launchPopoverId} popover="auto" role="dialog" aria-label={launchLabel}
-          onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
-            event.preventDefault();
-            event.stopPropagation();
-            launchPopover.current?.hidePopover();
-            launchTrigger.current?.focus();
-          }}
-          className="fixed m-0 overflow-auto rounded-xl border border-slate-200 bg-white p-4 text-slate-900 shadow-xl dark:border-border dark:bg-surface dark:text-white">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold">{launchLabel}</h3>
-            <button type="button" className="grid size-8 shrink-0 place-items-center bg-transparent text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white" popoverTarget={launchPopoverId} popoverTargetAction="hide" aria-label="Cerrar configuración">
-              <X weight="regular" aria-hidden="true" className="size-4" />
-            </button>
-          </div>
-          {form.nodes.length <= 1 && <p className="mb-3 text-xs text-slate-600 dark:text-muted">Entorno <span className="ml-1 font-medium">{environment}</span></p>}
-          {form.fields}
-          {launchBlocked && <p className="mt-3 text-sm text-slate-600 dark:text-muted">{c.blockers.length ? "Resuelve las dependencias para implementar." : "Acepta el plan para implementar."}</p>}
-          <ErrorText error={launchAction.error ?? form.error} />
-          <div className="mt-4 flex justify-end">
-            <Button onClick={() => launchAction.mutate()} disabled={!form.ready || launchPending || launchBlocked}>
-              {launchPending ? "Abriendo hilo…" : "Abrir hilo"}
-            </Button>
-          </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${COLUMN_TONE[c.column]}`}>{COLUMN_LABELS[c.column]}</span>
+        {c.repo && (githubRepo ? <a className={chip} href={githubRepo} target="_blank" rel="noreferrer"><GithubLogo className="size-3.5 shrink-0" /><span className="truncate">{c.repo}</span></a> : <span className={chip}>{c.repo}</span>)}
+        {c.issue_number && (githubRepo ? <a className={chip} href={`${githubRepo}/issues/${c.issue_number}`} target="_blank" rel="noreferrer">Issue #{c.issue_number}</a> : <span className={chip}>Issue #{c.issue_number}</span>)}
+        {pullNumber && (pullUrl ? <a className={chip} href={pullUrl} target="_blank" rel="noreferrer"><GitPullRequest className="size-3.5" />PR #{pullNumber}{(c.pull?.draft || c.pr_state === "draft") && " · borrador"}</a> : <span className={chip}>PR #{pullNumber}</span>)}
+        {c.branch && <span className={`${chip} font-mono`} title={c.branch}><GitBranch className="size-3.5 shrink-0" /><span className="truncate">{c.branch}</span></span>}
+        <button ref={menuTrigger} type="button" popoverTarget={menuId} onClick={openMenu} aria-label="Más acciones" className={`${iconButton} ml-auto`}><DotsThree weight="bold" className="size-5" /></button>
+        <div ref={menu} id={menuId} popover="auto" role="menu" className="fixed m-0 w-56 rounded-xl border border-slate-200 bg-white p-1 text-slate-900 shadow-xl dark:border-border dark:bg-surface dark:text-white">
+          <button type="button" role="menuitem" className={menuItem} onClick={() => { setEditing(true); menu.current?.hidePopover(); }}><PencilSimple className="size-4" />Editar tarea</button>
+          <button type="button" role="menuitem" className={menuItem} disabled={!planDoc.data || launchPending} onClick={() => openLaunch(menuTrigger.current)}><Rocket className="size-4" />Abrir otro hilo</button>
+          {c.stage !== "ready" && c.column === "inbox" && <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("ready")}>Marcar como lista</button>}
+          {c.stage === "ready" && c.column === "ready" && <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("inbox")}>Volver a inbox</button>}
+          {c.stage !== "cancelled" ? <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("cancelled")}>Cancelar tarea</button> : <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("inbox")}>Reabrir</button>}
+          <div className="my-1 border-t border-slate-200 dark:border-border" />
+          <button type="button" role="menuitem" className={`${menuItem} text-red-700 dark:text-red-400`} onClick={() => { menu.current?.hidePopover(); askConfirm("¿Archivar la tarea?", "Archivar").then((ok) => ok && archive.mutate()); }}>Archivar</button>
         </div>
       </div>
-      <div className="grid items-start gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,17rem)]">
-        <div className="min-w-0 space-y-5">
-          {editing && (
-            <section className={section}>
-              <h3 className={heading}>Editar tarea</h3>
-              <div className="mt-3 space-y-3">
+
+      <ol aria-label="Progreso de la tarea" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+        {steps.map((s, i) => (
+          <li key={s.label} className="flex items-center gap-2">
+            {i > 0 && <span aria-hidden="true" className="h-px w-4 bg-slate-300 dark:bg-border-strong sm:w-8" />}
+            <span aria-current={s.state === "now" ? "step" : undefined} className={`inline-flex items-center gap-1.5 font-medium ${s.state === "done" ? "text-emerald-700 dark:text-emerald-400" : s.state === "now" ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-muted"}`}>
+              <span className={`grid size-5 place-items-center rounded-full border text-[10px] ${s.state === "done" ? "border-emerald-600 bg-emerald-600 text-white" : s.state === "now" ? "border-slate-900 dark:border-white" : "border-slate-300 dark:border-border-strong"}`}>
+                {s.state === "done" ? <Check weight="bold" className="size-3" /> : i + 1}
+              </span>
+              {s.label}
+            </span>
+          </li>
+        ))}
+      </ol>
+
+      <section aria-label="Siguiente paso" className={`flex flex-wrap items-center gap-3 rounded-xl border p-4 ${next.tone}`}>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold">{next.title}</p>
+          {next.detail && <p className="mt-0.5 text-sm text-slate-600 dark:text-muted">{next.detail}</p>}
+        </div>
+        {next.action}
+        <ErrorText error={stage.error ?? archive.error} />
+      </section>
+
+      <div ref={launchPopover} id={launchPopoverId} popover="auto" role="dialog" aria-label="Abrir hilo"
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.preventDefault();
+          event.stopPropagation();
+          launchPopover.current?.hidePopover();
+          launchAnchor.current?.focus();
+        }}
+        className="fixed m-0 overflow-auto rounded-xl border border-slate-200 bg-white p-4 text-slate-900 shadow-xl dark:border-border dark:bg-surface dark:text-white">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold">{launchLabel}</h3>
+          <button type="button" className="grid size-8 shrink-0 place-items-center bg-transparent text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white" popoverTarget={launchPopoverId} popoverTargetAction="hide" aria-label="Cerrar configuración">
+            <X weight="regular" aria-hidden="true" className="size-4" />
+          </button>
+        </div>
+        {form.nodes.length <= 1 && <p className="mb-3 text-xs text-slate-600 dark:text-muted">Entorno <span className="ml-1 font-medium">{environment}</span></p>}
+        {form.fields}
+        {launchBlocked && <p className="mt-3 text-sm text-slate-600 dark:text-muted">{c.blockers.length ? "Resuelve las dependencias para implementar." : "Acepta el plan para implementar."}</p>}
+        <ErrorText error={launchAction.error ?? form.error} />
+        <div className="mt-4 flex justify-end">
+          <Button onClick={() => launchAction.mutate()} disabled={!form.ready || launchPending || launchBlocked}>
+            {launchPending ? "Abriendo hilo…" : "Abrir hilo"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,16rem)]">
+        <div className="min-w-0 space-y-6">
+          <section>
+            <div className="flex items-center">
+              <h3 className={heading}>{editing ? "Editar tarea" : "Descripción"}</h3>
+              {!editing && <button type="button" onClick={() => setEditing(true)} className="mb-2 ml-auto inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white"><PencilSimple className="size-3.5" />Editar</button>}
+            </div>
+            {editing ? (
+              <div className="space-y-3 rounded-xl border border-slate-200 p-4 dark:border-border">
                 <Label text="Título"><Input autoFocus value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="!text-base font-semibold" aria-label="Título" /></Label>
                 <DictationField label="Descripción" rows={6} value={draft.description} onValue={(description) => setDraft((current) => current && { ...current, description })} aria-label="Descripción" placeholder="Qué cambiar y cómo comprobarlo" />
                 <div className="grid gap-2 sm:grid-cols-3">
@@ -330,33 +421,18 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
                   <Label text="Issue"><Input inputMode="numeric" value={draft.issue} onChange={(e) => setDraft({ ...draft, issue: e.target.value.replace(/\D/g, "") })} /></Label>
                   <Label text="Pull request"><Input inputMode="numeric" value={draft.pr} onChange={(e) => setDraft({ ...draft, pr: e.target.value.replace(/\D/g, "") })} placeholder="Se detecta por la rama" /></Label>
                 </div>
-                <Button onClick={() => save.mutate()} disabled={!dirty || dictating || save.isPending}>Guardar cambios</Button>
+                <div className="flex gap-2">
+                  <Button onClick={() => save.mutate()} disabled={!dirty || dictating || save.isPending}>Guardar cambios</Button>
+                  <Button variant="ghost" onClick={() => { setDraft({ title: c.title, description: c.description, issue: c.issue_number?.toString() ?? "", pr: c.pr_number?.toString() ?? "", repo: c.repository_id ?? "" }); setEditing(false); }}>Descartar</Button>
+                </div>
                 <ErrorText error={save.error} />
               </div>
-            </section>
-          )}
-          <section className={`${section} min-w-0 bg-slate-50/70 dark:bg-raised/40`}>
-            <h3 className={heading}>Descripción</h3>
-            {c.description.trim() ? <Md>{c.description}</Md> : <p className="text-sm text-slate-500 dark:text-muted">Sin descripción.</p>}
+            ) : c.description.trim() ? <Md>{c.description}</Md> : (
+              <button type="button" onClick={() => setEditing(true)} className="w-full rounded-xl border border-dashed border-slate-300 p-4 text-left text-sm text-slate-500 hover:bg-slate-50 dark:border-border-strong dark:text-muted dark:hover:bg-raised">Sin descripción. Añade qué cambiar y cómo comprobarlo.</button>
+            )}
           </section>
 
-          {c.threads.length > 0 && (
-            <section className={section}>
-              <h3 className={heading}><Chats className="size-4" />Hilos</h3>
-              {c.threads.map((t) => (
-                <Link key={t.id} to="/threads/$threadId" params={{ threadId: t.id }} className={`${row} min-h-10 gap-3`}>
-                  <ThreadDot status={t.status} />
-                  <span className="min-w-0 flex-1 truncate" title={t.title}>{t.title || "Hilo"}</span>
-                  <span role="img" aria-label={t.provider} title={t.provider} className="shrink-0">
-                    <ModelLogo driver={t.provider} compact />
-                  </span>
-                  <CaretRight aria-hidden="true" className="size-3 shrink-0 text-slate-500" />
-                </Link>
-              ))}
-            </section>
-          )}
-
-          <details ref={planSection} hidden={!!planDoc.data && !hasPlanContent && !planAccepted} className="group overflow-hidden rounded-xl border border-slate-200 dark:border-border">
+          <details ref={planSection} open={reviewPlan} hidden={!!planDoc.data && !hasPlanContent && !planAccepted} className="group overflow-hidden rounded-xl border border-slate-200 dark:border-border">
             <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-raised">
               <span className="inline-flex items-center gap-2">
                 <ClipboardText className="size-4" />Plan
@@ -374,34 +450,22 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
             <PlanDoc taskId={id} showStatus={false} />
           </details>
         </div>
-        <aside className="min-w-0 space-y-4">
-          {(c.repo || c.branch || c.issue_number || pullNumber) && (
-            <section className={section}>
-              <h3 className={heading}><GithubLogo className="size-4" />Referencias</h3>
-              <div className="space-y-1">
-                {githubRepo ? <a className={row} href={githubRepo} target="_blank" rel="noreferrer"><span className="min-w-0 flex-1 wrap-break-word">{c.repo}</span><ArrowSquareOut className="size-4 shrink-0 text-slate-500" /></a> : c.repo && <span className="break-all text-sm">{c.repo}</span>}
-                {c.issue_number && (githubRepo
-                  ? <a className={row} href={`${githubRepo}/issues/${c.issue_number}`} target="_blank" rel="noreferrer">Issue #{c.issue_number}<ArrowSquareOut className="ml-auto size-4 shrink-0 text-slate-500" /></a>
-                  : <span className="text-sm">Issue #{c.issue_number}</span>)}
-                {pullNumber && (pullUrl
-                  ? <a className={row} href={pullUrl} target="_blank" rel="noreferrer"><GitPullRequest className="size-4" />PR #{pullNumber}{(c.pull?.draft || c.pr_state === "draft") && " · Borrador"}<ArrowSquareOut className="ml-auto size-4 shrink-0 text-slate-500" /></a>
-                  : <span className="text-sm">PR #{pullNumber}</span>)}
-              </div>
-              {c.branch && <p className="mt-2 flex items-start gap-1.5 break-all font-mono text-xs text-slate-600 dark:text-muted"><GitBranch className="size-4 shrink-0" />{c.branch}</p>}
-            </section>
-          )}
 
-          <section className={section}>
+        <aside className="min-w-0 space-y-6 md:border-l md:border-slate-200 md:pl-6 md:dark:border-border">
+          <section>
             <h3 className={heading}><LinkSimple className="size-4" />Dependencias</h3>
+            {!deps.data?.length && <p className="px-2 text-sm text-slate-500 dark:text-muted">No depende de otras tareas.</p>}
             {(deps.data ?? []).map((d) => {
               const o = others.find((x) => x.id === d.depends_on_id);
+              const open = c.blockers.includes(d.depends_on_id);
               return (
-                <div key={d.depends_on_id} className="flex items-center gap-2 py-1 text-sm">
+                <div key={d.depends_on_id} className="flex items-center gap-2 px-2 py-1 text-sm">
+                  <span aria-label={open ? "Pendiente" : "Terminada"} className={`size-2 shrink-0 rounded-full ${open ? "bg-amber-500" : "bg-emerald-500"}`} />
                   <Link to="/tasks" search={{ task: d.depends_on_id } as never}
-                    className={`min-w-0 flex-1 wrap-break-word underline underline-offset-2 ${c.blockers.includes(d.depends_on_id) ? "" : "text-slate-500 line-through dark:text-muted"}`}>
+                    className={`min-w-0 flex-1 wrap-break-word hover:underline ${open ? "" : "text-slate-500 line-through dark:text-muted"}`}>
                     {o?.title ?? d.depends_on_id}
                   </Link>
-                  <button type="button" aria-label="Quitar dependencia" onClick={() => dep.mutate({ other: d.depends_on_id, add: false })}><X weight="regular" className="size-4" /></button>
+                  <button type="button" className={iconButton} aria-label="Quitar dependencia" onClick={() => dep.mutate({ other: d.depends_on_id, add: false })}><X weight="regular" className="size-4" /></button>
                 </div>
               );
             })}
@@ -409,17 +473,23 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
               options={others.filter((o) => !deps.data?.some((d) => d.depends_on_id === o.id)).map((o) => ({ value: o.id, label: o.title }))} />
             <ErrorText error={dep.error ?? deps.error ?? board.error} />
           </section>
+
+          <section>
+            <h3 className={heading}><Chats className="size-4" />Hilos</h3>
+            {!c.threads.length && <p className="px-2 text-sm text-slate-500 dark:text-muted">Aún no hay hilos. Se crean al definir el plan o implementar.</p>}
+            {c.threads.map((t) => (
+              <Link key={t.id} to="/threads/$threadId" params={{ threadId: t.id }} className={`${row} gap-3`}>
+                <ThreadDot status={t.status} />
+                <span className="min-w-0 flex-1 truncate" title={t.title}>{t.title || "Hilo"}</span>
+                <span role="img" aria-label={t.provider} title={t.provider} className="shrink-0">
+                  <ModelLogo driver={t.provider} compact />
+                </span>
+                <CaretRight aria-hidden="true" className="size-3 shrink-0 text-slate-500" />
+              </Link>
+            ))}
+          </section>
         </aside>
       </div>
-      <section aria-label="Acciones de la tarea" className="border-t border-slate-200 pt-1 dark:border-border">
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {c.stage !== "ready" && c.column === "inbox" && <Button variant="ghost" onClick={() => stage.mutate("ready")}>Marcar como lista</Button>}
-            {c.stage === "ready" && c.column === "ready" && <Button variant="ghost" onClick={() => stage.mutate("inbox")}>Volver a inbox</Button>}
-            {c.stage !== "cancelled" ? <Button variant="ghost" onClick={() => stage.mutate("cancelled")}>Cancelar tarea</Button> : <Button variant="ghost" onClick={() => stage.mutate("inbox")}>Reabrir</Button>}
-            <Button variant="ghost" className="ml-auto" onClick={() => askConfirm("¿Archivar la tarea?", "Archivar").then((ok) => ok && archive.mutate())}>Archivar</Button>
-          </div>
-          <ErrorText error={stage.error ?? archive.error} />
-      </section>
     </Modal>
   );
 }
