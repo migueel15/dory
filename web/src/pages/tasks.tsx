@@ -1,4 +1,5 @@
 import { DictationField } from "../components/dictation-field";
+import { useGithubWatch } from "../api/live";
 import { PlanDoc } from "../components/plan-doc";
 import { useDictationInProgress } from "../components/local-dictation";
 import { useEffect, useId, useRef, useState } from "react";
@@ -49,6 +50,7 @@ export function Tasks() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { task?: string };
+  useGithubWatch();
   const board = useQuery({ queryKey: ["board", project], queryFn: () => api.board(project || undefined), refetchInterval: 30_000 });
   const [adding, setAdding] = useState(false);
   const [fold, setFold] = useState<Record<string, boolean>>({ done: true, cancelled: true });

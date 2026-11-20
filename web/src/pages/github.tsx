@@ -1,4 +1,5 @@
 import { DefineIssueDialog } from "./define-issue";
+import { useGithubWatch } from "../api/live";
 import { ArrowClockwise, MagnifyingGlass } from "@phosphor-icons/react";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -222,6 +223,7 @@ function Empty({ filtered, kind, state }: { filtered: boolean; kind: Tab; state:
 const NO_MILESTONE = "\u0000none";
 
 export function Github() {
+  useGithubWatch();
   const qc = useQueryClient();
   const [resolving, setResolving] = useState<GithubPull | null>(null);
   const [asking, setAsking] = useState(false);
