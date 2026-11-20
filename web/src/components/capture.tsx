@@ -87,7 +87,7 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
       </div>
       <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 text-sm text-slate-500 dark:text-muted sm:min-h-0">
         <input type="checkbox" checked={keepOpen} disabled={save.isPending} onChange={(e) => setKeepOpen(e.target.checked)} className="size-4 accent-slate-900 dark:accent-accent" />
-        Seguir creando ideas al guardar en inbox
+        Crear más
       </label>
       <ErrorText error={save.error ?? dictation.error} />
     </div>
