@@ -4,13 +4,42 @@
 const Dory = window.Capacitor.Plugins.Dory;
 const KEY = "dory.environments";
 const PORT = 7710;
+const CAPTURE_NODE = "dory.capture-node";
 
 let saved = JSON.parse(localStorage.getItem(KEY) || "[]");
 const online = new Map(); // id → reachable now
 const found = new Map(); // id → {id, name, address, via}
 
 const $ = (id) => document.getElementById(id);
-const store = () => localStorage.setItem(KEY, JSON.stringify(saved));
+let captureNode = localStorage.getItem(CAPTURE_NODE) || "";
+let settingsSaved = Promise.resolve();
+
+function saveCaptureSettings() {
+  const nodes = saved.map(node => ({ ...node }));
+  const destination = captureNode;
+  settingsSaved = settingsSaved.then(async () => {
+    const error = $("capture-error");
+    try {
+      await Dory.saveCaptureSettings({ nodes, destination });
+      error.hidden = true;
+    } catch (e) {
+      error.textContent = e.message || "No se pudieron guardar los ajustes de dictado.";
+      error.hidden = false;
+    }
+  });
+}
+
+function store() {
+  if (!saved.some(node => node.id === captureNode)) captureNode = "";
+  localStorage.setItem(KEY, JSON.stringify(saved));
+  localStorage.setItem(CAPTURE_NODE, captureNode);
+  saveCaptureSettings();
+}
+
+$("capture-node").onchange = (event) => {
+  captureNode = event.target.value;
+  store();
+};
 const withPort = (a) => (/:\d+$/.test(a) || a.startsWith("[") ? a : `${a}:${PORT}`);
 
 function el(tag, cls, text) {
@@ -43,6 +72,17 @@ function render() {
     li.onclick = () => open(env);
     list.append(li);
   }
+  $("capture-setting").hidden = saved.length < 2;
+  const captureSelect = $("capture-node");
+  const placeholder = el("option", null, "Elige el nodo");
+  placeholder.value = "";
+  captureSelect.replaceChildren(placeholder, ...saved.map(node => {
+    const option = el("option", null, node.name || node.address);
+    option.value = node.id;
+    return option;
+  }));
+  captureSelect.value = captureNode;
+
   const pending = [...found.values()].filter((f) => !saved.some((s) => s.id === f.id));
   $("found-box").hidden = pending.length === 0;
   $("found").replaceChildren(
@@ -122,6 +162,7 @@ Dory.addListener("found", (f) => {
   render();
 });
 
+store();
 render();
 Dory.startDiscovery();
 saved.forEach(check);
