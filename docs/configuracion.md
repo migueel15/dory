@@ -12,6 +12,13 @@ Dory lee `~/.config/dory/config.toml` (o el fichero de `DORY_CONFIG`). Cada clav
 | `public_origin` | `DORY_PUBLIC_ORIGIN` | vacío | Origen HTTPS público detrás de un proxy |
 | `session_ttl` | `DORY_SESSION_TTL` | `168h` | Duración de la sesión web |
 
+Ajustes de limpieza del nodo, en las tablas `[tasks]` y `[threads]`. También se cambian en **Ajustes → Tareas**; lo que guardas allí va a `settings.json` del directorio de datos, no se replica y tiene prioridad sobre el fichero:
+
+| Clave | Por defecto | Qué es |
+|---|---|---|
+| `tasks.archive_threads_on_finish` | `false` | Al pasar una tarea a hecha o cancelada (a mano, por MCP, o porque su PR se fusiona o se cierra) se detienen y archivan sus hilos. El archivado por merge o cierre llega con el retraso del refresco de GitHub. Solo afecta a los hilos de este nodo |
+| `threads.remove_worktree_on_archive` | `true` | Al archivar un hilo se borra su worktree si está limpio y ningún otro hilo lo usa. Con cambios sin commitear se conserva: la lista de hilos avisa y ofrece **Eliminar worktree**, que lo borra a la fuerza |
+
 Otras variables:
 
 - `DORY_GITHUB_TOKEN`: token de GitHub. Tiene prioridad sobre el inicio de sesión desde la interfaz y sobre la sesión de `gh`. El token no sale del nodo.

@@ -28,10 +28,10 @@ El kanban tiene estas columnas, que se calculan solas a partir de los hilos y de
 | Needs you | El hilo te espera o falló, el CI falla o piden cambios |
 | In review | PR lista, con review pendiente |
 | Ready to merge | PR aprobada o sin review pedida; fusionar es decisión tuya |
-| Done | PR fusionada |
+| Done | PR fusionada, o tarea marcada como hecha a mano sin PR |
 | Cancelled | PR cerrada sin fusionar, o tarea cancelada |
 
-A mano solo se mueven tareas entre Inbox, Ready y Cancelled. Cada tarjeta muestra su rama, su PR y un único icono de estado: azul trabajando, naranja te necesita, amarillo CI en curso, ámbar review, verde lista, morado fusionada, rojo fallo y gris inactiva. El tooltip explica el estado.
+A mano se mueven tareas entre Inbox, Ready y Cancelled. Con **Marcar como hecha** (menú rápido o menú de la tarea) una tarea pasa a Done cuando su trabajo fue directo a `main` y no tiene PR; si tiene una PR sin fusionar (abierta, en borrador o cerrada) se rechaza, y con una PR fusionada ya está en Done sola. La PR manda: si a una tarea hecha a mano se le asocia después una PR sin fusionar, vuelve al flujo normal. **Reabrir** devuelve las tareas hechas a mano o canceladas a Ready; no desarchiva sus hilos. Cada tarjeta muestra su rama, su PR y un único icono de estado: azul trabajando, naranja te necesita, amarillo CI en curso, ámbar review, verde lista, morado fusionada, rojo fallo y gris inactiva. El tooltip explica el estado.
 
 Al abrir una carta ves su título, estado y descripción. Desde **Referencias** puedes abrir el repositorio, la issue y la PR en GitHub cuando están disponibles. Los hilos y las tareas de las que depende se abren desde sus nombres. En pantallas anchas, las referencias y dependencias quedan a la derecha.
 

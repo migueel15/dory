@@ -19,31 +19,36 @@ export function TaskQuickMenu({ c, x, y, onClose, onOpen, onError }: { c: Card; 
   const a: ContextAction[] = [{ label: "Abrir", run: () => onOpen() }];
   const lastThread = () => latest && a.push({ label: "Ir al último hilo", run: () => navigate({ to: "/threads/$threadId", params: { threadId: latest.id } }) });
   const viewPull = () => pullUrl && a.push({ label: "Ver PR en GitHub", run: () => window.open(pullUrl, "_blank", "noreferrer") });
+  const markDone = () => !c.pr_number && a.push({ label: "Marcar como hecha", run: () => stage.mutate("done") });
   switch (c.column) {
     case "inbox":
       a.push({ label: "Definir plan", run: () => onOpen("define") },
         { label: "Implementar directamente", disabled: c.blockers.length > 0, run: () => onOpen("implement") },
-        { label: "Marcar como lista", run: () => stage.mutate("ready") },
-        { label: "Cancelar tarea", run: () => stage.mutate("cancelled") });
+        { label: "Marcar como lista", run: () => stage.mutate("ready") });
+      markDone();
+      a.push({ label: "Cancelar tarea", run: () => stage.mutate("cancelled") });
       break;
     case "ready":
       a.push({ label: c.has_plan ? "Revisar plan" : "Definir plan", run: () => onOpen("define") },
         { label: "Implementar", disabled: c.blockers.length > 0, run: () => onOpen("implement") },
-        { label: "Volver a inbox", run: () => stage.mutate("inbox") },
-        { label: "Cancelar tarea", run: () => stage.mutate("cancelled") });
+        { label: "Volver a inbox", run: () => stage.mutate("inbox") });
+      markDone();
+      a.push({ label: "Cancelar tarea", run: () => stage.mutate("cancelled") });
       break;
     case "working": case "needs_you":
       lastThread();
       a.push({ label: "Abrir otro hilo", run: () => onOpen("implement") });
+      markDone();
       break;
     case "in_review": case "ready_to_merge":
       viewPull(); lastThread();
       break;
     case "done":
       viewPull();
+      if (c.stage === "done" && !c.pr_number) a.push({ label: "Reabrir", run: () => stage.mutate("ready") });
       break;
     case "cancelled":
-      a.push({ label: "Reabrir", run: () => stage.mutate("inbox") });
+      a.push({ label: "Reabrir", run: () => stage.mutate("ready") });
       break;
   }
   a.push({ label: "Copiar ID", separated: true, run: () => { navigator.clipboard.writeText(c.id).catch(onError); } },
