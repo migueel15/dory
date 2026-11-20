@@ -1,8 +1,14 @@
+-- +goose NO TRANSACTION
 -- +goose Up
 -- A task can be marked done by hand when its work went straight to the
 -- default branch and has no pull request. SQLite cannot change a CHECK, so the
 -- table is rebuilt; the full text index keeps its rows because rowids are kept.
-PRAGMA defer_foreign_keys = ON;
+-- Foreign keys are switched off for the rebuild: dropping tasks would otherwise
+-- count every row that references it as a violation and fail the migration.
+-- PRAGMA foreign_keys cannot change inside a transaction, so this migration
+-- opens its own; the pool has a single connection, so the pragma sticks.
+PRAGMA foreign_keys = OFF;
+BEGIN IMMEDIATE;
 CREATE TABLE tasks_new (
   id text PRIMARY KEY,
   project_id text REFERENCES projects(id),
@@ -35,6 +41,8 @@ CREATE TRIGGER tasks_fts_update AFTER UPDATE ON tasks BEGIN
   INSERT INTO tasks_fts(rowid, title, description) VALUES (new.rowid, new.title, new.description);
 END;
 -- +goose StatementEnd
+COMMIT;
+PRAGMA foreign_keys = ON;
 
 -- +goose Down
 UPDATE tasks SET stage = 'ready' WHERE stage = 'done';
