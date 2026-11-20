@@ -174,15 +174,7 @@ func (s *Server) Cards(ctx context.Context, tasks []data.Task) ([]Card, error) {
 	for _, r := range repos {
 		names[r.ID], _ = github.ParseRemote(r.RemoteURL)
 	}
-	open := map[string]github.Pull{}
-	if s.GitHub != nil && s.GitHub.Configured(ctx) {
-		if overview, err := s.GitHub.Open(ctx, false); err == nil {
-			for _, p := range overview.Pulls {
-				open[p.Repo+"#"+p.HeadRef] = p
-				open[fmt.Sprintf("%s#%d", p.Repo, p.Number)] = p
-			}
-		}
-	}
+	open := s.openPulls(ctx)
 	plans, err := s.Store.Plans().List(ctx, data.Filter{Limit: 1000})
 	if err != nil {
 		return nil, err
@@ -210,6 +202,20 @@ func (s *Server) Cards(ctx context.Context, tasks []data.Task) ([]Card, error) {
 		return nil, err
 	}
 	return cards, nil
+}
+
+// openPulls indexes the open pull requests by repository and branch or number.
+func (s *Server) openPulls(ctx context.Context) map[string]github.Pull {
+	open := map[string]github.Pull{}
+	if s.GitHub != nil && s.GitHub.Configured(ctx) {
+		if overview, err := s.GitHub.Open(ctx, false); err == nil {
+			for _, p := range overview.Pulls {
+				open[p.Repo+"#"+p.HeadRef] = p
+				open[fmt.Sprintf("%s#%d", p.Repo, p.Number)] = p
+			}
+		}
+	}
+	return open
 }
 
 func (s *Server) card(ctx context.Context, t data.Task, byTask map[string][]data.Thread, withPlan map[string]bool, names map[string]string, open map[string]github.Pull) (Card, error) {
@@ -276,7 +282,14 @@ func (s *Server) finished(ctx context.Context, t data.Task, open map[string]gith
 		c.Repo = names[*t.RepositoryID]
 	}
 	s.attachPull(ctx, &c, open)
-	return c.PRState == "merged" || t.Stage == "cancelled"
+	return c.PRState == "merged" || t.Stage == "cancelled" || doneByHand(c)
+}
+
+// doneByHand says whether the user marked the task done and it has no pull
+// request. The pull request is the source of truth: with one, the column
+// comes from its state and stage is ignored.
+func doneByHand(c Card) bool {
+	return c.Stage == "done" && c.PRNumber == nil
 }
 
 // column applies the rules of requirements 5.11.
@@ -284,7 +297,7 @@ func column(c Card) string {
 	if c.Stage == "cancelled" || c.PRState == "closed" {
 		return "cancelled"
 	}
-	if c.PRState == "merged" {
+	if c.PRState == "merged" || doneByHand(c) {
 		return "done"
 	}
 	working, waiting := false, false

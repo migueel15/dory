@@ -537,8 +537,11 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
     <Button variant={variant} onClick={(e) => openLaunch(e.currentTarget, next)} disabled={disabled || !planDoc.data || launchPending}>{next === "define" ? <ClipboardText className="size-4" /> : <Rocket className="size-4" />}{label}</Button>
   );
   const prLink = pullUrl && <a href={pullUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-accent dark:hover:bg-accent-hover"><GitPullRequest className="size-4" />Abrir PR<ArrowSquareOut className="size-3.5" /></a>;
+  // The pull request decides the column; stage only counts without one.
+  const doneByHand = c.column === "done" && c.stage === "done" && !pullNumber;
   const next: Next =
-    c.column === "cancelled" ? { tone: tones.idle, title: "Tarea cancelada", detail: "No se trabajará en ella salvo que la reabras.", action: <Button variant="ghost" onClick={() => stage.mutate("inbox")}>Reabrir</Button> }
+    c.column === "cancelled" ? { tone: tones.idle, title: "Tarea cancelada", detail: "No se trabajará en ella salvo que la reabras.", action: <Button variant="ghost" onClick={() => stage.mutate("ready")}>Reabrir</Button> }
+    : doneByHand ? { tone: tones.ok, title: "Completada", detail: "Marcada como hecha sin pull request.", action: <Button variant="ghost" onClick={() => stage.mutate("ready")}>Reabrir</Button> }
     : merged ? { tone: tones.ok, title: "Completada", detail: `La PR #${pullNumber} está fusionada.`, action: prLink }
     : waiting ? { tone: tones.warn, title: "Un agente necesita tu respuesta", detail: waiting.title, action: threadLink(waiting, "Responder") }
     : working ? { tone: tones.info, title: "Un agente está trabajando", detail: working.title, action: threadLink(working, "Ver hilo") }
@@ -573,7 +576,8 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
           <button type="button" role="menuitem" className={menuItem} disabled={!planDoc.data || launchPending} onClick={() => openLaunch(menuTrigger.current, planAccepted || !hasPlanContent ? "implement" : "define")}><Rocket className="size-4" />Abrir otro hilo</button>
           {c.stage !== "ready" && c.column === "inbox" && <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("ready")}>Marcar como lista</button>}
           {c.stage === "ready" && c.column === "ready" && <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("inbox")}>Volver a inbox</button>}
-          {c.stage !== "cancelled" ? <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("cancelled")}>Cancelar tarea</button> : <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("inbox")}>Reabrir</button>}
+          {!pullNumber && c.column !== "done" && c.column !== "cancelled" && <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("done")}>Marcar como hecha</button>}
+          {c.stage === "cancelled" || doneByHand ? <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("ready")}>Reabrir</button> : <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("cancelled")}>Cancelar tarea</button>}
           <div className="my-1 border-t border-slate-200 dark:border-border" />
           <button type="button" role="menuitem" className={`${menuItem} text-red-700 dark:text-red-400`} onClick={() => { menu.current?.hidePopover(); askConfirm("¿Archivar la tarea?", "Archivar").then((ok) => ok && archive.mutate()); }}>Archivar</button>
         </div>

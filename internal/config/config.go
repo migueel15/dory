@@ -22,6 +22,20 @@ type Config struct {
 	PublicOrigin   string        `toml:"public_origin"`
 	SessionTTL     time.Duration `toml:"-"`
 	SessionTTLText string        `toml:"session_ttl"`
+	// Tasks and Threads hold the defaults of the settings the interface can
+	// change on a node.
+	Tasks   TasksConfig   `toml:"tasks"`
+	Threads ThreadsConfig `toml:"threads"`
+}
+
+type TasksConfig struct {
+	// ArchiveThreadsOnFinish archives the threads of a task that becomes done or cancelled.
+	ArchiveThreadsOnFinish bool `toml:"archive_threads_on_finish"`
+}
+
+type ThreadsConfig struct {
+	// RemoveWorktreeOnArchive deletes the worktree of an archived thread.
+	RemoveWorktreeOnArchive bool `toml:"remove_worktree_on_archive"`
 }
 
 // Load uses DORY_CONFIG, or ~/.config/dory/config.toml. An explicitly selected
@@ -29,7 +43,8 @@ type Config struct {
 func Load() (Config, error) {
 	// A desktop node serves plain HTTP on loopback; a server behind TLS sets
 	// cookie_secure.
-	c := Config{Listen: "127.0.0.1:7700", SessionTTLText: "168h", MeshPort: 7710}
+	c := Config{Listen: "127.0.0.1:7700", SessionTTLText: "168h", MeshPort: 7710,
+		Threads: ThreadsConfig{RemoveWorktreeOnArchive: true}}
 	path := os.Getenv("DORY_CONFIG")
 	explicit := path != ""
 	if !explicit {

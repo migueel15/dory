@@ -20,3 +20,15 @@ listen = "127.0.0.1:7700"
 
 # Duración de la sesión web (DORY_SESSION_TTL), formato de Go: "168h" = 7 días.
 session_ttl = "168h"
+
+# Ajustes de limpieza del nodo. También se cambian en Ajustes de la interfaz,
+# que se guardan en settings.json del directorio de datos y tienen prioridad.
+
+[tasks]
+# Archivar los hilos de una tarea cuando pasa a hecha o cancelada.
+archive_threads_on_finish = false
+
+[threads]
+# Borrar el worktree al archivar un hilo. Si tiene cambios sin commitear se
+# conserva y se avisa en el hilo archivado.
+remove_worktree_on_archive = true
