@@ -1,6 +1,6 @@
 # ADR-016: Actualización de la malla desde las releases de GitHub
 
-- Status: accepted
+- Status: parcialmente sustituido por ADR-021 (publicación y resolución de releases)
 - Date: 2026-11-18
 
 ## Context

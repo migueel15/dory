@@ -70,6 +70,8 @@ La interfaz también funciona como PWA si publicas un nodo por HTTPS (`tailscale
 
 ## Versiones
 
-- **Estable:** cada etiqueta `v*` publica una release.
-- **Nightly:** cada push a `main` actualiza la release `nightly`.
-- **Pull requests:** cada push a la rama de una PR genera binarios y apps descargables como artefactos del workflow.
+- **Estable:** cada etiqueta `v*` publica cada plataforma al terminar su compilación. La release completa para clientes anteriores aparece cuando terminan todas.
+- **Nightly:** cada push a `main` publica cada plataforma al terminar. La release `nightly` completa queda como versión de transición para clientes anteriores; el actualizador nuevo consulta la última release de su plataforma. El enlace de instalación `nightly` instala esa transición y después se puede ejecutar `dory update`.
+- **Pull requests:** se comprueban el núcleo y la interfaz. Los cambios de Android generan además una APK como artefacto.
+
+Una plataforma puede ofrecer una versión más reciente que otra mientras se compila; si una falla, conserva la última publicación válida. La primera sustitución de la release `nightly` compartida debe realizarse sin actualizaciones simultáneas de clientes antiguos: su actualizador no puede garantizar coherencia mientras cambia esa release. Las descargas de las nuevas publicaciones por plataforma usan releases inmutables.
