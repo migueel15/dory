@@ -150,6 +150,12 @@ func Handler(s *api.Server) http.Handler {
 	add(srv, "save_task", "Create a task, or update the title, description, issue or pull request of one. Tasks created from one issue share its number; depends_on marks which must finish first. Agents never change the state of a task.", func(ctx context.Context, in taskInput) (any, error) {
 		return saveTask(ctx, store, in)
 	})
+	add(srv, "set_task_project", "Link a task to a project, or unlink it by leaving project_id empty. Use it when the user asks to put a task in a project or take it out. Moving it to another project clears its repository, which is set again when the project has only one.", func(ctx context.Context, in struct {
+		TaskID    string `json:"task_id"`
+		ProjectID string `json:"project_id,omitempty" jsonschema:"Project id or slug; empty to unlink the task from its project"`
+	}) (any, error) {
+		return setTaskProject(ctx, store, in.TaskID, in.ProjectID)
+	})
 	add(srv, "ensure_thread_task", "When planning in this conversation, reuse its linked task or create and link one atomically. Safe to retry. Supply a concise title and description only when a task is needed; use plan_read and plan_write or plan_edit for its plan. Only the user accepts the plan.", func(ctx context.Context, in struct {
 		Title       string `json:"title" jsonschema:"Concise title for a new task"`
 		Description string `json:"description,omitempty" jsonschema:"Description for a new task"`
@@ -402,6 +408,46 @@ func saveTask(ctx context.Context, store *data.Store, in taskInput) (data.Task, 
 		}
 	}
 	return t, nil
+}
+
+func setTaskProject(ctx context.Context, store *data.Store, taskID, project string) (data.Task, error) {
+	t, err := store.Tasks().Get(ctx, taskID)
+	if err != nil {
+		return t, err
+	}
+	var next *string
+	if project != "" {
+		p, err := store.Projects().Get(ctx, project)
+		if errors.Is(err, data.ErrNotFound) {
+			projects, lerr := store.Projects().List(ctx, data.Filter{Limit: 1000})
+			if lerr != nil {
+				return t, lerr
+			}
+			for i := range projects {
+				if projects[i].Slug == project {
+					p, err = projects[i], nil
+					break
+				}
+			}
+		}
+		if err != nil {
+			return t, err
+		}
+		if p.ID == "" {
+			return t, fmt.Errorf("%w: project %s does not exist", data.ErrInvalid, project)
+		}
+		next = &p.ID
+	}
+	if (t.ProjectID == nil) == (next == nil) && (next == nil || *t.ProjectID == *next) {
+		return t, nil
+	}
+	t.ProjectID, t.RepositoryID = next, nil
+	if next != nil {
+		if repos, _ := store.Repositories().List(ctx, data.Filter{Fields: map[string]any{"project_id": *next}}); len(repos) == 1 {
+			t.RepositoryID = &repos[0].ID
+		}
+	}
+	return store.Tasks().Put(ctx, t)
 }
 
 func remember(ctx context.Context, store *data.Store, in memoryInput) (data.Memory, error) {
