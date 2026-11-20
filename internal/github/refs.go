@@ -18,7 +18,7 @@ type PullRef struct {
 // PullRefs searches a repository's pull requests in every state (open, draft,
 // merged, closed), newest first. query matches the title or the number.
 func (c *Client) PullRefs(ctx context.Context, repo, query string) ([]PullRef, error) {
-	if c.Token == "" {
+	if !c.Configured(ctx) {
 		return nil, ErrUnconfigured
 	}
 	// Only followed repositories; the name may come lowercased.

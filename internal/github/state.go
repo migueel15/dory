@@ -28,7 +28,7 @@ type stateEntry struct {
 // it stays cached; any other answer older than a minute is still returned at
 // once while a background request refreshes it.
 func (c *Client) PullState(ctx context.Context, repo string, number *int64, branch string) (PullStatus, error) {
-	if c.Token == "" {
+	if !c.Configured(ctx) {
 		return PullStatus{}, ErrUnconfigured
 	}
 	key := repo + "#" + branch
