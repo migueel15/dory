@@ -84,6 +84,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	s.mountIdeas(mux)
 	s.mountThreads(mux)
 	s.mountGitHub(mux)
+	s.mountGitHubAuth(mux)
 	s.mountPulls(mux)
 	s.mountProviders(mux)
 	s.mountSkills(mux)

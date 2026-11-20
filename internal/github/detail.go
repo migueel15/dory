@@ -282,7 +282,7 @@ func (w wireEvent) event() Event {
 }
 
 func (c *Client) checkRepo(ctx context.Context, repo string) (string, error) {
-	if c.Token == "" {
+	if !c.Configured(ctx) {
 		return "", ErrUnconfigured
 	}
 	repos, err := c.repos(ctx)
@@ -539,6 +539,7 @@ func (c *Client) Act(ctx context.Context, repo, kind string, number int, a Actio
 		return err
 	}
 	c.forget()
+	c.Kick()
 	return nil
 }
 

@@ -114,6 +114,13 @@ func (s *Server) mountGitHub(mux *http.ServeMux) {
 		}
 		return n, err == nil
 	}
+	// A view with branches or pull requests is open: poll GitHub fast.
+	mux.HandleFunc("POST /api/github/watch", func(w http.ResponseWriter, r *http.Request) {
+		if gh != nil {
+			gh.Beat()
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("GET /api/github/open", func(w http.ResponseWriter, r *http.Request) {
 		overview, err := gh.Open(r.Context(), r.URL.Query().Get("refresh") == "true")
 		if err != nil {

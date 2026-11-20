@@ -75,6 +75,10 @@ export type Hit = { entity: "task" | "memory"; id: string; title: string; rank: 
 export type User = { id: string; username: string };
 export type Version = { revision: string; short: string; time: string; modified: boolean };
 
+export type GithubAuth = { source: "env" | "ui" | "gh" | "none"; login: string };
+export type GithubDeviceCode = { user_code: string; verification_uri: string; expires_in: number };
+export type GithubDeviceState = { state: "pending" | "done" | "expired" | "denied" | "failed"; error?: string };
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -198,6 +202,10 @@ export const api = {
   issueTask: (repo: string, number: number, body: { title: string; description: string }) => req<Task>("POST", `/github/repos/${repo}/issues/${number}/tasks`, body),
   githubPullRefs: (repo: string, q: string) => req<{ pulls: { number: number; title: string; state: "open" | "draft" | "merged" | "closed" }[] }>("GET", `/github/repos/${repo}/pull-refs?q=${encodeURIComponent(q)}`),
   branches: (repo: string) => req<string[]>("GET", `/github/repos/${repo}/branches`),
+  githubAuth: () => req<GithubAuth>("GET", "/github/auth"),
+  githubLogout: () => req<void>("DELETE", "/github/auth"),
+  githubDeviceStart: () => req<GithubDeviceCode>("POST", "/github/auth/device"),
+  githubDeviceState: () => req<GithubDeviceState>("GET", "/github/auth/device"),
   github: (refresh = false) => req<GithubOverview>("GET", `/github/open${refresh ? "?refresh=true" : ""}`),
   githubClosed: (kind: "pulls" | "issues", project: string, cursor: string) =>
     req<GithubClosed>("GET", `/github/closed?${new URLSearchParams({ kind, ...(project && { project }), ...(cursor && { cursor }) })}`),
