@@ -452,7 +452,7 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
                 <CaretDown className="size-4 transition-transform group-open:rotate-180" />
               </span>
             </summary>
-            <PlanDoc taskId={id} showStatus={false} />
+            <PlanDoc taskId={id} showStatus={false} reader onAccepted={() => { if (planSection.current) planSection.current.open = false; }} />
           </details>
         </div>
 
