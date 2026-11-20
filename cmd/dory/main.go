@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -155,6 +156,17 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	}
 	srv.Remote = net
 	notices.Columns = srv.TaskColumns
+	notices.InfoChanged = net.Changed
+	notices.PeerInfo = func(ctx context.Context) []json.RawMessage {
+		peers, _ := net.Peers(ctx)
+		var out []json.RawMessage
+		for _, p := range peers {
+			if p.Connected {
+				out = append(out, p.Info)
+			}
+		}
+		return out
+	}
 	go notices.Run(ctx)
 	srv.InfoChanged = net.Changed
 	srv.Updater = &update.Updater{DataDir: cfg.DataDir, Active: rt.Active, Providers: rt.UpdateAll, Restart: restartSelf,
@@ -203,7 +215,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	}
 	net.DeviceSession = func(w http.ResponseWriter, r *http.Request) { auth.DeviceSession(w, r, store.Accounts(), cfg) }
 	net.Info = func(ctx context.Context) any {
-		return map[string]any{"node": srv.Info(), "providers": rt.Providers(ctx)}
+		return map[string]any{"node": srv.Info(), "providers": rt.Providers(ctx), "presence": notices.Presence(), "push": notices.HasPush(ctx)}
 	}
 	done := make(chan error, 2)
 	go func() { done <- server.ListenAndServe() }()

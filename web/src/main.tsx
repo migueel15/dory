@@ -16,7 +16,7 @@ import { TooltipHost } from "./components/tooltip";
 import { MeshUpdateButton } from "./components/mesh-update";
 import { SettingsModal } from "./components/settings-modal";
 import { ProjectSwitcher } from "./components/project-switcher";
-import { NoticeInbox, NoticesToggle } from "./components/notices";
+import { NoticeAlerts, NoticeInbox, NoticesToggle } from "./components/notices";
 import { Home } from "./pages/home";
 import { Github } from "./pages/github";
 import { Tasks } from "./pages/tasks";
@@ -324,7 +324,7 @@ function Layout() {
           <VersionBadge />
         </div>
       </dialog>
-      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"} ${hasWindowClose && !path.startsWith("/threads") ? "sm:px-14" : ""}`}><Outlet /></main><WindowClose /></div><CommandPalette /><TooltipHost />
+      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"} ${hasWindowClose && !path.startsWith("/threads") ? "sm:px-14" : ""}`}><Outlet /></main><WindowClose /></div><CommandPalette /><TooltipHost /><NoticeAlerts />
     </div>
   );
 }

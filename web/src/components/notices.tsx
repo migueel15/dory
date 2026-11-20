@@ -23,26 +23,10 @@ async function subscribe() {
   }
 }
 
-// NoticesToggle enables notices; with them on, it also shows a local notice
-// when a thread of any node finishes, fails or needs you while the window is
-// not in focus (the desktop app has no push service).
+// NoticesToggle enables push and system notices on this device.
 export function NoticesToggle() {
   const [perm, setPerm] = useState(() => ("Notification" in window ? Notification.permission : "denied"));
   const [error, setError] = useState("");
-  const threads = useQuery({ queryKey: ["threads", "attention"], queryFn: () => api.threads(), refetchInterval: 15_000, enabled: perm === "granted" });
-  const last = useRef<Record<string, string> | undefined>(undefined);
-  useEffect(() => {
-    if (!threads.data) return;
-    const prev = last.current;
-    last.current = Object.fromEntries(threads.data.map((t) => [t.id, t.status]));
-    if (!prev || document.hasFocus() || perm !== "granted") return;
-    for (const t of threads.data) {
-      const before = prev[t.id];
-      if (!before || before === t.status || (before !== "working" && t.status !== "waiting")) continue;
-      const title = { idle: "El agente terminó", waiting: "Un agente te necesita", error: "El agente falló" }[t.status as string];
-      if (title) new Notification(title, { body: t.title, tag: t.id, icon: "/icon-192.png" }).onclick = () => { window.focus(); location.assign(`/threads/${t.id}`); };
-    }
-  }, [threads.data, perm]);
   const on = perm === "granted";
   return (
     <button type="button" title={error || (on ? "Avisos activados" : "Activar avisos")} aria-label={on ? "Avisos activados" : "Activar avisos"}
@@ -57,7 +41,7 @@ type Notice = { id: string; kind: string; title: string; body: string; url: stri
 
 // useNotices lists the inbox, newest first; it is shared by every device of the mesh.
 function useNotices() {
-  return useQuery({ queryKey: ["notices"], queryFn: () => req<Notice[]>("GET", "/notices"), refetchInterval: 60_000 });
+  return useQuery({ queryKey: ["notices"], queryFn: () => req<Notice[]>("GET", "/notices"), refetchInterval: 15_000, refetchIntervalInBackground: true });
 }
 
 // NoticeInbox shows the inbox with its unread counter. Reading a notice marks
@@ -105,5 +89,74 @@ export function NoticeInbox() {
         </Modal>
       )}
     </>
+  );
+}
+
+// One id per loaded interface, so the mesh can tell open interfaces apart.
+const interfaceId = crypto.randomUUID();
+
+// usePresence tells the node whether this interface is open and has the
+// focus. The node expires it if the heartbeat stops (a closed tab, a killed app).
+function usePresence() {
+  useEffect(() => {
+    const send = (state: string) => fetch("/api/presence", { method: "POST", credentials: "include", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: interfaceId, state }) }).catch(() => {});
+    const state = () => (document.visibilityState === "visible" && document.hasFocus() ? "focus" : "open");
+    const beat = () => send(state());
+    beat();
+    const id = setInterval(beat, 15_000);
+    window.addEventListener("focus", beat);
+    window.addEventListener("blur", beat);
+    document.addEventListener("visibilitychange", beat);
+    const leave = () => send("closed");
+    window.addEventListener("pagehide", leave);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("focus", beat);
+      window.removeEventListener("blur", beat);
+      document.removeEventListener("visibilitychange", beat);
+      window.removeEventListener("pagehide", leave);
+      leave();
+    };
+  }, []);
+}
+
+// NoticeAlerts shows each new notice where the user is: inside the app when
+// this interface has the focus; as a system notification when none has the
+// focus and there is no push to reach a phone. Otherwise push or the inbox
+// take it, so nothing shows twice.
+export function NoticeAlerts() {
+  usePresence();
+  const notices = useNotices();
+  const navigate = useNavigate();
+  const seen = useRef<Set<string> | undefined>(undefined);
+  const [toasts, setToasts] = useState<Notice[]>([]);
+  useEffect(() => {
+    if (!notices.data) return;
+    const known = seen.current;
+    seen.current = new Set(notices.data.map((n) => n.id));
+    if (!known) return;
+    const fresh = notices.data.filter((n) => !n.read_at && !known.has(n.id) && Date.now() - Date.parse(n.created_at) < 120_000);
+    if (fresh.length === 0) return;
+    if (document.hasFocus()) {
+      setToasts((t) => [...fresh, ...t].slice(0, 3));
+      for (const n of fresh) setTimeout(() => setToasts((t) => t.filter((x) => x.id !== n.id)), 8000);
+      return;
+    }
+    req<{ focus: boolean; push: boolean }>("GET", "/presence").then((d) => {
+      if (d.focus || d.push || !("Notification" in window) || Notification.permission !== "granted") return;
+      for (const n of fresh) new Notification(n.title, { body: n.body, tag: n.id, icon: "/icon-192.png" }).onclick = () => { window.focus(); if (n.url) location.assign(n.url); };
+    }).catch(() => {});
+  }, [notices.data]);
+  if (toasts.length === 0) return null;
+  return (
+    <div className="fixed bottom-4 right-4 z-50 flex w-80 max-w-[calc(100%-2rem)] flex-col gap-2" role="status">
+      {toasts.map((n) => (
+        <button key={n.id} type="button" onClick={() => { setToasts((t) => t.filter((x) => x.id !== n.id)); if (n.url) navigate({ to: n.url as never }); }}
+          className="rounded-lg border border-slate-200 bg-white p-3 text-left shadow-lg dark:border-border dark:bg-surface">
+          <span className="block text-sm font-semibold">{n.title}</span>
+          {n.body && <span className="block truncate text-sm text-slate-500 dark:text-muted">{n.body}</span>}
+        </button>
+      ))}
+    </div>
   );
 }

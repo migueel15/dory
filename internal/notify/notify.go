@@ -52,10 +52,17 @@ type Notifier struct {
 	// Columns returns the column of every open task; set by the server.
 	Columns func(context.Context) (map[string]Column, error)
 
-	mu      sync.Mutex
-	last    map[string]string
-	columns map[string]string
-	pushed  map[string]bool
+	// InfoChanged tells the peers this node's description changed.
+	InfoChanged func()
+	// PeerInfo returns the descriptions of the connected peers.
+	PeerInfo func(context.Context) []json.RawMessage
+
+	mu        sync.Mutex
+	beats     map[string]beat
+	announced string
+	last      map[string]string
+	columns   map[string]string
+	pushed    map[string]bool
 }
 
 // New loads the VAPID keys of this node from dir, creating them once.
@@ -90,6 +97,7 @@ func New(ctx context.Context, store *data.Store, node, dir string) (*Notifier, e
 
 // Run deletes the notices read more than 30 days ago, every hour.
 func (n *Notifier) Run(ctx context.Context) {
+	go n.expire(ctx)
 	for {
 		cutoff := time.Now().Add(-retention).UTC().Format(time.RFC3339Nano)
 		if _, err := n.db.ExecContext(ctx, `DELETE FROM notices WHERE read_at IS NOT NULL AND read_at < ?`, cutoff); err != nil && ctx.Err() == nil {
@@ -237,6 +245,10 @@ func (n *Notifier) deliver(id string) {
 	if at, err := time.Parse(time.RFC3339Nano, nt.CreatedAt); err != nil || time.Since(at) > fresh {
 		return
 	}
+	// With an interface in focus the notice shows in the app, not as a push.
+	if n.Delivery(ctx).Focus {
+		return
+	}
 	n.mu.Lock()
 	done := n.pushed[id]
 	n.pushed[id] = true
@@ -283,6 +295,7 @@ func (n *Notifier) Send(ctx context.Context, title, body, url, tag string) {
 
 // Mount adds the subscription routes.
 func (n *Notifier) Mount(mux *http.ServeMux) {
+	n.mountPresence(mux)
 	mux.HandleFunc("GET /api/push/key", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"key": n.public})
@@ -301,6 +314,9 @@ func (n *Notifier) Mount(mux *http.ServeMux) {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+		if n.InfoChanged != nil {
+			n.InfoChanged()
+		}
 	})
 	mux.HandleFunc("GET /api/notices", func(w http.ResponseWriter, r *http.Request) {
 		list, err := n.store.Notices().List(r.Context(), data.Filter{Limit: 1000})

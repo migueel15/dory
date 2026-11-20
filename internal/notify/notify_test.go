@@ -2,6 +2,7 @@ package notify
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
@@ -71,5 +72,39 @@ func TestRetentionDeletesOldReadNotices(t *testing.T) {
 	list, err := store.Notices().List(context.Background(), data.Filter{})
 	if err != nil || len(list) != 1 || list[0].ReadAt != nil {
 		t.Fatalf("after retention: %+v %v", list, err)
+	}
+}
+
+func TestDeliveryCombinesLocalAndPeers(t *testing.T) {
+	ctx := context.Background()
+	n, _ := open(t)
+	if d := n.Delivery(ctx); d.Focus || d.Open || d.Push {
+		t.Fatalf("nothing open: %+v", d)
+	}
+	n.Beat("a", Open)
+	if d := n.Delivery(ctx); d.Focus || !d.Open {
+		t.Fatalf("open without focus: %+v", d)
+	}
+	n.PeerInfo = func(context.Context) []json.RawMessage {
+		return []json.RawMessage{json.RawMessage(`{"presence":"focus","push":true}`)}
+	}
+	if d := n.Delivery(ctx); !d.Focus || !d.Push {
+		t.Fatalf("a peer has the focus and push: %+v", d)
+	}
+	n.PeerInfo = nil
+	n.Beat("a", Focus)
+	if n.Presence() != Focus {
+		t.Fatal("focus expected")
+	}
+	n.mu.Lock()
+	n.beats["a"] = beat{Focus, time.Now().Add(-time.Minute)}
+	n.mu.Unlock()
+	if n.Presence() != Closed {
+		t.Fatal("an expired heartbeat must close the interface")
+	}
+	n.Beat("a", Open)
+	n.Beat("a", Closed)
+	if n.Presence() != Closed {
+		t.Fatal("closed beat must remove the interface")
 	}
 }
