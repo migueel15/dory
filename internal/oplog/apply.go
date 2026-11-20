@@ -107,6 +107,7 @@ var tables = map[string]table{
 	"memory":              {"memories", []string{"id"}, []string{"scope", "scope_id", "kind", "title", "content", "labels", "created_at", "updated_at", "archived_at"}, "", "content"},
 	"skill":               {"skills", []string{"id"}, []string{"name", "description", "body_md", "files", "version", "targets", "created_at", "updated_at", "archived_at"}, "name", ""},
 	"skill_state":         {"skill_states", []string{"skill_id", "node_id"}, []string{"status", "version", "message", "created_at", "updated_at", "archived_at"}, "", ""},
+	"notice":              {"notices", []string{"id"}, []string{"kind", "title", "body", "url", "read_at", "created_at", "updated_at", "archived_at"}, "", ""},
 	"thread":              {"threads", []string{"id"}, []string{"node_id", "project_id", "task_id", "task_linked_at", "parent_id", "provider", "model", "effort", "runtime_mode", "title", "branch", "status", "pinned_at", "read_at", "last_activity_at", "snoozed_until", "settled_at", "created_at", "updated_at", "archived_at"}, "", ""},
 }
 

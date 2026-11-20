@@ -158,3 +158,18 @@ type Hit struct {
 	Rank   float64         `json:"rank"`
 	Record json.RawMessage `json:"record"`
 }
+
+// Notice is one entry of the inbox. Kind is the event type (thread.idle,
+// plan.ready...), Url the place of the app it points to. Its id derives from
+// the event, so every node that sees the event writes the same row.
+type Notice struct {
+	ID         string  `json:"id"`
+	Kind       string  `json:"kind"`
+	Title      string  `json:"title"`
+	Body       string  `json:"body"`
+	URL        string  `json:"url"`
+	ReadAt     *string `json:"read_at"`
+	CreatedAt  string  `json:"created_at"`
+	UpdatedAt  string  `json:"updated_at"`
+	ArchivedAt *string `json:"archived_at"`
+}

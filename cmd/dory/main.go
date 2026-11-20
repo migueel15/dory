@@ -132,7 +132,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 			}
 			return ids
 		}}
-	notices, err := notify.New(ctx, store, cfg.DataDir)
+	notices, err := notify.New(ctx, store, log_.Node(), cfg.DataDir)
 	if err != nil {
 		return err
 	}
@@ -146,7 +146,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	go rt.Follow(ctx, home)
 	gh := github.New(func(ctx context.Context) (map[string]string, error) { return followed(ctx, store) }, github.NewAuth(filepath.Join(cfg.DataDir, "github.token"), ghToken))
 	// A pull request change is not a stored write: tell clients directly.
-	go gh.Watch(ctx, func() { events.Changed("github", "") })
+	go gh.Watch(ctx, func() { events.Changed("github", ""); notices.Github() })
 	srv := &api.Server{
 		Store: store, Runtime: rt, GitHub: gh, Dictation: dictationManager(), Events: events,
 		SpeechModels: dictation.NewLocalModels(ctx, filepath.Join(cfg.DataDir, "dictation-models"), os.Getenv("DORY_NEMO_SPEECH_BIN")),
@@ -154,6 +154,8 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 			DataDir: cfg.DataDir, Listen: cfg.Listen, Platform: goruntime.GOOS + "/" + goruntime.GOARCH},
 	}
 	srv.Remote = net
+	notices.Columns = srv.TaskColumns
+	go notices.Run(ctx)
 	srv.InfoChanged = net.Changed
 	srv.Updater = &update.Updater{DataDir: cfg.DataDir, Active: rt.Active, Providers: rt.UpdateAll, Restart: restartSelf,
 		Installed: func(ctx context.Context) []update.Installed {
