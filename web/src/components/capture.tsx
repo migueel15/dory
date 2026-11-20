@@ -58,18 +58,20 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
     else if (e.altKey && e.code === "KeyP") { e.preventDefault(); picker.current?.focus(); picker.current?.click(); }
   };
   return (
-    <div data-dictation-panel className="space-y-2 rounded-lg border border-slate-300 bg-white p-3 focus-within:border-slate-500 dark:border-border dark:bg-surface dark:focus-within:border-border-strong">
-      {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} className="min-h-24 !px-0 !pt-0 !text-sm" />}
+    <div data-dictation-panel className="space-y-3">
+      {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} className="min-h-40 !px-0 !pt-0 !text-base" />}
       <Textarea bare ref={box} autoFocus={autoFocus} rows={4} value={dictation.value} readOnly={dictation.active} onChange={(e) => setText(e.target.value)} onKeyDown={onKeyDown} disabled={save.isPending} aria-label="Nueva idea"
         placeholder="Apunta una idea; queda en el inbox de tareas."
-        className={showingDictation ? "sr-only" : "max-h-[60vh] min-h-24 resize-none"} />
-      <div className="flex flex-wrap items-center gap-2">
-        <Select plain buttonRef={picker} className="min-w-0 flex-1 sm:flex-none" value={project} onChange={(v) => { setProject(v); box.current?.focus(); }} options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
-        <Kbd tight>Alt P</Kbd>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        className={showingDictation ? "sr-only" : "max-h-[60vh] min-h-40 resize-none rounded-sm !text-base focus-visible:!outline-2 focus-visible:!outline-offset-2 focus-visible:!outline-slate-400 dark:focus-visible:!outline-border-strong"} />
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-slate-200 pt-3 dark:border-border">
+        <div className="flex min-w-0 items-center gap-1">
+          <Select plain buttonRef={picker} className="min-w-0 max-w-48 [&>button]:max-w-full" value={project} onChange={(v) => { setProject(v); box.current?.focus(); }} options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
+          <Kbd>Alt P</Kbd>
           <DictationMic dictation={dictation} disabled={save.isPending} />
-          <Button type="button" variant="ghost" disabled={!text.trim() || save.isPending || dictating} onClick={() => submit(false)} title="Guardar en inbox"><span className="sm:hidden">Inbox</span><span className="hidden sm:inline">Guardar en inbox</span><Kbd>Ctrl ↵</Kbd></Button>
-          <Button type="button" disabled={!text.trim() || save.isPending || dictating} onClick={() => submit(true)} title="Guardar y definir"><span className="sm:hidden">Definir</span><span className="hidden sm:inline">Guardar y definir</span><Kbd inverse>Ctrl ⇧ ↵</Kbd></Button>
+        </div>
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          <Button type="button" disabled={!text.trim() || save.isPending || dictating} onClick={() => submit(false)} title="Guardar en inbox">Guardar en inbox<Kbd inverse>Ctrl ↵</Kbd></Button>
+          <Button type="button" variant="ghost" disabled={!text.trim() || save.isPending || dictating} onClick={() => submit(true)} title="Guardar y definir">Guardar y definir<Kbd>Ctrl ⇧ ↵</Kbd></Button>
         </div>
       </div>
       <ErrorText error={save.error ?? dictation.error} />
@@ -78,10 +80,10 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
 }
 
 // Kbd shows a shortcut next to the control it triggers; phones have no keyboard, so it hides there.
-function Kbd({ children, inverse = false, tight = false }: { children: string; inverse?: boolean; tight?: boolean }) {
+function Kbd({ children, inverse = false }: { children: string; inverse?: boolean }) {
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
   return (
-    <kbd className={`${tight ? "-ml-1" : "ml-2"} hidden rounded border px-1 font-sans text-[0.625rem] font-medium sm:inline ${inverse ? "border-white/30 text-white/80" : "border-slate-200 bg-slate-50 text-slate-500 dark:border-border dark:bg-raised dark:text-muted"}`}>
+    <kbd className={`ml-1 hidden font-sans text-[0.625rem] font-normal sm:inline ${inverse ? "text-white/70" : "text-slate-400 dark:text-muted"}`}>
       {mac ? children.replace("Ctrl", "⌘").replace("Alt", "⌥") : children}
     </kbd>
   );
