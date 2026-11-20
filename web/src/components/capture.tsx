@@ -6,10 +6,10 @@ import { Button, ErrorText, Modal, Select, Textarea, uuid } from "./ui";
 import { useProject } from "../project";
 import { DictationMic, DictationPreview, useDictationInProgress, useLocalDictation, useEnterFinishesDictation } from "./local-dictation";
 
-// createIdea saves raw text as an inbox task: the first line is its title.
-function createIdea(raw: string, projectId: string) {
-  const title = (raw.split("\n").find((l) => l.trim()) ?? raw).trim().slice(0, 80);
-  return api.tasks.create({ id: uuid(), title, description: raw, project_id: projectId || null });
+// createIdea saves raw text as an inbox task. The server gives it a
+// provisional title and may replace it with one written by the title model.
+function createIdea(id: string, raw: string, projectId: string) {
+  return api.createIdea({ id, text: raw, project_id: projectId || null });
 }
 
 // IdeaCapture is the quick way to drop ideas in the inbox (requirement RF-29): a large text box, the project and two save actions.
@@ -29,7 +29,7 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
   const picker = useRef<HTMLButtonElement>(null);
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const save = useMutation({
-    mutationFn: ({ raw }: { raw: string; define: boolean }) => createIdea(raw, project),
+    mutationFn: ({ id, raw }: { id: string; raw: string; define: boolean }) => createIdea(id, raw, project),
     onSuccess: (item, { define }) => {
       setText("");
       qc.invalidateQueries({ queryKey: ["board"] });
@@ -37,7 +37,7 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
       if (define) navigate({ to: "/tasks", search: { task: item.id } as never });
     },
   });
-  const submit = (define: boolean) => { if (text.trim() && !save.isPending && !dictating) save.mutate({ raw: text.trim(), define }); };
+  const submit = (define: boolean) => { if (text.trim() && !save.isPending && !dictating) save.mutate({ id: uuid(), raw: text.trim(), define }); };
   // Grow with the content.
   useLayoutEffect(() => {
     const el = box.current;

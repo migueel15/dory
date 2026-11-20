@@ -52,6 +52,7 @@ export type Column = "inbox" | "ready" | "working" | "needs_you" | "in_review" |
 export type Pull = { repo: string; number: number; title: string; url: string; draft: boolean; ci: string; review_decision: string; review_requests: string[]; mergeable: string; merge_state: string; head_ref: string };
 export type Card = Task & { column: Column; repo?: string; threads: Thread[]; pull?: Pull; pr_state?: "open" | "draft" | "merged" | "closed"; blockers: string[]; has_plan: boolean };
 export type Model = { slug: string; name: string; efforts?: string[]; resolved_model?: string };
+export type TitleModel = { provider: string; model: string };
 export type Provider = { id: string; name: string; installed: boolean; enabled?: boolean; version: string; models: Model[]; capabilities: string[]; logged_in?: boolean; account?: string };
 // External is a conversation started in a harness, outside Dory.
 // usable says whether a provider can run threads: installed and not turned off.
@@ -156,6 +157,10 @@ export const api = {
   repositoryPaths: () => req<Record<string, string>>("GET", "/repository-paths"),
   setRepositoryPath: (id: string, path: string) => req<void>("PUT", `/repositories/${id}/path`, { path }),
   tasks: resource<Task, TaskInput>("/tasks"),
+  // createIdea saves the text of «Nueva idea»; the server may retitle it in the background.
+  createIdea: (body: { id: string; text: string; project_id: string | null }) => req<Task>("POST", "/ideas", body),
+  titleModel: () => req<TitleModel>("GET", "/title-model"),
+  setTitleModel: (body: TitleModel) => req<TitleModel>("PUT", "/title-model", body),
   board: (project?: string) => req<{ columns: Column[]; cards: Card[] }>("GET", `/board${project ? `?project=${project}` : ""}`),
   card: (id: string) => req<Card>("GET", `/tasks/${id}/card`),
   dependencies: (id: string) => req<Dependency[]>("GET", `/tasks/${id}/dependencies`),

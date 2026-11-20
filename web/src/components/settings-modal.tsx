@@ -1,9 +1,10 @@
 import { useEffect, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
-import { Cpu, Microphone, PaintBrush, X, type IconProps } from "@phosphor-icons/react";
+import { Cpu, Lightbulb, Microphone, PaintBrush, X, type IconProps } from "@phosphor-icons/react";
 import { ProvidersSettings } from "./settings-providers";
 import { DictationSettings } from "./settings-dictation";
 import { AppearanceSettings } from "./settings-appearance";
+import { IdeasSettings } from "./settings-ideas";
 
 type Section = { id: string; label: string; icon: ComponentType<IconProps>; component: ComponentType };
 
@@ -11,6 +12,7 @@ type Section = { id: string; label: string; icon: ComponentType<IconProps>; comp
 const SECTIONS: Section[] = [
   { id: "providers", label: "Proveedores", icon: Cpu, component: ProvidersSettings },
   { id: "dictation", label: "Dictado", icon: Microphone, component: DictationSettings },
+  { id: "ideas", label: "Ideas", icon: Lightbulb, component: IdeasSettings },
   { id: "appearance", label: "Apariencia", icon: PaintBrush, component: AppearanceSettings },
 ];
 
