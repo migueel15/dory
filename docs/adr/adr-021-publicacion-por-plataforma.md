@@ -1,6 +1,6 @@
 # ADR-021: Publicación independiente por plataforma
 
-- Status: proposed (transición de nightly pendiente de decisión)
+- Status: accepted
 - Date: 2026-11-20
 
 ## Context

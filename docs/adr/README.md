@@ -22,4 +22,4 @@
 | [ADR-018](adr-018-antigravity-acp.md) | Antigravity CLI mediante ACP | accepted |
 | [ADR-019](adr-019-validacion-de-contrasenas-locales.md) | Validación de contraseñas de cuentas locales | accepted |
 | [ADR-020](adr-020-plan-como-documento.md) | El plan de una tarea es un documento Markdown editable | accepted |
-| [ADR-021](adr-021-publicacion-por-plataforma.md) | Publicación independiente por plataforma | proposed |
+| [ADR-021](adr-021-publicacion-por-plataforma.md) | Publicación independiente por plataforma | accepted |
