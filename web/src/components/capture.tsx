@@ -18,6 +18,8 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
   const navigate = useNavigate();
   const current = useProject();
   const [text, setText] = useState("");
+  const [keepOpen, setKeepOpen] = useState(false);
+  const focusAfterSave = useRef(false);
   const [project, setProject] = useState(projectId || current);
   // Follow the global filter when it changes; a manual pick only affects this entry.
   useEffect(() => { setProject(projectId || current); }, [projectId, current]);
@@ -33,10 +35,17 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
     onSuccess: (item, { define }) => {
       setText("");
       qc.invalidateQueries({ queryKey: ["board"] });
-      onDone?.();
+      if (define || !keepOpen) onDone?.();
+      else focusAfterSave.current = true;
       if (define) navigate({ to: "/tasks", search: { task: item.id } as never });
     },
   });
+  useEffect(() => {
+    if (!save.isPending && focusAfterSave.current) {
+      focusAfterSave.current = false;
+      box.current?.focus();
+    }
+  }, [save.isPending]);
   const submit = (define: boolean) => { if (text.trim() && !save.isPending && !dictating) save.mutate({ id: uuid(), raw: text.trim(), define }); };
   // Grow with the content.
   useLayoutEffect(() => {
@@ -76,6 +85,10 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
           <Button type="button" variant="ghost" disabled={!text.trim() || save.isPending || dictating} onClick={() => submit(true)} title="Guardar y definir">Guardar y definir<Kbd>Ctrl ⇧ ↵</Kbd></Button>
         </div>
       </div>
+      <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 text-sm text-slate-500 dark:text-muted sm:min-h-0">
+        <input type="checkbox" checked={keepOpen} disabled={save.isPending} onChange={(e) => setKeepOpen(e.target.checked)} className="size-4 accent-slate-900 dark:accent-accent" />
+        Seguir creando ideas al guardar en inbox
+      </label>
       <ErrorText error={save.error ?? dictation.error} />
     </div>
   );
