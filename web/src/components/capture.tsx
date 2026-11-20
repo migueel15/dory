@@ -74,8 +74,9 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
         className={showingDictation ? "sr-only" : "max-h-[60vh] min-h-40 resize-none rounded-sm !text-base focus-visible:!outline-2 focus-visible:!outline-offset-2 focus-visible:!outline-slate-400 dark:focus-visible:!outline-border-strong"} />
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-slate-200 pt-3 dark:border-border">
         <div className="flex min-w-0 flex-wrap items-center gap-1">
-          <Select plain buttonRef={picker} className="min-w-0 max-w-48 [&>button]:max-w-full" value={project} onChange={(v) => { setProject(v); box.current?.focus(); }} options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
-          <Kbd align>Alt+P</Kbd>
+          <div className="min-w-0" title={`Seleccionar proyecto (${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌥+P" : "Alt+P"})`}>
+            <Select plain buttonRef={picker} className="min-w-0 max-w-48 [&>button]:max-w-full" value={project} onChange={(v) => { setProject(v); box.current?.focus(); }} options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
+          </div>
           <label className="ml-2 inline-flex min-h-11 cursor-pointer items-center gap-2 whitespace-nowrap text-sm text-slate-500 dark:text-muted sm:min-h-0">
             <input type="checkbox" checked={keepOpen} disabled={save.isPending} onChange={(e) => setKeepOpen(e.target.checked)} className="size-4 accent-slate-900 dark:accent-accent" />
             Crear más
@@ -95,10 +96,10 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
 }
 
 // Kbd shows a shortcut next to the control it triggers; phones have no keyboard, so it hides there.
-function Kbd({ children, inverse = false, align = false }: { children: string; inverse?: boolean; align?: boolean }) {
+function Kbd({ children, inverse = false }: { children: string; inverse?: boolean }) {
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
   return (
-    <kbd className={`ml-1 hidden font-sans text-[0.625rem] font-normal ${align ? "sm:flex sm:items-center sm:self-stretch" : "sm:inline"} ${inverse ? "text-white/70" : "text-slate-400 dark:text-muted"}`}>
+    <kbd className={`ml-1 hidden font-sans text-[0.625rem] font-normal sm:inline ${inverse ? "text-white/70" : "text-slate-400 dark:text-muted"}`}>
       {mac ? children.replace("Ctrl", "⌘").replace("Alt", "⌥") : children}
     </kbd>
   );

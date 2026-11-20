@@ -478,10 +478,12 @@ export function DictationMic({ dictation, disabled }: {
   const recording = phase === "recording";
   const busy = phase === "starting" || phase === "finishing";
   const label = recording ? "Parar dictado" : phase === "starting" ? "Preparando dictado" : phase === "finishing" ? "Transcribiendo" : "Dictar";
+  const unavailable = disabled || busy || activeElsewhere || !model;
+  const hint = activeElsewhere ? "Termina el otro dictado para usar este micrófono" : !model ? "Configura un modelo de dictado en Ajustes" : phase === "idle" ? `Dictar con ${model.name}` : label;
   return (
-    <button type="button" aria-label={label} aria-pressed={recording} disabled={disabled || busy || activeElsewhere || !model}
-      title={activeElsewhere ? "Termina el otro dictado para usar este micrófono" : model ? (phase === "idle" ? `Dictar con ${model.name} (${shortcut})` : label) : "Configura un modelo de dictado en Ajustes"} onClick={dictation.toggle}
-      className={recording ? `${iconButton} gap-1.5 px-2` : iconButton}>
+    <span title={`${hint} (${shortcut})`} className="inline-flex">
+    <button type="button" aria-label={label} aria-pressed={recording} disabled={unavailable} onClick={dictation.toggle}
+      className={`${recording ? `${iconButton} gap-1.5 px-2` : iconButton} disabled:pointer-events-none`}>
       {recording ? (
         <>
           <span ref={dictation.meter} aria-hidden="true" className="flex h-4 items-center gap-0.5">
@@ -497,6 +499,7 @@ export function DictationMic({ dictation, disabled }: {
         <Microphone weight="regular" aria-hidden="true" className="size-4" />
       )}
     </button>
+    </span>
   );
 }
 
