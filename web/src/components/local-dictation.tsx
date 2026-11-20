@@ -5,6 +5,7 @@ import { req } from "../api/client";
 import { formatChord, hasDictationPopupOutside, isTextInput, useDictationShortcut, useDictationShortcutSetting } from "./dictation-shortcut";
 import { wav } from "./audio-wav";
 import { playDictationSound, prepareDictationSound } from "./dictation-sound";
+import { openDictationMicrophone } from "./dictation-microphone";
 import { iconButton } from "./ui";
 
 export type SpeechModel = {
@@ -278,7 +279,7 @@ export function useLocalDictation(text: string, setText: (text: string) => void,
     setPhase("starting");
     area.current?.focus({ preventScroll: true });
     try {
-      const media = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+      const media = await openDictationMicrophone();
       if (session.abort.signal.aborted) { media.getTracks().forEach((track) => track.stop()); return; }
       const context = new AudioContext();
       session.stopCapture = () => {

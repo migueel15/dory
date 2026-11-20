@@ -11,6 +11,7 @@ Los agentes leen todo lo que necesitan del trabajo en curso y escriben lo suyo. 
 | `list_tasks` | Tareas con su columna, rama, PR, hilos y bloqueos; filtra por proyecto, issue o abiertas |
 | `get_task` | Una tarea con sus planes y dependencias |
 | `save_task` | Crea una tarea o cambia su título, descripción, issue, PR o `stage` (`inbox`, `ready`, `done`, `cancelled`); `depends_on` añade dependencias. `done` solo se acepta sin PR o con la PR fusionada; con una PR sin fusionar devuelve error. `list_tasks` con `open` excluye las tareas hechas |
+| `set_task_project` | Vincula una tarea a un proyecto o la desvincula (sin `project_id`); acepta id o slug y reajusta el repositorio |
 | `ensure_thread_task` | En un hilo, reutiliza su tarea o crea y vincula una en una transacción; con `task_id` vincula el hilo a esa tarea existente; admite reintentos |
 | `link_thread` | Vincula un hilo (por defecto el actual) a una tarea existente del mismo proyecto; si ya tiene otra, exige `replace` |
 | `unlink_thread` | Desvincula un hilo (por defecto el actual) de su tarea |
