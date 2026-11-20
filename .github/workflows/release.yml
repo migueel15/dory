@@ -24,7 +24,6 @@ jobs:
 
   platform:
     needs: checks
-    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -35,7 +34,7 @@ jobs:
     # Serialize publications per channel and platform; never replace a running
     # publication, and reject older runs even if GitHub starts them later.
     concurrency:
-      group: publish-${{ startsWith(github.ref, 'refs/tags/') && 'stable' || 'nightly' }}-${{ matrix.platform }}
+      group: publish-${{ github.event_name == 'pull_request' && github.ref || (startsWith(github.ref, 'refs/tags/') && 'stable' || 'nightly') }}-${{ matrix.platform }}
       cancel-in-progress: false
     runs-on: ${{ matrix.os }}
     defaults:
