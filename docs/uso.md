@@ -84,6 +84,25 @@ Elige Antigravity al crear un hilo. Los modelos disponibles dependen de la cuent
 
 Con acceso restringido, Dory aprueba las solicitudes de edición dentro del worktree. Con acceso completo, aprueba las solicitudes de permiso del arnés. La página **Uso** incluye los tokens guardados en el nodo y las cuotas de la cuenta de Antigravity por grupo de modelos. Dory consulta los saldos con la sesión de `agy` cada 10 minutos y conserva la última lectura en el nodo. En Linux, accede a Secret Service con `secret-tool` si `agy` guarda allí la sesión.
 
+## Avisos
+
+La bandeja de avisos (icono de bandeja, junto a la campana) guarda cada aviso con su estado leído o sin leer y un contador. Es la misma en todos los dispositivos: leer un aviso en uno lo marca leído en todos. Los avisos leídos se borran a los 30 días; los no leídos se conservan.
+
+Eventos que generan aviso: el agente terminó, el agente falló, un agente te necesita, plan listo para revisar, plan aceptado (tarea lista para implementar) y tarea lista para mergear (pasa a la columna *Ready to merge*, sin tener en cuenta el CI).
+
+Cada interfaz abierta indica a la malla si tiene el foco. Con el modo **Automático**:
+
+1. Si alguna interfaz tiene el foco, el aviso sale dentro de esa interfaz y no se envía push.
+2. Si ninguna tiene el foco y hay navegadores con avisos activados (push), el servidor envía el push.
+3. Si ninguna tiene el foco y no hay destinos push, las interfaces abiertas muestran una notificación del sistema (en la app de Android, una notificación local).
+4. Con todo cerrado y sin push, el aviso espera en la bandeja.
+
+Si una interfaz se cierra bruscamente, la malla la da por cerrada a los 45 s.
+
+En **Ajustes → Avisos** eliges para cada tipo de evento: Automático, Siempre push (también con foco), Solo en la app (nunca push) o Desactivado (no genera aviso). El ajuste es común a toda la malla.
+
+La app de Android no recibe Web Push: sus avisos son notificaciones locales mientras la interfaz del nodo sigue abierta. Con la app cerrada o suspendida por Android no llega nada hasta abrirla.
+
 ## Apariencia
 
 En **Ajustes → Apariencia**, la escala de la interfaz va del 75% al 200%. También cambia con Ctrl + y Ctrl − (Cmd en macOS) y vuelve al 100% con Ctrl 0. Se guarda en cada navegador o app de escritorio.

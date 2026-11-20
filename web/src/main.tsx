@@ -16,7 +16,7 @@ import { TooltipHost } from "./components/tooltip";
 import { MeshUpdateButton } from "./components/mesh-update";
 import { SettingsModal } from "./components/settings-modal";
 import { ProjectSwitcher } from "./components/project-switcher";
-import { NoticesToggle } from "./components/notices";
+import { NoticeAlerts, NoticeInbox, NoticesToggle } from "./components/notices";
 import { Home } from "./pages/home";
 import { Github } from "./pages/github";
 import { Tasks } from "./pages/tasks";
@@ -268,7 +268,7 @@ function Layout() {
         <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-3 pb-4">{navLinks(folded)}</nav>
         <div className="shrink-0 px-3 pb-2"><ProjectSwitcher folded={folded} /></div>
         <SidebarFooter folded={folded} username={me.data.username} onLogout={() => logout.mutate()} update={<MeshUpdateButton />}
-          controls={[<NoticesToggle key="n" />, <ThemeToggle key="t" />, <SettingsLink key="settings" />, <UsageQuick key="u" />]} />
+          controls={[<NoticeInbox key="i" />, <NoticesToggle key="n" />, <ThemeToggle key="t" />, <SettingsLink key="settings" />, <UsageQuick key="u" />]} />
       </aside>
       {/* On desktop the current view is a card framed by the sidebar background. */}
       <div className="min-w-0 flex-1 sm:my-2 sm:mr-2 sm:overflow-auto sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">
@@ -311,6 +311,7 @@ function Layout() {
         <div className="shrink-0 space-y-3 border-t border-slate-200 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-border">
           {/* Theme, settings and usage live here on phones so the top bar keeps room for the project. */}
           <div className="flex items-center gap-1 [&>*]:flex [&>*]:flex-1 [&>*]:items-center [&>*]:justify-center">
+            <NoticeInbox />
             <NoticesToggle />
             <ThemeToggle />
             <SettingsLink />
@@ -323,7 +324,7 @@ function Layout() {
           <VersionBadge />
         </div>
       </dialog>
-      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"} ${hasWindowClose && !path.startsWith("/threads") ? "sm:px-14" : ""}`}><Outlet /></main><WindowClose /></div><CommandPalette /><TooltipHost />
+      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"} ${hasWindowClose && !path.startsWith("/threads") ? "sm:px-14" : ""}`}><Outlet /></main><WindowClose /></div><CommandPalette /><TooltipHost /><NoticeAlerts />
     </div>
   );
 }

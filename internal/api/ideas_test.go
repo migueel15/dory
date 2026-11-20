@@ -8,8 +8,8 @@ import (
 func TestProvisionalTitle(t *testing.T) {
 	cases := map[string]string{
 		"\n  Arreglar el login. Luego más cosas.\nsegunda": "Arreglar el login.",
-		"sin puntuación v1.2 corta":                     "sin puntuación v1.2 corta",
-		strings.Repeat("a", 100):                        strings.Repeat("a", 80),
+		"sin puntuación v1.2 corta":                        "sin puntuación v1.2 corta",
+		strings.Repeat("a", 100):                           strings.Repeat("a", 80),
 	}
 	for in, want := range cases {
 		if got := provisionalTitle(in); got != want {

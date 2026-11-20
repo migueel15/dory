@@ -6,12 +6,15 @@ package notify
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -19,18 +22,54 @@ import (
 	"github.com/migueel15/dory/internal/data"
 )
 
+// Event kinds that produce a notice, with their text.
+var titles = map[string]string{
+	"thread.idle":         "El agente terminó",
+	"thread.error":        "El agente falló",
+	"thread.waiting":      "Un agente te necesita",
+	"plan.ready":          "Plan listo para revisar",
+	"plan.accepted":       "Tarea lista para implementar",
+	"task.ready_to_merge": "Tarea lista para mergear",
+}
+
+// kinds lists the events in the order the settings show them.
+var kinds = []string{"thread.idle", "thread.error", "thread.waiting", "plan.ready", "plan.accepted", "task.ready_to_merge"}
+
+// fresh is how recent an event must be to notify. Older ones come from
+// replication catching up and are already history.
+const fresh = 2 * time.Minute
+
+// retention is how long a read notice is kept.
+const retention = 30 * 24 * time.Hour
+
+// Column is the kanban column of a task and a stamp that changes when it
+// reaches that column again.
+type Column struct{ Name, Stamp string }
+
 type Notifier struct {
 	db      *sql.DB
 	store   *data.Store
+	node    string
 	private string
 	public  string
+	// Columns returns the column of every open task; set by the server.
+	Columns func(context.Context) (map[string]Column, error)
 
-	mu   sync.Mutex
-	last map[string]string
+	// InfoChanged tells the peers this node's description changed.
+	InfoChanged func()
+	// PeerInfo returns the descriptions of the connected peers.
+	PeerInfo func(context.Context) []json.RawMessage
+
+	mu        sync.Mutex
+	beats     map[string]beat
+	announced string
+	last      map[string]string
+	columns   map[string]string
+	pushed    map[string]bool
 }
 
 // New loads the VAPID keys of this node from dir, creating them once.
-func New(ctx context.Context, store *data.Store, dir string) (*Notifier, error) {
+func New(ctx context.Context, store *data.Store, node, dir string) (*Notifier, error) {
 	path := filepath.Join(dir, "vapid.json")
 	var keys struct{ Private, Public string }
 	raw, err := os.ReadFile(path)
@@ -46,7 +85,8 @@ func New(ctx context.Context, store *data.Store, dir string) (*Notifier, error) 
 			return nil, err
 		}
 	}
-	n := &Notifier{db: store.DB(), store: store, private: keys.Private, public: keys.Public, last: map[string]string{}}
+	n := &Notifier{db: store.DB(), store: store, node: node, private: keys.Private, public: keys.Public,
+		last: map[string]string{}, pushed: map[string]bool{}}
 	// Start from the current states, so a restart does not notify old news.
 	threads, err := store.Threads().List(ctx, data.Filter{Limit: 1000})
 	if err != nil {
@@ -58,15 +98,69 @@ func New(ctx context.Context, store *data.Store, dir string) (*Notifier, error) 
 	return n, nil
 }
 
-// Changed is called after every write; it looks at thread state changes.
-func (n *Notifier) Changed(entity, id string) {
-	if entity != "thread" {
-		return
+// Run deletes the notices read more than 30 days ago, every hour.
+func (n *Notifier) Run(ctx context.Context) {
+	go n.expire(ctx)
+	for {
+		cutoff := time.Now().Add(-retention).UTC().Format(time.RFC3339Nano)
+		if _, err := n.db.ExecContext(ctx, `DELETE FROM notices WHERE read_at IS NOT NULL AND read_at < ?`, cutoff); err != nil && ctx.Err() == nil {
+			log.Printf("notify: retention: %v", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Hour):
+		}
 	}
-	go n.check(id)
 }
 
-func (n *Notifier) check(id string) {
+// Changed is called after every write, local or replicated.
+func (n *Notifier) Changed(entity, id string) {
+	switch entity {
+	case "thread":
+		go n.checkThread(id)
+	case "plan":
+		go n.checkPlan(id)
+	case "notice":
+		go n.deliver(id)
+	}
+}
+
+// Github is called when GitHub data changed: a task may have reached the
+// Ready to merge column.
+func (n *Notifier) Github() {
+	if n.Columns == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		now, err := n.Columns(ctx)
+		if err != nil {
+			return
+		}
+		n.mu.Lock()
+		prev := n.columns
+		n.columns = map[string]string{}
+		for id, c := range now {
+			n.columns[id] = c.Name
+		}
+		n.mu.Unlock()
+		if prev == nil {
+			return
+		}
+		for id, c := range now {
+			if c.Name != "ready_to_merge" || prev[id] == "ready_to_merge" {
+				continue
+			}
+			if t, err := n.store.Tasks().Get(ctx, id); err == nil {
+				n.Emit(ctx, "task.ready_to_merge", id, c.Stamp, t.Title, "/tasks")
+			}
+		}
+	}()
+}
+
+func (n *Notifier) checkThread(id string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	t, err := n.store.Threads().Get(ctx, id)
@@ -77,14 +171,102 @@ func (n *Notifier) check(id string) {
 	prev := n.last[id]
 	n.last[id] = t.Status
 	n.mu.Unlock()
-	if prev == t.Status || prev != "working" && t.Status != "waiting" {
+	// The node that runs the thread raises the event; the others get the notice replicated.
+	if t.NodeID != n.node || prev == t.Status || prev != "working" && t.Status != "waiting" {
 		return
 	}
-	title := map[string]string{"idle": "El agente terminó", "waiting": "Un agente te necesita", "error": "El agente falló"}[t.Status]
+	kind := "thread." + t.Status
+	if titles[kind] == "" {
+		return
+	}
+	if kind == "thread.idle" && t.TaskID != nil && n.planPending(ctx, *t.TaskID) {
+		kind = "plan.ready"
+	}
+	n.Emit(ctx, kind, t.ID, t.UpdatedAt, t.Title, "/threads/"+t.ID)
+}
+
+// planPending says whether the latest plan of the task waits to be accepted.
+func (n *Notifier) planPending(ctx context.Context, task string) bool {
+	plans, err := n.store.Plans().List(ctx, data.Filter{Fields: map[string]any{"task_id": task}, Limit: 1000})
+	if err != nil || len(plans) == 0 {
+		return false
+	}
+	latest := plans[0]
+	for _, p := range plans {
+		if p.Version > latest.Version {
+			latest = p
+		}
+	}
+	return latest.AcceptedAt == nil
+}
+
+func (n *Notifier) checkPlan(id string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	p, err := n.store.Plans().Get(ctx, id)
+	if err != nil || p.AcceptedAt == nil {
+		return
+	}
+	at, err := time.Parse(time.RFC3339Nano, *p.AcceptedAt)
+	if err != nil || time.Since(at) > fresh {
+		return
+	}
+	body := ""
+	if t, err := n.store.Tasks().Get(ctx, p.TaskID); err == nil {
+		body = t.Title
+	}
+	n.Emit(ctx, "plan.accepted", p.ID, *p.AcceptedAt, body, "/tasks")
+}
+
+// Emit stores one notice in the inbox. Its id derives from the event, so a
+// node that sees the same event again, or another node that sees it too,
+// finds the notice already there and writes nothing.
+func (n *Notifier) Emit(ctx context.Context, kind, subject, stamp, body, url string) {
+	title := titles[kind]
 	if title == "" {
 		return
 	}
-	n.Send(ctx, title, t.Title, "/threads/"+t.ID, t.ID)
+	if n.Mode(ctx, kind) == ModeOff {
+		return
+	}
+	sum := sha256.Sum256([]byte(kind + "\x00" + subject + "\x00" + stamp))
+	id := hex.EncodeToString(sum[:16])
+	if _, err := n.store.Notices().Get(ctx, id); err == nil {
+		return
+	}
+	if _, err := n.store.Notices().Put(ctx, data.Notice{ID: id, Kind: kind, Title: title, Body: body, URL: url}); err != nil {
+		log.Printf("notify: %v", err)
+	}
+}
+
+// deliver pushes a new unread notice once. It runs on every node, but only
+// the ones with subscriptions have anyone to push to.
+func (n *Notifier) deliver(id string) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	nt, err := n.store.Notices().Get(ctx, id)
+	if err != nil || nt.ReadAt != nil {
+		return
+	}
+	if at, err := time.Parse(time.RFC3339Nano, nt.CreatedAt); err != nil || time.Since(at) > fresh {
+		return
+	}
+	// By default, with an interface in focus the notice shows in the app, not as a push.
+	switch n.Mode(ctx, nt.Kind) {
+	case ModeOff, ModeApp:
+		return
+	case ModeAuto:
+		if n.Delivery(ctx).Focus {
+			return
+		}
+	}
+	n.mu.Lock()
+	done := n.pushed[id]
+	n.pushed[id] = true
+	n.mu.Unlock()
+	if !done {
+		n.Send(ctx, nt.Title, nt.Body, nt.URL, nt.ID)
+	}
 }
 
 // Send pushes one notice to every subscription; dead ones are dropped.
@@ -124,6 +306,8 @@ func (n *Notifier) Send(ctx context.Context, title, body, url, tag string) {
 
 // Mount adds the subscription routes.
 func (n *Notifier) Mount(mux *http.ServeMux) {
+	n.mountPresence(mux)
+	n.mountSettings(mux)
 	mux.HandleFunc("GET /api/push/key", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"key": n.public})
@@ -140,6 +324,42 @@ func (n *Notifier) Mount(mux *http.ServeMux) {
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		if n.InfoChanged != nil {
+			n.InfoChanged()
+		}
+	})
+	mux.HandleFunc("GET /api/notices", func(w http.ResponseWriter, r *http.Request) {
+		list, err := n.store.Notices().List(r.Context(), data.Filter{Limit: 1000})
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		slices.Reverse(list)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(list)
+	})
+	// POST /api/notices/read marks the given ids, or every notice when ids is empty, as read.
+	mux.HandleFunc("POST /api/notices/read", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			IDs []string `json:"ids"`
+		}
+		json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body)
+		list, err := n.store.Notices().List(r.Context(), data.Filter{Limit: 1000})
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		at := time.Now().UTC().Format(time.RFC3339Nano)
+		for _, nt := range list {
+			if nt.ReadAt == nil && (len(body.IDs) == 0 || slices.Contains(body.IDs, nt.ID)) {
+				nt.ReadAt = &at
+				if _, err := n.store.Notices().Put(r.Context(), nt); err != nil {
+					http.Error(w, err.Error(), 500)
+					return
+				}
+			}
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})

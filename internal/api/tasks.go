@@ -12,6 +12,7 @@ import (
 
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/github"
+	"github.com/migueel15/dory/internal/notify"
 	"github.com/migueel15/dory/internal/runtime"
 )
 
@@ -446,4 +447,26 @@ func (s *Server) taskPrompt(ctx context.Context, t data.Task) string {
 	}
 	b.WriteString("\nUsa el MCP de Dory para leer el contexto del proyecto y guardar lo que aprendas.\n")
 	return autoMessage("implement", map[string]string{"task": t.ID, "title": t.Title, "branch": t.Branch, "issue": issue}, b.String(), "")
+}
+
+// TaskColumns gives the kanban column of every open task, with the clock of
+// its pull request, for the notices of tasks that reach Ready to merge.
+func (s *Server) TaskColumns(ctx context.Context) (map[string]notify.Column, error) {
+	tasks, err := s.Store.Tasks().List(ctx, data.Filter{Limit: 1000})
+	if err != nil {
+		return nil, err
+	}
+	cards, err := s.Cards(ctx, tasks)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]notify.Column, len(cards))
+	for _, c := range cards {
+		col := notify.Column{Name: c.Column}
+		if c.Pull != nil {
+			col.Stamp = fmt.Sprintf("%d@%s", c.Pull.Number, c.Pull.UpdatedAt)
+		}
+		out[c.ID] = col
+	}
+	return out, nil
 }
