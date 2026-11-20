@@ -42,7 +42,7 @@ type pageInfo struct {
 // each repository, where its next page starts; repositories missing from a
 // non-empty cursor are finished.
 func (c *Client) ClosedPage(ctx context.Context, kind, project, cursor string) (*Closed, error) {
-	if c.Token == "" {
+	if !c.Configured(ctx) {
 		return nil, ErrUnconfigured
 	}
 	if kind != "pulls" && kind != "issues" {

@@ -34,6 +34,7 @@ export function CommandPalette() {
     return () => window.removeEventListener(OPEN_EVENT, onOpen);
   }, []);
   useCommand("palette", () => setOpen((o) => !o));
+  useCommand("new-idea", () => { setOpen(false); setIdea(true); });
   const get = useShortcuts();
   const go = (to: string) => () => {
     if (document.querySelector('[data-unsaved-draft="true"]')) {
@@ -44,7 +45,7 @@ export function CommandPalette() {
   };
   const nav = "Ir a";
   const commands: Command[] = [
-    { id: "idea", group: "Crear", label: "Nueva idea", icon: Lightbulb, hint: "Al inbox", run: () => setIdea(true) },
+    { id: "idea", group: "Crear", label: "Nueva idea", icon: Lightbulb, hint: formatChord(get("new-idea")), run: () => setIdea(true) },
     { id: "home", group: nav, label: "Inicio", icon: House, run: go("/") },
     { id: "tasks", group: nav, label: "Tareas", icon: Kanban, run: go("/tasks") },
     { id: "threads", group: nav, label: "Hilos", icon: Robot, run: go("/threads") },
@@ -54,10 +55,10 @@ export function CommandPalette() {
     { id: "environments", group: nav, label: "Entornos", icon: HardDrives, run: go("/environments") },
     { id: "memories", group: nav, label: "Memorias", icon: Brain, run: go("/memories") },
   ];
-  const contextual: Command[] = shortcutCommands.filter((c) => c.id !== "palette" && c.id !== "dictation" && available(c.id)).map((c) => ({ id: c.id, group: "Acciones", label: c.label, icon: CommandIcon, hint: formatChord(get(c.id)), run: () => { runCommand(c.id); } }));
+  const contextual: Command[] = shortcutCommands.filter((c) => c.id !== "palette" && c.id !== "dictation" && c.id !== "new-idea" && available(c.id)).map((c) => ({ id: c.id, group: "Acciones", label: c.label, icon: CommandIcon, hint: formatChord(get(c.id)), run: () => { runCommand(c.id); } }));
   return (
     <>
-      {open && <Palette commands={[...contextual, ...commands]} onClose={() => setOpen(false)} />}
+      {open && <Palette commands={[commands[0], ...contextual, ...commands.slice(1)]} onClose={() => setOpen(false)} />}
       {idea && <IdeaModal onClose={() => setIdea(false)} />}
     </>
   );
@@ -82,7 +83,7 @@ function Palette({ commands, onClose }: { commands: Command[]; onClose: () => vo
   }] : [];
   const list = useRef<HTMLDivElement>(null);
   const q = query.trim().toLowerCase();
-  const shown = [...dictation, ...commands].filter((c) => !q || `${c.group} ${c.label}`.toLowerCase().includes(q));
+  const shown = [commands[0], ...dictation, ...commands.slice(1)].filter((c) => !q || `${c.group} ${c.label}`.toLowerCase().includes(q));
   useEffect(() => { setHi(0); }, [q]);
   useEffect(() => { list.current?.querySelector<HTMLElement>("[aria-selected=true]")?.scrollIntoView({ block: "nearest" }); }, [hi]);
   const run = (c?: Command) => { if (!c) return; onClose(); c.run(); };

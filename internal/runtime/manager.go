@@ -288,6 +288,10 @@ func (m *Manager) Create(ctx context.Context, n NewThread) (data.Thread, error) 
 	}
 	t := data.Thread{NodeID: m.node, ProjectID: n.ProjectID, TaskID: n.TaskID, Provider: n.Provider, Model: n.Model,
 		Effort: n.Effort, RuntimeMode: n.RuntimeMode, Title: n.Title, Branch: n.Branch}
+	if n.TaskID != nil {
+		linked := now()
+		t.TaskLinkedAt = &linked
+	}
 	t, err := m.store.Threads().Put(ctx, t)
 	if err != nil {
 		return t, err

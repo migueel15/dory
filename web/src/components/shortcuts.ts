@@ -7,6 +7,7 @@ export const commands = [
   { id: "new-thread", label: "Nuevo hilo", default: chord("N") },
   { id: "search-threads", label: "Buscar hilos", default: chord("F", true) },
   { id: "palette", label: "Paleta de comandos", default: chord("K") },
+  { id: "new-idea", label: "Nueva idea", default: chord("I") },
   { id: "model", label: "Selector de modelo", default: chord("M", true) },
   { id: "plan", label: "Modo plan", default: chord("P", true) },
   { id: "branch", label: "Selector de rama", default: chord("B", true) },
@@ -87,6 +88,6 @@ export function listenShortcuts(e: KeyboardEvent) {
   const command = commands.find((c) => c.id !== "dictation" && sameChord(shortcut(c.id), pressed));
   if (!command || sameChord(shortcut("dictation"), pressed)) return;
   const dialog = document.querySelector('dialog[open], [role="dialog"], [role="listbox"]');
-  if (dialog && !(command.id === "palette" && dialog.getAttribute("aria-label") === "Comandos")) return;
+  if (dialog && command.id !== "new-idea" && !(command.id === "palette" && dialog.getAttribute("aria-label") === "Comandos")) return;
   if (runCommand(command.id)) { e.preventDefault(); e.stopPropagation(); }
 }

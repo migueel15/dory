@@ -24,6 +24,8 @@ export type Thread = {
   id: string; node_id: string; project_id: string | null; task_id: string | null; parent_id: string | null;
   provider: string; model: string; effort: string; runtime_mode: "full-access" | "approval-required";
   title: string; branch: string; status: ThreadStatus;
+  // task_linked_at is when the thread was linked to its task; older threads do not have it, so created_at stands in.
+  task_linked_at?: string | null;
   pinned_at: string | null; read_at: string | null; last_activity_at: string | null; snoozed_until: string | null; settled_at: string | null;
   created_at: string; updated_at: string; archived_at: string | null;
 };
@@ -49,7 +51,7 @@ export type Queued = { run_id: string; text: string; files?: Attachment[] };
 export type TurnModel = { provider: string; model: string | null; reported_model?: string };
 export type ThreadView = Thread & { last_turn_model?: TurnModel; reported_settings?: { model?: string; effort?: string }; messages: Message[]; queue: Queued[]; requests?: PendingRequest[]; running: boolean; worktree: string; local: boolean };
 export type Column = "inbox" | "ready" | "working" | "needs_you" | "in_review" | "ready_to_merge" | "done" | "cancelled";
-export type Pull = { repo: string; number: number; title: string; url: string; draft: boolean; ci: string; review_decision: string; review_requests: string[]; mergeable: string; merge_state: string; head_ref: string };
+export type Pull = { repo: string; number: number; title: string; url: string; draft: boolean; ci: string; review_decision: string; review_requests: string[]; approved_by?: string[]; changes_by?: string[]; ci_passed?: number; ci_failed?: number; ci_pending?: number; mergeable: string; merge_state: string; head_ref: string };
 export type Card = Task & { column: Column; repo?: string; threads: Thread[]; pull?: Pull; pr_state?: "open" | "draft" | "merged" | "closed"; blockers: string[]; has_plan: boolean };
 export type Model = { slug: string; name: string; efforts?: string[]; resolved_model?: string };
 export type TitleModel = { provider: string; model: string };
@@ -74,6 +76,10 @@ export type NodeStatus = { node: NodeInfo; providers: Provider[]; usage: Record<
 export type Hit = { entity: "task" | "memory"; id: string; title: string; rank: number; record: Task | Memory };
 export type User = { id: string; username: string };
 export type Version = { revision: string; short: string; time: string; modified: boolean };
+
+export type GithubAuth = { source: "env" | "ui" | "gh" | "none"; login: string };
+export type GithubDeviceCode = { user_code: string; verification_uri: string; expires_in: number };
+export type GithubDeviceState = { state: "pending" | "done" | "expired" | "denied" | "failed"; error?: string };
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -198,6 +204,10 @@ export const api = {
   issueTask: (repo: string, number: number, body: { title: string; description: string }) => req<Task>("POST", `/github/repos/${repo}/issues/${number}/tasks`, body),
   githubPullRefs: (repo: string, q: string) => req<{ pulls: { number: number; title: string; state: "open" | "draft" | "merged" | "closed" }[] }>("GET", `/github/repos/${repo}/pull-refs?q=${encodeURIComponent(q)}`),
   branches: (repo: string) => req<string[]>("GET", `/github/repos/${repo}/branches`),
+  githubAuth: () => req<GithubAuth>("GET", "/github/auth"),
+  githubLogout: () => req<void>("DELETE", "/github/auth"),
+  githubDeviceStart: () => req<GithubDeviceCode>("POST", "/github/auth/device"),
+  githubDeviceState: () => req<GithubDeviceState>("GET", "/github/auth/device"),
   github: (refresh = false) => req<GithubOverview>("GET", `/github/open${refresh ? "?refresh=true" : ""}`),
   githubClosed: (kind: "pulls" | "issues", project: string, cursor: string) =>
     req<GithubClosed>("GET", `/github/closed?${new URLSearchParams({ kind, ...(project && { project }), ...(cursor && { cursor }) })}`),

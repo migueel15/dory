@@ -175,7 +175,7 @@ func (s *Server) Cards(ctx context.Context, tasks []data.Task) ([]Card, error) {
 		names[r.ID], _ = github.ParseRemote(r.RemoteURL)
 	}
 	open := map[string]github.Pull{}
-	if s.GitHub != nil && s.GitHub.Token != "" {
+	if s.GitHub != nil && s.GitHub.Configured(ctx) {
 		if overview, err := s.GitHub.Open(ctx, false); err == nil {
 			for _, p := range overview.Pulls {
 				open[p.Repo+"#"+p.HeadRef] = p
@@ -259,7 +259,7 @@ func (s *Server) attachPull(ctx context.Context, c *Card, open map[string]github
 		}
 		return
 	}
-	if s.GitHub == nil || s.GitHub.Token == "" {
+	if s.GitHub == nil || !s.GitHub.Configured(ctx) {
 		return
 	}
 	// Not open: ask for its final state.

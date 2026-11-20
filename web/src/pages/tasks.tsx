@@ -1,16 +1,21 @@
 import { DictationField } from "../components/dictation-field";
+import { useGithubWatch } from "../api/live";
 import { PlanDoc } from "../components/plan-doc";
 import { useDictationInProgress } from "../components/local-dictation";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ArrowSquareOut, Check, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, ChatCircle, CircleNotch, ClipboardText, DotsThree, GitBranch, GitMerge, GitPullRequest, Plus, Rocket, X } from "@phosphor-icons/react";
-import { api, COLUMN_LABELS, repoName, type Card, type Column, type Stage } from "../api/client";
-import { Button, Card as UiCard, ErrorText, iconButton, Input, Label, Md, Modal, Select } from "../components/ui";
+import { ArrowSquareOut, Check, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, CircleNotch, ClipboardText, DotsThree, GitBranch, GitMerge, GitPullRequest, ChatCircle, CircleDashed, Plus, Rocket, X } from "@phosphor-icons/react";
+import { api, COLUMN_LABELS, repoName, type Card, type Column, type Pull, type Stage, type Thread } from "../api/client";
+import { Button, ErrorText, iconButton, Input, Label, Md, Modal, Select } from "../components/ui";
+import { useThreadActivity } from "../api/activity";
+import { useArm } from "../components/github-ui";
 import { useLaunchForm } from "../components/launch-picker";
 import { useProject } from "../project";
 import { ModelLogo } from "../components/model-logo";
 import { askConfirm } from "../components/confirm";
+import { IdeaModal } from "../components/capture";
+import { TaskQuickMenu, type QuickLaunch } from "../components/task-quick-menu";
 import { planMessage } from "../lib/auto-message";
 
 // Fixed meaning of each state color (requirement RF-48).
@@ -42,94 +47,327 @@ function slot(c: Card): { icon: React.ReactNode; label: string } {
 const MANUAL: Partial<Record<Column, Stage>> = { inbox: "inbox", ready: "ready", cancelled: "cancelled" };
 // COLUMNS draws the empty board before the first answer arrives.
 const COLUMNS: Column[] = ["inbox", "ready", "working", "needs_you", "in_review", "ready_to_merge", "done", "cancelled"];
+// MAIN are the columns drawn as the board; done and cancelled are summarised in the footer.
+const MAIN: Column[] = ["inbox", "ready", "working", "needs_you", "in_review", "ready_to_merge"];
+const ARCHIVED: Column[] = ["done", "cancelled"];
+const DOT: Record<Column, string> = {
+  inbox: "bg-slate-400", ready: "bg-indigo-500", working: "bg-blue-500", needs_you: "bg-red-500",
+  in_review: "bg-amber-500", ready_to_merge: "bg-emerald-500", done: "bg-emerald-500", cancelled: "bg-slate-400",
+};
+// Cards take the height their content needs; the column measures them to know how many fit.
+const MORE_H = 32;
+const GAP = 8;
+const PAD = 8;
+
+// ago is the short relative time of the last activity.
+function ago(iso?: string | null): string {
+  const t = iso ? Date.parse(iso) : NaN;
+  if (Number.isNaN(t)) return "";
+  const m = Math.floor((Date.now() - t) / 60_000);
+  if (m < 1) return "ahora";
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} h`;
+  return `${Math.floor(h / 24)} d`;
+}
+
+const lastActivity = (c: Card) => c.threads.reduce((a, t) => { const x = t.last_activity_at ?? t.updated_at; return x > a ? x : a; }, c.updated_at);
+
+// status is the colored text at the foot of a card. busy marks work in progress on GitHub (checks running).
+function status(c: Card): { text: string; cls: string; busy?: boolean } {
+  if (c.blockers.length > 0) return { text: "Bloqueada", cls: "text-red-600 dark:text-red-400" };
+  if (c.threads.some((t) => t.status === "working")) return { text: "Trabajando", cls: "text-blue-600 dark:text-blue-400" };
+  if (c.threads.some((t) => t.status === "waiting")) return { text: "Te necesita", cls: "text-orange-600 dark:text-orange-400" };
+  if (c.threads.some((t) => t.status === "error")) return { text: "Hilo fallido", cls: "text-red-600 dark:text-red-400" };
+  const p = c.pull;
+  if (p && c.pr_state !== "merged" && c.pr_state !== "closed") {
+    const passed = p.ci_passed ?? 0, failed = p.ci_failed ?? 0, running = p.ci_pending ?? 0;
+    const total = passed + failed + running;
+    if (failed > 0 || p.ci === "FAILURE" || p.ci === "ERROR") return { text: failed > 0 ? `CI: ${failed} ${failed === 1 ? "falla" : "fallan"}` : "CI fallido", cls: "text-red-600 dark:text-red-400" };
+    if (p.mergeable === "CONFLICTING") return { text: "Conflictos", cls: "text-red-600 dark:text-red-400" };
+    if (running > 0 || p.ci === "PENDING" || p.ci === "EXPECTED") return { text: total > 0 ? `CI ${passed}/${total}` : "CI en curso", cls: "text-amber-600 dark:text-amber-400", busy: true };
+    const approved = p.approved_by?.length ?? 0, waiting = p.review_requests.length;
+    if (p.review_decision === "CHANGES_REQUESTED" || (p.changes_by?.length ?? 0) > 0) return { text: "Cambios pedidos", cls: "text-red-600 dark:text-red-400" };
+    if (p.draft) return { text: "Draft", cls: "text-slate-500 dark:text-muted" };
+    if (waiting > 0) return { text: approved > 0 ? `${approved}/${approved + waiting} aprobadas` : "Review pendiente", cls: "text-amber-600 dark:text-amber-400" };
+    if (c.column === "ready_to_merge") return { text: approved > 1 ? `${approved}/${approved} aprobadas` : "Lista para merge", cls: "text-emerald-600 dark:text-emerald-400" };
+    return { text: slot(c).label, cls: "text-amber-600 dark:text-amber-400" };
+  }
+  if (c.pr_state) return { text: slot(c).label, cls: "text-slate-500 dark:text-muted" };
+  if (c.has_plan) return { text: "Con plan", cls: "text-indigo-600 dark:text-indigo-400" };
+  return { text: c.column === "ready" ? "Lista" : "Sin empezar", cls: "text-slate-500 dark:text-muted" };
+}
 
 // Tasks is the kanban, the main view (requirement RF-28).
 export function Tasks() {
   const project = useProject();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as { task?: string };
-  const board = useQuery({ queryKey: ["board", project], queryFn: () => api.board(project || undefined), refetchInterval: 30_000 });
+  const search = useSearch({ strict: false }) as { task?: string; launch?: QuickLaunch };
+  useGithubWatch();
+  const board = useQuery({ queryKey: ["board", project], queryFn: () => api.board(project || undefined), // Faster while a pull request has checks running, so CI progress shows up soon.
+    refetchInterval: (q) => (q.state.data?.cards.some((c) => c.pull && ((c.pull.ci_pending ?? 0) > 0 || c.pull.ci === "PENDING")) ? 15_000 : 30_000) });
   const [adding, setAdding] = useState(false);
-  const [fold, setFold] = useState<Record<string, boolean>>({ done: true, cancelled: true });
   const [drag, setDrag] = useState<string>();
+  const [quick, setQuick] = useState<{ c: Card; x: number; y: number }>();
+  const [quickError, setQuickError] = useState<unknown>();
+  // expanded is the column showing all its cards with its own scroll.
+  const [expanded, setExpanded] = useState<Column>();
+  const [panel, setPanel] = useState<Column>();
+  const footer = useRef<HTMLDivElement>(null);
   const move = useMutation({
     mutationFn: ({ id, stage }: { id: string; stage: Stage }) => api.tasks.update(id, { stage }),
     onSettled: () => qc.invalidateQueries({ queryKey: ["board"] }),
   });
-  const cards = board.data?.cards ?? [];
-  const open = (id?: string) => navigate({ to: "/tasks", search: (id ? { task: id } : {}) as never });
+  // Newest activity first, in every column.
+  const cards = [...(board.data?.cards ?? [])].sort((x, y) => lastActivity(y).localeCompare(lastActivity(x)));
+  const open = (id?: string, launch?: QuickLaunch) => { setPanel(undefined); navigate({ to: "/tasks", search: (id ? { task: id, ...(launch && { launch }) } : {}) as never }); };
+  const cardEl = (c: Card) => <TaskCard key={c.id} c={c} onOpen={() => open(c.id)} onDrag={() => { setQuick(undefined); setDrag(c.id); }} onMenu={(x, y) => { setQuickError(undefined); setQuick({ c, x, y }); }} />;
+  useEffect(() => {
+    if (!panel) return;
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape" && !search.task) setPanel(undefined); };
+    const down = (e: MouseEvent) => { if (!footer.current?.contains(e.target as Node)) setPanel(undefined); };
+    window.addEventListener("keydown", key);
+    window.addEventListener("mousedown", down);
+    return () => { window.removeEventListener("keydown", key); window.removeEventListener("mousedown", down); };
+  }, [panel, search.task]);
+  const drop = (col: Column) => { if (drag && MANUAL[col]) move.mutate({ id: drag, stage: MANUAL[col]! }); setDrag(undefined); };
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <h2 className="font-semibold">Kanban <span className="hidden text-xs font-normal text-slate-500 dark:text-muted sm:inline">(clic para abrir · arrastra para cambiar de estado)</span></h2>
-        <Button className="ml-auto" onClick={() => setAdding(true)}><Plus weight="regular" className="size-4" />Nueva tarea</Button>
+    <div className="flex flex-col gap-3 sm:h-[calc(100dvh-3rem-2px)]">
+      <div className="flex shrink-0 items-center gap-2">
+        <h2 className="font-semibold">Kanban</h2>
+        <Button className="ml-auto" onClick={() => setAdding(true)}><Plus weight="regular" className="size-4" />Nueva idea</Button>
       </div>
-      <ErrorText error={board.error ?? move.error} />
-      <div className="flex flex-col gap-3 pb-2 sm:flex-row sm:overflow-x-auto">
-        {(board.data?.columns ?? COLUMNS).map((col) => {
-          const list = cards.filter((c) => c.column === col);
-          const folded = fold[col] ?? false;
-          const shown = folded ? list.slice(0, 0) : col === "done" || col === "cancelled" ? list.slice(-10) : list;
-          return (
-            <section key={col} className={`w-full space-y-2 rounded-lg p-2 sm:shrink-0 ${folded ? "sm:w-40" : "min-h-24 sm:min-h-48 sm:w-64"} ${drag && MANUAL[col] ? "bg-blue-100 dark:bg-accent-subtle" : "bg-slate-100 dark:bg-raised"}`}
-              onDragOver={(e) => { if (MANUAL[col]) e.preventDefault(); }}
-              onDrop={() => { if (drag && MANUAL[col]) move.mutate({ id: drag, stage: MANUAL[col]! }); setDrag(undefined); }}>
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-slate-700 dark:text-text-secondary">{COLUMN_LABELS[col]}</h3>
-                <div className="flex items-center gap-1">
-                  <span className={`rounded-full px-2 text-xs font-medium ${COLUMN_TONE[col]}`}>{list.length}</span>
-                  <button type="button" aria-expanded={!folded} aria-label={folded ? `Mostrar ${COLUMN_LABELS[col]}` : `Ocultar ${COLUMN_LABELS[col]}`} onClick={() => setFold({ ...fold, [col]: !folded })} className="rounded px-1 text-xs text-slate-500 hover:bg-slate-200 dark:text-muted dark:hover:bg-hover">{folded ? "▸" : "▾"}</button>
-                </div>
+      <ErrorText error={board.error ?? move.error ?? quickError} />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-100 dark:border-border-strong/60 dark:bg-canvas">
+        <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-6 sm:overflow-x-auto sm:[&>section]:min-w-44">
+          {MAIN.map((col, i) => {
+            const list = cards.filter((c) => c.column === col);
+            const all = expanded === col;
+            return (
+              <section key={col} className={`flex min-h-24 min-w-0 flex-col border-slate-200 dark:border-border max-sm:border-b sm:min-h-0 ${i > 0 ? "sm:border-l" : ""} ${drag && MANUAL[col] ? "bg-blue-50/60 dark:bg-accent-subtle/40" : ""}`}
+                onDragOver={(e) => { if (MANUAL[col]) e.preventDefault(); }}
+                onDrop={() => drop(col)}>
+                <header className="flex h-10 shrink-0 items-center gap-2 border-b border-slate-200 px-3 dark:border-border">
+                  <span className={`size-2 rounded-full ${DOT[col]}`} />
+                  <h3 className="min-w-0 truncate text-sm font-medium">{COLUMN_LABELS[col]}</h3>
+                  {all && <button type="button" onClick={() => setExpanded(undefined)} className="rounded px-1.5 text-xs text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">Mostrar menos</button>}
+                  <span className="ml-auto text-xs tabular-nums text-slate-500 dark:text-muted">{list.length}</span>
+                </header>
+                <ColumnCards list={list} all={all} onExpand={() => setExpanded(col)} card={cardEl} />
+              </section>
+            );
+          })}
+        </div>
+        <div ref={footer} className="relative flex shrink-0 items-center gap-2 border-t border-slate-200 px-3 py-2 dark:border-border">
+          {ARCHIVED.map((col) => {
+            const n = cards.filter((c) => c.column === col).length;
+            return (
+              <button key={col} type="button" aria-expanded={panel === col} onClick={() => setPanel(panel === col ? undefined : col)}
+                onDragOver={(e) => { if (MANUAL[col]) e.preventDefault(); }} onDrop={() => drop(col)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${panel === col ? "border-slate-400 bg-slate-100 dark:border-border-strong dark:bg-raised" : "border-slate-200 hover:bg-slate-50 dark:border-border dark:hover:bg-raised"} ${drag && MANUAL[col] ? "border-blue-400 bg-blue-50 dark:bg-accent-subtle" : ""}`}>
+                <span className={`size-2 rounded-full ${DOT[col]}`} />{COLUMN_LABELS[col]} · <span className="tabular-nums">{n}</span>
+              </button>
+            );
+          })}
+          {panel && (
+            <div role="region" aria-label={COLUMN_LABELS[panel]} className="notif-in absolute inset-x-0 bottom-full z-20 border-t border-slate-200 bg-slate-100 shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.3)] dark:border-border-strong/60 dark:bg-canvas">
+              <div className="flex items-start gap-2 overflow-x-auto p-2" onWheel={(e) => { if (e.deltaX === 0) e.currentTarget.scrollLeft += e.deltaY; }}>
+                {cards.filter((c) => c.column === panel).map((c) => (
+                  <div key={c.id} className="w-60 shrink-0 [&>div]:cursor-pointer">{cardEl(c)}</div>
+                ))}
+                {!cards.some((c) => c.column === panel) && <p className="px-2 py-3 text-sm text-slate-500 dark:text-muted">Sin tareas.</p>}
               </div>
-              <div className="space-y-2">
-                {shown.map((c) => <TaskCard key={c.id} c={c} onOpen={() => open(c.id)} onDrag={() => setDrag(c.id)} />)}
-              </div>
-            </section>
-          );
-        })}
+            </div>
+          )}
+        </div>
       </div>
-      {adding && <NewTask onClose={() => setAdding(false)} onCreated={(id) => { setAdding(false); open(id); }} />}
-      {search.task && <TaskDetail key={search.task} id={search.task} onClose={() => open()} />}
+      {adding && <IdeaModal onClose={() => setAdding(false)} projectId={project || undefined} />}
+      {quick && <TaskQuickMenu key={quick.c.id} {...quick} onClose={() => setQuick(undefined)} onOpen={(launch) => open(quick.c.id, launch)} onError={setQuickError} />}
+      {search.task && <TaskDetail key={search.task} id={search.task} launch={search.launch} onClose={() => open()} />}
     </div>
   );
 }
 
-const chip = "inline-flex max-w-full items-center gap-1.5 rounded-md border border-slate-200 px-2 py-0.5 text-xs text-slate-600 no-underline hover:bg-slate-100 dark:border-border dark:text-muted dark:hover:bg-white/5";
-
-// TaskCard keeps the v1 card: title and state icon, then chips for the latest
-// thread and the pull request.
-function TaskCard({ c, onOpen, onDrag }: { c: Card; onOpen: () => void; onDrag: () => void }) {
-  const s = slot(c);
-  const t = c.threads.length ? c.threads.reduce((a, b) => ((b.last_activity_at ?? b.updated_at) >= (a.last_activity_at ?? a.updated_at) ? b : a)) : undefined;
+// ColumnCards shows the cards that fit in the visible height. It measures the real height of each card in a hidden copy,
+// so cards with less content leave room for more, and the rest go behind a "+N más" button.
+function ColumnCards({ list, all, onExpand, card }: { list: Card[]; all: boolean; onExpand: () => void; card: (c: Card) => React.ReactNode }) {
+  const zone = useRef<HTMLDivElement>(null);
+  const probe = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState(Infinity);
+  // A column cannot show more than a screenful, so measuring the first cards is enough.
+  const probed = list.slice(0, 40);
+  const key = probed.map((c) => `${c.id}:${c.title}:${c.column}:${c.threads.length}:${c.pr_number}:${c.branch}`).join("|");
+  useLayoutEffect(() => {
+    const z = zone.current, p = probe.current;
+    if (!z || !p) return setFit(Infinity);
+    const desktop = window.matchMedia("(min-width: 640px)");
+    const measure = () => {
+      if (!desktop.matches || all) return setFit(Infinity);
+      const avail = z.clientHeight - PAD * 2;
+      const hs = Array.from(p.children).map((e) => (e as HTMLElement).offsetHeight);
+      let used = 0, n = 0;
+      for (const h of hs) {
+        const next = used + (n ? GAP : 0) + h;
+        if (next > avail) break;
+        used = next;
+        n++;
+      }
+      if (n >= list.length) return setFit(Infinity);
+      // Keep room for the "+N más" button.
+      while (n > 1 && used + GAP + MORE_H > avail) { n--; used -= hs[n] + (n ? GAP : 0); }
+      setFit(Math.max(1, n));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(z);
+    ro.observe(p);
+    desktop.addEventListener("change", measure);
+    return () => { ro.disconnect(); desktop.removeEventListener("change", measure); };
+  }, [key, all, list.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = fit === Infinity || all ? list : list.slice(0, fit);
   return (
-    <div draggable onDragStart={onDrag} onClick={onOpen} className="cursor-grab">
-      <UiCard>
-        <div className="text-sm">
-          <div className="flex items-start justify-between gap-2">
-            <span className="min-w-0 font-medium">{c.title}</span>
-            <span className="mt-0.5 grid size-4 shrink-0 place-items-center" title={s.label} aria-label={s.label}>{s.icon}</span>
-          </div>
-          {c.blockers.length > 0 && <p className="mt-1.5 rounded-md bg-slate-50 px-2 py-1.5 text-xs text-slate-600 dark:bg-raised dark:text-text-secondary"><span className="font-medium text-red-600 dark:text-red-400">Bloqueada: </span>depende de tareas sin terminar</p>}
-          {(t || c.pr_number || c.issue_number || c.has_plan) && (
-            <div className="mt-1 flex flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
-              {t && (
-                <Link to="/threads/$threadId" params={{ threadId: t.id }} title={t.title} className={chip}>
-                  <ChatCircle aria-hidden="true" className="size-3 shrink-0" />
-                  <span className="min-w-0 truncate">{t.model || t.provider}</span>
-                  {t.effort && <span className="shrink-0 opacity-60">· {t.effort}</span>}
-                  <ThreadDot status={t.status} />
-                </Link>
-              )}
-              {c.pr_number && (c.pull?.url
-                ? <a href={c.pull.url} target="_blank" rel="noreferrer" title={`Pull request #${c.pr_number}`} className={chip}><GitPullRequest aria-hidden="true" className="size-3 shrink-0" /><span>#{c.pr_number}</span></a>
-                : <span className={chip}><GitPullRequest aria-hidden="true" className="size-3 shrink-0" /><span>#{c.pr_number}</span></span>)}
-              {c.issue_number && <span className={chip}>issue #{c.issue_number}</span>}
-              {c.has_plan && <span className={chip} title="Tiene plan"><ClipboardText aria-hidden="true" className="size-3 shrink-0" />plan</span>}
-            </div>
-          )}
+    <div ref={zone} className={`relative flex min-h-0 flex-1 flex-col gap-2 p-2 ${all ? "overflow-y-auto" : "sm:overflow-hidden"}`}>
+      {shown.map(card)}
+      {shown.length < list.length && <button type="button" onClick={onExpand} className="shrink-0 rounded-lg border border-dashed border-slate-300 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-50 dark:border-border-strong dark:text-muted dark:hover:bg-raised">+{list.length - shown.length} más</button>}
+      {!all && <div ref={probe} aria-hidden="true" className="pointer-events-none invisible absolute inset-x-0 top-0 flex flex-col gap-2 p-2 max-sm:hidden">{probed.map(card)}</div>}
+    </div>
+  );
+}
+
+// MergeButton squash-merges the card's pull request with the existing GitHub action, asking for a second click first.
+function MergeButton({ c, pull }: { c: Card; pull: Pull }) {
+  const qc = useQueryClient();
+  const merge = useMutation({
+    mutationFn: () => api.githubAct(pull.repo, "pulls", pull.number, { type: "merge", method: "SQUASH" }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["board"] }),
+  });
+  const [armed, click] = useArm(() => merge.mutate());
+  return (
+    <button type="button" draggable={false} disabled={merge.isPending} title={merge.error ? merge.error.message : "Fusionar con squash"}
+      onClick={(e) => { e.stopPropagation(); click(); }}
+      className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium text-white disabled:opacity-50 ${merge.error ? "bg-red-600 hover:bg-red-700" : "bg-emerald-600 hover:bg-emerald-700"}`}>
+      <GitMerge weight="bold" aria-hidden="true" className="size-3.5" />{merge.isPending ? "Fusionando…" : armed ? "¿Confirmar?" : "Merge"}
+    </button>
+  );
+}
+
+// linkedAt is when the thread was assigned to its task.
+const linkedAt = (t: Thread) => t.task_linked_at ?? t.created_at;
+
+// Avatar is a GitHub user's picture with its review state: green approved, amber pending, red changes requested.
+function Avatar({ login, state }: { login: string; state: "approved" | "pending" | "changes" }) {
+  const [failed, setFailed] = useState(false);
+  const dot = state === "approved" ? "bg-emerald-500" : state === "changes" ? "bg-red-500" : "bg-amber-400";
+  const label = state === "approved" ? "aprobó" : state === "changes" ? "pidió cambios" : "review pendiente";
+  return (
+    <span className="relative inline-block size-5 shrink-0" title={`${login} · ${label}`}>
+      {failed
+        ? <span className="grid size-5 place-items-center rounded-full bg-slate-200 text-[10px] font-semibold uppercase text-slate-600 dark:bg-hover dark:text-text-secondary">{login[0]}</span>
+        : <img src={`https://github.com/${login}.png?size=40`} alt={login} loading="lazy" draggable={false} onError={() => setFailed(true)} className="size-5 rounded-full bg-slate-200 dark:bg-hover" />}
+      <span className={`absolute -bottom-0.5 -right-0.5 size-2 rounded-full ring-2 ring-white dark:ring-raised ${dot}`} />
+    </span>
+  );
+}
+
+// RefLink goes to the issue or pull request inside Dory's GitHub view.
+function RefLink({ repo, kind, number }: { repo?: string; kind: "issues" | "pulls"; number: number }) {
+  const Icon = kind === "pulls" ? GitPullRequest : CircleDashed;
+  const label = kind === "pulls" ? `Pull request #${number}` : `Issue #${number}`;
+  const cls = "inline-flex shrink-0 items-center gap-1 rounded-md px-1 py-0.5 text-slate-600 no-underline dark:text-text-secondary";
+  const m = repo?.match(/^([\w.-]+)\/([\w.-]+)$/);
+  const body = <><Icon aria-hidden="true" className="size-3.5 shrink-0" />#{number}</>;
+  if (!m) return <span className={cls} title={label}>{body}</span>;
+  return <Link to="/github/$owner/$repo/$kind/$number" params={{ owner: m[1], repo: m[2], kind, number: String(number) }} draggable={false} title={label} aria-label={label} className={`${cls} hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/5 dark:hover:text-white`}>{body}</Link>;
+}
+
+// Reviewers shows who reviewed the pull request and who still has to.
+function Reviewers({ pull }: { pull: Pull }) {
+  const people = [
+    ...(pull.approved_by ?? []).map((l) => ({ login: l, state: "approved" as const })),
+    ...(pull.changes_by ?? []).map((l) => ({ login: l, state: "changes" as const })),
+    ...pull.review_requests.map((l) => ({ login: l, state: "pending" as const })),
+  ];
+  if (!people.length) return null;
+  const shown = people.slice(0, 4);
+  return (
+    <span className="ml-auto flex min-w-0 items-center -space-x-1">
+      {shown.map((p) => <Avatar key={p.login} {...p} />)}
+      {people.length > shown.length && <span className="pl-2 text-xs text-slate-500 dark:text-muted">+{people.length - shown.length}</span>}
+    </span>
+  );
+}
+
+// ThreadRow links to the latest thread and, with more than one, opens a menu with all of them.
+function ThreadRow({ threads }: { threads: Thread[] }) {
+  const id = useId();
+  const menu = useRef<HTMLDivElement>(null);
+  const sorted = [...threads].sort((a, b) => linkedAt(b).localeCompare(linkedAt(a)));
+  const t = sorted[0];
+  const place = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    const el = menu.current;
+    if (!el) return;
+    el.style.top = `${r.bottom + 6}px`;
+    el.style.left = `${Math.max(12, Math.min(r.left, window.innerWidth - 300))}px`;
+  };
+  const link = "inline-flex min-w-0 items-center gap-1.5 text-slate-600 no-underline dark:text-text-secondary";
+  return (
+    <div className="flex items-center gap-1.5 text-xs" onClick={(e) => e.stopPropagation()}>
+      <Link to="/threads/$threadId" params={{ threadId: t.id }} title={t.title} draggable={false} className={`${link} rounded-md border border-slate-200 px-1.5 py-0.5 hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/5`}>
+        <ChatCircle aria-hidden="true" className="size-3 shrink-0" />
+        <span className="min-w-0 truncate">{t.model || t.provider}</span>
+        <ThreadDot status={t.status} />
+      </Link>
+      {sorted.length > 1 && (<>
+        <button type="button" popoverTarget={id} onClick={place} aria-label={`Ver los ${sorted.length} hilos`} className="rounded-md px-1.5 py-0.5 font-medium text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-white/5">+{sorted.length - 1}</button>
+        <div ref={menu} id={id} popover="auto" role="menu" className="fixed m-0 w-72 rounded-xl border border-slate-200 bg-white p-1 text-slate-900 shadow-xl dark:border-border-strong dark:bg-surface dark:text-white">
+          {sorted.map((x) => (
+            <Link key={x.id} to="/threads/$threadId" params={{ threadId: x.id }} role="menuitem" className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm text-inherit no-underline hover:bg-slate-100 dark:hover:bg-raised">
+              <ThreadDot status={x.status} />
+              <span className="min-w-0 flex-1"><span className="block truncate">{x.model || x.provider}</span><span className="block truncate text-xs text-slate-500 dark:text-muted">{x.title || "Hilo"}</span></span>
+              <span className="shrink-0 text-xs text-slate-500 dark:text-muted">{ago(linkedAt(x))}</span>
+            </Link>
+          ))}
         </div>
-      </UiCard>
+      </>)}
+    </div>
+  );
+}
+
+// TaskCard has the height its content needs. Every row is separated by the same gap, and the footer divider uses the card's border color.
+function TaskCard({ c, onOpen, onDrag, onMenu }: { c: Card; onOpen: () => void; onDrag: () => void; onMenu: (x: number, y: number) => void }) {
+  const s = slot(c);
+  const st = status(c);
+  const where = c.branch || c.repo;
+  const working = c.blockers.length === 0 ? c.threads.filter((t) => t.status === "working").sort((a, b) => (b.last_activity_at ?? b.updated_at).localeCompare(a.last_activity_at ?? a.updated_at))[0] : undefined;
+  const activity = useThreadActivity(working?.id);
+  const merge = c.column === "ready_to_merge" && !!c.pull;
+  const repo = c.pull?.repo ?? c.repo;
+  return (
+    <div draggable onDragStart={onDrag} onClick={onOpen} onContextMenu={(e) => { e.preventDefault(); onMenu(e.clientX, e.clientY); }}
+      className={`flex shrink-0 cursor-grab flex-col overflow-hidden rounded-lg border border-slate-300 text-sm shadow-sm dark:border-white/10 dark:shadow-black/40 ${c.column === "needs_you" ? "bg-red-50 dark:bg-red-950/30" : "bg-white dark:bg-raised"}`}>
+      <div className="flex flex-col gap-2 p-2.5">
+        <div className="flex items-start gap-2">
+          <span className="mt-0.5 grid size-4 shrink-0 place-items-center" title={s.label} aria-label={s.label}>{s.icon}</span>
+          <span className="line-clamp-2 min-w-0 font-semibold leading-tight">{c.title}</span>
+        </div>
+        {where && <p className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-muted"><GitBranch aria-hidden="true" className="size-3.5 shrink-0" /><span className="truncate">{where}</span></p>}
+        {(c.issue_number || c.pr_number) && (
+          <div className="flex items-center gap-1.5 text-xs" onClick={(e) => e.stopPropagation()}>
+            {c.issue_number && <RefLink repo={repo} kind="issues" number={c.issue_number} />}
+            {c.pr_number && <RefLink repo={repo} kind="pulls" number={c.pr_number} />}
+            {c.pr_number && c.pull && <Reviewers pull={c.pull} />}
+          </div>
+        )}
+        {c.threads.length > 0 && <ThreadRow threads={c.threads} />}
+      </div>
+      <div className={`flex shrink-0 items-center gap-2 border-t border-slate-300 px-2.5 text-xs dark:border-white/10 ${merge ? "py-2.5" : "py-2"}`}>
+        <span key={working ? activity ?? st.text : st.text} className={`notif-in inline-flex min-w-0 flex-1 items-center gap-1.5 font-medium ${st.cls}`} title={working ? activity ?? st.text : st.text}>{st.busy && !working && <CircleNotch aria-hidden="true" className="size-3 shrink-0 animate-spin" />}<span className="truncate">{working ? activity ?? st.text : st.text}</span></span>
+        <span className="shrink-0 text-slate-500 dark:text-muted">{ago(lastActivity(c))}</span>
+        {merge && c.pull && <MergeButton c={c} pull={c.pull} />}
+      </div>
     </div>
   );
 }
@@ -154,35 +392,7 @@ const COLUMN_TONE: Record<Column, string> = {
   cancelled: "bg-slate-100 text-slate-500 dark:bg-raised dark:text-muted",
 };
 
-function NewTask({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
-  const current = useProject();
-  const dictating = useDictationInProgress();
-  const [project, setProject] = useState(current);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [issue, setIssue] = useState("");
-  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
-  const create = useMutation({
-    mutationFn: () => api.tasks.create({ project_id: project || null, title: title.trim(), description, issue_number: issue ? Number(issue) : null }),
-    onSuccess: (t) => onCreated(t.id),
-  });
-  return (
-    <Modal title="Nueva tarea" onClose={onClose}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (!dictating && title.trim()) create.mutate(); }}>
-        <Label text="Título"><Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} /></Label>
-        <DictationField label="Descripción" rows={5} value={description} onValue={setDescription} placeholder="Qué cambiar y cómo comprobarlo" />
-        <div className="grid grid-cols-2 gap-2">
-          <Label text="Proyecto"><Select value={project} onChange={setProject} options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} /></Label>
-          <Label text="Issue"><Input inputMode="numeric" value={issue} onChange={(e) => setIssue(e.target.value.replace(/\D/g, ""))} placeholder="Opcional" /></Label>
-        </div>
-        <ErrorText error={create.error} />
-        <Button disabled={dictating || !title.trim() || create.isPending}>Crear</Button>
-      </form>
-    </Modal>
-  );
-}
-
-function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
+function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch?: QuickLaunch; onClose: () => void }) {
   const qc = useQueryClient();
   const dictating = useDictationInProgress();
   const navigate = useNavigate();
@@ -263,6 +473,15 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
     },
     onSuccess: (r) => navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } }),
   });
+  // A quick action from the board opens the detail with the launch popover ready.
+  const autoLaunched = useRef(false);
+  useEffect(() => {
+    if (!initialLaunch || autoLaunched.current || !c || !draft || !planDoc.data || !launchPopover.current) return;
+    autoLaunched.current = true;
+    setMode(initialLaunch);
+    launchPopover.current.showPopover();
+    placeLaunchPopover();
+  }); // eslint-disable-line react-hooks/exhaustive-deps
   if (!c || !draft) return <Modal title="Tarea" onClose={onClose}><ErrorText error={card.error} /></Modal>;
   const dirty = draft.title !== c.title || draft.description !== c.description || draft.issue !== (c.issue_number?.toString() ?? "") || draft.pr !== (c.pr_number?.toString() ?? "") || draft.repo !== (c.repository_id ?? "");
   const others = (board.data?.cards ?? []).filter((o) => o.id !== id && (!c.project_id || o.project_id === c.project_id));
