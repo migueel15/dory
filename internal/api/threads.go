@@ -418,8 +418,10 @@ func (s *Server) ThreadAction(ctx context.Context, id, action, title, until, tas
 	case "link":
 		if taskID == "" {
 			fields["task_id"] = nil
+			fields["task_linked_at"] = nil
 		} else {
 			fields["task_id"] = taskID
+			fields["task_linked_at"] = now
 		}
 	case "archive":
 		if t.NodeID == s.Node.ID {
