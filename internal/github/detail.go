@@ -539,6 +539,7 @@ func (c *Client) Act(ctx context.Context, repo, kind string, number int, a Actio
 		return err
 	}
 	c.forget()
+	c.Kick()
 	return nil
 }
 

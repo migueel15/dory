@@ -23,7 +23,21 @@ const keys: Record<string, string[]> = {
   plan: ["plans", "board", "card"],
   memory: ["memories"],
   thread: ["threads", "board", "card", "thread"],
+  github: ["board", "card", "github", "github-detail"],
 };
+
+// useGithubWatch keeps the node polling GitHub every few seconds while a view
+// with branches or pull requests is on screen.
+export function useGithubWatch() {
+  const visible = useVisible();
+  useEffect(() => {
+    if (!visible) return;
+    const beat = () => { fetch("/api/github/watch", { method: "POST", credentials: "include" }).catch(() => {}); };
+    beat();
+    const id = setInterval(beat, 20_000);
+    return () => clearInterval(id);
+  }, [visible]);
+}
 
 type Update = { thread_id: string; message?: Message; status?: string; error?: string; queue?: Queued[]; reload?: boolean; last_turn_model?: TurnModel };
 

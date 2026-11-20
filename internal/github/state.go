@@ -87,18 +87,21 @@ func (c *Client) fetchPullState(ctx context.Context, key, repo string, number *i
 	if len(pulls) > 0 {
 		// The newest pull request of the branch wins.
 		p := pulls[0]
-		ref.Number = p.Number
-		switch {
-		case p.MergedAt != nil:
-			ref.State = "merged"
-		case p.State == "closed":
-			ref.State = "closed"
-		case p.Draft:
-			ref.State = "draft"
-		default:
-			ref.State = "open"
-		}
+		ref = PullStatus{p.Number, finalState(p.State, p.Draft, p.MergedAt != nil)}
 	}
 	states.Store(key, stateEntry{ref, time.Now()})
 	return ref, nil
+}
+
+// finalState maps a REST pull request to open, draft, merged or closed.
+func finalState(state string, draft, merged bool) string {
+	switch {
+	case merged:
+		return "merged"
+	case state == "closed":
+		return "closed"
+	case draft:
+		return "draft"
+	}
+	return "open"
 }
