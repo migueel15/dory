@@ -33,14 +33,17 @@ El kanban tiene estas columnas, que se calculan solas a partir de los hilos y de
 
 A mano solo se mueven tareas entre Inbox, Ready y Cancelled. Cada tarjeta muestra su rama, su PR y un único icono de estado: azul trabajando, naranja te necesita, amarillo CI en curso, ámbar review, verde lista, morado fusionada, rojo fallo y gris inactiva. El tooltip explica el estado.
 
-En el detalle de una tarea puedes:
-- Editarla y ligarla a un repositorio, una issue o una PR.
-- Gestionar sus dependencias.
-- Escribir, editar o aceptar su plan, un documento Markdown que también editan los agentes.
-- **Implementar**: crea la rama (`feat/<issue>-<título>`) y su worktree y lanza el agente.
-- **Definir con un agente**: abre un hilo que escribe el plan con `plan_write` y `plan_edit`.
+Al abrir una carta ves su título, estado y descripción. Desde **Referencias** puedes abrir el repositorio, la issue y la PR en GitHub cuando están disponibles. Los hilos y las tareas de las que depende se abren desde sus nombres. En pantallas anchas, las referencias y dependencias quedan a la derecha.
 
-Una tarea con dependencias sin terminar no se puede lanzar.
+En el detalle de una tarea puedes:
+
+- Usar **Editar tarea** para cambiar el título, la descripción, el repositorio, la issue o la PR.
+- Gestionar sus dependencias y usar las acciones al pie de la carta para cambiar el estado o archivarla.
+- Pulsar **Definir plan** para elegir el entorno y el modelo en el panel bajo el botón. **Abrir hilo** inicia la definición con el agente.
+- Usar **Revisar plan** para abrir y aceptar un plan pendiente. Un plan existente se abre plegado y su encabezado muestra el estado y la revisión.
+- Pulsar **Implementar** con un plan aceptado. El mismo panel permite elegir el entorno y el modelo. **Abrir hilo** crea la rama y su worktree y lanza el agente.
+
+Para implementar, las dependencias deben estar resueltas.
 
 ## Hilos
 
@@ -50,6 +53,7 @@ La bandeja reúne los hilos de todos los nodos, con filtros (activos, te necesit
 - **Hilos de otras máquinas:** se abren a través de su nodo; si ese nodo está apagado, el hilo no está disponible.
 - **Acciones:** renombrar, fijar y archivar. Archivar borra el worktree.
 - **Cambios:** ver el diff del worktree contra la rama base.
+- **Planificar esta conversación:** el botón del compositor solicita un plan al agente del mismo hilo sin enviar el borrador. Si está trabajando, la solicitud se encola. El agente reutiliza la tarea vinculada o crea y vincula una; solo el usuario acepta el plan.
 - **Plan:** si el hilo tiene tarea, el panel lateral muestra su plan. Se actualiza en directo mientras el agente lo escribe y se abre solo cuando lo cambia. Se edita directamente sobre el texto con formato: «# » crea un título, «- » una lista y «[] » una casilla. Se guarda solo al dejar de escribir. Con **Seguir** activado, la vista va a cada cambio del agente antes de mostrarlo. Si el agente cambia el plan mientras escribes, sus cambios se combinan con los tuyos sin moverte el cursor. Si los dos tocáis la misma línea, se quedan las dos versiones, la suya citada debajo de la tuya, para que elijas.
 
 ## GitHub
@@ -83,3 +87,23 @@ Con acceso restringido, Dory aprueba las solicitudes de edición dentro del work
 ## Apariencia
 
 En **Ajustes → Apariencia**, la escala de la interfaz va del 75% al 200%. También cambia con Ctrl + y Ctrl − (Cmd en macOS) y vuelve al 100% con Ctrl 0. Se guarda en cada navegador o app de escritorio.
+
+## Atajos
+
+En **Ajustes → Atajos** puedes consultar y cambiar las combinaciones, cancelar la captura con Escape o restaurar los valores originales. El ajuste de dictado anterior se conserva. Los atajos solo actúan con Dory enfocado y algunos dependen de la vista. El navegador o el sistema pueden interceptar combinaciones, incluido Ctrl+N; puedes elegir otra. En macOS se usa Cmd en lugar de Ctrl para los valores iniciales, salvo el dictado existente.
+
+| Acción | Combinación inicial |
+|---|---|
+| Nuevo hilo | Ctrl+N |
+| Buscar hilos | Ctrl+Mayús+F |
+| Paleta de comandos | Ctrl+K |
+| Modelo | Ctrl+Mayús+M |
+| Modo plan o planificar conversación | Ctrl+Mayús+P |
+| Rama | Ctrl+Mayús+B |
+| Proyecto | Ctrl+Mayús+O |
+| Navegación principal | Ctrl+Mayús+L |
+| Lista de hilos | Ctrl+Mayús+H |
+| Panel lateral | Ctrl+Mayús+J |
+| Dictado | Ctrl+D |
+
+Para evitar perder un borrador, Dory impide que los comandos de navegación abandonen su vista mientras haya texto, citas o adjuntos pendientes. La búsqueda dentro de Hilos abre la lista sin salir del hilo actual.

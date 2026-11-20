@@ -1,5 +1,6 @@
+import { useCommand } from "../components/shortcuts";
 import { ThreadsFold } from "../lib/threads-fold";
-import { useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
 import { Check, FunnelSimple, MagnifyingGlass, Plus, PushPin, SidebarSimple } from "@phosphor-icons/react";
@@ -33,7 +34,14 @@ export function Threads() {
   // On desktop the thread list folds away while a thread is open; remembered in this browser.
   const [listFolded, setListFolded] = useState(() => { try { return localStorage.getItem("dory.threads-folded") === "1"; } catch { return false; } });
   const foldList = (v: boolean) => { setListFolded(v); try { localStorage.setItem("dory.threads-folded", v ? "1" : "0"); } catch { /* per-browser only */ } };
+  const searchInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const focusSearch = () => { foldList(false); requestAnimationFrame(() => searchInput.current?.focus()); };
+    window.addEventListener("dory:focus-thread-search", focusSearch);
+    return () => window.removeEventListener("dory:focus-thread-search", focusSearch);
+  }, []);
   const folded = listFolded && !!threadId;
+  useCommand("thread-list", () => foldList(!listFolded), !!threadId);
   // The list width is dragged from its right edge and kept per browser.
   const [listWidth, setListWidth] = useState(() => { try { return clampList(Number(localStorage.getItem("dory.threads-width")) || LIST_W); } catch { return LIST_W; } });
   const [dragging, setDragging] = useState(false);
@@ -98,7 +106,7 @@ export function Threads() {
         <div className={`flex items-center gap-1.5 px-2 pb-2 ${threadId ? "sm:pl-11" : ""}`}>
           <div className="flex min-w-0 flex-1 items-center gap-2 px-2">
             <MagnifyingGlass weight="regular" className="size-4 shrink-0 text-slate-400" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar hilo…" aria-label="Buscar hilos"
+            <input ref={searchInput} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar hilo…" aria-label="Buscar hilos"
               className="min-h-9 w-full bg-transparent text-sm !outline-none placeholder:text-slate-400" />
           </div>
           <div className="relative shrink-0">

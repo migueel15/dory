@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, CaretDown, Check, Code, File as FileIcon, FileText, Lightning, ListBullets, MagnifyingGlass, Paperclip, PencilSimple, Quotes, Stop, TerminalWindow, Trash, X } from "@phosphor-icons/react";
+import { ArrowUp, CaretDown, Check, ClipboardText, Code, File as FileIcon, FileText, Lightning, ListBullets, MagnifyingGlass, Paperclip, PencilSimple, Quotes, Stop, TerminalWindow, Trash, X } from "@phosphor-icons/react";
 import { api, usable, type Attachment, type ThreadView } from "../api/client";
 import { Button, ErrorText, errMsg, iconButton, uuid } from "../components/ui";
 import { DictationField } from "../components/dictation-field";
@@ -13,6 +13,9 @@ import { HoverCard } from "../components/tooltip";
 import { CodeRefCard, codeRefText } from "../components/code-ref";
 import type { DraftQuote } from "../components/quote-selection";
 import { askAnswerText, openAsk, QuestionPanel, useQuestionFlow } from "../components/question-card";
+import { useCommand, useShortcuts } from "../components/shortcuts";
+import { formatChord } from "../components/dictation-shortcut";
+import { autoMessage } from "../lib/auto-message";
 import { paintTokens, quoteBlock, quoteLabel, tokenRanges, type Token, type Tokens } from "../components/composer-tokens";
 
 // The composer of a thread, kept from Dory v1: attachments, @ mentions of
@@ -24,23 +27,36 @@ export const composerArea = "relative block max-h-60 w-full resize-none break-wo
 export type MenuOption = { value: string; label: string; group?: string; modelId?: string; icon?: React.ReactNode };
 
 // Chip is a compact dropdown for the composer toolbar; the menu opens upwards.
-export function Chip({ value, options, onChange, title, icon, below = false, prefix }: { value: string; options: MenuOption[]; onChange: (v: string) => void; title: string; icon?: React.ReactNode; below?: boolean; prefix?: string }) {
+export function Chip({ value, options, onChange, title, icon, below = false, prefix, shortcutBranch = false }: { value: string; options: MenuOption[]; onChange: (v: string) => void; title: string; icon?: React.ReactNode; below?: boolean; prefix?: string; shortcutBranch?: boolean }) {
   const [open, setOpen] = useState(false);
+  const getShortcut = useShortcuts();
   const box = useOutside(open, () => setOpen(false));
   const current = options.find((o) => o.value === value);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [query, setQuery] = useState("");
+  const [highlight, setHighlight] = useState(0);
+  const filtered = options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()));
+  const close = () => { setOpen(false); setQuery(""); trigger.current?.focus(); };
+  useCommand("branch", () => { if (!trigger.current?.getClientRects().length) return false; setQuery(""); setHighlight(0); setOpen(true); }, shortcutBranch);
   return (
     <div ref={box} className="relative">
-      <button type="button" title={title} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}
+      <button ref={trigger} type="button" title={shortcutBranch ? `${title} (${formatChord(getShortcut("branch"))})` : title} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}
         onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
         className="inline-flex h-8 max-w-[11rem] items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white">
         {current?.icon ?? icon}<span className="truncate">{prefix && `${prefix} `}{current?.label ?? value}</span><CaretDown weight="regular" className="size-3 shrink-0 opacity-60" />
       </button>
       {open && (
         <ul role="listbox" className={`absolute left-0 z-20 max-h-72 min-w-[12rem] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-border dark:bg-surface ${below ? "top-full mt-2" : "bottom-full mb-2"}`}>
-          {options.map((o) => (
+          {shortcutBranch && <li><input autoFocus aria-label="Buscar rama" value={query} onChange={(e) => { setQuery(e.target.value); setHighlight(0); }} onKeyDown={(e) => {
+            if (e.key === "Escape") { e.stopPropagation(); close(); }
+            else if (e.key === "ArrowDown") { e.preventDefault(); setHighlight((i) => Math.min(i + 1, filtered.length - 1)); }
+            else if (e.key === "ArrowUp") { e.preventDefault(); setHighlight((i) => Math.max(i - 1, 0)); }
+            else if (e.key === "Enter" && filtered[highlight]) { e.preventDefault(); onChange(filtered[highlight].value); close(); }
+          }} className="w-full rounded bg-transparent px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500" /></li>}
+          {filtered.map((o, i) => (
             <li key={o.value}>
-              <button type="button" role="option" aria-selected={o.value === value} onClick={() => { onChange(o.value); setOpen(false); }}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised">
+              <button type="button" role="option" aria-selected={o.value === value} onClick={() => { onChange(o.value); close(); }}
+                className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised ${shortcutBranch && i === highlight ? "bg-slate-100 dark:bg-raised" : ""}`}>
                 {o.icon}<span className="min-w-0 flex-1 truncate">{o.label}</span>{o.value === value && <Check weight="regular" className="size-3.5" />}
               </button>
             </li>
@@ -68,6 +84,7 @@ type ModelProvider = { id: string; name: string; disabled?: boolean };
 // ModelPicker filters the active provider's catalog and shows the selected model's reasoning levels.
 export function ModelPicker({ models, providers, selected, effort, effortsOf, onChange, modelId = selected, reportedEffort }: { models: ModelOption[]; providers: ModelProvider[]; selected: string; effort: string; effortsOf: (value: string) => { values: string[]; initial: string } | undefined; onChange: (value: string, effort: string) => void; modelId?: string; reportedEffort?: string }) {
   const [open, setOpen] = useState(false);
+  const getShortcut = useShortcuts();
   const [focus, setFocus] = useState(selected);
   const [provider, setProvider] = useState("");
   const [search, setSearch] = useState("");
@@ -136,6 +153,7 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
     setNavigationIndex(undefined);
     setOpen(true);
   };
+  useCommand("model", () => { if (!trigger.current?.getClientRects().length) return false; toggle(); });
   const claude = claudeModelName(modelId);
   const modelLabel = claude ||
     (modelId === (current?.modelId ?? selected) ? current?.label : undefined) ||
@@ -152,7 +170,7 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
   const row = "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised";
   return (
     <div ref={box} className="relative flex">
-      <button ref={trigger} type="button" title={`${settingsLabel}${claude ? ` (${modelId})` : ""}`} aria-label={`Modelo y razonamiento: ${settingsLabel}`} aria-haspopup="dialog" aria-expanded={open} onClick={toggle}
+      <button ref={trigger} type="button" title={`${settingsLabel}${claude ? ` (${modelId})` : ""} · ${formatChord(getShortcut("model"))}`} aria-label={`Modelo y razonamiento: ${settingsLabel}`} aria-haspopup="dialog" aria-expanded={open} onClick={toggle}
         className="inline-flex h-8 max-w-[20rem] items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white">
         {current?.icon}<span className="truncate text-slate-900 dark:text-white">{modelLabel}</span>
         {effortLabel && <span className="shrink-0 text-slate-500 dark:text-muted">· {effortLabel}</span>}<CaretDown weight="regular" className="size-3 shrink-0 opacity-60" />
@@ -257,6 +275,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   onRemoveQuotes: (ids: string[]) => void;
 }) {
   const qc = useQueryClient();
+  const getShortcut = useShortcuts();
   const key = ["thread", t.id];
   const providers = useQuery({ queryKey: ["node-providers", t.node_id], queryFn: () => api.nodeProviders(t.node_id), staleTime: 60_000 });
   const [text, setText] = useState("");
@@ -383,6 +402,12 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
       qc.invalidateQueries({ queryKey: key });
     },
   });
+  const planning = useMutation({
+    mutationFn: () => api.send(t.id, autoMessage("plan", { thread: t.id },
+      "Planifica lo conversado sin implementar código. Usa ensure_thread_task para reutilizar la tarea vinculada o crearla y vincularla; después lee el plan con plan_read y crea o modifica el documento con plan_write o plan_edit. Haz las preguntas necesarias y usa el contexto de este hilo y su entorno. Solo el usuario acepta el plan.",
+      "Planifica lo que hemos hablado en este hilo.")),
+    onSuccess: () => { onSent(); return qc.invalidateQueries({ queryKey: key }); },
+  });
   const stop = useMutation({ mutationFn: () => api.interrupt(t.id) });
   // A question the agent waits for sits on top of the box; the box writes the
   // free answer of the current question instead of a new message. A harness
@@ -398,6 +423,9 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   });
   const flow = useQuestionFlow(question?.id ?? "", question?.questions ?? [], (answers, files) => reply.mutate({ answers, files }));
   const asking = !!question && !!flow.q;
+  const planQueued = t.queue.some((item) => item.text.includes(`<dory-context kind="plan" thread="${t.id}">`));
+  const canPlan = t.local && !asking && !dictating && !planning.isPending && !send.isPending && !planQueued;
+  useCommand("plan", () => { if (canPlan) planning.mutate(); }, canPlan);
   const settings = useMutation({
     scope: { id: `thread-settings:${t.id}` },
     mutationFn: (body: Parameters<typeof api.threadSettings>[1]) => api.threadSettings(t.id, body),
@@ -444,7 +472,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   const busy = t.running;
   return (
     <div className="mx-auto w-full max-w-[55.2rem] px-3 pb-4 pt-2 sm:px-6">
-      <form data-quote-ui data-dictation-panel onSubmit={(e) => { e.preventDefault(); submit(); }}
+      <form data-quote-ui data-dictation-panel data-unsaved-draft={!!text.trim() || files.length > 0 || quotes.length > 0 || dictation.active} onSubmit={(e) => { e.preventDefault(); submit(); }}
         onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
         onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); addFiles(e.dataTransfer.files); } }}
         onPaste={(e) => {
@@ -540,6 +568,9 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
                 else rememberModel(choice);
               }} />
           </div>
+          <button type="button" onClick={() => planning.mutate()} disabled={!canPlan} title={planQueued ? "Planificación en cola" : `Planificar esta conversación (${formatChord(getShortcut("plan"))})`} aria-label="Planificar esta conversación" className={iconButton}>
+            <ClipboardText weight="regular" className="size-4" />
+          </button>
           <DictationMic dictation={dictation} disabled={send.isPending} />
           {busy && !asking && !outgoing && !files.length && !dictation.active ? (
             <button type="button" onClick={() => stop.mutate()} disabled={stop.isPending} title="Parar el turno en curso" aria-label="Parar"
@@ -553,7 +584,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
             </button>
           )}
         </div>
-        {Boolean(send.error || settings.error || stop.error || dictation.error) && <div className="px-4 pb-2"><ErrorText error={send.error ?? settings.error ?? stop.error ?? dictation.error} /></div>}
+        {Boolean(send.error || planning.error || settings.error || stop.error || dictation.error) && <div className="px-4 pb-2"><ErrorText error={send.error ?? planning.error ?? settings.error ?? stop.error ?? dictation.error} /></div>}
       </form>
     </div>
   );

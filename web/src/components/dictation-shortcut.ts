@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 
-type Chord = { code: string; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean };
+export type Chord = { code: string; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean };
 const defaultChord: Chord = { code: "KeyD", ctrl: true, alt: false, shift: false, meta: false };
 const key = "dory.dictation-shortcut";
 const changeEvent = "dory:dictation-shortcut";
@@ -52,6 +52,8 @@ const subscribe = (notify: () => void) => {
     window.removeEventListener("storage", notify);
   };
 };
+export const readDictationShortcut = () => readChord(readSetting());
+
 export const useDictationShortcutSetting = () => readChord(useSyncExternalStore(subscribe, readSetting));
 
 export function isTextInput(element: Element) {

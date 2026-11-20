@@ -8,7 +8,7 @@ No hace falta instalar nada. Al descargar un modelo, si el nodo no tiene motor, 
 
 Dory busca el motor en cada uso, en este orden: `DORY_NEMO_SPEECH_BIN` si está fijada, el motor descargado y `nemo-speech` en el PATH. Para usar otra variante, como CUDA o Vulkan, instálala y fija `DORY_NEMO_SPEECH_BIN` a su ruta absoluta.
 
-En **Ajustes → Dictado local**, descarga el modelo y marca **Usar modelo**. La preferencia se guarda en el navegador y las descargas en `dictation-models/` dentro del directorio de datos del nodo.
+En **Ajustes → Atajos**, descarga el modelo y marca **Usar modelo**. La preferencia se guarda en el navegador y las descargas en `dictation-models/` dentro del directorio de datos del nodo.
 
 - **Parakeet TDT 0.6B v3:** inserta el texto al detener la grabación.
 - **Nemotron Streaming 3.5 0.6B:** inserta una vista previa mientras hablas y completa la transcripción al detener la grabación.
@@ -19,7 +19,7 @@ Un tono breve ascendente indica que el micrófono ya está grabando. Un tono des
 
 ## Atajo de dictado
 
-`Ctrl+D` inicia o detiene el dictado en el editor activo. Puedes cambiarlo en **Ajustes → Dictado local**.
+`Ctrl+D` inicia o detiene el dictado en el editor activo. Puedes cambiarlo en **Ajustes → Atajos**.
 
 - Si seleccionas texto con un hilo abierto y pulsas el atajo, se abre la respuesta a la cita y empieza el dictado. `Enter` termina el dictado y añade la cita con su respuesta al borrador.
 - En el cuadro de mensaje, `Ctrl+D` deja el texto listo para editar. Si pulsas `Enter` mientras dictas, Dory espera al texto final y envía el mensaje.

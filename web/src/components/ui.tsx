@@ -12,7 +12,7 @@ export const iconButton = "inline-flex h-8 min-w-8 shrink-0 items-center justify
 
 const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(" ");
 
-export function Button({ variant = "default", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "default" | "ghost" | "bare" | "danger" }) {
+export function Button({ variant = "default", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { ref?: Ref<HTMLButtonElement>; variant?: "default" | "ghost" | "bare" | "danger" }) {
   const v = {
     default: "bg-slate-900 dark:bg-accent text-white dark:text-white hover:bg-slate-700 dark:hover:bg-accent-hover",
     ghost: "border border-slate-300 dark:border-border-strong hover:bg-slate-100 dark:hover:bg-raised",
@@ -56,7 +56,7 @@ export type Option = { value: string; label: string; group?: string; icon?: Reac
 
 // Select replaces the native <select>: a button that opens a floating, keyboard-navigable
 // list. Long lists get a search box; groups, icons and disabled options are supported.
-export function Select({ value, onChange, options, disabled, className, placeholder = "—", plain, buttonRef }: { buttonRef?: React.Ref<HTMLButtonElement>; value: string; onChange: (v: string) => void; options: Option[]; disabled?: boolean; className?: string; placeholder?: string; plain?: boolean }) {
+export function Select({ value, onChange, options, disabled, className, placeholder = "—", plain, borderless, buttonRef }: { buttonRef?: React.Ref<HTMLButtonElement>; value: string; onChange: (v: string) => void; options: Option[]; disabled?: boolean; className?: string; placeholder?: string; plain?: boolean; borderless?: boolean }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<CSSProperties>({});
   const [hi, setHi] = useState(0);
@@ -106,11 +106,12 @@ export function Select({ value, onChange, options, disabled, className, placehol
     <div ref={box} className={cx("relative", className ?? "w-full")}>
       <button ref={buttonRef} type="button" disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? setOpen(false) : show())} onKeyDown={key}
         className={cx(
-          plain ? "flex min-h-11 items-center gap-1 rounded-md px-2 py-1 text-left text-sm hover:bg-slate-200 dark:hover:bg-raised sm:min-h-0"
+          borderless ? "group flex min-h-11 w-full items-center justify-between gap-2 rounded-sm bg-transparent py-1 text-left text-sm font-medium text-slate-600 transition-colors enabled:hover:text-slate-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50 dark:text-text-secondary dark:enabled:hover:text-white sm:min-h-8"
+            : plain ? "flex min-h-11 items-center gap-1 rounded-md px-2 py-1 text-left text-sm hover:bg-slate-200 dark:hover:bg-raised sm:min-h-0"
             : "flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-left text-sm shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50 dark:border-border-strong dark:bg-surface dark:hover:border-muted dark:hover:bg-raised sm:min-h-0",
-          !plain && open && "border-slate-500 bg-slate-50 dark:border-muted dark:bg-raised")}>
+          !borderless && !plain && open && "border-slate-500 bg-slate-50 dark:border-muted dark:bg-raised")}>
         <span className={cx("flex min-w-0 items-center gap-2 truncate", !current && "text-slate-400 dark:text-muted")}>{current?.icon}{current?.label ?? placeholder}</span>
-        <CaretUpDown weight="regular" aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
+        <CaretUpDown weight="regular" aria-hidden="true" className={cx("size-4 shrink-0", borderless ? "opacity-70 transition-opacity group-hover:opacity-100" : "text-slate-400")} />
       </button>
       {open && createPortal(
         <div ref={list} style={pos} className="notif-in fixed z-[100] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-border dark:bg-surface">
@@ -134,8 +135,8 @@ export function Select({ value, onChange, options, disabled, className, placehol
             ))}
           </div>
         </div>,
-        // Un <dialog> modal vive en la top layer: la lista debe montarse dentro para quedar por encima.
-        box.current?.closest("dialog") ?? document.body,
+        // Keep the menu inside its dialog or popover so it appears in the same top layer.
+        box.current?.closest("dialog, [popover]:popover-open") ?? document.body,
       )}
     </div>
   );
@@ -252,7 +253,7 @@ export function Md({ children, components, urlTransform, onToggle, serif = false
 // size and line height, with sans-serif code.
 const reading = "font-reading !text-[1rem] !leading-[1.7] text-slate-800 dark:text-[#e8e6e3] [&_h1]:!border-0 [&_h2]:!border-0 [&_h1]:!text-[1.5em] [&_h2]:!text-[1.25em] [&_h3]:!text-[1.1em] [&_h1,&_h2,&_h3,&_h4]:!font-semibold [&_li]:!my-1 [&_strong]:font-semibold [&_pre]:!text-[0.8125rem] [&_table]:text-[0.9375rem] [&_.katex-display]:my-3 [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden";
 
-export function Modal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+export function Modal({ title, onClose, children, wide = false, className }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean; className?: string }) {
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
     window.addEventListener("keydown", onKey);
@@ -260,9 +261,9 @@ export function Modal({ title, onClose, children, wide = false }: { title: strin
   }, [onClose]);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 sm:p-4" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label={title} className={`max-h-full w-full max-w-lg space-y-3 overflow-auto rounded-lg bg-white dark:bg-surface p-3 sm:p-4${wide ? " lg:max-w-3xl" : ""}`} onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label={title} className={`max-h-full w-full max-w-lg space-y-3 overflow-auto rounded-lg bg-white dark:bg-surface p-3 sm:p-4${wide ? " lg:max-w-3xl" : ""} ${className ?? ""}`} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-2">
-          <h2 className="text-lg font-semibold">{title}</h2>
+          <h2 className="min-w-0 wrap-break-word text-lg font-semibold">{title}</h2>
           <button type="button" aria-label="Cerrar" onClick={onClose} className="-mr-1 grid size-8 shrink-0 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
             <X weight="regular" aria-hidden="true" className="size-4" />
           </button>

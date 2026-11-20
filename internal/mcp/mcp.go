@@ -145,6 +145,16 @@ func Handler(s *api.Server) http.Handler {
 	add(srv, "save_task", "Create a task, or update the title, description, issue or pull request of one. Tasks created from one issue share its number; depends_on marks which must finish first. Agents never change the state of a task.", func(ctx context.Context, in taskInput) (any, error) {
 		return saveTask(ctx, store, in)
 	})
+	add(srv, "ensure_thread_task", "When planning in this conversation, reuse its linked task or create and link one atomically. Safe to retry. Supply a concise title and description only when a task is needed; use plan_read and plan_write or plan_edit for its plan. Only the user accepts the plan.", func(ctx context.Context, in struct {
+		Title       string `json:"title" jsonschema:"Concise title for a new task"`
+		Description string `json:"description,omitempty" jsonschema:"Description for a new task"`
+	}) (any, error) {
+		id, _ := ctx.Value(threadKey{}).(string)
+		if id == "" {
+			return nil, errors.New("ensure_thread_task only works inside a Dory thread")
+		}
+		return store.EnsureThreadTask(ctx, id, in.Title, in.Description)
+	})
 	add(srv, "plan_read", "Read the plan of a task: one Markdown document that the user and the agents edit. Returns body_md and its revision.", func(ctx context.Context, in planReadInput) (any, error) {
 		return s.PlanDocument(ctx, in.TaskID)
 	})

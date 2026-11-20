@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha1"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/migueel15/dory/internal/hlc"
 )
@@ -28,6 +30,71 @@ type table struct {
 	// merge is a text column where concurrent edits keep every version: the
 	// winner first, then each text it did not see, so no text is lost.
 	merge string
+}
+
+// EnsureThreadTask creates a task and links it to a thread in the same local
+// transaction. Repeated calls reuse the link, including after a lost response.
+func (l *Log) EnsureThreadTask(ctx context.Context, thread, title, description string) (string, error) {
+	tx, err := l.begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	var existing, project sql.NullString
+	if err := tx.QueryRowContext(ctx, `SELECT task_id, project_id FROM threads WHERE id = ? AND archived_at IS NULL`, thread).Scan(&existing, &project); err != nil {
+		return "", err
+	}
+	if existing.Valid && existing.String != "" {
+		return existing.String, nil
+	}
+	if strings.TrimSpace(title) == "" {
+		return "", fmt.Errorf("title is required")
+	}
+	sum := sha256.Sum256([]byte("dory:plan-task:" + thread))
+	sum[6] = (sum[6] & 0x0f) | 0x50
+	sum[8] = (sum[8] & 0x3f) | 0x80
+	id := fmt.Sprintf("%x-%x-%x-%x-%x", sum[:4], sum[4:6], sum[6:8], sum[8:10], sum[10:16])
+	var exists int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM tasks WHERE id = ?`, id).Scan(&exists); err != nil {
+		return "", err
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if exists == 0 {
+		fields := map[string]any{"title": title, "description": description, "stage": "inbox", "created_at": now, "updated_at": now}
+		if project.Valid {
+			fields["project_id"] = project.String
+		}
+		if _, err = l.Append(ctx, tx, "task", id, fields); err != nil {
+			return "", err
+		}
+		if err = materialize(ctx, tx, "task", id); err != nil {
+			return "", err
+		}
+	} else {
+		var archived sql.NullString
+		if err = tx.QueryRowContext(ctx, `SELECT archived_at FROM tasks WHERE id = ?`, id).Scan(&archived); err != nil {
+			return "", err
+		}
+		if archived.Valid {
+			return "", fmt.Errorf("the task previously linked to this thread is archived")
+		}
+	}
+	if _, err = l.Append(ctx, tx, "thread", thread, map[string]any{"task_id": id, "updated_at": now}); err != nil {
+		return "", err
+	}
+	if err = materialize(ctx, tx, "thread", thread); err != nil {
+		return "", err
+	}
+	if err = tx.Commit(); err != nil {
+		return "", err
+	}
+	if l.OnChange != nil {
+		if exists == 0 {
+			l.OnChange("task", id)
+		}
+		l.OnChange("thread", thread)
+	}
+	return id, nil
 }
 
 var tables = map[string]table{
