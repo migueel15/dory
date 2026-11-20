@@ -1,3 +1,4 @@
+import { KeptWorktrees } from "../components/kept-worktrees";
 import { useCommand } from "../components/shortcuts";
 import { ThreadsFold } from "../lib/threads-fold";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
@@ -127,6 +128,7 @@ export function Threads() {
           <Link to="/threads" title="Nuevo hilo" aria-label="Nuevo hilo" activeOptions={{ exact: true }}
             className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised"><Plus weight="regular" className="size-4" /></Link>
         </div>
+        <KeptWorktrees />
         <div className="min-h-0 flex-1 no-scrollbar overflow-y-auto p-1">
           <ErrorText error={threads.error} />
           {filter === "external" && <ErrorText error={external.error} />}

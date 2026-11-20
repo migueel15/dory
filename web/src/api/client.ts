@@ -8,7 +8,9 @@ export type NodeUpdate = { node: string; name: string; status?: UpdateStatus; er
 export type Project = { id: string; slug: string; name: string; description: string; created_at: string; updated_at: string; archived_at: string | null };
 export type RepositoryLocation = { repository_id: string; node_id: string; path: string };
 export type Repository = { id: string; project_id: string; remote_url: string; default_branch: string; created_at: string; updated_at: string; archived_at: string | null };
-export type Stage = "inbox" | "ready" | "cancelled";
+export type Stage = "inbox" | "ready" | "done" | "cancelled";
+export type NodeSettings = { archive_threads_on_finish: boolean; remove_worktree_on_archive: boolean };
+export type KeptWorktree = { thread_id: string; path: string; dirty: boolean };
 export type Task = {
   id: string; project_id: string | null; repository_id: string | null; title: string; description: string; stage: Stage;
   branch: string; issue_number: number | null; pr_number: number | null; position: string;
@@ -150,6 +152,10 @@ export const api = {
   saveSkill: (s: Partial<Skill>) => (s.id ? req<Skill>("PUT", `/skills/${s.id}`, s) : req<Skill>("POST", "/skills", s)),
   archiveSkill: (id: string) => req<void>("DELETE", `/skills/${id}`),
   node: () => req<NodeStatus>("GET", "/node"),
+  nodeSettings: (node = "local") => req<NodeSettings>("GET", `/nodes/${node}/settings`),
+  setNodeSettings: (settings: NodeSettings, node = "local") => req<NodeSettings>("PUT", `/nodes/${node}/settings`, settings),
+  keptWorktrees: (node = "local") => req<KeptWorktree[]>("GET", `/nodes/${node}/kept-worktrees`),
+  removeThreadWorktree: (id: string) => req<void>("DELETE", `/threads/${id}/worktree`),
   usageHistory: (range: UsageRange, node = "local") => req<UsageReport>("GET", `/nodes/${node}/usage/history?${new URLSearchParams({ range, tz: Intl.DateTimeFormat().resolvedOptions().timeZone })}`),
   searchTasks: (text: string, signal?: AbortSignal) => req<Hit[]>("GET", `/search?type=task&q=${encodeURIComponent(text)}`, undefined, signal),
   searchGithub: (text: string, signal?: AbortSignal) => req<{ items: { repo: string; number: number; title: string; kind: "pulls" | "issues"; state: string }[]; incomplete: boolean }>("GET", `/github/search?q=${encodeURIComponent(text)}`, undefined, signal),

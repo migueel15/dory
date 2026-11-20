@@ -424,12 +424,7 @@ func (s *Server) ThreadAction(ctx context.Context, id, action, title, until, tas
 			fields["task_linked_at"] = now
 		}
 	case "archive":
-		if t.NodeID == s.Node.ID {
-			if err := s.Runtime.Remove(ctx, id); err != nil {
-				return t, err
-			}
-		}
-		return t, s.Store.Threads().Archive(ctx, id)
+		return t, s.archiveThread(ctx, t)
 	default:
 		return t, errors.Join(data.ErrInvalid, errors.New("unknown action "+action))
 	}

@@ -816,16 +816,105 @@ func (m *Manager) DiffAgainst(ctx context.Context, id, against string) (WorkDiff
 	return out, err
 }
 
-// Remove deletes the worktree of a thread when it is archived.
-func (m *Manager) Remove(ctx context.Context, id string) error {
+// ErrDirtyWorktree says a worktree holds changes that are not committed.
+var ErrDirtyWorktree = errors.New("el worktree tiene cambios sin commitear")
+
+// worktreeDir returns the worktree dory created for a thread, or "" when the
+// thread works in a checkout of the user or has no worktree.
+func (m *Manager) worktreeDir(ctx context.Context, id string) (string, error) {
 	dir, err := m.Dir(ctx, id)
 	if err != nil || !strings.HasPrefix(dir, filepath.Join(m.dataDir, "worktrees")) {
+		return "", err
+	}
+	return dir, nil
+}
+
+// Dirty says whether dir has changes that are not committed.
+func Dirty(ctx context.Context, dir string) (bool, error) {
+	out, err := gitCmd(ctx, dir, "status", "--porcelain")
+	return len(strings.TrimSpace(string(out))) > 0, err
+}
+
+// WorktreeState tells whether the worktree of a thread still exists and
+// whether it has uncommitted changes. Shared is true while another thread
+// that is not archived uses it.
+func (m *Manager) WorktreeState(ctx context.Context, id string) (exists, dirty, shared bool, err error) {
+	dir, err := m.worktreeDir(ctx, id)
+	if err != nil || dir == "" {
+		return false, false, false, err
+	}
+	if _, serr := os.Stat(dir); serr != nil {
+		return false, false, false, nil
+	}
+	dirty, err = Dirty(ctx, dir)
+	u, _ := m.WorktreeUse(ctx, dir, id)
+	return true, dirty, u.Threads > 0, err
+}
+
+// KeptWorktree is the worktree of an archived thread that was not deleted.
+type KeptWorktree struct {
+	ThreadID string `json:"thread_id"`
+	Path     string `json:"path"`
+	Dirty    bool   `json:"dirty"`
+}
+
+// KeptWorktrees lists the worktrees of archived threads of this node that
+// still exist and that no active thread uses.
+func (m *Manager) KeptWorktrees(ctx context.Context) ([]KeptWorktree, error) {
+	rows, err := m.db.QueryContext(ctx, `SELECT t.id, r.worktree_path FROM threads t JOIN thread_runtime r ON r.thread_id = t.id
+		WHERE t.archived_at IS NOT NULL AND t.node_id = ? AND r.worktree_path != ''`, m.node)
+	if err != nil {
+		return nil, err
+	}
+	var ids, paths []string
+	for rows.Next() {
+		var id, path string
+		if err = rows.Scan(&id, &path); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids, paths = append(ids, id), append(paths, path)
+	}
+	rows.Close()
+	out := []KeptWorktree{}
+	seen := map[string]bool{}
+	for i, id := range ids {
+		if seen[paths[i]] {
+			continue
+		}
+		exists, dirty, shared, err := m.WorktreeState(ctx, id)
+		if err != nil || !exists || shared {
+			continue
+		}
+		seen[paths[i]] = true
+		out = append(out, KeptWorktree{ThreadID: id, Path: paths[i], Dirty: dirty})
+	}
+	return out, nil
+}
+
+// Remove deletes the worktree of a thread when it is archived. A worktree
+// that another thread still uses is kept. One with uncommitted changes is
+// kept too and ErrDirtyWorktree is returned, unless force is set.
+func (m *Manager) Remove(ctx context.Context, id string, force bool) error {
+	dir, err := m.worktreeDir(ctx, id)
+	if err != nil || dir == "" {
 		return err
 	}
-	_ = m.Interrupt(ctx, id)
 	if users, _ := m.WorktreeUse(ctx, dir, id); users.Threads > 0 {
 		// Another thread still works in this worktree.
 		return nil
+	}
+	if _, err := os.Stat(dir); err != nil {
+		return nil
+	}
+	if !force {
+		dirty, err := Dirty(ctx, dir)
+		if err != nil {
+			return err
+		}
+		if dirty {
+			return ErrDirtyWorktree
+		}
 	}
 	return cmdexec.CommandContext(ctx, "git", "-C", dir, "worktree", "remove", "--force", dir).Run()
 }

@@ -54,13 +54,15 @@ type Server struct {
 	// InfoChanged tells the mesh this node's description changed, so peers
 	// sync it at once; nil when there is no mesh.
 	InfoChanged func()
+	// Settings holds what this node does when work finishes; nil uses the defaults.
+	Settings *SettingsStore
 }
 
 // Register mounts every /api route; auth owns /api/auth/* on the same mux.
 func (s *Server) Register(mux *http.ServeMux) {
 	mountResource(mux, "projects", s.Store.Projects())
 	mountResource(mux, "repositories", s.Store.Repositories())
-	mountResource(mux, "tasks", s.Store.Tasks())
+	mountResource(mux, "tasks", s.Store.Tasks(), s.SaveTask)
 	mountResource(mux, "memories", s.Store.Memories())
 	mux.HandleFunc("GET /api/version", version.Handler())
 	mux.HandleFunc("GET /api/node", s.node)
@@ -91,6 +93,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	s.mountFolders(mux)
 	s.mountBranches(mux)
 	s.mountWorktrees(mux)
+	s.mountWorktreeState(mux)
+	s.mountSettings(mux)
 	s.mountExternal(mux)
 	s.mountUsageHistory(mux)
 	s.mountDictation(mux)
@@ -177,7 +181,7 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 func actor(r *http.Request) string { return auth.Actor(r.Context()) }
 
 // mountResource registers list/get/create/replace/archive for one entity.
-func mountResource[T any](mux *http.ServeMux, path string, res data.Resource[T]) {
+func mountResource[T any](mux *http.ServeMux, path string, res data.Resource[T], save ...func(context.Context, T) (T, error)) {
 	base := "/api/" + path
 	mux.HandleFunc("GET "+base, func(w http.ResponseWriter, r *http.Request) {
 		f, err := parseFilter(r)
@@ -228,7 +232,11 @@ func mountResource[T any](mux *http.ServeMux, path string, res data.Resource[T])
 			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
 			return
 		}
-		out, err := res.Put(r.Context(), v)
+		put := res.Put
+		if len(save) > 0 {
+			put = save[0]
+		}
+		out, err := put(r.Context(), v)
 		if err != nil {
 			writeDataError(w, err)
 			return

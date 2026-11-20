@@ -32,7 +32,7 @@ export function ProvidersSettings() {
       {list.isPending && <p className="text-sm text-slate-500 dark:text-muted">Buscando proveedores…</p>}
       <ErrorText error={list.error ?? toggle.error} />
       {providers.length > 0 && (
-        <div className="grid overflow-hidden rounded-xl border border-slate-200 dark:border-border md:grid-cols-[minmax(0,18rem)_1fr]">
+        <div className="grid overflow-hidden rounded-xl border border-slate-200 dark:border-border md:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
           <ul aria-label="Proveedores" className="divide-y divide-slate-200 border-b border-slate-200 dark:divide-border dark:border-border md:border-b-0 md:border-r">
             {providers.map((p) => (
               <li key={p.id} className={`flex items-center gap-3 px-4 py-3 ${p.id === current?.id ? "bg-slate-100 dark:bg-raised" : ""}`}>
@@ -99,7 +99,7 @@ function ProviderDetail({ node, provider: p }: { node: string; provider: Provide
   }, [state.data?.done]); // eslint-disable-line react-hooks/exhaustive-deps
   const admin = p.installed && p.capabilities.includes("login");
   return (
-    <div className="space-y-4 p-4">
+    <div className="min-w-0 space-y-4 p-4">
       <div className="flex items-center gap-3">
         <ProviderIcon driver={p.id} />
         <h3 className="text-lg font-semibold">{p.name}</h3>
@@ -126,7 +126,7 @@ function ProviderDetail({ node, provider: p }: { node: string; provider: Provide
         <div className="rounded-md bg-slate-100 p-2 dark:bg-raised">
           <p className="mb-1 flex items-center gap-2 text-xs font-medium">{{ login: "Inicio de sesión", update: "Actualización", install: "Instalación" }[state.data.kind]} · {state.data.done ? (state.data.error ? `terminó con error (${state.data.error})` : "terminado") : "en curso…"}
             <button type="button" className="ml-auto text-slate-500" onClick={() => setJob(undefined)}>cerrar</button></p>
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-xs"><Linkify text={state.data.output || "Esperando salida…"} linkLabel={(p.id === "claude" || p.id === "antigravity") && state.data.kind === "login" && !state.data.done ? `Abrir ${p.name} en el navegador` : undefined} /></pre>
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-xs"><Linkify text={state.data.output || "Esperando salida…"} linkLabel={(p.id === "claude" || p.id === "antigravity") && state.data.kind === "login" && !state.data.done ? `Abrir ${p.name} en el navegador` : undefined} /></pre>
           {!state.data.done && (p.id === "claude" || p.id === "antigravity") && state.data.kind === "login" && state.data.accepts_code !== undefined && (
             <LoginCodeForm key={job} node={node} id={job} acceptsCode={state.data.accepts_code} />
           )}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { hasDictationPopupOutside, isTextInput, useDictationShortcut } from "./dictation-shortcut";
 import { createDictationMeter, DictationMic, reserveDictation, useDictationInProgress } from "./local-dictation";
 import { playDictationSound, prepareDictationSound } from "./dictation-sound";
+import { openDictationMicrophone } from "./dictation-microphone";
 import { wav } from "./audio-wav";
 import { ApiError } from "../api/client";
 import { Button, ErrorText, Textarea } from "./ui";
@@ -122,7 +123,7 @@ export function useDictation() {
     };
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+      stream = await openDictationMicrophone();
     } catch (e) {
       const name = e instanceof DOMException ? e.name : "";
       release();
