@@ -84,10 +84,12 @@ type Memory struct {
 // Thread is the replicated part of a conversation with an agent. NodeID is
 // the node that runs it; only that node holds its messages and processes.
 type Thread struct {
-	ID             string  `json:"id"`
-	NodeID         string  `json:"node_id"`
-	ProjectID      *string `json:"project_id"`
-	TaskID         *string `json:"task_id"`
+	ID        string  `json:"id"`
+	NodeID    string  `json:"node_id"`
+	ProjectID *string `json:"project_id"`
+	TaskID    *string `json:"task_id"`
+	// TaskLinkedAt is when the thread was linked to its task.
+	TaskLinkedAt   *string `json:"task_linked_at"`
 	ParentID       *string `json:"parent_id"`
 	Provider       string  `json:"provider"`
 	Model          string  `json:"model"`

@@ -68,11 +68,15 @@ type Pull struct {
 	RequiredApprovals *int     `json:"required_approvals"`
 	ReviewRequests    []string `json:"review_requests"`
 	CI                string   `json:"ci"`
-	Mergeable         string   `json:"mergeable"`
-	MergeState        string   `json:"merge_state"`
-	Additions         int      `json:"additions"`
-	Deletions         int      `json:"deletions"`
-	ChangedFiles      int      `json:"changed_files"`
+	// CIPassed, CIFailed and CIPending count the checks of the last commit.
+	CIPassed     int    `json:"ci_passed"`
+	CIFailed     int    `json:"ci_failed"`
+	CIPending    int    `json:"ci_pending"`
+	Mergeable    string `json:"mergeable"`
+	MergeState   string `json:"merge_state"`
+	Additions    int    `json:"additions"`
+	Deletions    int    `json:"deletions"`
+	ChangedFiles int    `json:"changed_files"`
 	Meta
 }
 
@@ -104,7 +108,7 @@ const pullFields = `id number title url state isDraft updatedAt headRefName base
   closingIssuesReferences(first: 10) { nodes { number title } }
   latestOpinionatedReviews(first: 20) { nodes { state author { login } } }
   reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } ... on Team { name } } } }
-  commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+  commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 1) { checkRunCountsByState { state count } statusContextCountsByState { state count } } } } } }
   baseRef { refUpdateRule { requiredApprovingReviewCount } }`
 
 const overviewQuery = `query($owner: String!, $name: String!) { viewer { login } repository(owner: $owner, name: $name) {
@@ -208,7 +212,11 @@ type wirePull struct {
 		Nodes []struct {
 			Commit struct {
 				Rollup *struct {
-					State string `json:"state"`
+					State    string `json:"state"`
+					Contexts struct {
+						CheckRuns []stateCount `json:"checkRunCountsByState"`
+						Statuses  []stateCount `json:"statusContextCountsByState"`
+					} `json:"contexts"`
 				} `json:"statusCheckRollup"`
 			} `json:"commit"`
 		} `json:"nodes"`
@@ -263,12 +271,46 @@ func (w wirePull) pull(repo, project string) Pull {
 		}
 	}
 	if len(w.Commits.Nodes) > 0 && w.Commits.Nodes[0].Commit.Rollup != nil {
-		p.CI = w.Commits.Nodes[0].Commit.Rollup.State
+		r := w.Commits.Nodes[0].Commit.Rollup
+		p.CI = r.State
+		p.CIPassed, p.CIFailed, p.CIPending = countChecks(r.Contexts.CheckRuns, r.Contexts.Statuses)
 	}
 	if w.BaseRef != nil && w.BaseRef.Rule != nil {
 		p.RequiredApprovals = w.BaseRef.Rule.Required
 	}
 	return p
+}
+
+// stateCount is how many checks of a commit are in one state.
+type stateCount struct {
+	State string `json:"state"`
+	Count int    `json:"count"`
+}
+
+// countChecks sorts the check runs and commit statuses of a commit into passed,
+// failed and still running.
+func countChecks(runs, statuses []stateCount) (passed, failed, pending int) {
+	for _, s := range runs {
+		switch s.State {
+		case "SUCCESS", "NEUTRAL", "SKIPPED", "COMPLETED":
+			passed += s.Count
+		case "FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE":
+			failed += s.Count
+		default:
+			pending += s.Count
+		}
+	}
+	for _, s := range statuses {
+		switch s.State {
+		case "SUCCESS":
+			passed += s.Count
+		case "FAILURE", "ERROR":
+			failed += s.Count
+		default:
+			pending += s.Count
+		}
+	}
+	return
 }
 
 // fillRequired covers repository rulesets, which refUpdateRule does not report.
@@ -313,13 +355,22 @@ func (c *Client) fillRequired(ctx context.Context, p *Pull) {
 // Open returns the cached issues and pull requests at once. When the cache is
 // stale, or refresh is set, it starts a background refresh that updates each
 // repository as soon as it answers; Refreshing tells the caller to poll.
+// ttl is how long the cache lasts: short while a pull request has checks
+// running, so the board follows the CI closely.
+func (c *Client) ttl() time.Duration {
+	if c.hot {
+		return hotTTL
+	}
+	return cacheTTL
+}
+
 func (c *Client) Open(ctx context.Context, refresh bool) (*Overview, error) {
 	if !c.Configured(ctx) {
 		return nil, ErrUnconfigured
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if !c.refreshing && (refresh || time.Since(c.fetched) >= cacheTTL) {
+	if !c.refreshing && (refresh || time.Since(c.fetched) >= c.ttl()) {
 		all, err := c.repos(ctx)
 		if err != nil {
 			return nil, err
@@ -385,6 +436,14 @@ func (c *Client) refresh(repos map[string]string) {
 	wg.Wait()
 	c.mu.Lock()
 	c.refreshing, c.fetched = false, time.Now()
+	c.hot = false
+	for _, d := range c.byRepo {
+		for _, p := range d.pulls {
+			if p.CIPending > 0 || p.CI == "PENDING" || p.CI == "EXPECTED" {
+				c.hot = true
+			}
+		}
+	}
 	c.mu.Unlock()
 }
 
