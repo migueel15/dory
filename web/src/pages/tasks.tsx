@@ -11,6 +11,7 @@ import { useLaunchForm } from "../components/launch-picker";
 import { useProject } from "../project";
 import { ModelLogo } from "../components/model-logo";
 import { askConfirm } from "../components/confirm";
+import { TaskQuickMenu, type QuickLaunch } from "../components/task-quick-menu";
 import { planMessage } from "../lib/auto-message";
 
 // Fixed meaning of each state color (requirement RF-48).
@@ -48,24 +49,26 @@ export function Tasks() {
   const project = useProject();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as { task?: string };
+  const search = useSearch({ strict: false }) as { task?: string; launch?: QuickLaunch };
   const board = useQuery({ queryKey: ["board", project], queryFn: () => api.board(project || undefined), refetchInterval: 30_000 });
   const [adding, setAdding] = useState(false);
   const [fold, setFold] = useState<Record<string, boolean>>({ done: true, cancelled: true });
   const [drag, setDrag] = useState<string>();
+  const [quick, setQuick] = useState<{ c: Card; x: number; y: number }>();
+  const [quickError, setQuickError] = useState<unknown>();
   const move = useMutation({
     mutationFn: ({ id, stage }: { id: string; stage: Stage }) => api.tasks.update(id, { stage }),
     onSettled: () => qc.invalidateQueries({ queryKey: ["board"] }),
   });
   const cards = board.data?.cards ?? [];
-  const open = (id?: string) => navigate({ to: "/tasks", search: (id ? { task: id } : {}) as never });
+  const open = (id?: string, launch?: QuickLaunch) => navigate({ to: "/tasks", search: (id ? { task: id, ...(launch && { launch }) } : {}) as never });
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <h2 className="font-semibold">Kanban <span className="hidden text-xs font-normal text-slate-500 dark:text-muted sm:inline">(clic para abrir · arrastra para cambiar de estado)</span></h2>
         <Button className="ml-auto" onClick={() => setAdding(true)}><Plus weight="regular" className="size-4" />Nueva tarea</Button>
       </div>
-      <ErrorText error={board.error ?? move.error} />
+      <ErrorText error={board.error ?? move.error ?? quickError} />
       <div className="flex flex-col gap-3 pb-2 sm:flex-row sm:overflow-x-auto">
         {(board.data?.columns ?? COLUMNS).map((col) => {
           const list = cards.filter((c) => c.column === col);
@@ -83,14 +86,15 @@ export function Tasks() {
                 </div>
               </div>
               <div className="space-y-2">
-                {shown.map((c) => <TaskCard key={c.id} c={c} onOpen={() => open(c.id)} onDrag={() => setDrag(c.id)} />)}
+                {shown.map((c) => <TaskCard key={c.id} c={c} onOpen={() => open(c.id)} onDrag={() => { setQuick(undefined); setDrag(c.id); }} onMenu={(x, y) => { setQuickError(undefined); setQuick({ c, x, y }); }} />)}
               </div>
             </section>
           );
         })}
       </div>
       {adding && <NewTask onClose={() => setAdding(false)} onCreated={(id) => { setAdding(false); open(id); }} />}
-      {search.task && <TaskDetail key={search.task} id={search.task} onClose={() => open()} />}
+      {quick && <TaskQuickMenu key={quick.c.id} {...quick} onClose={() => setQuick(undefined)} onOpen={(launch) => open(quick.c.id, launch)} onError={setQuickError} />}
+      {search.task && <TaskDetail key={search.task} id={search.task} launch={search.launch} onClose={() => open()} />}
     </div>
   );
 }
@@ -99,11 +103,11 @@ const chip = "inline-flex max-w-full items-center gap-1.5 rounded-md border bord
 
 // TaskCard keeps the v1 card: title and state icon, then chips for the latest
 // thread and the pull request.
-function TaskCard({ c, onOpen, onDrag }: { c: Card; onOpen: () => void; onDrag: () => void }) {
+function TaskCard({ c, onOpen, onDrag, onMenu }: { c: Card; onOpen: () => void; onDrag: () => void; onMenu: (x: number, y: number) => void }) {
   const s = slot(c);
   const t = c.threads.length ? c.threads.reduce((a, b) => ((b.last_activity_at ?? b.updated_at) >= (a.last_activity_at ?? a.updated_at) ? b : a)) : undefined;
   return (
-    <div draggable onDragStart={onDrag} onClick={onOpen} className="cursor-grab">
+    <div draggable onDragStart={onDrag} onClick={onOpen} onContextMenu={(e) => { e.preventDefault(); onMenu(e.clientX, e.clientY); }} className="cursor-grab">
       <UiCard>
         <div className="text-sm">
           <div className="flex items-start justify-between gap-2">
@@ -182,7 +186,7 @@ function NewTask({ onClose, onCreated }: { onClose: () => void; onCreated: (id: 
   );
 }
 
-function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
+function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch?: QuickLaunch; onClose: () => void }) {
   const qc = useQueryClient();
   const dictating = useDictationInProgress();
   const navigate = useNavigate();
@@ -263,6 +267,15 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
     },
     onSuccess: (r) => navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } }),
   });
+  // A quick action from the board opens the detail with the launch popover ready.
+  const autoLaunched = useRef(false);
+  useEffect(() => {
+    if (!initialLaunch || autoLaunched.current || !c || !draft || !planDoc.data || !launchPopover.current) return;
+    autoLaunched.current = true;
+    setMode(initialLaunch);
+    launchPopover.current.showPopover();
+    placeLaunchPopover();
+  }); // eslint-disable-line react-hooks/exhaustive-deps
   if (!c || !draft) return <Modal title="Tarea" onClose={onClose}><ErrorText error={card.error} /></Modal>;
   const dirty = draft.title !== c.title || draft.description !== c.description || draft.issue !== (c.issue_number?.toString() ?? "") || draft.pr !== (c.pr_number?.toString() ?? "") || draft.repo !== (c.repository_id ?? "");
   const others = (board.data?.cards ?? []).filter((o) => o.id !== id && (!c.project_id || o.project_id === c.project_id));
