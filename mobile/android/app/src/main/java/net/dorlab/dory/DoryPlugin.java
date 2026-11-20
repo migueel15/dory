@@ -3,6 +3,7 @@ package net.dorlab.dory;
 import android.content.Context;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
+import android.os.Build;
 import android.webkit.CookieManager;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
