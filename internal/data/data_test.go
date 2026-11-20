@@ -195,3 +195,104 @@ func TestRepositoryLocationPutGet(t *testing.T) {
 		t.Fatalf("path = %q", got.Path)
 	}
 }
+
+func TestLinkThread(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	p, _ := s.Projects().Put(ctx, Project{Slug: "a", Name: "A"})
+	q, _ := s.Projects().Put(ctx, Project{Slug: "b", Name: "B"})
+	t1, _ := s.Tasks().Put(ctx, Task{Title: "Uno", ProjectID: &p.ID})
+	t2, _ := s.Tasks().Put(ctx, Task{Title: "Dos", ProjectID: &p.ID})
+	foreign, _ := s.Tasks().Put(ctx, Task{Title: "Ajena", ProjectID: &q.ID})
+	th, _ := s.Threads().Put(ctx, Thread{NodeID: "otro-nodo", ProjectID: &p.ID, Provider: "codex"})
+
+	got, err := s.LinkThread(ctx, th.ID, t1.ID, false)
+	if err != nil || got.TaskID == nil || *got.TaskID != t1.ID {
+		t.Fatalf("link: %+v %v", got, err)
+	}
+	n := opCount(t, s)
+	if _, err = s.LinkThread(ctx, th.ID, t1.ID, false); err != nil || opCount(t, s) != n {
+		t.Fatalf("relink wrote ops or failed: %v", err)
+	}
+	if _, err = s.LinkThread(ctx, th.ID, t2.ID, false); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("move without replace: %v", err)
+	}
+	if got, err = s.LinkThread(ctx, th.ID, t2.ID, true); err != nil || *got.TaskID != t2.ID {
+		t.Fatalf("replace: %+v %v", got, err)
+	}
+	if _, err = s.LinkThread(ctx, th.ID, foreign.ID, true); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("foreign project: %v", err)
+	}
+	s.Tasks().Archive(ctx, t1.ID)
+	if _, err = s.LinkThread(ctx, th.ID, t1.ID, true); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("archived task: %v", err)
+	}
+	if got, err = s.UnlinkThread(ctx, th.ID); err != nil || got.TaskID != nil {
+		t.Fatalf("unlink: %+v %v", got, err)
+	}
+}
+
+func TestDependencies(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	a, _ := s.Tasks().Put(ctx, Task{Title: "A"})
+	b, _ := s.Tasks().Put(ctx, Task{Title: "B"})
+	c, _ := s.Tasks().Put(ctx, Task{Title: "C"})
+	if _, err := s.AddDependency(ctx, a.ID, a.ID); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("self: %v", err)
+	}
+	if _, err := s.AddDependency(ctx, a.ID, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddDependency(ctx, b.ID, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddDependency(ctx, c.ID, a.ID); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("cycle: %v", err)
+	}
+	if err := s.RemoveDependency(ctx, a.ID, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if blockers, _ := s.Blockers(ctx, a.ID); len(blockers) != 0 {
+		t.Fatalf("removed dependency still blocks: %+v", blockers)
+	}
+	if _, err := s.AddDependency(ctx, a.ID, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if blockers, _ := s.Blockers(ctx, a.ID); len(blockers) != 1 {
+		t.Fatalf("re-added dependency: %+v", blockers)
+	}
+}
+
+func TestLinksReplicate(t *testing.T) {
+	ctx := context.Background()
+	src, dst := open(t), open(t)
+	p, _ := src.Projects().Put(ctx, Project{Slug: "a", Name: "A"})
+	a, _ := src.Tasks().Put(ctx, Task{Title: "A", ProjectID: &p.ID})
+	b, _ := src.Tasks().Put(ctx, Task{Title: "B", ProjectID: &p.ID})
+	th, _ := src.Threads().Put(ctx, Thread{NodeID: src.log.Node(), ProjectID: &p.ID, Provider: "codex"})
+	sync := func() {
+		ops, err := src.log.Since(ctx, nil, 10000)
+		if err == nil {
+			err = dst.log.Apply(ctx, ops)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	src.LinkThread(ctx, th.ID, a.ID, false)
+	src.AddDependency(ctx, a.ID, b.ID)
+	sync()
+	if got, _ := dst.Threads().Get(ctx, th.ID); got.TaskID == nil || *got.TaskID != a.ID {
+		t.Fatalf("link not replicated: %+v", got)
+	}
+	src.UnlinkThread(ctx, th.ID)
+	src.RemoveDependency(ctx, a.ID, b.ID)
+	sync()
+	if got, _ := dst.Threads().Get(ctx, th.ID); got.TaskID != nil {
+		t.Fatalf("unlink not replicated: %+v", got)
+	}
+	if deps, _ := dst.Dependencies().List(ctx, Filter{}); len(deps) != 0 {
+		t.Fatalf("removal not replicated: %+v", deps)
+	}
+}
