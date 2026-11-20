@@ -56,3 +56,13 @@ func TestUnique(t *testing.T) {
 		}
 	}
 }
+
+func TestCountChecks(t *testing.T) {
+	passed, failed, pending := countChecks(
+		[]stateCount{{"SUCCESS", 8}, {"SKIPPED", 1}, {"FAILURE", 2}, {"IN_PROGRESS", 3}, {"QUEUED", 1}},
+		[]stateCount{{"SUCCESS", 1}, {"ERROR", 1}, {"PENDING", 2}},
+	)
+	if passed != 10 || failed != 3 || pending != 6 {
+		t.Fatalf("got %d passed, %d failed, %d pending", passed, failed, pending)
+	}
+}

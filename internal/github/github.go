@@ -19,6 +19,8 @@ import (
 const (
 	apiBase  = "https://api.github.com"
 	cacheTTL = time.Minute
+	// hotTTL applies while a pull request has checks running.
+	hotTTL   = 15 * time.Second
 	rulesTTL = 10 * time.Minute
 	// refreshTimeout bounds a background refresh of all repositories.
 	refreshTimeout = 2 * time.Minute
@@ -54,6 +56,7 @@ type Client struct {
 	rules      map[string]ruleEntry
 	fetched    time.Time
 	refreshing bool
+	hot        bool
 	viewer     string
 }
 
