@@ -14,7 +14,14 @@ Dory lee `~/.config/dory/config.toml` (o el fichero de `DORY_CONFIG`). Cada clav
 
 Otras variables:
 
-- `DORY_GITHUB_TOKEN`: token de GitHub. Sin él, Dory usa la sesión de `gh` de la máquina. El token no sale del nodo.
+- `DORY_GITHUB_TOKEN`: token de GitHub. Tiene prioridad sobre el inicio de sesión desde la interfaz y sobre la sesión de `gh`. El token no sale del nodo.
+- `DORY_GITHUB_CLIENT_ID`: sustituye el `client_id` de la OAuth App de Dory, para desarrollo o forks.
+
+### GitHub desde la interfaz
+
+En **Ajustes → GitHub**, o en la vista de GitHub sin sesión, «Iniciar sesión con GitHub» usa el device flow: muestra un código, abre `github.com/login/device` y, al autorizarlo, guarda el token en `github.token` del directorio de datos (permisos `0600`). No se replica a otros nodos.
+
+El token se resuelve en este orden: `DORY_GITHUB_TOKEN`, el guardado desde la interfaz y `gh auth token`. Se vuelve a leer cada 30 s, tras un `401` o mientras no haya token, así que iniciar o cerrar sesión (también con `gh auth login`) no exige reiniciar el nodo.
 - `DORY_WHISPER_URL`: servidor de whisper.cpp para el dictado.
 
 ## Ficheros del nodo

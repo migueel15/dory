@@ -1,4 +1,5 @@
 import { DictationField } from "../components/dictation-field";
+import { useGithubWatch } from "../api/live";
 import { PlanDoc } from "../components/plan-doc";
 import { useDictationInProgress } from "../components/local-dictation";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
@@ -14,6 +15,7 @@ import { useProject } from "../project";
 import { ModelLogo } from "../components/model-logo";
 import { askConfirm } from "../components/confirm";
 import { IdeaModal } from "../components/capture";
+import { TaskQuickMenu, type QuickLaunch } from "../components/task-quick-menu";
 import { planMessage } from "../lib/auto-message";
 
 // Fixed meaning of each state color (requirement RF-48).
@@ -101,11 +103,14 @@ export function Tasks() {
   const project = useProject();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as { task?: string };
+  const search = useSearch({ strict: false }) as { task?: string; launch?: QuickLaunch };
+  useGithubWatch();
   const board = useQuery({ queryKey: ["board", project], queryFn: () => api.board(project || undefined), // Faster while a pull request has checks running, so CI progress shows up soon.
     refetchInterval: (q) => (q.state.data?.cards.some((c) => c.pull && ((c.pull.ci_pending ?? 0) > 0 || c.pull.ci === "PENDING")) ? 15_000 : 30_000) });
   const [adding, setAdding] = useState(false);
   const [drag, setDrag] = useState<string>();
+  const [quick, setQuick] = useState<{ c: Card; x: number; y: number }>();
+  const [quickError, setQuickError] = useState<unknown>();
   // expanded is the column showing all its cards with its own scroll.
   const [expanded, setExpanded] = useState<Column>();
   const [panel, setPanel] = useState<Column>();
@@ -116,7 +121,8 @@ export function Tasks() {
   });
   // Newest activity first, in every column.
   const cards = [...(board.data?.cards ?? [])].sort((x, y) => lastActivity(y).localeCompare(lastActivity(x)));
-  const open = (id?: string) => { setPanel(undefined); navigate({ to: "/tasks", search: (id ? { task: id } : {}) as never }); };
+  const open = (id?: string, launch?: QuickLaunch) => { setPanel(undefined); navigate({ to: "/tasks", search: (id ? { task: id, ...(launch && { launch }) } : {}) as never }); };
+  const cardEl = (c: Card) => <TaskCard key={c.id} c={c} onOpen={() => open(c.id)} onDrag={() => { setQuick(undefined); setDrag(c.id); }} onMenu={(x, y) => { setQuickError(undefined); setQuick({ c, x, y }); }} />;
   useEffect(() => {
     if (!panel) return;
     const key = (e: KeyboardEvent) => { if (e.key === "Escape" && !search.task) setPanel(undefined); };
@@ -132,7 +138,7 @@ export function Tasks() {
         <h2 className="font-semibold">Kanban</h2>
         <Button className="ml-auto" onClick={() => setAdding(true)}><Plus weight="regular" className="size-4" />Nueva idea</Button>
       </div>
-      <ErrorText error={board.error ?? move.error} />
+      <ErrorText error={board.error ?? move.error ?? quickError} />
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-100 dark:border-border-strong/60 dark:bg-canvas">
         <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-6 sm:overflow-x-auto sm:[&>section]:min-w-44">
           {MAIN.map((col, i) => {
@@ -148,7 +154,7 @@ export function Tasks() {
                   {all && <button type="button" onClick={() => setExpanded(undefined)} className="rounded px-1.5 text-xs text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">Mostrar menos</button>}
                   <span className="ml-auto text-xs tabular-nums text-slate-500 dark:text-muted">{list.length}</span>
                 </header>
-                <ColumnCards list={list} all={all} onExpand={() => setExpanded(col)} card={(c) => <TaskCard key={c.id} c={c} onOpen={() => open(c.id)} onDrag={() => setDrag(c.id)} />} />
+                <ColumnCards list={list} all={all} onExpand={() => setExpanded(col)} card={cardEl} />
               </section>
             );
           })}
@@ -168,7 +174,7 @@ export function Tasks() {
             <div role="region" aria-label={COLUMN_LABELS[panel]} className="notif-in absolute inset-x-0 bottom-full z-20 border-t border-slate-200 bg-slate-100 shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.3)] dark:border-border-strong/60 dark:bg-canvas">
               <div className="flex items-start gap-2 overflow-x-auto p-2" onWheel={(e) => { if (e.deltaX === 0) e.currentTarget.scrollLeft += e.deltaY; }}>
                 {cards.filter((c) => c.column === panel).map((c) => (
-                  <div key={c.id} className="w-60 shrink-0 [&>div]:cursor-pointer"><TaskCard c={c} onOpen={() => open(c.id)} onDrag={() => setDrag(c.id)} /></div>
+                  <div key={c.id} className="w-60 shrink-0 [&>div]:cursor-pointer">{cardEl(c)}</div>
                 ))}
                 {!cards.some((c) => c.column === panel) && <p className="px-2 py-3 text-sm text-slate-500 dark:text-muted">Sin tareas.</p>}
               </div>
@@ -177,7 +183,8 @@ export function Tasks() {
         </div>
       </div>
       {adding && <IdeaModal onClose={() => setAdding(false)} projectId={project || undefined} />}
-      {search.task && <TaskDetail key={search.task} id={search.task} onClose={() => open()} />}
+      {quick && <TaskQuickMenu key={quick.c.id} {...quick} onClose={() => setQuick(undefined)} onOpen={(launch) => open(quick.c.id, launch)} onError={setQuickError} />}
+      {search.task && <TaskDetail key={search.task} id={search.task} launch={search.launch} onClose={() => open()} />}
     </div>
   );
 }
@@ -330,7 +337,7 @@ function ThreadRow({ threads }: { threads: Thread[] }) {
 }
 
 // TaskCard has the height its content needs. Every row is separated by the same gap, and the footer divider uses the card's border color.
-function TaskCard({ c, onOpen, onDrag }: { c: Card; onOpen: () => void; onDrag: () => void }) {
+function TaskCard({ c, onOpen, onDrag, onMenu }: { c: Card; onOpen: () => void; onDrag: () => void; onMenu: (x: number, y: number) => void }) {
   const s = slot(c);
   const st = status(c);
   const where = c.branch || c.repo;
@@ -339,7 +346,7 @@ function TaskCard({ c, onOpen, onDrag }: { c: Card; onOpen: () => void; onDrag: 
   const merge = c.column === "ready_to_merge" && !!c.pull;
   const repo = c.pull?.repo ?? c.repo;
   return (
-    <div draggable onDragStart={onDrag} onClick={onOpen}
+    <div draggable onDragStart={onDrag} onClick={onOpen} onContextMenu={(e) => { e.preventDefault(); onMenu(e.clientX, e.clientY); }}
       className={`flex shrink-0 cursor-grab flex-col overflow-hidden rounded-lg border border-slate-300 text-sm shadow-sm dark:border-white/10 dark:shadow-black/40 ${c.column === "needs_you" ? "bg-red-50 dark:bg-red-950/30" : "bg-white dark:bg-raised"}`}>
       <div className="flex flex-col gap-2 p-2.5">
         <div className="flex items-start gap-2">
@@ -385,7 +392,7 @@ const COLUMN_TONE: Record<Column, string> = {
   cancelled: "bg-slate-100 text-slate-500 dark:bg-raised dark:text-muted",
 };
 
-function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
+function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch?: QuickLaunch; onClose: () => void }) {
   const qc = useQueryClient();
   const dictating = useDictationInProgress();
   const navigate = useNavigate();
@@ -466,6 +473,15 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
     },
     onSuccess: (r) => navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } }),
   });
+  // A quick action from the board opens the detail with the launch popover ready.
+  const autoLaunched = useRef(false);
+  useEffect(() => {
+    if (!initialLaunch || autoLaunched.current || !c || !draft || !planDoc.data || !launchPopover.current) return;
+    autoLaunched.current = true;
+    setMode(initialLaunch);
+    launchPopover.current.showPopover();
+    placeLaunchPopover();
+  }); // eslint-disable-line react-hooks/exhaustive-deps
   if (!c || !draft) return <Modal title="Tarea" onClose={onClose}><ErrorText error={card.error} /></Modal>;
   const dirty = draft.title !== c.title || draft.description !== c.description || draft.issue !== (c.issue_number?.toString() ?? "") || draft.pr !== (c.pr_number?.toString() ?? "") || draft.repo !== (c.repository_id ?? "");
   const others = (board.data?.cards ?? []).filter((o) => o.id !== id && (!c.project_id || o.project_id === c.project_id));

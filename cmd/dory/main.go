@@ -144,7 +144,9 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	}
 	go reconciler.Run(ctx)
 	go rt.Follow(ctx, home)
-	gh := github.New(func(ctx context.Context) (map[string]string, error) { return followed(ctx, store) }, githubToken())
+	gh := github.New(func(ctx context.Context) (map[string]string, error) { return followed(ctx, store) }, github.NewAuth(filepath.Join(cfg.DataDir, "github.token"), ghToken))
+	// A pull request change is not a stored write: tell clients directly.
+	go gh.Watch(ctx, func() { events.Changed("github", "") })
 	srv := &api.Server{
 		Store: store, Runtime: rt, GitHub: gh, Dictation: dictationManager(), Events: events,
 		SpeechModels: dictation.NewLocalModels(ctx, filepath.Join(cfg.DataDir, "dictation-models"), os.Getenv("DORY_NEMO_SPEECH_BIN")),
@@ -240,17 +242,12 @@ func followed(ctx context.Context, store *data.Store) (map[string]string, error)
 	return out, nil
 }
 
-// githubToken uses DORY_GITHUB_TOKEN, or the session of the gh CLI on this
-// machine. The token stays on this node.
-func githubToken() string {
-	if t := os.Getenv("DORY_GITHUB_TOKEN"); t != "" {
-		return t
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+// ghToken reads the session of the gh CLI on this machine.
+func ghToken(ctx context.Context) string {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	out, err := cmdexec.CommandContext(ctx, "gh", "auth", "token").Output()
 	if err != nil {
-		log.Printf("dory: no GitHub token (DORY_GITHUB_TOKEN unset and gh not logged in)")
 		return ""
 	}
 	return strings.TrimSpace(string(out))

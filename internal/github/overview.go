@@ -365,7 +365,7 @@ func (c *Client) ttl() time.Duration {
 }
 
 func (c *Client) Open(ctx context.Context, refresh bool) (*Overview, error) {
-	if c.Token == "" {
+	if !c.Configured(ctx) {
 		return nil, ErrUnconfigured
 	}
 	c.mu.Lock()

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { useGithubWatch } from "../api/live";
 import { Robot } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
@@ -337,6 +338,7 @@ export function GithubView() {
   const [showDiff, setShowDiff] = useState(false);
   const onAsked = useCallback(() => setChat(true), []);
   const [defining, setDefining] = useState(false);
+  useGithubWatch();
   const key = ["github-detail", full, kind, n];
   const detail = useQuery({ queryKey: key, queryFn: () => api.githubDetail(full, kind, n), refetchInterval: 60_000 });
   // The floating button hides while the composer area is on screen.

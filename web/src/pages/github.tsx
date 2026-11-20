@@ -1,13 +1,15 @@
 import { DefineIssueDialog } from "./define-issue";
+import { useGithubWatch } from "../api/live";
 import { ArrowClockwise, MagnifyingGlass } from "@phosphor-icons/react";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { api, type GithubIssue, type GithubPull } from "../api/client";
+import { ApiError, api, type GithubIssue, type GithubPull } from "../api/client";
 import { Arrow, Card, ErrorText, Input, Select, pill } from "../components/ui";
 import { GithubMark, Icon, PrRefChip, Tip, icons } from "../components/github-ui";
 import { type Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { useProject } from "../project";
+import { GithubLogin } from "../components/github-login";
 import { buildStacks, groupByStack, pullKey } from "../stack";
 
 const ok = "text-green-700 dark:text-green-400";
@@ -221,6 +223,7 @@ function Empty({ filtered, kind, state }: { filtered: boolean; kind: Tab; state:
 const NO_MILESTONE = "\u0000none";
 
 export function Github() {
+  useGithubWatch();
   const qc = useQueryClient();
   const [resolving, setResolving] = useState<GithubPull | null>(null);
   const [asking, setAsking] = useState(false);
@@ -275,6 +278,16 @@ export function Github() {
   const tabs: [Tab, string, number, PhosphorIcon][] = [["pulls", "Pull requests", openPulls.length, icons.pull], ["issues", "Issues", openIssues.length, icons.issue]];
   const states: [State, string][] = [["open", "Abiertas"], ["closed", "Cerradas"], ["all", "Todas"]];
   const more = state !== "open" && closed.hasNextPage;
+  if (data.error instanceof ApiError && data.error.status === 503) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 text-center">
+        <GithubMark className="size-10" />
+        <h1 className="text-xl font-bold">Conecta tu cuenta de GitHub</h1>
+        <p className="max-w-md text-sm text-slate-600 dark:text-muted">Dory muestra aquí los issues y pull requests de tus repositorios. El token se guarda solo en este nodo.</p>
+        <GithubLogin />
+      </div>
+    );
+  }
   return (
     <div className="space-y-4">
       {resolving && <DefineIssueDialog resolve repo={resolving.repo} number={resolving.number} onClose={() => setResolving(null)} />}
