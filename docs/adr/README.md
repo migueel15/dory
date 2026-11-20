@@ -17,8 +17,9 @@
 | [ADR-013](adr-013-herramientas-comunes.md) | Herramientas comunes entre arneses | accepted |
 | [ADR-014](adr-014-app-movil.md) | App de Android que se conecta directamente a cada nodo | accepted |
 | [ADR-015](adr-015-sesiones-interactivas.md) | Sesiones interactivas de los arneses | accepted |
-| [ADR-016](adr-016-actualizacion-de-la-malla.md) | Actualización de la malla desde las releases de GitHub | accepted |
+| [ADR-016](adr-016-actualizacion-de-la-malla.md) | Actualización de la malla desde las releases de GitHub | parcialmente sustituido por ADR-021 |
 | [ADR-017](adr-017-proyectos-por-repositorio-y-entorno.md) | Proyectos únicos por repositorio y entornos replicados | accepted |
 | [ADR-018](adr-018-antigravity-acp.md) | Antigravity CLI mediante ACP | accepted |
 | [ADR-019](adr-019-validacion-de-contrasenas-locales.md) | Validación de contraseñas de cuentas locales | accepted |
 | [ADR-020](adr-020-plan-como-documento.md) | El plan de una tarea es un documento Markdown editable | accepted |
+| [ADR-021](adr-021-publicacion-por-plataforma.md) | Publicación independiente por plataforma | accepted |

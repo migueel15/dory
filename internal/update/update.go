@@ -235,12 +235,26 @@ func (u *Updater) run(ctx context.Context, opts Options) error {
 	}
 	if desktopInstalled() {
 		desk := u.DesktopDir()
-		if err = os.MkdirAll(desk, 0o700); err != nil {
+		stage, stageErr := os.MkdirTemp(dir, "desktop-")
+		if stageErr != nil {
+			return stageErr
+		}
+		defer os.RemoveAll(stage)
+		if err = download(ctx, tag, stage, desktopAssets()...); err != nil {
 			return err
 		}
-		if err = download(ctx, tag, desk, desktopAssets()...); err != nil {
+		backup := desk + ".previous"
+		if err = os.RemoveAll(backup); err != nil {
 			return err
 		}
+		if err = os.Rename(desk, backup); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err = os.Rename(stage, desk); err != nil {
+			_ = os.Rename(backup, desk)
+			return err
+		}
+		_ = os.RemoveAll(backup)
 	}
 	// The core bundled inside an AppImage is read-only; the desktop update
 	// brings it instead.
@@ -262,23 +276,34 @@ var api = "https://api.github.com/repos/" + Repo
 
 var client = &http.Client{Timeout: 10 * time.Minute}
 
-// latest resolves the tag of a channel and the commit it points to.
+// latest resolves one platform's immutable release. Older installations use
+// the complete legacy release to reach a build that understands this format.
 func latest(ctx context.Context, channel string) (tag, sha string, err error) {
-	tag = "nightly"
-	if channel == "stable" {
-		var rel struct {
-			TagName string `json:"tag_name"`
-		}
-		if err = getJSON(ctx, api+"/releases/latest", &rel); err != nil {
-			return "", "", err
-		}
-		tag = rel.TagName
-	}
-	var commit struct {
+	var manifest struct {
+		Tag string `json:"tag"`
 		SHA string `json:"sha"`
 	}
-	err = getJSON(ctx, api+"/commits/"+url.PathEscape(tag), &commit)
-	return tag, commit.SHA, err
+	branch := "updates-" + channel + "-" + runtime.GOOS
+	if err = getJSON(ctx, api+"/contents/manifest.json?ref="+url.QueryEscape(branch), &manifestFile{target: &manifest}); err == nil {
+		if manifest.Tag == "" || manifest.SHA == "" {
+			return "", "", errors.New("manifiesto de actualización incompleto")
+		}
+		return manifest.Tag, manifest.SHA, nil
+	}
+	return "", "", fmt.Errorf("no se pudo consultar la publicación de %s: %w", runtime.GOOS, err)
+}
+
+// GitHub's contents API returns the file encoded in base64.
+type manifestFile struct{ target any }
+
+func (m *manifestFile) UnmarshalJSON(data []byte) error {
+	var file struct {
+		Content []byte `json:"content"`
+	}
+	if err := json.Unmarshal(data, &file); err != nil {
+		return err
+	}
+	return json.Unmarshal(file.Content, m.target)
 }
 
 // download saves the assets of a release whose names match the patterns.
@@ -292,23 +317,24 @@ func download(ctx context.Context, tag, dir string, patterns ...string) error {
 	if err := getJSON(ctx, api+"/releases/tags/"+url.PathEscape(tag), &rel); err != nil {
 		return err
 	}
-	found := 0
-	for _, a := range rel.Assets {
-		for _, p := range patterns {
+	for _, p := range patterns {
+		found := false
+		for _, a := range rel.Assets {
 			if ok, _ := filepath.Match(p, a.Name); ok {
 				if err := fetch(ctx, a.URL, filepath.Join(dir, a.Name)); err != nil {
 					return err
 				}
-				found++
-				break
+				found = true
 			}
 		}
-	}
-	if found == 0 {
-		return fmt.Errorf("la release %s no tiene %s", tag, strings.Join(patterns, ", "))
+		if !found {
+			return fmt.Errorf("la release %s no tiene %s", tag, p)
+		}
 	}
 	return nil
 }
+
+var errNotFound = errors.New("no encontrado")
 
 func get(ctx context.Context, target string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
@@ -322,6 +348,9 @@ func get(ctx context.Context, target string) (*http.Response, error) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("GET %s: %w", target, errNotFound)
+		}
 		return nil, fmt.Errorf("GET %s: %s", target, resp.Status)
 	}
 	return resp, nil

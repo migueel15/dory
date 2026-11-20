@@ -58,12 +58,22 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 Gradle necesita JDK 17 o 21, y el SDK de Android en `ANDROID_HOME` o en `mobile/android/local.properties`.
 
+Los cambios en `mobile/` ejecutan la compilación Android independiente. En `main` publica una prerelease `android-<ejecución>-<intento>` con `dory-android.apk`; las PR dejan la APK como artefacto. Un cambio exclusivo en `web/` no ejecuta esta compilación: la interfaz del nodo se carga desde el servidor.
+
+Para instalar sobre una app existente, Android exige el mismo identificador y certificado de firma. No se ha comprobado la clave de la APK instalada. Sin configurar firma, CI genera una clave debug nueva en cada ejecución: esas APK no se pueden actualizar entre sí ni se puede garantizar que actualicen la instalada. Para conservar la firma configura los secretos `ANDROID_KEYSTORE_BASE64` (almacén codificado en base64), `ANDROID_STORE_PASSWORD`, `ANDROID_KEY_ALIAS` y `ANDROID_KEY_PASSWORD` con la clave de la instalación anterior. Si no se dispone de ella, instalar la APK con otra firma requiere desinstalar primero la app y se perderán sus datos y emparejamientos. La APK no se actualiza automáticamente.
+
+El WebView solicita el permiso de micrófono o cámara de Android cuando una página del nodo emparejado lo necesita; la denegación se respeta. La cámara queda preparada para una futura función de fotos. Android permite modificar estos permisos en los ajustes de la aplicación.
+
 Para emparejar, abre en el ordenador **Entornos → Mostrar código** y escribe el código en la app, en el nodo que aparece o con su dirección. Cada nodo se empareja por separado. Los móviles emparejados aparecen en Entornos y se pueden revocar desde ahí.
 
 La interfaz también funciona como PWA si publicas un nodo por HTTPS (`tailscale serve --bg --https=443 http://127.0.0.1:7700`, con `public_origin` y `cookie_secure = true`).
 
 ## Versiones
 
-- **Estable:** cada etiqueta `v*` publica una release.
-- **Nightly:** cada push a `main` actualiza la release `nightly`.
-- **Pull requests:** cada push a la rama de una PR genera binarios y apps descargables como artefactos del workflow.
+- **Estable:** cada etiqueta `v*` publica cada plataforma al terminar su compilación. La release completa para clientes anteriores aparece cuando terminan todas.
+- **Nightly:** cada push a `main` publica cada plataforma al terminar. La release `nightly` completa queda como versión de transición para clientes anteriores; el actualizador nuevo consulta la última release de su plataforma. El enlace de instalación `nightly` instala esa transición y después se puede ejecutar `dory update`.
+- **Pull requests:** se comprueban el núcleo y la interfaz y se generan binarios y apps de escritorio como artefactos. Los cambios de Android generan además una APK como artefacto.
+
+Una plataforma puede ofrecer una versión más reciente que otra mientras se compila; si una falla, conserva la última publicación válida. La primera sustitución de la release `nightly` compartida debe realizarse sin actualizaciones simultáneas de clientes antiguos: su actualizador no puede garantizar coherencia mientras cambia esa release. Las descargas de las nuevas publicaciones por plataforma usan releases inmutables.
+
+Un ordenador apagado durante la transición conserva su actualizador anterior. Cuando vuelva a conectarse, la release `nightly` completa le ofrece la versión de transición aunque ya existan publicaciones posteriores por plataforma. Después de instalarla y reiniciar, vuelve a comprobar las actualizaciones y aplica la más reciente que se ofrezca para su plataforma. No hace falta que todos los ordenadores estén encendidos al mismo tiempo. La actualización del núcleo se inicia desde Entornos o con `dory update`; encender el equipo no la aplica por sí solo.

@@ -1,29 +1,17 @@
-# Binaries and desktop apps for every channel (requirement 4.6):
-# - a tag v* publishes a stable release,
-# - every push to main refreshes the "nightly" release with that commit (it can
-#   also be run by hand); a newer push cancels the build still running,
-# - a pull request only runs the tests and the core binaries, so it is quick;
-#   the desktop apps for Linux, macOS and Windows are built once, on main.
 name: release
 
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    tags: ['v*']
   workflow_dispatch:
   pull_request:
-
-# One build per branch or pull request at a time: a new push to main or to a
-# pull request cancels the older one. Tags are never cancelled.
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 permissions:
   contents: write
 
 jobs:
-  binaries:
+  checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,72 +21,76 @@ jobs:
         with: { node-version: 22 }
       - run: cd web && npm ci --include=dev && npm run build
       - run: go test ./...
-      - name: Build
-        run: |
-          channel=nightly; [ "$GITHUB_REF_TYPE" = tag ] && channel=stable
-          mkdir -p out
-          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
-            os=${target%/*}; arch=${target#*/}; ext=""; [ "$os" = windows ] && ext=.exe
-            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-X github.com/migueel15/dory/internal/version.Channel=$channel" -o out/dory-$os-$arch$ext ./cmd/dory
-          done
-      - uses: actions/upload-artifact@v4
-        with: { name: binaries, path: out/ }
 
-  desktop:
-    needs: binaries
-    if: github.event_name != 'pull_request'
+  platform:
+    needs: checks
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, bin: dory-linux-amd64, name: dory, flag: --linux }
-          - { os: macos-latest, bin: dory-darwin-arm64, name: dory, flag: --mac }
-          - { os: windows-latest, bin: dory-windows-amd64.exe, name: dory.exe, flag: --win }
+          - { os: ubuntu-latest, platform: linux, arches: 'amd64 arm64', bin: dory-linux-amd64, name: dory, flag: --linux }
+          - { os: macos-latest, platform: darwin, arches: 'amd64 arm64', bin: dory-darwin-arm64, name: dory, flag: --mac }
+          - { os: windows-latest, platform: windows, arches: 'amd64', bin: dory-windows-amd64.exe, name: dory.exe, flag: --win }
+    # Serialize publications per channel and platform; never replace a running
+    # publication, and reject older runs even if GitHub starts them later.
+    concurrency:
+      group: publish-${{ github.event_name == 'pull_request' && github.ref || (startsWith(github.ref, 'refs/tags/') && 'stable' || 'nightly') }}-${{ matrix.platform }}
+      cancel-in-progress: false
     runs-on: ${{ matrix.os }}
+    defaults:
+      run: { shell: bash }
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: go.mod }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - uses: actions/download-artifact@v4
-        with: { name: binaries, path: out }
-      - name: Bundle the core
-        shell: bash
-        run: mkdir -p desktop/bin && cp out/${{ matrix.bin }} desktop/bin/${{ matrix.name }} && chmod +x desktop/bin/${{ matrix.name }}
-      - name: Version the app
-        shell: bash
+      - run: cd web && npm ci --include=dev && npm run build
+      - name: Build core
         run: |
-          # electron-updater only installs a higher version: stable takes the
-          # tag, nightly a prerelease that grows with each run.
+          channel=nightly; [ "$GITHUB_REF_TYPE" = tag ] && channel=stable
+          mkdir -p out desktop/bin
+          for arch in ${{ matrix.arches }}; do
+            ext=""; [ "${{ matrix.platform }}" = windows ] && ext=.exe
+            CGO_ENABLED=0 GOOS=${{ matrix.platform }} GOARCH=$arch go build -trimpath -ldflags "-X github.com/migueel15/dory/internal/version.Channel=$channel" -o "out/dory-${{ matrix.platform }}-$arch$ext" ./cmd/dory
+          done
+          cp out/${{ matrix.bin }} desktop/bin/${{ matrix.name }}
+          chmod +x desktop/bin/${{ matrix.name }}
+      - name: Version desktop
+        run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then v=${GITHUB_REF_NAME#v}; else v=$(node -p "require('./desktop/package.json').version")-nightly.$GITHUB_RUN_NUMBER; fi
           cd desktop && npm version --no-git-tag-version --allow-same-version "$v"
       - run: cd desktop && npm ci && npx electron-builder ${{ matrix.flag }} --publish never
+      - name: Collect assets
+        run: |
+          shopt -s nullglob
+          for f in desktop/dist/*.AppImage desktop/dist/*.dmg desktop/dist/*.exe desktop/dist/*.zip desktop/dist/*.blockmap desktop/dist/latest*.yml; do cp "$f" out/; done
+          case '${{ matrix.platform }}' in
+            linux) test -f out/Dory.AppImage && test -f out/latest-linux.yml ;;
+            darwin) compgen -G 'out/*-mac.zip' >/dev/null && compgen -G 'out/*-mac.zip.blockmap' >/dev/null && compgen -G 'out/*.dmg' >/dev/null && test -f out/latest-mac.yml ;;
+            windows) compgen -G 'out/*Setup*.exe' >/dev/null && compgen -G 'out/*Setup*.exe.blockmap' >/dev/null && test -f out/latest.yml ;;
+          esac
       - uses: actions/upload-artifact@v4
-        with:
-          name: desktop-${{ matrix.os }}
-          path: |
-            desktop/dist/*.AppImage
-            desktop/dist/*.dmg
-            desktop/dist/*.exe
-            desktop/dist/*.zip
-            desktop/dist/*.blockmap
-            desktop/dist/latest*.yml
+        with: { name: 'platform-${{ matrix.platform }}', path: out/ }
+      - name: Publish immutable platform release
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLATFORM: ${{ matrix.platform }}
+        run: bash scripts/publish-platform.sh
 
-  publish:
-    # Only main and the tags publish; a manual run on another branch only builds.
+  legacy:
+    needs: [checks, platform]
     if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main')
-    needs: [binaries, desktop]
     runs-on: ubuntu-latest
+    concurrency:
+      group: legacy-${{ github.ref }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { path: assets, merge-multiple: true }
-      - name: Release
+      - name: Publish complete compatibility release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ "${GITHUB_REF_TYPE}" = tag ]; then
-            gh release create "$GITHUB_REF_NAME" assets/* --title "$GITHUB_REF_NAME" --generate-notes
-          else
-            gh release delete nightly --yes --cleanup-tag || true
-            gh release create nightly assets/* --prerelease --title "Nightly" --notes "Build de $(git rev-parse --short HEAD) en main." --target "$GITHUB_SHA"
-          fi
+        run: bash scripts/publish-legacy.sh
