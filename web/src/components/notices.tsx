@@ -148,7 +148,14 @@ export function NoticeAlerts() {
         for (const n of shown) setTimeout(() => setToasts((t) => t.filter((x) => x.id !== n.id)), 8000);
         return;
       }
-      if (!d || d.focus || d.push || !("Notification" in window) || Notification.permission !== "granted") return;
+      if (!d || d.focus || d.push) return;
+      // The Android app has no Web Push or Notification API: its shell shows it.
+      const android = (window as unknown as { DoryAndroid?: { notify(title: string, body: string, tag: string): void } }).DoryAndroid;
+      if (android) {
+        for (const n of fresh.filter((n) => mode(n) === "auto")) android.notify(n.title, n.body, n.id);
+        return;
+      }
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
       for (const n of fresh.filter((n) => mode(n) === "auto")) new Notification(n.title, { body: n.body, tag: n.id, icon: "/icon-192.png" }).onclick = () => { window.focus(); if (n.url) location.assign(n.url); };
     }).catch(() => {});
   }, [notices.data]);
