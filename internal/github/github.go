@@ -27,7 +27,7 @@ const (
 )
 
 var (
-	ErrUnconfigured = errors.New("github: DORY_GITHUB_TOKEN is not set")
+	ErrUnconfigured = errors.New("github: not logged in")
 	ErrUnknownRepo  = errors.New("github: repository is not registered")
 	remotePattern   = regexp.MustCompile(`github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?/?$`)
 )
@@ -43,9 +43,9 @@ func ParseRemote(remote string) (string, bool) {
 
 // Client caches the overview per repository because it costs one query each.
 type Client struct {
-	Token string
-	Base  string
-	HTTP  *http.Client
+	Auth *Auth
+	Base string
+	HTTP *http.Client
 	// repos lists the followed repositories as owner/name -> project id.
 	listRepos func(context.Context) (map[string]string, error)
 
@@ -58,8 +58,52 @@ type Client struct {
 }
 
 // New follows the repositories that repos returns, as remote URL -> project id.
-func New(repos func(context.Context) (map[string]string, error), token string) *Client {
-	return &Client{Token: token, Base: apiBase, HTTP: &http.Client{Timeout: 15 * time.Second}, listRepos: repos, byRepo: map[string]repoData{}, rules: map[string]ruleEntry{}}
+func New(repos func(context.Context) (map[string]string, error), auth *Auth) *Client {
+	c := &Client{Auth: auth, Base: apiBase, HTTP: &http.Client{Timeout: 15 * time.Second}, listRepos: repos, byRepo: map[string]repoData{}, rules: map[string]ruleEntry{}}
+	if auth != nil {
+		auth.OnChange = c.reset
+	}
+	return c
+}
+
+// reset drops what the previous account saw.
+func (c *Client) reset() {
+	c.mu.Lock()
+	c.byRepo, c.rules, c.fetched, c.viewer = map[string]repoData{}, map[string]ruleEntry{}, time.Time{}, ""
+	c.mu.Unlock()
+}
+
+// token returns the current token, empty when no source has one.
+func (c *Client) token(ctx context.Context) string {
+	t, _ := c.Auth.Token(ctx)
+	return t
+}
+
+// Configured reports whether a token is available.
+func (c *Client) Configured(ctx context.Context) bool { return c.token(ctx) != "" }
+
+// unauthorized lets the next request resolve the token again.
+func (c *Client) unauthorized(code int) {
+	if code == http.StatusUnauthorized {
+		c.Auth.Invalidate()
+	}
+}
+
+// Status reports where the token comes from and whose it is.
+func (c *Client) Status(ctx context.Context) (source, login string) {
+	token, source := c.Auth.Token(ctx)
+	if token == "" {
+		return source, ""
+	}
+	body, err := c.get(ctx, "/user", "application/vnd.github+json")
+	if err != nil {
+		return source, ""
+	}
+	var u struct {
+		Login string `json:"login"`
+	}
+	_ = json.Unmarshal(body, &u)
+	return source, u.Login
 }
 
 func (c *Client) get(ctx context.Context, path, accept string) ([]byte, error) {
@@ -67,7 +111,7 @@ func (c *Client) get(ctx context.Context, path, accept string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Authorization", "Bearer "+c.token(ctx))
 	req.Header.Set("Accept", accept)
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	resp, err := c.HTTP.Do(req)
@@ -76,6 +120,7 @@ func (c *Client) get(ctx context.Context, path, accept string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		c.unauthorized(resp.StatusCode)
 		return nil, fmt.Errorf("github: %s returned %d", path, resp.StatusCode)
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, maxDiff))
@@ -110,7 +155,7 @@ func (c *Client) graphql(ctx context.Context, query string, vars map[string]any,
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Authorization", "Bearer "+c.token(ctx))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
@@ -118,6 +163,7 @@ func (c *Client) graphql(ctx context.Context, query string, vars map[string]any,
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		c.unauthorized(resp.StatusCode)
 		return fmt.Errorf("github: graphql returned %d", resp.StatusCode)
 	}
 	var result struct {
@@ -137,7 +183,7 @@ func (c *Client) graphql(ctx context.Context, query string, vars map[string]any,
 
 // Diff returns a pull request diff, only for registered repositories.
 func (c *Client) Diff(ctx context.Context, repo string, number int) (string, error) {
-	if c.Token == "" {
+	if !c.Configured(ctx) {
 		return "", ErrUnconfigured
 	}
 	repos, err := c.repos(ctx)

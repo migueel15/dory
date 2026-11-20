@@ -314,7 +314,7 @@ func (c *Client) fillRequired(ctx context.Context, p *Pull) {
 // stale, or refresh is set, it starts a background refresh that updates each
 // repository as soon as it answers; Refreshing tells the caller to poll.
 func (c *Client) Open(ctx context.Context, refresh bool) (*Overview, error) {
-	if c.Token == "" {
+	if !c.Configured(ctx) {
 		return nil, ErrUnconfigured
 	}
 	c.mu.Lock()
