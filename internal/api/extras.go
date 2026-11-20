@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/dictation"
@@ -120,6 +121,16 @@ func (s *Server) mountGitHub(mux *http.ServeMux) {
 			gh.Beat()
 		}
 		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("GET /api/github/search", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+		defer cancel()
+		out, err := gh.Search(ctx, r.URL.Query().Get("q"))
+		if err != nil {
+			writeGithubError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
 	})
 	mux.HandleFunc("GET /api/github/open", func(w http.ResponseWriter, r *http.Request) {
 		overview, err := gh.Open(r.Context(), r.URL.Query().Get("refresh") == "true")

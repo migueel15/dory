@@ -106,4 +106,6 @@ En **Ajustes → Atajos** puedes consultar y cambiar las combinaciones, cancelar
 | Panel lateral | Ctrl+Mayús+J |
 | Dictado | Ctrl+D |
 
+La paleta también busca tareas, proyectos, entornos y PR e issues de los repositorios seguidos. Seleccionar una tarea abre su detalle sin cambiar su estado. La búsqueda de GitHub puede indicar resultados incompletos si alguna consulta falla.
+
 Para evitar perder un borrador, Dory impide que los comandos de navegación abandonen su vista mientras haya texto, citas o adjuntos pendientes. La búsqueda dentro de Hilos abre la lista sin salir del hilo actual.

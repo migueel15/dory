@@ -10,6 +10,15 @@ import (
 // Search finds tasks and memories whose title or text contain every word of
 // text, best match first. Archived rows are left out.
 func (s *Store) Search(ctx context.Context, text string, limit int) ([]Hit, error) {
+	return s.search(ctx, text, limit, false)
+}
+
+// SearchTasks limits the index to tasks before applying the result limit.
+func (s *Store) SearchTasks(ctx context.Context, text string, limit int) ([]Hit, error) {
+	return s.search(ctx, text, limit, true)
+}
+
+func (s *Store) search(ctx context.Context, text string, limit int, tasksOnly bool) ([]Hit, error) {
 	words := strings.Fields(text)
 	if len(words) == 0 || limit < 0 || limit > 1000 {
 		return nil, ErrInvalid
@@ -23,13 +32,19 @@ func (s *Store) Search(ctx context.Context, text string, limit int) ([]Hit, erro
 		terms[i] = `"` + strings.ReplaceAll(w, `"`, `""`) + `"*`
 	}
 	match := strings.Join(terms, " ")
-	rows, err := s.db.QueryContext(ctx, `
+	query := `
 		SELECT 'task', t.id, t.title, bm25(tasks_fts) FROM tasks_fts JOIN tasks t ON t.rowid = tasks_fts.rowid
 		WHERE tasks_fts MATCH ? AND t.archived_at IS NULL
 		UNION ALL
 		SELECT 'memory', m.id, m.title, bm25(memories_fts) FROM memories_fts JOIN memories m ON m.rowid = memories_fts.rowid
 		WHERE memories_fts MATCH ? AND m.archived_at IS NULL
-		ORDER BY 4 LIMIT ?`, match, match, limit)
+		ORDER BY 4 LIMIT ?`
+	args := []any{match, match, limit}
+	if tasksOnly {
+		query = `SELECT 'task', t.id, t.title, bm25(tasks_fts) FROM tasks_fts JOIN tasks t ON t.rowid = tasks_fts.rowid WHERE tasks_fts MATCH ? AND t.archived_at IS NULL ORDER BY 4 LIMIT ?`
+		args = []any{match, limit}
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

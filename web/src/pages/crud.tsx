@@ -1,6 +1,6 @@
 import { DictationField } from "../components/dictation-field";
 import { useDictationInProgress } from "../components/local-dictation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowsClockwise, Desktop, Plus } from "@phosphor-icons/react";
@@ -110,24 +110,30 @@ export function Environments() {
   const devices = useQuery({ queryKey: ["devices"], queryFn: api.devices, refetchInterval: 15_000 });
   const revokeDevice = useMutation({ mutationFn: api.revokeDevice, onSuccess: () => qc.invalidateQueries({ queryKey: ["devices"] }) });
   const n = node.data;
+  const search = useSearch({ strict: false }) as { node?: string };
+  const targetReady = !!search.node && (n?.node.id === search.node || !!mesh.data?.peers.some((p) => !p.revoked && p.id === search.node));
+  useEffect(() => {
+    if (search.node && targetReady) document.getElementById(`environment-${search.node}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [search.node, targetReady]);
+  const highlight = (id: string) => search.node === id ? "rounded-lg ring-2 ring-blue-500" : "";
   return (
     <div className="space-y-3">
       <PageHeader title="Entornos" subtitle="Los nodos de Dory en tus máquinas. Se sincronizan cuando se ven." />
       <ErrorText error={node.error ?? mesh.error} />
       <MeshUpdate />
       {n && (
-        <Card>
+        <div id={`environment-${n.node.id}`} className={highlight(n.node.id)}><Card>
           <div className="flex flex-wrap items-center gap-2">
             <EnvIconPicker node="local" icon={n.node.icon} os={n.node.os} name={n.node.name} />
             <span className="font-semibold">{n.node.name}</span>
             <span className="font-mono text-xs text-slate-500">{n.node.platform} · {n.node.version} · huella {mesh.data?.fingerprint}</span>
           </div>
           <p className="mt-1 font-mono text-xs text-slate-500">id {n.node.id} · datos en {n.node.data_dir}</p>
-        </Card>
+        </Card></div>
       )}
       {(mesh.data?.peers ?? []).filter((p) => !p.revoked).map((p) => {
         return (
-          <Card key={p.id}>
+          <div key={p.id} id={`environment-${p.id}`} className={highlight(p.id)}><Card>
             <div className="flex flex-wrap items-center gap-2">
               <EnvIconPicker node={p.id} icon={p.info.node?.icon} os={p.info.node?.os} name={p.name} />
               <span className="font-semibold">{p.name}</span>
@@ -136,7 +142,7 @@ export function Environments() {
               {!p.connected && p.last_seen && <span className="text-xs text-slate-500">visto {new Date(p.last_seen).toLocaleString()}</span>}
               <Button variant="ghost" className="ml-auto text-xs" onClick={() => askConfirm(`¿Revocar ${p.name}? Dejará de sincronizarse con este nodo.`, "Revocar").then((ok) => ok && revoke.mutate(p.id))}>Revocar</Button>
             </div>
-          </Card>
+          </Card></div>
         );
       })}
       <Card>
