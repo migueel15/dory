@@ -16,6 +16,16 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        debug {
+            if (System.getenv('DORY_ANDROID_KEYSTORE')) {
+                storeFile file(System.getenv('DORY_ANDROID_KEYSTORE'))
+                storePassword System.getenv('DORY_ANDROID_STORE_PASSWORD')
+                keyAlias System.getenv('DORY_ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('DORY_ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false

@@ -34,6 +34,7 @@ function render() {
     forget.onclick = (e) => {
       e.stopPropagation();
       if (!confirm(`¿Olvidar ${env.name}? Tendrás que emparejarlo de nuevo.`)) return;
+      Dory.forget({ address: env.address });
       saved = saved.filter((s) => s.id !== env.id);
       store();
       render();

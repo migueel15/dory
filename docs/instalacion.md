@@ -58,6 +58,12 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 Gradle necesita JDK 17 o 21, y el SDK de Android en `ANDROID_HOME` o en `mobile/android/local.properties`.
 
+Los cambios en `mobile/` ejecutan la compilación Android independiente. En `main` publica una prerelease `android-<ejecución>-<intento>` con `dory-android.apk`; las PR dejan la APK como artefacto. Un cambio exclusivo en `web/` no ejecuta esta compilación: la interfaz del nodo se carga desde el servidor.
+
+Para instalar sobre una app existente, Android exige el mismo identificador y certificado de firma. No se ha comprobado la clave de la APK instalada. Sin configurar firma, CI genera una clave debug nueva en cada ejecución: esas APK no se pueden actualizar entre sí ni se puede garantizar que actualicen la instalada. Para conservar la firma configura los secretos `ANDROID_KEYSTORE_BASE64` (almacén codificado en base64), `ANDROID_STORE_PASSWORD`, `ANDROID_KEY_ALIAS` y `ANDROID_KEY_PASSWORD` con la clave de la instalación anterior. Si no se dispone de ella, instalar la APK con otra firma requiere desinstalar primero la app y se perderán sus datos y emparejamientos. La APK no se actualiza automáticamente.
+
+El WebView solicita el permiso de micrófono o cámara de Android cuando una página del nodo emparejado lo necesita; la denegación se respeta. La cámara queda preparada para una futura función de fotos. Android permite modificar estos permisos en los ajustes de la aplicación.
+
 Para emparejar, abre en el ordenador **Entornos → Mostrar código** y escribe el código en la app, en el nodo que aparece o con su dirección. Cada nodo se empareja por separado. Los móviles emparejados aparecen en Entornos y se pueden revocar desde ahí.
 
 La interfaz también funciona como PWA si publicas un nodo por HTTPS (`tailscale serve --bg --https=443 http://127.0.0.1:7700`, con `public_origin` y `cookie_secure = true`).

@@ -1,20 +1,78 @@
 package net.dorlab.dory;
 
 import android.net.Uri;
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.net.http.SslError;
 import android.os.Bundle;
+import android.webkit.PermissionRequest;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import androidx.activity.OnBackPressedCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebChromeClient;
 import com.getcapacitor.BridgeWebViewClient;
+import java.util.ArrayList;
+import java.util.Map;
 
 public class MainActivity extends BridgeActivity {
+    private PermissionRequest pendingPermission;
+    private boolean mediaPromptOpen;
+    private final ActivityResultLauncher<String[]> mediaPermissions = registerForActivityResult(
+        new ActivityResultContracts.RequestMultiplePermissions(), this::finishMediaPermission);
+
+    private boolean trustedOrigin(Uri origin) {
+        if (origin == null || !"https".equalsIgnoreCase(origin.getScheme()) || origin.getHost() == null) return false;
+        Uri page = Uri.parse(bridge.getWebView().getUrl() == null ? "" : bridge.getWebView().getUrl());
+        int port = origin.getPort() == -1 ? 443 : origin.getPort();
+        int pagePort = page.getPort() == -1 ? 443 : page.getPort();
+        String pin = Pin.byHost.get(origin.getHost() + ":" + port);
+        return "https".equalsIgnoreCase(page.getScheme()) && origin.getHost().equalsIgnoreCase(page.getHost())
+            && port == pagePort && pin != null && pin.equals(Pin.of(bridge.getWebView().getCertificate()));
+    }
+
+    private void finishMediaPermission(Map<String, Boolean> ignored) {
+        mediaPromptOpen = false;
+        PermissionRequest request = pendingPermission;
+        pendingPermission = null;
+        if (request == null) return;
+        if (!trustedOrigin(request.getOrigin())) { request.deny(); return; }
+        for (String resource : request.getResources()) {
+            String permission = resource.equals(PermissionRequest.RESOURCE_AUDIO_CAPTURE) ? Manifest.permission.RECORD_AUDIO : Manifest.permission.CAMERA;
+            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) { request.deny(); return; }
+        }
+        request.grant(request.getResources());
+    }
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(DoryPlugin.class);
         super.onCreate(savedInstanceState);
+        bridge.getWebView().setWebChromeClient(new BridgeWebChromeClient(bridge) {
+            @Override
+            public void onPermissionRequest(PermissionRequest request) {
+                if (mediaPromptOpen || !trustedOrigin(request.getOrigin())) { request.deny(); return; }
+                ArrayList<String> permissions = new ArrayList<>();
+                for (String resource : request.getResources()) {
+                    if (resource.equals(PermissionRequest.RESOURCE_AUDIO_CAPTURE)) permissions.add(Manifest.permission.RECORD_AUDIO);
+                    else if (resource.equals(PermissionRequest.RESOURCE_VIDEO_CAPTURE)) permissions.add(Manifest.permission.CAMERA);
+                    else { request.deny(); return; }
+                }
+                if (permissions.isEmpty()) { request.deny(); return; }
+                pendingPermission = request;
+                mediaPromptOpen = true;
+                mediaPermissions.launch(permissions.toArray(new String[0]));
+            }
+
+            @Override
+            public void onPermissionRequestCanceled(PermissionRequest request) {
+                if (pendingPermission == request) pendingPermission = null;
+            }
+        });
         bridge.setWebViewClient(new BridgeWebViewClient(bridge) {
             // A node's self-signed certificate is accepted only if its key is
             // the one pinned when the phone paired with it.

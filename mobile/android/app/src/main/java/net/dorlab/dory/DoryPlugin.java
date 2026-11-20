@@ -126,6 +126,13 @@ public class DoryPlugin extends Plugin {
         }).start();
     }
 
+    @PluginMethod
+    public void forget(PluginCall call) {
+        String address = call.getString("address");
+        if (address != null) Pin.byHost.remove(address);
+        call.resolve();
+    }
+
     private static String send(HttpsURLConnection c, String method, String token, String body) throws Exception {
         c.setRequestMethod(method);
         if (token != null) c.setRequestProperty("Authorization", "Bearer " + token);
