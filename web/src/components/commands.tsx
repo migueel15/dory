@@ -57,7 +57,7 @@ export function CommandPalette() {
   const contextual: Command[] = shortcutCommands.filter((c) => c.id !== "palette" && c.id !== "dictation" && available(c.id)).map((c) => ({ id: c.id, group: "Acciones", label: c.label, icon: CommandIcon, hint: formatChord(get(c.id)), run: () => { runCommand(c.id); } }));
   return (
     <>
-      {open && <Palette commands={[...contextual, ...commands]} onClose={() => setOpen(false)} />}
+      {open && <Palette commands={[commands[0], ...contextual, ...commands.slice(1)]} onClose={() => setOpen(false)} />}
       {idea && <IdeaModal onClose={() => setIdea(false)} />}
     </>
   );
@@ -82,7 +82,7 @@ function Palette({ commands, onClose }: { commands: Command[]; onClose: () => vo
   }] : [];
   const list = useRef<HTMLDivElement>(null);
   const q = query.trim().toLowerCase();
-  const shown = [...dictation, ...commands].filter((c) => !q || `${c.group} ${c.label}`.toLowerCase().includes(q));
+  const shown = [commands[0], ...dictation, ...commands.slice(1)].filter((c) => !q || `${c.group} ${c.label}`.toLowerCase().includes(q));
   useEffect(() => { setHi(0); }, [q]);
   useEffect(() => { list.current?.querySelector<HTMLElement>("[aria-selected=true]")?.scrollIntoView({ block: "nearest" }); }, [hi]);
   const run = (c?: Command) => { if (!c) return; onClose(); c.run(); };
