@@ -17,35 +17,37 @@ import { Button, ErrorText, prose } from "./ui";
 // checkboxes as you type "# ", "- " or "[] "), saved by itself, and follows the
 // agent's edits live: each block that changes is marked and, with "Seguir" on,
 // the view goes there before the change is shown.
-export function PlanDoc({ taskId }: { taskId: string }) {
+// In the task card (reader) there is no agent to follow: the bar is left out
+// and "Aceptar plan" sits after the text, so it is read before accepting.
+export function PlanDoc({ taskId, showStatus = true, reader = false, onAccepted }: { taskId: string; showStatus?: boolean; reader?: boolean; onAccepted?: () => void }) {
   const qc = useQueryClient();
   const plan = useQuery({ queryKey: ["plans", taskId, "doc"], queryFn: () => api.plan(taskId) });
   const p = plan.data;
   // Following the agent is a choice kept in this browser; on by default.
   const [following, setFollowing] = useState(() => { try { return localStorage.getItem("dory.plan-follow") !== "0"; } catch { return true; } });
   const setFollow = (v: boolean) => { setFollowing(v); try { localStorage.setItem("dory.plan-follow", v ? "1" : "0"); } catch { /* per-browser only */ } };
-  const doc = usePlanEditor(taskId, p, following);
+  const doc = usePlanEditor(taskId, p, following && !reader);
   const accept = useMutation({
     mutationFn: () => api.acceptPlan(taskId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["plans", taskId] }); qc.invalidateQueries({ queryKey: ["card", taskId] }); qc.invalidateQueries({ queryKey: ["board"] }); },
+    onSuccess: () => { onAccepted?.(); qc.invalidateQueries({ queryKey: ["plans", taskId] }); qc.invalidateQueries({ queryKey: ["card", taskId] }); qc.invalidateQueries({ queryKey: ["board"] }); },
   });
 
   if (plan.error) return <div className="p-4"><ErrorText error={plan.error} /></div>;
   if (!p) return null;
   return (
     <div className="flex min-h-full flex-col">
-      <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-200 bg-slate-50/90 px-4 py-2 text-xs text-slate-500 backdrop-blur dark:border-border dark:bg-canvas/90 dark:text-muted">
-        <span>{p.revision > 0 ? `Revisión ${p.revision} · ${p.author === "agent" ? "agente" : "tú"}` : "Sin plan"}</span>
+      {!reader && <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-200 bg-slate-50/90 px-4 py-2 text-xs text-slate-500 backdrop-blur dark:border-border dark:bg-canvas/90 dark:text-muted">
+        {showStatus && <span>{p.revision > 0 ? `Revisión ${p.revision} · ${p.author === "agent" ? "agente" : "tú"}` : "Sin plan"}</span>}
         <button type="button" onClick={() => setFollow(!following)} aria-pressed={following}
           title={following ? "Siguiendo al agente: la vista va a cada cambio. Pulsa para dejar de seguirlo" : "Seguir al agente: llevar la vista a cada cambio"}
           className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 ${following ? "bg-accent/15 text-accent-text" : "hover:bg-slate-200/70 dark:hover:bg-raised"}`}>
           <Crosshair weight={following ? "bold" : "regular"} className="size-3.5" />Seguir
         </button>
-        {p.accepted_at && <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><Check className="size-3.5" />Aceptado</span>}
+        {showStatus && p.accepted_at && <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><Check weight="thin" aria-hidden="true" className="size-3.5 shrink-0" />Aceptado</span>}
         <span className="flex-1" />
         <span aria-live="polite">{doc.state === "saving" ? "Guardando…" : doc.state === "dirty" ? "Sin guardar" : ""}</span>
         {!doc.empty && !p.accepted_at && <Button className="text-xs" onClick={() => accept.mutate()} disabled={accept.isPending || doc.state !== "saved"}>Aceptar plan</Button>}
-      </div>
+      </div>}
       {doc.notice && (
         <p className="m-3 mb-0 flex flex-wrap items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
           {doc.notice}
@@ -56,6 +58,12 @@ export function PlanDoc({ taskId }: { taskId: string }) {
         {doc.empty && <p className="pointer-events-none absolute left-5 top-4 text-sm text-slate-400 dark:text-muted">Escribe el plan o pide al agente que lo escriba. Usa «# » para títulos, «- » para listas y «[] » para casillas.</p>}
         <EditorContent editor={doc.editor} className={`${prose} plan-editor px-5 py-4`} />
       </div>
+      {reader && (
+        <div className="flex items-center gap-3 border-t border-slate-200 px-5 py-3 text-xs text-slate-500 dark:border-border dark:text-muted">
+          <span aria-live="polite">{doc.state === "saving" ? "Guardando…" : doc.state === "dirty" ? "Sin guardar" : ""}</span>
+          {!doc.empty && !p.accepted_at && <Button className="ml-auto" onClick={() => accept.mutate()} disabled={accept.isPending || doc.state !== "saved"}><Check className="size-4" />Aceptar plan</Button>}
+        </div>
+      )}
       <div className="px-5 pb-3"><ErrorText error={doc.error ?? accept.error} /></div>
     </div>
   );
