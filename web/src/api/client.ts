@@ -87,9 +87,10 @@ export class ApiError extends Error {
   }
 }
 
-export async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
+export async function req<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
+    signal,
     credentials: "same-origin",
     headers: body === undefined ? undefined : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -150,6 +151,8 @@ export const api = {
   archiveSkill: (id: string) => req<void>("DELETE", `/skills/${id}`),
   node: () => req<NodeStatus>("GET", "/node"),
   usageHistory: (range: UsageRange, node = "local") => req<UsageReport>("GET", `/nodes/${node}/usage/history?${new URLSearchParams({ range, tz: Intl.DateTimeFormat().resolvedOptions().timeZone })}`),
+  searchTasks: (text: string, signal?: AbortSignal) => req<Hit[]>("GET", `/search?type=task&q=${encodeURIComponent(text)}`, undefined, signal),
+  searchGithub: (text: string, signal?: AbortSignal) => req<{ items: { repo: string; number: number; title: string; kind: "pulls" | "issues"; state: string }[]; incomplete: boolean }>("GET", `/github/search?q=${encodeURIComponent(text)}`, undefined, signal),
   search: (text: string) => req<Hit[]>("GET", `/search?q=${encodeURIComponent(text)}`),
   login: (username: string, password: string) => req<User>("POST", "/auth/login", { username, password }),
   setupNeeded: () => req<{ needed: boolean }>("GET", "/auth/setup"),

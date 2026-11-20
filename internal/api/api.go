@@ -110,7 +110,13 @@ func (s *Server) node(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	hits, err := s.Store.Search(r.Context(), r.URL.Query().Get("q"), limit)
+	var hits []data.Hit
+	var err error
+	if r.URL.Query().Get("type") == "task" {
+		hits, err = s.Store.SearchTasks(r.Context(), r.URL.Query().Get("q"), limit)
+	} else {
+		hits, err = s.Store.Search(r.Context(), r.URL.Query().Get("q"), limit)
+	}
 	if err != nil {
 		writeDataError(w, err)
 		return
