@@ -23,3 +23,4 @@
 | [ADR-019](adr-019-validacion-de-contrasenas-locales.md) | Validación de contraseñas de cuentas locales | accepted |
 | [ADR-020](adr-020-plan-como-documento.md) | El plan de una tarea es un documento Markdown editable | accepted |
 | [ADR-021](adr-021-publicacion-por-plataforma.md) | Publicación independiente por plataforma | accepted |
+| [ADR-022](adr-022-captura-de-ideas-desde-android.md) | Captura de ideas desde el asistente de Android | accepted |

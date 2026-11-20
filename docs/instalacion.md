@@ -64,6 +64,14 @@ Para instalar sobre una app existente, Android exige el mismo identificador y ce
 
 El WebView solicita el permiso de micrófono o cámara de Android cuando una página del nodo emparejado lo necesita; la denegación se respeta. La cámara queda preparada para una futura función de fotos. Android permite modificar estos permisos en los ajustes de la aplicación.
 
+### Dictar ideas con el asistente de Android
+
+Abre Dory una vez tras actualizar para que el dictado pueda usar los entornos ya emparejados. Si hay varios, elige el «Nodo de captura» en el selector de entornos de la app. Con un único entorno, Dory lo selecciona automáticamente.
+
+En los ajustes de Android, selecciona Dory como aplicación de asistente digital. En un móvil que tenga configurada la pulsación larga del botón de encendido para abrir el asistente, prueba el gesto con el dispositivo desbloqueado. La captura abre el micrófono y solicita permiso la primera vez. Dicta tu idea y espera a que el nodo confirme el guardado. «Pausar» permite detener el micrófono y «Continuar» añade más texto a la misma idea. Puedes restaurar el asistente anterior desde el mismo ajuste de Android.
+
+La captura usa el reconocedor de Android y prioriza el reconocimiento en el dispositivo cuando está disponible. El servicio de reconocimiento del sistema puede procesar el audio fuera del móvil. El nodo de Dory recibe el texto definitivo.
+
 Para emparejar, abre en el ordenador **Entornos → Mostrar código** y escribe el código en la app, en el nodo que aparece o con su dirección. Cada nodo se empareja por separado. Los móviles emparejados aparecen en Entornos y se pueden revocar desde ahí.
 
 La interfaz también funciona como PWA si publicas un nodo por HTTPS (`tailscale serve --bg --https=443 http://127.0.0.1:7700`, con `public_origin` y `cookie_secure = true`).

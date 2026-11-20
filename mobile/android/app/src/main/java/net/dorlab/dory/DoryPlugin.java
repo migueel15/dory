@@ -1,6 +1,7 @@
 package net.dorlab.dory;
 
 import android.content.Context;
+import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.webkit.CookieManager;
@@ -21,6 +22,7 @@ import java.util.Map;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import javax.net.ssl.HttpsURLConnection;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 /** Native side of the launcher: discovery, pairing and opening a node. */
@@ -133,7 +135,25 @@ public class DoryPlugin extends Plugin {
         call.resolve();
     }
 
-    private static String send(HttpsURLConnection c, String method, String token, String body) throws Exception {
+    @PluginMethod
+    public void saveCaptureSettings(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            Uri page = Uri.parse(String.valueOf(getBridge().getWebView().getUrl()));
+            Uri launcher = Uri.parse(getBridge().getLocalUrl());
+            if (!launcher.getScheme().equals(page.getScheme()) || !launcher.getAuthority().equals(page.getAuthority())) {
+                call.reject("Abre el selector de entornos de Dory.");
+                return;
+            }
+            JSONArray nodes = call.getArray("nodes");
+            if (nodes == null || !CaptureNodes.save(getContext(), nodes, call.getString("destination", ""))) {
+                call.reject("No se pudo guardar el nodo de captura.");
+                return;
+            }
+            call.resolve();
+        });
+    }
+
+    static String send(HttpsURLConnection c, String method, String token, String body) throws Exception {
         c.setRequestMethod(method);
         if (token != null) c.setRequestProperty("Authorization", "Bearer " + token);
         if (body != null) {
