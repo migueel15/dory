@@ -66,7 +66,7 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-slate-200 pt-3 dark:border-border">
         <div className="flex min-w-0 items-center gap-1">
           <Select plain buttonRef={picker} className="min-w-0 max-w-48 [&>button]:max-w-full" value={project} onChange={(v) => { setProject(v); box.current?.focus(); }} options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
-          <Kbd align>Alt P</Kbd>
+          <Kbd align>Alt + P</Kbd>
         </div>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           <div className="flex items-center gap-2">
