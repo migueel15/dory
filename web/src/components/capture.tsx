@@ -73,9 +73,13 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
         placeholder="Apunta una idea; queda en el inbox de tareas."
         className={showingDictation ? "sr-only" : "max-h-[60vh] min-h-40 resize-none rounded-sm !text-base focus-visible:!outline-2 focus-visible:!outline-offset-2 focus-visible:!outline-slate-400 dark:focus-visible:!outline-border-strong"} />
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-slate-200 pt-3 dark:border-border">
-        <div className="flex min-w-0 items-center gap-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
           <Select plain buttonRef={picker} className="min-w-0 max-w-48 [&>button]:max-w-full" value={project} onChange={(v) => { setProject(v); box.current?.focus(); }} options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
           <Kbd align>Alt+P</Kbd>
+          <label className="ml-2 inline-flex min-h-11 cursor-pointer items-center gap-2 whitespace-nowrap text-sm text-slate-500 dark:text-muted sm:min-h-0">
+            <input type="checkbox" checked={keepOpen} disabled={save.isPending} onChange={(e) => setKeepOpen(e.target.checked)} className="size-4 accent-slate-900 dark:accent-accent" />
+            Crear más
+          </label>
         </div>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           <div className="flex items-center gap-2">
@@ -85,10 +89,6 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
           <Button type="button" variant="ghost" disabled={!text.trim() || save.isPending || dictating} onClick={() => submit(true)} title="Guardar y definir">Guardar y definir<Kbd>Ctrl ⇧ ↵</Kbd></Button>
         </div>
       </div>
-      <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 text-sm text-slate-500 dark:text-muted sm:min-h-0">
-        <input type="checkbox" checked={keepOpen} disabled={save.isPending} onChange={(e) => setKeepOpen(e.target.checked)} className="size-4 accent-slate-900 dark:accent-accent" />
-        Crear más
-      </label>
       <ErrorText error={save.error ?? dictation.error} />
     </div>
   );
