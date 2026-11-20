@@ -75,6 +75,11 @@ type taskInput struct {
 	DependsOn    []string `json:"depends_on,omitempty" jsonschema:"Ids of tasks that must finish first"`
 }
 
+type dependencyInput struct {
+	TaskID      string `json:"task_id" jsonschema:"The task that waits"`
+	DependsOnID string `json:"depends_on_id" jsonschema:"The task that must finish first"`
+}
+
 type planReadInput struct {
 	TaskID string `json:"task_id"`
 }
@@ -148,12 +153,59 @@ func Handler(s *api.Server) http.Handler {
 	add(srv, "ensure_thread_task", "When planning in this conversation, reuse its linked task or create and link one atomically. Safe to retry. Supply a concise title and description only when a task is needed; use plan_read and plan_write or plan_edit for its plan. Only the user accepts the plan.", func(ctx context.Context, in struct {
 		Title       string `json:"title" jsonschema:"Concise title for a new task"`
 		Description string `json:"description,omitempty" jsonschema:"Description for a new task"`
+		TaskID      string `json:"task_id,omitempty" jsonschema:"Link this conversation to this existing task instead of creating one"`
 	}) (any, error) {
 		id, _ := ctx.Value(threadKey{}).(string)
 		if id == "" {
 			return nil, errors.New("ensure_thread_task only works inside a Dory thread")
 		}
+		if in.TaskID != "" {
+			if _, err := store.LinkThread(ctx, id, in.TaskID, false); err != nil {
+				return nil, err
+			}
+			return store.Tasks().Get(ctx, in.TaskID)
+		}
 		return store.EnsureThreadTask(ctx, id, in.Title, in.Description)
+	})
+	add(srv, "link_thread", "Link a thread (this conversation by default) to an existing task of its project. Linking it to the same task again does nothing; moving it from another task needs replace.", func(ctx context.Context, in struct {
+		ThreadID string `json:"thread_id,omitempty" jsonschema:"Thread to link; empty for this conversation"`
+		TaskID   string `json:"task_id"`
+		Replace  bool   `json:"replace,omitempty" jsonschema:"Move the thread when it is linked to another task"`
+	}) (any, error) {
+		id, err := threadID(ctx, in.ThreadID)
+		if err != nil {
+			return nil, err
+		}
+		return store.LinkThread(ctx, id, in.TaskID, in.Replace)
+	})
+	add(srv, "unlink_thread", "Remove the task of a thread (this conversation by default).", func(ctx context.Context, in struct {
+		ThreadID string `json:"thread_id,omitempty" jsonschema:"Thread to unlink; empty for this conversation"`
+	}) (any, error) {
+		id, err := threadID(ctx, in.ThreadID)
+		if err != nil {
+			return nil, err
+		}
+		return store.UnlinkThread(ctx, id)
+	})
+	add(srv, "list_task_threads", "List the threads linked to a task with their title, node and status.", func(ctx context.Context, in planReadInput) (any, error) {
+		threads, err := store.Threads().List(ctx, data.Filter{Fields: map[string]any{"task_id": in.TaskID}, Limit: 1000})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]map[string]any, len(threads))
+		for i, t := range threads {
+			out[i] = map[string]any{"id": t.ID, "title": t.Title, "node_id": t.NodeID, "status": t.Status, "branch": t.Branch}
+		}
+		return out, nil
+	})
+	add(srv, "add_task_dependency", "Mark that a task must wait until another finishes. Refuses a task that depends on itself and cycles.", func(ctx context.Context, in dependencyInput) (any, error) {
+		return store.AddDependency(ctx, in.TaskID, in.DependsOnID)
+	})
+	add(srv, "remove_task_dependency", "Remove a task from the blockers of another.", func(ctx context.Context, in dependencyInput) (any, error) {
+		if err := store.RemoveDependency(ctx, in.TaskID, in.DependsOnID); err != nil {
+			return nil, err
+		}
+		return map[string]any{"removed": true}, nil
 	})
 	add(srv, "plan_read", "Read the plan of a task: one Markdown document that the user and the agents edit. Returns body_md and its revision.", func(ctx context.Context, in planReadInput) (any, error) {
 		return s.PlanDocument(ctx, in.TaskID)
@@ -345,7 +397,7 @@ func saveTask(ctx context.Context, store *data.Store, in taskInput) (data.Task, 
 		return t, err
 	}
 	for _, dep := range in.DependsOn {
-		if _, err = store.Dependencies().Put(ctx, data.Dependency{TaskID: t.ID, DependsOnID: dep}); err != nil {
+		if _, err = store.AddDependency(ctx, t.ID, dep); err != nil {
 			return t, err
 		}
 	}
@@ -419,6 +471,17 @@ func recall(ctx context.Context, store *data.Store, in recallInput) ([]data.Memo
 		}
 		return false
 	}), nil
+}
+
+// threadID returns the given thread or the one of this conversation.
+func threadID(ctx context.Context, id string) (string, error) {
+	if id == "" {
+		id, _ = ctx.Value(threadKey{}).(string)
+	}
+	if id == "" {
+		return "", errors.New("thread_id is required outside a Dory thread")
+	}
+	return id, nil
 }
 
 // revision is the base revision of a plan save; -1 skips the check.
