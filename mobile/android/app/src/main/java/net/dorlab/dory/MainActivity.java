@@ -28,6 +28,8 @@ import java.util.ArrayList;
 import java.util.Map;
 
 public class MainActivity extends BridgeActivity {
+    /** Whether the app is on screen; then notices show inside the interface. */
+    static volatile boolean visible;
     static final String NOTICE_NODE = "notice-node", NOTICE_URL = "notice-url";
     private PermissionRequest pendingPermission;
     private boolean mediaPromptOpen;
@@ -65,6 +67,18 @@ public class MainActivity extends BridgeActivity {
         PendingIntent tap = PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         NotificationManagerCompat.from(this).notify(tag == null ? 0 : tag.hashCode(), new NotificationCompat.Builder(this, "notices")
             .setSmallIcon(R.mipmap.ic_launcher).setContentTitle(title).setContentText(body).setAutoCancel(true).setContentIntent(tap).build());
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        visible = true;
+    }
+
+    @Override
+    public void onPause() {
+        visible = false;
+        super.onPause();
     }
 
     @Override

@@ -31,8 +31,8 @@ import org.json.JSONObject;
 /**
  * Keeps the live stream of a paired node open, like Gotify does with its
  * server, and shows a native notification for every new notice of the mesh,
- * following the same rule as the interfaces: nothing while one has the focus,
- * unless the kind is set to always push.
+ * unless the app is on screen, where the interface shows it. Every device
+ * notifies on its own, like a messaging app.
  */
 public class NoticeService extends Service {
     private static final int ONGOING = 1;
@@ -188,11 +188,11 @@ public class NoticeService extends Service {
         Map<String, String> modes = new HashMap<>();
         JSONArray settings = new JSONArray(get(node, "/api/notice-settings"));
         for (int i = 0; i < settings.length(); i++) modes.put(settings.getJSONObject(i).getString("kind"), settings.getJSONObject(i).getString("mode"));
-        boolean focus = new JSONObject(get(node, "/api/presence")).optBoolean("focus");
+        
         for (JSONObject n : fresh) {
             seen.add(n.getString("id"));
             String mode = modes.getOrDefault(n.getString("kind"), "auto");
-            if (mode.equals("off") || mode.equals("app") || (mode.equals("auto") && focus)) continue;
+            if (mode.equals("off") || mode.equals("app") || (mode.equals("auto") && MainActivity.visible)) continue;
             show(n, node);
         }
         while (seen.size() > 300) seen.remove(seen.iterator().next());

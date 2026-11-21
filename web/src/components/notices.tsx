@@ -137,26 +137,20 @@ export function NoticeAlerts() {
     if (!known) return;
     const fresh = notices.data.filter((n) => !n.read_at && !known.has(n.id) && Date.now() - Date.parse(n.created_at) < 120_000);
     if (fresh.length === 0) return;
-    const focused = document.hasFocus();
-    Promise.all([req<NoticeSetting[]>("GET", "/notice-settings"), focused ? Promise.resolve(undefined) : req<{ focus: boolean; push: boolean }>("GET", "/presence")]).then(([settings, d]) => {
+    const focused = document.visibilityState === "visible" && document.hasFocus();
+    req<NoticeSetting[]>("GET", "/notice-settings").then((settings) => {
       const mode = (n: Notice) => settings.find((s) => s.kind === n.kind)?.mode ?? "auto";
       if (focused) {
         const shown = fresh.filter((n) => mode(n) === "auto" || mode(n) === "app");
-        if (shown.length === 0) return;
         setToasts((t) => [...shown, ...t].slice(0, 3));
         for (const n of shown) setTimeout(() => setToasts((t) => t.filter((x) => x.id !== n.id)), 8000);
-        return;
       }
-      // Push reaches other devices; this one still shows it, as each device notifies on its own.
-      if (!d || d.focus) return;
-      // The Android app has no Web Push or Notification API: its shell shows it.
-      const android = (window as unknown as { DoryAndroid?: { notify(title: string, body: string, tag: string): void } }).DoryAndroid;
-      if (android) {
-        for (const n of fresh.filter((n) => mode(n) === "auto")) android.notify(n.title, n.body, n.id);
-        return;
-      }
+      // The Android app's native service notifies on its own.
+      if ((window as unknown as { DoryAndroid?: unknown }).DoryAndroid) return;
       if (!("Notification" in window) || Notification.permission !== "granted") return;
-      for (const n of fresh.filter((n) => mode(n) === "auto")) new Notification(n.title, { body: n.body, tag: n.id, icon: "/icon-192.png" }).onclick = () => { window.focus(); if (n.url) location.assign(n.url); };
+      // Same tag as the push of this notice, so a browser with both shows it once.
+      // "Always push" also notifies the focused interface.
+      for (const n of fresh.filter((n) => mode(n) === "push" || (!focused && mode(n) === "auto"))) new Notification(n.title, { body: n.body, tag: n.id, icon: "/icon-192.png" }).onclick = () => { window.focus(); if (n.url) location.assign(n.url); };
     }).catch(() => {});
   }, [notices.data]);
   if (toasts.length === 0) return null;
