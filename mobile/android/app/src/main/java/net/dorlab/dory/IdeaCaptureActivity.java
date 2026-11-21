@@ -65,7 +65,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private TextView transcript;
     private FrameLayout frame;
     private LinearLayout stateRow;
-    private final Runnable settleVoice = () -> animateVoice(0f);
+    private final Runnable settleVoice = this::settleVoice;
     private VoiceIconButton primaryIcon;
     private TextView primaryText;
     private VoiceIconButton close;
@@ -175,8 +175,8 @@ public class IdeaCaptureActivity extends AppCompatActivity {
                 @Override public void onEndOfSpeech() {}
                 @Override public void onRmsChanged(float rms) {
                     if (!current()) return;
-                    float value = Math.max(0f, Math.min(1f, (rms - 2f) / 8f));
-                    animateVoice(value);
+                    float value = Math.max(0f, Math.min(1f, (rms - 1f) / 11f));
+                    updateVoice(value);
                     main.removeCallbacks(settleVoice);
                     main.postDelayed(settleVoice, 200);
                 }
@@ -283,7 +283,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         main.removeCallbacks(relisten);
         main.removeCallbacks(watchdog);
         main.removeCallbacks(settleVoice);
-        animateVoice(0f);
+        settleVoice();
         SpeechRecognizer session = recognizer;
         recognizer = null;
         if (session != null) session.destroy();
@@ -354,7 +354,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         stateRow.setVisibility(listening ? View.GONE : View.VISIBLE);
         if (!listening) {
             main.removeCallbacks(settleVoice);
-            animateVoice(0f);
+            settleVoice();
         }
         View.OnClickListener click = onAction == null ? null : view -> onAction.run();
         boolean resume = "Continuar".equals(action);
@@ -371,10 +371,19 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         close.setAlpha(close.isEnabled() ? 1f : 0.35f);
     }
 
-    private void animateVoice(float level) {
+    private void updateVoice(float level) {
         if (send == null) return;
-        float scale = 1f + 0.16f * level;
-        send.animate().scaleX(scale).scaleY(scale).setDuration(level > 0 ? 110 : 280)
+        send.animate().cancel();
+        float target = 1f + 0.25f * level;
+        float current = send.getScaleX();
+        float scale = current + (target - current) * (target > current ? 0.8f : 0.6f);
+        send.setScaleX(scale);
+        send.setScaleY(scale);
+    }
+
+    private void settleVoice() {
+        if (send == null) return;
+        send.animate().scaleX(1f).scaleY(1f).setDuration(180)
             .setInterpolator(new DecelerateInterpolator()).start();
     }
 
@@ -396,13 +405,13 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         GradientDrawable fade = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
             new int[] {0x00000000, 0xd9000000, 0xff000000, 0xff000000});
         panel.setBackground(fade);
-        panel.setPadding(dp(24), dp(80), dp(24), 0);
+        panel.setPadding(dp(24), dp(104), dp(24), 0);
         FrameLayout.LayoutParams panelSize = new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
         frame.addView(panel, panelSize);
         ViewCompat.setOnApplyWindowInsetsListener(frame, (view, windowInsets) -> {
             Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
-            panel.setPadding(insets.left + dp(24), dp(80), insets.right + dp(24), insets.bottom + dp(24));
+            panel.setPadding(insets.left + dp(24), dp(104), insets.right + dp(24), insets.bottom + dp(24));
             return windowInsets;
         });
         transcript = label("", 21, FOREGROUND);
@@ -410,7 +419,9 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         transcript.setMaxLines(6);
         transcript.setLineSpacing(0, 1.1f);
         transcript.setMovementMethod(android.text.method.ScrollingMovementMethod.getInstance());
-        panel.addView(transcript, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams transcriptSize = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        transcriptSize.bottomMargin = dp(12);
+        panel.addView(transcript, transcriptSize);
 
         stateRow = new LinearLayout(this);
         stateRow.setGravity(Gravity.CENTER_VERTICAL);
