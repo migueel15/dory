@@ -1,6 +1,9 @@
 package net.dorlab.dory;
 
 import android.content.Context;
+import android.content.Intent;
+import android.app.role.RoleManager;
+import android.provider.Settings;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Build;
@@ -29,6 +32,7 @@ import org.json.JSONObject;
 @CapacitorPlugin(name = "Dory")
 public class DoryPlugin extends Plugin {
     private volatile Thread listener;
+    private boolean downloadingAssistantModel;
     private WifiManager.MulticastLock lock;
 
     /** Listens for the UDP beacon every node sends on the local network. */
@@ -157,6 +161,93 @@ public class DoryPlugin extends Plugin {
             }
             NoticeService.start(getContext());
             call.resolve();
+        });
+    }
+
+    private boolean isLauncher() {
+        Uri page = Uri.parse(String.valueOf(getBridge().getWebView().getUrl()));
+        Uri launcher = Uri.parse(getBridge().getLocalUrl());
+        return launcher.getScheme().equals(page.getScheme()) && launcher.getAuthority().equals(page.getAuthority());
+    }
+
+    @PluginMethod
+    public void openAssistantSettings(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            if (!isLauncher()) { call.reject("Abre el selector de entornos."); return; }
+            try {
+                if (Build.VERSION.SDK_INT >= 29) {
+                    RoleManager roles = getContext().getSystemService(RoleManager.class);
+                    if (roles != null && roles.isRoleAvailable(RoleManager.ROLE_ASSISTANT)
+                        && !roles.isRoleHeld(RoleManager.ROLE_ASSISTANT)) {
+                        getActivity().startActivity(roles.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT));
+                        call.resolve();
+                        return;
+                    }
+                }
+                getActivity().startActivity(new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS));
+                call.resolve();
+            } catch (Exception e) {
+                call.reject("No se pudo abrir la configuración del asistente.");
+            }
+        });
+    }
+
+    @PluginMethod
+    public void assistantModels(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            if (!isLauncher()) { call.reject("Abre el selector de entornos."); return; }
+            new Thread(() -> {
+                JSObject result = new JSObject();
+                result.put("supported", Build.VERSION.SDK_INT >= 26);
+                result.put("selected", AssistantModels.selected(getContext()));
+                result.put("tiny", AssistantModels.installed(getContext(), AssistantModels.TINY));
+                result.put("small", AssistantModels.installed(getContext(), AssistantModels.SMALL));
+                call.resolve(result);
+            }, "assistant-model-status").start();
+        });
+    }
+
+    @PluginMethod
+    public void selectAssistantModel(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            if (!isLauncher()) { call.reject("Abre el selector de entornos."); return; }
+            String id = call.getString("model", "");
+            new Thread(() -> {
+                try {
+                    AssistantModels.select(getContext(), id);
+                    call.resolve();
+                } catch (Exception e) { call.reject(message(e)); }
+            }, "assistant-model-select").start();
+        });
+    }
+
+    @PluginMethod
+    public void downloadAssistantModel(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            if (!isLauncher()) { call.reject("Abre el selector de entornos."); return; }
+            String id = call.getString("model", "");
+            if (Build.VERSION.SDK_INT < 26) { call.reject("Moonshine requiere Android 8 o posterior."); return; }
+            if (!AssistantModels.TINY.equals(id) && !AssistantModels.SMALL.equals(id)) {
+                call.reject("Modelo desconocido."); return;
+            }
+            if (downloadingAssistantModel) { call.reject("Ya hay una descarga en curso."); return; }
+            downloadingAssistantModel = true;
+            new Thread(() -> {
+                try {
+                    new ai.moonshine.voice.AssetDownloader().ensureModelPresent(
+                        AssistantModels.directory(getContext(), id), AssistantModels.spec(id),
+                        (path, index, total, done, size) -> {
+                            JSObject progress = new JSObject();
+                            progress.put("model", id);
+                            progress.put("file", index);
+                            progress.put("files", total);
+                            progress.put("percent", size > 0 ? (int) (100 * done / size) : -1);
+                            notifyListeners("assistantModelProgress", progress);
+                        });
+                    call.resolve();
+                } catch (Exception e) { call.reject(message(e)); }
+                finally { getActivity().runOnUiThread(() -> downloadingAssistantModel = false); }
+            }, "assistant-model-download").start();
         });
     }
 
