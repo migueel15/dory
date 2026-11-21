@@ -28,7 +28,7 @@ func addBrowser(srv *sdkServer, s *api.Server) {
 		}
 		return id, nil
 	}
-	add(srv, "browser_open", "Open a URL in this thread's browser, in the active tab or a new one. The browser persists across turns and the user sees the same tabs in the thread's side panel. Returns the tab.", func(ctx context.Context, in struct {
+	add(srv, "browser_open", "Open a URL in this thread's browser, in the active tab or a new one. Opening a URL also shows the browser in the thread's desktop side panel. Returns the tab.", func(ctx context.Context, in struct {
 		URL    string `json:"url"`
 		NewTab bool   `json:"new_tab,omitempty" jsonschema:"Open in a new tab instead of the active one"`
 	}) (any, error) {
@@ -36,7 +36,14 @@ func addBrowser(srv *sdkServer, s *api.Server) {
 		if err != nil {
 			return nil, err
 		}
-		return s.Browser.Open(ctx, id, in.URL, in.NewTab)
+		tab, err := s.Browser.Open(ctx, id, in.URL, in.NewTab)
+		if err != nil {
+			return nil, err
+		}
+		if s.Events != nil {
+			s.Events.Notify(api.Change{Entity: "browser", ID: id, Data: map[string]string{"action": "open"}})
+		}
+		return tab, nil
 	})
 	add(srv, "browser_tabs", "List the tabs of this thread's browser and which one is active.", func(ctx context.Context, _ struct{}) (any, error) {
 		id, err := thread(ctx)
