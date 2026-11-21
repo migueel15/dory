@@ -64,7 +64,8 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private TextView status;
     private TextView transcript;
     private FrameLayout frame;
-    private VoiceLevelView level;
+    private LinearLayout stateRow;
+    private final Runnable settleVoice = () -> animateVoice(0f);
     private VoiceIconButton primaryIcon;
     private TextView primaryText;
     private VoiceIconButton close;
@@ -174,8 +175,10 @@ public class IdeaCaptureActivity extends AppCompatActivity {
                 @Override public void onEndOfSpeech() {}
                 @Override public void onRmsChanged(float rms) {
                     if (!current()) return;
-                    float value = Math.max(0f, Math.min(1f, (rms + 2f) / 12f));
-                    level.setLevel(value);
+                    float value = Math.max(0f, Math.min(1f, (rms - 2f) / 8f));
+                    animateVoice(value);
+                    main.removeCallbacks(settleVoice);
+                    main.postDelayed(settleVoice, 200);
                 }
                 @Override public void onBufferReceived(byte[] buffer) {}
                 @Override public void onEvent(int eventType, Bundle params) {}
@@ -273,12 +276,14 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private void refreshSend() {
         boolean ready = state != State.SAVING && state != State.SAVED && !join(committed, partial).isEmpty();
         send.setEnabled(ready);
-        send.setAlpha(ready ? 1f : 0.35f);
+        send.setAlpha(ready ? 1f : 0.65f);
     }
 
     private void closeRecognizer() {
         main.removeCallbacks(relisten);
         main.removeCallbacks(watchdog);
+        main.removeCallbacks(settleVoice);
+        animateVoice(0f);
         SpeechRecognizer session = recognizer;
         recognizer = null;
         if (session != null) session.destroy();
@@ -346,8 +351,11 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         int tint = next == State.SAVED ? GOOD : failed ? BAD : listening || next == State.SAVING ? ACCENT : MUTED;
         status.setTextColor(tint);
         silence(listening);
-        level.setColor(tint);
-        level.setLive(next == State.LISTENING);
+        stateRow.setVisibility(listening ? View.GONE : View.VISIBLE);
+        if (!listening) {
+            main.removeCallbacks(settleVoice);
+            animateVoice(0f);
+        }
         View.OnClickListener click = onAction == null ? null : view -> onAction.run();
         boolean resume = "Continuar".equals(action);
         primaryIcon.setVisibility(resume ? View.VISIBLE : View.GONE);
@@ -358,9 +366,16 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         primaryText.setOnClickListener(click);
         boolean dictating = listening || next == State.PAUSED || next == State.SPEECH_ERROR;
         send.setEnabled(dictating && !join(committed, partial).isEmpty());
-        send.setAlpha(send.isEnabled() ? 1f : 0.35f);
+        send.setAlpha(send.isEnabled() ? 1f : 0.65f);
         close.setEnabled(next != State.SAVING && next != State.SAVED);
         close.setAlpha(close.isEnabled() ? 1f : 0.35f);
+    }
+
+    private void animateVoice(float level) {
+        if (send == null) return;
+        float scale = 1f + 0.16f * level;
+        send.animate().scaleX(scale).scaleY(scale).setDuration(level > 0 ? 110 : 280)
+            .setInterpolator(new DecelerateInterpolator()).start();
     }
 
     private void updateTranscript(String text) {
@@ -397,12 +412,10 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         transcript.setMovementMethod(android.text.method.ScrollingMovementMethod.getInstance());
         panel.addView(transcript, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        LinearLayout stateRow = new LinearLayout(this);
+        stateRow = new LinearLayout(this);
         stateRow.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams stateSize = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(56));
         panel.addView(stateRow, stateSize);
-        level = new VoiceLevelView(this);
-        stateRow.addView(level);
         status = label("", 14, MUTED);
         status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         status.setPadding(dp(12), 0, dp(8), 0);
