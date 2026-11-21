@@ -607,7 +607,7 @@ function useSuggest(threadId: string, provider: string, text: string, area: Reac
   const list: Suggestion[] = !word ? []
     : word.sigil === "@" ? (files.data ?? []).map((f) => ({ key: f, label: f.split("/").pop()!, hint: f, insert: `@${f.split("/").pop()}`, icon: <FileIcon className="size-4 shrink-0 text-slate-400" />, token: { kind: "path", value: f } }))
     : word.sigil === "/" ? [...(catalog.data?.commands ?? []).filter(hit).map((e) => entry(e, <TerminalWindow className="size-4 shrink-0 text-slate-400" />, "command")),
-      ...(catalog.data?.skills ?? []).filter((e) => e.insert.startsWith("/") && hit(e)).map((e) => entry(e, <Lightning className="size-4 shrink-0 text-slate-400" />, "skill"))]
+      ...(catalog.data?.skills ?? []).filter(hit).map((e) => entry(e, <Lightning className="size-4 shrink-0 text-slate-400" />, "skill"))]
     : (catalog.data?.skills ?? []).filter(hit).map((e) => entry(e, <Lightning className="size-4 shrink-0 text-slate-400" />, "skill"));
   const shown = list.slice(0, 50);
   const track = () => {

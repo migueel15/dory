@@ -46,7 +46,35 @@ func Commands(home, dir, provider string) (commands, skills []Entry) {
 			skills = append(skills, skillEntries(root, "$")...)
 		}
 	}
-	return unique(commands), unique(skills)
+	// Dory runs /clear itself for every harness, so the harness's own is hidden.
+	commands = append(builtins[provider], commands...)
+	commands = append([]Entry{{Name: "clear", Description: "Empieza una sesión nueva del agente; los mensajes siguen visibles", Insert: ClearCommand}}, commands...)
+	var kept []Entry
+	names := map[string]bool{}
+	for _, s := range skills {
+		names[s.Name] = true
+	}
+	for i, c := range commands {
+		// A command named like a skill repeats it, as T3 Code does.
+		if (i > 0 && c.Name == "clear") || names[c.Name] {
+			continue
+		}
+		kept = append(kept, c)
+	}
+	return unique(kept), unique(skills)
+}
+
+// builtins are the harness commands that work in a headless session.
+var builtins = map[string][]Entry{
+	"claude": {
+		{Name: "compact", Description: "Resume la conversación para liberar contexto", Insert: "/compact"},
+		{Name: "context", Description: "Muestra el uso de la ventana de contexto", Insert: "/context"},
+		{Name: "cost", Description: "Muestra el coste de la sesión", Insert: "/cost"},
+		{Name: "init", Description: "Crea CLAUDE.md con la documentación del repositorio", Insert: "/init"},
+		{Name: "review", Description: "Revisa un pull request", Insert: "/review"},
+		{Name: "security-review", Description: "Revisión de seguridad de los cambios pendientes", Insert: "/security-review"},
+		{Name: "pr-comments", Description: "Trae los comentarios de un pull request", Insert: "/pr-comments"},
+	},
 }
 
 // markdownEntries reads commands kept as one markdown file each; folders
