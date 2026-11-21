@@ -7,7 +7,9 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.content.res.ColorStateList;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -17,9 +19,8 @@ import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.view.Gravity;
 import android.view.View;
-import android.widget.Button;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import androidx.activity.OnBackPressedCallback;
@@ -40,6 +41,9 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private static final int ACCENT = 0xff93c5fd;
     private static final int FOREGROUND = 0xffe5e7eb;
     private static final int MUTED = 0xffaab7c8;
+    private static final int GOOD = 0xff4ade80;
+    private static final int BAD = 0xfff87171;
+    private static final int INK = 0xff0b1220;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final String ideaId = UUID.randomUUID().toString();
     private SpeechRecognizer recognizer;
@@ -53,9 +57,11 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private TextView status;
     private TextView transcript;
     private FrameLayout frame;
-    private ImageView mic;
-    private Button primary;
-    private Button cancel;
+    private VoiceBorderView border;
+    private VoiceLevelView level;
+    private VoiceIconButton primaryIcon;
+    private TextView primaryText;
+    private VoiceIconButton close;
 
     private final ActivityResultLauncher<String> microphonePermission =
         registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
@@ -159,7 +165,12 @@ public class IdeaCaptureActivity extends AppCompatActivity {
                 }
                 @Override public void onBeginningOfSpeech() {}
                 @Override public void onEndOfSpeech() {}
-                @Override public void onRmsChanged(float rms) {}
+                @Override public void onRmsChanged(float rms) {
+                    if (!current()) return;
+                    float value = Math.max(0f, Math.min(1f, (rms + 2f) / 12f));
+                    border.setLevel(value);
+                    level.setLevel(value);
+                }
                 @Override public void onBufferReceived(byte[] buffer) {}
                 @Override public void onEvent(int eventType, Bundle params) {}
             });
@@ -248,60 +259,93 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         state = next;
         status.setText(message);
         boolean listening = next == State.LISTENING || next == State.STARTING;
-        frame.setBackground(shape(Color.TRANSPARENT, 24, listening ? ACCENT : MUTED));
-        mic.setColorFilter(listening ? ACCENT : MUTED);
-        primary.setVisibility(action == null ? View.GONE : View.VISIBLE);
-        primary.setText(action);
-        primary.setOnClickListener(onAction == null ? null : view -> onAction.run());
-        cancel.setVisibility(next == State.SAVING || next == State.SAVED ? View.GONE : View.VISIBLE);
+        boolean failed = next == State.SPEECH_ERROR || next == State.SAVE_ERROR;
+        int tint = next == State.SAVED ? GOOD : failed ? BAD : listening || next == State.SAVING ? ACCENT : MUTED;
+        status.setTextColor(tint);
+        level.setColor(tint);
+        level.setLive(next == State.LISTENING);
+        border.setMood(next == State.SAVED ? VoiceBorderView.Mood.DONE
+            : failed ? VoiceBorderView.Mood.ERROR
+            : next == State.PAUSED || next == State.PAUSING ? VoiceBorderView.Mood.IDLE : VoiceBorderView.Mood.ACTIVE);
+        View.OnClickListener click = onAction == null ? null : view -> onAction.run();
+        boolean pause = "Pausar".equals(action);
+        boolean resume = "Continuar".equals(action);
+        primaryIcon.setVisibility(pause || resume ? View.VISIBLE : View.GONE);
+        if (pause || resume) primaryIcon.setIcon(pause ? VoiceIconButton.Icon.PAUSE : VoiceIconButton.Icon.PLAY, action);
+        primaryIcon.setOnClickListener(click);
+        primaryText.setVisibility(action == null || pause || resume ? View.GONE : View.VISIBLE);
+        primaryText.setText(action);
+        primaryText.setOnClickListener(click);
+        close.setVisibility(next == State.SAVING || next == State.SAVED ? View.GONE : View.VISIBLE);
     }
 
     private void createView() {
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         frame = new FrameLayout(this);
+        border = new VoiceBorderView(this);
+        frame.addView(border, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(18), dp(16), dp(18), dp(10));
-        panel.setBackground(shape(0xff15181d, 24, 0xff354354));
+        panel.setPadding(dp(22), dp(20), dp(16), dp(16));
+        panel.setBackground(shape(0xf2101318, 30, 0x2effffff, 1));
         FrameLayout.LayoutParams panelSize = new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         frame.addView(panel, panelSize);
         ViewCompat.setOnApplyWindowInsetsListener(frame, (view, windowInsets) -> {
             Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
-            panelSize.setMargins(insets.left + dp(12), insets.top + dp(12), insets.right + dp(12), insets.bottom + dp(12));
+            panelSize.setMargins(insets.left + dp(22), insets.top + dp(22), insets.right + dp(22), insets.bottom + dp(24));
             panel.setLayoutParams(panelSize);
             return windowInsets;
         });
-        LinearLayout heading = new LinearLayout(this);
-        heading.setGravity(Gravity.CENTER_VERTICAL);
-        mic = new ImageView(this);
-        mic.setImageResource(android.R.drawable.ic_btn_speak_now);
-        mic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        heading.addView(mic, new LinearLayout.LayoutParams(dp(28), dp(28)));
-        TextView title = label("Guarda tu idea", 20, FOREGROUND);
-        title.setPadding(dp(8), 0, 0, 0);
-        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        heading.addView(title);
-        panel.addView(heading);
-        status = label("", 14, MUTED);
-        status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        panel.addView(status);
-        transcript = label("", 17, FOREGROUND);
-        transcript.setMaxLines(5);
+        transcript = label("", 21, FOREGROUND);
+        transcript.setHint("Cuéntame tu idea…");
+        transcript.setHintTextColor(0x66aab7c8);
+        transcript.setMinLines(2);
+        transcript.setMaxLines(6);
+        transcript.setLineSpacing(0, 1.1f);
         transcript.setGravity(Gravity.BOTTOM);
         transcript.setMovementMethod(android.text.method.ScrollingMovementMethod.getInstance());
         panel.addView(transcript);
-        LinearLayout actions = new LinearLayout(this);
-        actions.setGravity(Gravity.END);
-        cancel = new Button(this);
-        cancel.setText("Cancelar");
-        cancel.setOnClickListener(view -> finish());
-        actions.addView(cancel);
-        primary = new Button(this);
-        actions.addView(primary);
-        panel.addView(actions);
+        LinearLayout controls = new LinearLayout(this);
+        controls.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams controlsSize = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        controlsSize.topMargin = dp(18);
+        panel.addView(controls, controlsSize);
+        level = new VoiceLevelView(this);
+        controls.addView(level);
+        status = label("", 14, MUTED);
+        status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        status.setPadding(dp(12), 0, dp(8), 0);
+        controls.addView(status, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        primaryText = label("", 14, INK);
+        primaryText.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        primaryText.setGravity(Gravity.CENTER);
+        primaryText.setPadding(dp(18), dp(11), dp(18), dp(11));
+        primaryText.setBackground(shape(ACCENT, 24, ACCENT, 0));
+        primaryText.setForeground(ripple());
+        primaryText.setClickable(true);
+        LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        gap.setMarginEnd(dp(10));
+        controls.addView(primaryText, gap);
+        primaryIcon = new VoiceIconButton(this, 52, ACCENT, INK);
+        controls.addView(primaryIcon, gap);
+        close = new VoiceIconButton(this, 44, 0x1fffffff, FOREGROUND);
+        close.setIcon(VoiceIconButton.Icon.CLOSE, "Cancelar");
+        close.setOnClickListener(view -> finish());
+        controls.addView(close);
         setContentView(frame);
+        panel.setAlpha(0f);
+        panel.setTranslationY(dp(36));
+        panel.animate().alpha(1f).translationY(0f).setDuration(320).setInterpolator(new DecelerateInterpolator()).start();
         display(State.STARTING, "Preparando dictado…", null, null);
+    }
+
+    private RippleDrawable ripple() {
+        GradientDrawable mask = new GradientDrawable();
+        mask.setCornerRadius(dp(24));
+        mask.setColor(0xffffffff);
+        return new RippleDrawable(ColorStateList.valueOf(0x33000000), null, mask);
     }
 
     private TextView label(String text, int size, int color) {
@@ -312,11 +356,11 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         return view;
     }
 
-    private GradientDrawable shape(int background, int radius, int stroke) {
+    private GradientDrawable shape(int background, int radius, int stroke, int strokeDp) {
         GradientDrawable shape = new GradientDrawable();
         shape.setColor(background);
         shape.setCornerRadius(dp(radius));
-        shape.setStroke(dp(2), stroke);
+        if (strokeDp > 0) shape.setStroke(dp(strokeDp), stroke);
         return shape;
     }
 
