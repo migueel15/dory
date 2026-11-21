@@ -92,16 +92,16 @@ Eventos que generan aviso: el agente terminó, el agente falló, un agente te ne
 
 Cada interfaz abierta indica a la malla si tiene el foco. Con el modo **Automático**:
 
-1. Si alguna interfaz tiene el foco, el aviso sale dentro de esa interfaz y no se envía push.
-2. Si ninguna tiene el foco y hay navegadores con avisos activados (push), el servidor envía el push.
-3. Si ninguna tiene el foco, las interfaces abiertas muestran además una notificación del sistema, haya o no destinos push. La app de Android la muestra aunque esté cerrada.
+1. Si alguna interfaz tiene el foco, el aviso sale dentro de esa interfaz.
+2. Si ninguna tiene el foco pero estás en alguna (abierta y no ausente), esa interfaz muestra una notificación del sistema y no se envía nada al móvil ni push. La app de escritorio cuenta como ausente tras cinco minutos sin actividad o con la pantalla bloqueada; la app de Android, cuando está en segundo plano.
+3. Si todas están cerradas o ausentes, el servidor envía el push a los navegadores suscritos y la app de Android muestra una notificación nativa aunque esté cerrada.
 4. Con todo cerrado y sin push, el aviso espera en la bandeja.
 
 Si una interfaz se cierra bruscamente, la malla la da por cerrada a los 45 s.
 
 En **Ajustes → Avisos** eliges para cada tipo de evento: Automático, Siempre push (también con foco), Solo en la app (nunca push) o Desactivado (no genera aviso). El ajuste es común a toda la malla.
 
-La app de Android no usa Web Push ni servicios de Google. Igual que Gotify, mantiene un servicio en primer plano conectado al flujo de eventos de un nodo emparejado (prueba los nodos guardados por turnos) y muestra una notificación nativa por cada aviso nuevo sin leer, con la misma regla: nada si alguna interfaz tiene el foco, salvo los tipos en *Siempre push*, y nada para los tipos en *Solo en la app* o *Desactivado*. El servicio deja fija la notificación «Dory conectado a la malla», que puedes silenciar desde los ajustes del canal. Arranca al abrir la app, al guardar nodos y al encender el móvil. Si el móvil no alcanza ningún nodo (fuera de la red local y sin Tailscale), reintenta cada vez más espaciado hasta que vuelve a tener conexión.
+La app de Android no usa Web Push ni servicios de Google. Igual que Gotify, mantiene un servicio en primer plano conectado al flujo de eventos de un nodo emparejado (prueba los nodos guardados por turnos) y muestra una notificación nativa por cada aviso nuevo sin leer, con la misma regla: nada mientras estés en alguna interfaz, salvo los tipos en *Siempre push*, y nada para los tipos en *Solo en la app* o *Desactivado*. El servicio deja fija la notificación «Dory conectado a la malla», que puedes silenciar desde los ajustes del canal. Arranca al abrir la app, al guardar nodos y al encender el móvil. Si el móvil no alcanza ningún nodo (fuera de la red local y sin Tailscale), reintenta cada vez más espaciado hasta que vuelve a tener conexión.
 
 ## Apariencia
 

@@ -96,13 +96,23 @@ export function NoticeInbox() {
 // One id per loaded interface, so the mesh can tell open interfaces apart.
 const interfaceId = crypto.randomUUID();
 
+// presenceState is where the user is for this interface: "focus" when it has
+// the focus; "idle" when the user is away (the desktop idle five minutes or
+// locked, the Android app in the background); "open" otherwise.
+async function presenceState(): Promise<string> {
+  if (document.visibilityState === "visible" && document.hasFocus()) return "focus";
+  const w = window as unknown as { doryDesktop?: { idleState?: () => Promise<string> }; DoryAndroid?: unknown };
+  if (w.DoryAndroid && document.visibilityState === "hidden") return "idle";
+  if (w.doryDesktop?.idleState && (await w.doryDesktop.idleState().catch(() => "active")) !== "active") return "idle";
+  return "open";
+}
+
 // usePresence tells the node whether this interface is open and has the
 // focus. The node expires it if the heartbeat stops (a closed tab, a killed app).
 function usePresence() {
   useEffect(() => {
     const send = (state: string) => fetch("/api/presence", { method: "POST", credentials: "include", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: interfaceId, state }) }).catch(() => {});
-    const state = () => (document.visibilityState === "visible" && document.hasFocus() ? "focus" : "open");
-    const beat = () => send(state());
+    const beat = () => { presenceState().then(send); };
     beat();
     const id = setInterval(beat, 15_000);
     window.addEventListener("focus", beat);
@@ -123,7 +133,8 @@ function usePresence() {
 
 // NoticeAlerts shows each new notice where the user is: inside the app when
 // this interface has the focus; as a system notification when none has the
-// focus, even if push also reaches other devices.
+// focus and the user is at this one. With every interface idle or closed,
+// push and the Android service take it.
 export function NoticeAlerts() {
   usePresence();
   const notices = useNotices();
@@ -138,7 +149,7 @@ export function NoticeAlerts() {
     const fresh = notices.data.filter((n) => !n.read_at && !known.has(n.id) && Date.now() - Date.parse(n.created_at) < 120_000);
     if (fresh.length === 0) return;
     const focused = document.hasFocus();
-    Promise.all([req<NoticeSetting[]>("GET", "/notice-settings"), focused ? Promise.resolve(undefined) : req<{ focus: boolean; push: boolean }>("GET", "/presence")]).then(([settings, d]) => {
+    Promise.all([req<NoticeSetting[]>("GET", "/notice-settings"), focused ? Promise.resolve(undefined) : req<{ focus: boolean; push: boolean }>("GET", "/presence"), presenceState()]).then(([settings, d, here]) => {
       const mode = (n: Notice) => settings.find((s) => s.kind === n.kind)?.mode ?? "auto";
       if (focused) {
         const shown = fresh.filter((n) => mode(n) === "auto" || mode(n) === "app");
@@ -147,14 +158,9 @@ export function NoticeAlerts() {
         for (const n of shown) setTimeout(() => setToasts((t) => t.filter((x) => x.id !== n.id)), 8000);
         return;
       }
-      // Push reaches other devices; this one still shows it, as each device notifies on its own.
-      if (!d || d.focus) return;
-      // The Android app has no Web Push or Notification API: its shell shows it.
-      const android = (window as unknown as { DoryAndroid?: { notify(title: string, body: string, tag: string): void } }).DoryAndroid;
-      if (android) {
-        for (const n of fresh.filter((n) => mode(n) === "auto")) android.notify(n.title, n.body, n.id);
-        return;
-      }
+      if (!d || d.focus || here !== "open") return;
+      // The Android app's native service notifies on its own.
+      if ((window as unknown as { DoryAndroid?: unknown }).DoryAndroid) return;
       if (!("Notification" in window) || Notification.permission !== "granted") return;
       for (const n of fresh.filter((n) => mode(n) === "auto")) new Notification(n.title, { body: n.body, tag: n.id, icon: "/icon-192.png" }).onclick = () => { window.focus(); if (n.url) location.assign(n.url); };
     }).catch(() => {});

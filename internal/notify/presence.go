@@ -10,9 +10,12 @@ import (
 // Interface states, from least to most attention.
 const (
 	Closed = "closed"
+	Idle   = "idle" // open, but the user is away: locked screen, idle desktop, app in background
 	Open   = "open"
 	Focus  = "focus"
 )
+
+var rank = map[string]int{Closed: 0, Idle: 1, Open: 2, Focus: 3}
 
 // beatTTL is how long an interface counts as open after its last heartbeat,
 // so an abrupt close (a lost connection, a killed app) expires by itself.
@@ -24,8 +27,8 @@ type beat struct {
 }
 
 // Delivery is what the mesh knows about where the user is: whether some
-// interface has the focus, whether any is open, and whether some node has
-// subscriptions to push to.
+// interface has the focus, whether any is open with the user present (not
+// idle), and whether some node has subscriptions to push to.
 type Delivery struct {
 	Focus bool `json:"focus"`
 	Open  bool `json:"open"`
@@ -58,7 +61,7 @@ func (n *Notifier) Presence() string {
 			delete(n.beats, id)
 			continue
 		}
-		if b.state == Focus || best == Closed {
+		if rank[b.state] > rank[best] {
 			best = b.state
 		}
 	}
@@ -103,12 +106,12 @@ func (n *Notifier) Delivery(ctx context.Context) Delivery {
 				continue
 			}
 			push = push || info.Push
-			if info.Presence == Focus || info.Presence == Open && state == Closed {
+			if rank[info.Presence] > rank[state] {
 				state = info.Presence
 			}
 		}
 	}
-	return Delivery{Focus: state == Focus, Open: state != Closed, Push: push}
+	return Delivery{Focus: state == Focus, Open: state == Open || state == Focus, Push: push}
 }
 
 // expire announces the loss of an interface whose heartbeat stopped.
@@ -129,7 +132,7 @@ func (n *Notifier) mountPresence(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/presence", func(w http.ResponseWriter, r *http.Request) {
 		var body struct{ ID, State string }
 		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body) != nil || body.ID == "" ||
-			body.State != Closed && body.State != Open && body.State != Focus {
+			body.State != Closed && body.State != Idle && body.State != Open && body.State != Focus {
 			http.Error(w, "invalid presence", http.StatusBadRequest)
 			return
 		}
