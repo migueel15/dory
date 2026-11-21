@@ -63,6 +63,8 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private String destinationId;
     private TextView status;
     private TextView transcript;
+    private String transcriptTarget = "";
+    private final Runnable revealTranscript = this::revealTranscript;
     private FrameLayout frame;
     private LinearLayout stateRow;
     private final Runnable settleVoice = this::settleVoice;
@@ -388,13 +390,31 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     }
 
     private void updateTranscript(String text) {
-        transcript.setText(text);
+        String visible = transcript.getText().toString();
+        transcriptTarget = text;
+        int common = 0;
+        while (common < visible.length() && common < text.length()
+            && visible.charAt(common) == text.charAt(common)) common++;
+        if (common > 0 && common < text.length() && Character.isLowSurrogate(text.charAt(common))) common--;
+        if (common < visible.length()) transcript.setText(text.substring(0, common));
         transcript.setVisibility(text.isEmpty() ? View.GONE : View.VISIBLE);
+        main.removeCallbacks(revealTranscript);
+        if (common < text.length()) main.post(revealTranscript);
+    }
+
+    private void revealTranscript() {
+        int shown = transcript.length();
+        if (shown >= transcriptTarget.length()) return;
+        int remaining = transcriptTarget.codePointCount(shown, transcriptTarget.length());
+        int count = Math.min(remaining, Math.max(1, (remaining + 11) / 12));
+        int end = transcriptTarget.offsetByCodePoints(shown, count);
+        transcript.setText(transcriptTarget.substring(0, end));
         transcript.post(() -> {
             if (transcript.getLayout() == null || transcript.getLineCount() == 0) return;
             int bottom = transcript.getLayout().getLineBottom(transcript.getLineCount() - 1);
             transcript.scrollTo(0, Math.max(0, bottom - transcript.getHeight() + transcript.getPaddingBottom()));
         });
+        if (end < transcriptTarget.length()) main.postDelayed(revealTranscript, 24);
     }
 
     private void createView() {
