@@ -507,18 +507,11 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
       setTimeout(again, 300);
     });
   }); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!side) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !document.querySelector(":popover-open")) onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [side, onClose]);
   // frame is the modal on the board and a plain card in a thread.
   const frame = (title: string, children: React.ReactNode) => side ? (
     <div role="region" aria-label={title} className="space-y-4">
       <div className="flex items-start justify-between gap-2">
         <h2 className="min-w-0 wrap-break-word text-lg font-semibold leading-tight">{title}</h2>
-        <button type="button" aria-label="Cerrar" onClick={onClose} className="-mr-1 grid size-8 shrink-0 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white"><X weight="regular" aria-hidden="true" className="size-4" /></button>
       </div>
       {children}
     </div>
