@@ -143,7 +143,7 @@ function Live({ node, device, onBack, floating, onFloat }: { node: string; devic
       className="grid size-8 place-items-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised">{icon}</button>
   );
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 px-3 py-1.5 text-xs dark:border-border">
         <button type="button" onClick={onBack} className="text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">Dispositivos</button>
         <span className="min-w-0 flex-1 truncate font-medium">{device.avd || device.model || device.serial}</span>
@@ -151,8 +151,10 @@ function Live({ node, device, onBack, floating, onFloat }: { node: string; devic
         {onFloat && <button type="button" onClick={() => onFloat(!floating)} title={floating ? "Abrir en el panel lateral" : "Flotar sobre el chat"} aria-label={floating ? "Abrir en el panel lateral" : "Flotar sobre el chat"} className="text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">{floating ? <SidebarSimple className="size-4 -scale-x-100" /> : <PictureInPicture className="size-4" />}</button>}
       </div>
       {message && <div className="p-2"><ErrorText error={new Error(message)} /></div>}
-      <div className="grid min-h-0 flex-1 place-items-center bg-black/5 p-2 dark:bg-black/30">
-        <canvas ref={canvas} tabIndex={0} {...input} className="max-h-full max-w-full touch-none rounded-lg bg-black object-contain shadow outline-none focus:ring-2 focus:ring-blue-500/60" />
+      {/* The canvas fills the free space and object-contain fits the picture inside it, so the
+          phone keeps its aspect ratio and never grows past the panel, whatever its height. */}
+      <div className="relative min-h-0 flex-1 overflow-hidden bg-black/5 dark:bg-black/30">
+        <canvas ref={canvas} tabIndex={0} {...input} className="absolute inset-2 size-[calc(100%-1rem)] touch-none bg-transparent object-contain outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60" />
       </div>
       {device.transport !== "emulator" && <p className="shrink-0 px-3 pb-1 text-center text-[11px] text-slate-500 dark:text-muted">¿Se ve pero no responde al tocar? En Xiaomi/HyperOS, Opciones de desarrollador → activa «Depuración USB (ajustes de seguridad)».</p>}
       {tools && <Tools node={node} device={device} />}
