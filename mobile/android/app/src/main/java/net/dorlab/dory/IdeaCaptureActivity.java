@@ -1,7 +1,6 @@
 package net.dorlab.dory;
 
 import android.Manifest;
-import android.app.KeyguardManager;
 import android.app.role.RoleManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -81,8 +80,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        KeyguardManager keyguard = getSystemService(KeyguardManager.class);
-        if (!Intent.ACTION_ASSIST.equals(getIntent().getAction()) || keyguard.isDeviceLocked() || !canAssist()) {
+        if (!Intent.ACTION_ASSIST.equals(getIntent().getAction()) || !canAssist()) {
             finish();
             return;
         }
