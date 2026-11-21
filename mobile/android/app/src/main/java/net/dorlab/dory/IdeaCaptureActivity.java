@@ -5,11 +5,11 @@ import android.app.KeyguardManager;
 import android.app.role.RoleManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
 import android.graphics.Typeface;
 import android.content.res.ColorStateList;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -65,6 +65,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private TextView primaryText;
     private VoiceIconButton close;
     private TextView send;
+    private boolean silenced;
 
     private final ActivityResultLauncher<String> microphonePermission =
         registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
@@ -187,6 +188,21 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         }
     }
 
+    /** Silencia los pitidos del reconocedor mientras se dicta, para que reiniciarlo tras cada pausa no suene. */
+    private void silence(boolean on) {
+        if (silenced == on) return;
+        AudioManager audio = getSystemService(AudioManager.class);
+        if (audio == null) return;
+        silenced = on;
+        int direction = on ? AudioManager.ADJUST_MUTE : AudioManager.ADJUST_UNMUTE;
+        for (int stream : new int[] {AudioManager.STREAM_MUSIC, AudioManager.STREAM_SYSTEM, AudioManager.STREAM_NOTIFICATION}) {
+            try {
+                audio.adjustStreamVolume(stream, direction, 0);
+            } catch (SecurityException ignored) {
+            }
+        }
+    }
+
     /** Una pausa al hablar no termina la idea: se conserva lo dictado y se vuelve a escuchar. */
     private void keepListening(String text) {
         closeRecognizer();
@@ -256,6 +272,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        silence(false);
         closeRecognizer();
         main.removeCallbacksAndMessages(null);
         super.onDestroy();
@@ -268,6 +285,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         boolean failed = next == State.SPEECH_ERROR || next == State.SAVE_ERROR;
         int tint = next == State.SAVED ? GOOD : failed ? BAD : listening || next == State.SAVING ? ACCENT : MUTED;
         status.setTextColor(tint);
+        silence(listening);
         level.setColor(tint);
         level.setLive(next == State.LISTENING);
         border.setMood(next == State.SAVED ? VoiceBorderView.Mood.DONE
