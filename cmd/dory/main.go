@@ -176,7 +176,13 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	}
 	go notices.Run(ctx)
 	srv.InfoChanged = net.Changed
-	srv.Updater = &update.Updater{DataDir: cfg.DataDir, Active: rt.Active, Providers: rt.UpdateAll, Restart: restartSelf,
+	srv.Updater = &update.Updater{DataDir: cfg.DataDir, Active: rt.Active, Providers: rt.UpdateAll, Restart: func() {
+		runtime.CloseAllLive()
+		if srv.Settings.Get().StopServicesOnShutdown {
+			rt.StopAllServices()
+		}
+		restartSelf()
+	},
 		Installed: func(ctx context.Context) []update.Installed {
 			var out []update.Installed
 			for _, p := range rt.Providers(ctx) {
@@ -242,6 +248,10 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		}
 		return err
 	case <-ctx.Done():
+		runtime.CloseAllLive()
+		if srv.Settings.Get().StopServicesOnShutdown {
+			rt.StopAllServices()
+		}
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		return server.Shutdown(shutdown)

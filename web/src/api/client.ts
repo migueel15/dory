@@ -9,7 +9,8 @@ export type Project = { id: string; slug: string; name: string; description: str
 export type RepositoryLocation = { repository_id: string; node_id: string; path: string };
 export type Repository = { id: string; project_id: string; remote_url: string; default_branch: string; created_at: string; updated_at: string; archived_at: string | null };
 export type Stage = "inbox" | "ready" | "done" | "cancelled";
-export type NodeSettings = { archive_threads_on_finish: boolean; remove_worktree_on_archive: boolean; agents_use_devices: boolean };
+export type NodeSettings = { archive_threads_on_finish: boolean; remove_worktree_on_archive: boolean; stop_services_on_shutdown: boolean; agents_use_devices: boolean };
+export type ThreadService = { pid: number; address: string; port: number; command: string; kind: string };
 export type KeptWorktree = { thread_id: string; path: string; dirty: boolean };
 export type Task = {
   id: string; project_id: string | null; repository_id: string | null; title: string; description: string; stage: Stage;
@@ -209,6 +210,8 @@ export const api = {
   answer: (id: string, request: string, answers: string[][], files: string[][] = []) => req<void>("POST", `/threads/${id}/requests/${encodeURIComponent(request)}`, { answers, files }),
   interrupt: (id: string) => req<void>("POST", `/threads/${id}/interrupt`),
   threadDiff: (id: string, base = "") => req<{ diff: string; branch: string; base?: string; branches?: string[] }>("GET", `/threads/${id}/diff${base ? `?base=${encodeURIComponent(base)}` : ""}`),
+  threadServices: (id: string) => req<ThreadService[]>("GET", `/threads/${id}/services`),
+  stopThreadService: (id: string, pid: number) => req<void>("POST", `/threads/${id}/processes/${pid}/stop`),
   threadAction: (id: string, body: { action: ThreadActionName; title?: string; until?: string; task_id?: string }) => req<Thread>("POST", `/threads/${id}/actions`, body),
   issueTask: (repo: string, number: number, body: { title: string; description: string }) => req<Task>("POST", `/github/repos/${repo}/issues/${number}/tasks`, body),
   githubPullRefs: (repo: string, q: string) => req<{ pulls: { number: number; title: string; state: "open" | "draft" | "merged" | "closed" }[] }>("GET", `/github/repos/${repo}/pull-refs?q=${encodeURIComponent(q)}`),

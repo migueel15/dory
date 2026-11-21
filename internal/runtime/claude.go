@@ -10,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/migueel15/dory/internal/cmdexec"
 )
 
 // Claude runs Claude Code headless with its stream-json output.
@@ -46,7 +44,8 @@ func (c Claude) Detect(ctx context.Context) Status {
 
 // Start runs a turn with stream-json on both ends. The process asks Dory over
 // stdio before using a tool, so AskUserQuestion pauses the turn until the
-// user answers it. Stdin closes when the turn ends, which ends the process.
+// user answers it. The process stays open for the next turn of the thread
+// (see live.go), so what the agent left running in the background survives.
 func (c Claude) Start(ctx context.Context, t Turn) (Session, error) {
 	args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
 		"--include-partial-messages", "--permission-prompt-tool", "stdio"}
@@ -70,20 +69,30 @@ func (c Claude) Start(ctx context.Context, t Turn) (Session, error) {
 		}}})
 		args = append(args, "--mcp-config", string(cfg))
 	}
-	cmd := cmdexec.CommandContext(ctx, c.bin(), args...)
-	cmd.Dir = t.Dir
-	// ask_user waits for the user, so an MCP call may take long (ms).
-	cmd.Env = append(os.Environ(), "MCP_TOOL_TIMEOUT=86400000")
-	in, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, err
+	key := strings.Join([]string{t.Model, t.Effort, fmt.Sprint(t.FullAccess), t.Dir, t.MCPURL}, "\x00")
+	p := reuseStdio(t.ThreadID, "claude", key)
+	if p == nil {
+		cmd := providerCommand(context.Background(), t.ThreadID, c.bin(), args...)
+		cmd.Dir = t.Dir
+		// ask_user waits for the user, so an MCP call may take long (ms).
+		cmd.Env = append(os.Environ(), "MCP_TOOL_TIMEOUT=86400000")
+		cmd.Env = threadEnv(cmd.Env, t.ThreadID)
+		var err error
+		if p, err = openStdio(cmd, t.ThreadID, "claude", key); err != nil {
+			return nil, err
+		}
 	}
-	s := newClaudeSession(t.RunID, in, t.FullAccess)
-	if s.events, err = pipe(ctx, cmd, s.handle); err != nil {
-		return nil, err
-	}
-	if err = s.write(map[string]any{"type": "user", "parent_tool_use_id": nil,
+	s := newClaudeSession(t.RunID, p.in, t.FullAccess)
+	turn := p.begin(t.ThreadID, s.handle)
+	s.events = turn.out
+	// A turn cancellation is a protocol request, not a signal to what the
+	// agent started.
+	p.watch(ctx, t.ThreadID, "claude", turn, func() {
+		_ = s.write(map[string]any{"type": "control_request", "request_id": newRunID(), "request": map[string]any{"subtype": "interrupt"}})
+	})
+	if err := s.write(map[string]any{"type": "user", "parent_tool_use_id": nil,
 		"message": map[string]any{"role": "user", "content": t.Text}}); err != nil {
+		p.abort(turn)
 		return nil, err
 	}
 	return s, nil
@@ -152,11 +161,6 @@ func (s *claudeSession) handle(line []byte, emit func(Event)) {
 		s.mu.Unlock()
 	default:
 		s.parser.parse(line, emit)
-		if l.Type == "result" {
-			s.mu.Lock()
-			s.in.Close()
-			s.mu.Unlock()
-		}
 	}
 }
 

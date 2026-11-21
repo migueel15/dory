@@ -32,8 +32,9 @@ func TestClaudeSessionAsks(t *testing.T) {
 		len(req.Questions) != 1 || req.Questions[0].Question != "Which color do you prefer?" || len(req.Questions[0].Options) != 2 {
 		t.Fatalf("request: %+v", req)
 	}
-	if !in.closed {
-		t.Fatal("stdin stays open after the result")
+	// The process serves the next turn of the thread, so stdin stays open.
+	if in.closed {
+		t.Fatal("stdin closed after the result")
 	}
 	if err := s.Answer(req.ID, [][]string{{"Blue"}}); err != nil {
 		t.Fatal(err)

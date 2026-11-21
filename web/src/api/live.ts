@@ -124,7 +124,7 @@ export function useThreadLive(threadId: string | undefined) {
       });
     });
     // Whatever changed while the stream was down is reloaded on every (re)open.
-    source.addEventListener("open", () => qc.invalidateQueries({ queryKey: key }));
+    source.addEventListener("open", () => { qc.invalidateQueries({ queryKey: key }); });
     return () => source.close();
   }, [threadId, visible, qc]);
 }

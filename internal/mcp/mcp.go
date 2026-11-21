@@ -288,6 +288,39 @@ func build(s *api.Server, devices bool) *sdk.Server {
 		return map[string]any{"answers": out}, nil
 	})
 
+	add(srv, "start_service", "Start a long-running process for this conversation, such as a dev server, a database or a watcher, in its worktree. Dory runs it detached, so it keeps running after your turn ends until the user stops it or the thread is archived, and the user sees its ports in the thread panel. Use it instead of backgrounding the command in your shell. Returns its pid and log file.", func(ctx context.Context, in struct {
+		Command string `json:"command" jsonschema:"Shell command to run, e.g. npm run dev -- --port 5173"`
+	}) (any, error) {
+		id, _ := ctx.Value(threadKey{}).(string)
+		if id == "" {
+			return nil, errors.New("start_service only works inside a Dory thread")
+		}
+		pid, log, err := s.Runtime.StartService(ctx, id, in.Command)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"pid": pid, "log": log}, nil
+	})
+	add(srv, "list_services", "List the processes of this conversation listening on a port, with their pid, address, port and command.", func(ctx context.Context, _ struct{}) (any, error) {
+		id, _ := ctx.Value(threadKey{}).(string)
+		if id == "" {
+			return nil, errors.New("list_services only works inside a Dory thread")
+		}
+		return runtime.ThreadServices(id), nil
+	})
+	add(srv, "stop_service", "Stop a listening process of this conversation by pid.", func(ctx context.Context, in struct {
+		PID int `json:"pid"`
+	}) (any, error) {
+		id, _ := ctx.Value(threadKey{}).(string)
+		if id == "" {
+			return nil, errors.New("stop_service only works inside a Dory thread")
+		}
+		if err := runtime.StopService(id, in.PID); err != nil {
+			return nil, err
+		}
+		return map[string]any{"stopped": in.PID}, nil
+	})
+
 	if devices {
 		addDeviceTools(srv, s)
 	}
