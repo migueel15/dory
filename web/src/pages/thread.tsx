@@ -18,7 +18,8 @@ import { addDraftQuote, removeDraftQuotes, useDraftQuotes } from "../lib/draft-q
 import { ThreadInfo } from "../components/thread-info";
 import { useThreadMenu } from "../components/thread-menu";
 import { useThreadsFold } from "../lib/threads-fold";
-import { SidePanel, SidePanelToggle, useSidePanel, type SidePanelState } from "../components/side-panel";
+import { DevicePanel, FloatingWindow } from "../components/device-panel";
+import { kindOf, SidePanel, SidePanelToggle, useSidePanel, type SidePanelState } from "../components/side-panel";
 
 // ThreadView is a whole thread page: header, chat and, on demand, its changes
 // and the plan of its task.
@@ -30,6 +31,23 @@ export function ThreadView() {
   const local = thread?.local;
   const taskId = thread?.task_id ?? null;
   useOpenPlanOnAgentEdit(taskId, panel);
+  // The agent opens or closes a device tab; the user watches what it does.
+  const latest = useRef(panel);
+  latest.current = panel;
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ thread: string; action: "open" | "close"; serial: string; floating?: boolean }>).detail;
+      if (d.thread !== threadId) return;
+      const p = latest.current;
+      const tab = p.tabs.find((k) => kindOf(k) === "device" && p.meta[k]?.serial === d.serial);
+      if (d.action === "close") { if (tab) p.close(tab); return; }
+      if (tab) { p.setMeta(tab, { floating: !!d.floating }); p.focus(tab); } else p.show("device", { serial: d.serial, floating: !!d.floating });
+    };
+    window.addEventListener("dory-device", on);
+    return () => window.removeEventListener("dory-device", on);
+  }, [threadId]);
+  const deviceView = (k: string, floating = false) => <DevicePanel key={k} node={thread?.node_id ?? "local"} serial={panel.meta[k]?.serial ?? null} floating={floating} onFloat={(v) => panel.setMeta(k, { floating: v })}
+    onSerial={(serial, name) => panel.setMeta(k, serial ? { serial, ...(panel.meta[k]?.name ? {} : { name }) } : { serial: undefined })} />;
   return (
     <div className="relative flex h-[calc(100dvh-4rem-1px)] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
       {/* The panel toggle is pinned to the page corner, so opening the panel never moves it. */}
@@ -38,8 +56,11 @@ export function ThreadView() {
         <Header threadId={threadId} panel={panel} />
         <ThreadChat threadId={threadId} />
       </div>
-      <SidePanel panel={panel} available={[...(local ? ["diff" as const] : []), ...(taskId ? ["plan" as const] : [])]}
-        render={(k) => (k === "diff" ? <Changes threadId={threadId} /> : taskId && <PlanDoc taskId={taskId} />)} />
+      <SidePanel panel={panel} available={[...(local ? ["diff" as const] : []), ...(taskId ? ["plan" as const] : []), "device" as const]}
+        render={(k) => (k === "diff" ? <Changes threadId={threadId} /> : kindOf(k) === "device" ? (panel.open ? (panel.meta[k]?.floating
+          ? <div className="grid h-full place-items-center p-6 text-center text-sm text-slate-500 dark:text-muted"><div className="space-y-2"><p>El dispositivo flota sobre el chat.</p><Button variant="ghost" onClick={() => panel.setMeta(k, { floating: false })}>Abrir en el panel lateral</Button></div></div>
+          : deviceView(k)) : null) : taskId && <PlanDoc taskId={taskId} />)} />
+      {panel.tabs.filter((k) => kindOf(k) === "device" && panel.meta[k]?.floating).map((k) => <FloatingWindow key={k} id={`${threadId}:${k}`}>{deviceView(k, true)}</FloatingWindow>)}
     </div>
   );
 }

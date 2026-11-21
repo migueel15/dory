@@ -75,7 +75,9 @@ export function useLiveUpdates(enabled: boolean) {
       opened = true;
     });
     source.addEventListener("change", (e) => {
-      const { entity } = JSON.parse((e as MessageEvent).data) as { entity: string };
+      const { entity, id, data } = JSON.parse((e as MessageEvent).data) as { entity: string; id: string; data?: unknown };
+      // An agent opened or closed a device: the thread page reacts.
+      if (entity === "device") window.dispatchEvent(new CustomEvent("dory-device", { detail: { thread: id, ...(data as object) } }));
       for (const k of keys[entity] ?? []) pending.add(k);
       clearTimeout(timer);
       timer = setTimeout(() => {

@@ -10,4 +10,5 @@ Cada máquina ejecuta un nodo completo, que funciona sin red y se sincroniza con
 - [Configuración](docs/configuracion.md): opciones y variables `DORY_*`.
 - [MCP](docs/mcp.md): herramientas para los agentes.
 - [Dictado](docs/dictado.md): transcripción local con whisper.cpp.
+- [Dispositivos Android](docs/dispositivos.md): ver y controlar emuladores y móviles desde el hilo.
 - [Decisiones de arquitectura](docs/adr/README.md).

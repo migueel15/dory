@@ -124,6 +124,23 @@ type askInput struct {
 // Handler serves the tools. The caller authenticates the request; a thread
 // passes its id as ?thread= so questions reach the right conversation.
 func Handler(s *api.Server) http.Handler {
+	plain, withDevices := build(s, false), build(s, true)
+	h := sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server {
+		// The device tools exist only while the node setting allows agents to use devices.
+		if s.Devices != nil && s.Settings.Get().AgentsUseDevices {
+			return withDevices
+		}
+		return plain
+	}, &sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if id := r.URL.Query().Get("thread"); id != "" {
+			r = r.WithContext(context.WithValue(r.Context(), threadKey{}, id))
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+func build(s *api.Server, devices bool) *sdk.Server {
 	srv := sdk.NewServer(&sdk.Implementation{Name: "dory", Version: "2.0.0"}, nil)
 	store := s.Store
 
@@ -271,13 +288,10 @@ func Handler(s *api.Server) http.Handler {
 		return map[string]any{"answers": out}, nil
 	})
 
-	h := sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return srv }, &sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if id := r.URL.Query().Get("thread"); id != "" {
-			r = r.WithContext(context.WithValue(r.Context(), threadKey{}, id))
-		}
-		h.ServeHTTP(w, r)
-	})
+	if devices {
+		addDeviceTools(srv, s)
+	}
+	return srv
 }
 
 func sessionStart(ctx context.Context, s *api.Server, in sessionInput) (any, error) {
