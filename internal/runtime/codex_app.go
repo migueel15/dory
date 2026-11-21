@@ -295,6 +295,12 @@ func (s *codexSession) notification(r codexRPC, emit func(Event)) {
 		if m := s.parser.message(p.Item.exec(), done); m != nil {
 			if p.Item.Type == "agentMessage" || p.Item.Type == "reasoning" {
 				s.texts[p.Item.ID] = m
+				if p.Item.Type == "agentMessage" && !done {
+					// Keep the raw text so tags can span multiple deltas.
+					raw := copyOf(m)
+					raw.Text = p.Item.Text
+					s.texts[p.Item.ID] = raw
+				}
 				if m.Text == "" && !done {
 					return
 				}
@@ -311,7 +317,11 @@ func (s *codexSession) notification(r codexRPC, emit func(Event)) {
 	case "item/agentMessage/delta", "item/reasoning/summaryTextDelta":
 		if m := s.texts[p.ItemID]; m != nil {
 			m.Text += p.Delta
-			emit(Event{Message: copyOf(m)})
+			snapshot := copyOf(m)
+			if r.Method == "item/agentMessage/delta" {
+				snapshot.Text = stripCodexMemoryCitations(m.Text, true)
+			}
+			emit(Event{Message: snapshot})
 		}
 	case "turn/plan/updated":
 		m := &Message{ID: s.turn.RunID + ":plan", RunID: s.turn.RunID, Role: "plan", Title: "Plan", CreatedAt: now(),
@@ -387,8 +397,12 @@ func (s *codexSession) finish(emit func(Event), failure string) {
 	s.mu.Unlock()
 	for _, m := range s.texts {
 		if m.Streaming {
-			m.Streaming = false
-			emit(Event{Message: copyOf(m)})
+			snapshot := copyOf(m)
+			snapshot.Streaming = false
+			if m.Role == "assistant" {
+				snapshot.Text = stripCodexMemoryCitations(m.Text, true)
+			}
+			emit(Event{Message: snapshot})
 		}
 	}
 	emit(Event{Done: true, Err: failure})
