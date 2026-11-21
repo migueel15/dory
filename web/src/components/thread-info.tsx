@@ -23,13 +23,18 @@ const readOpen = (key: string) => { try { return localStorage.getItem(key) === "
 
 const row = "flex items-center gap-2.5 px-4 py-2 text-sm";
 
+// headerButton is the look of the thread header buttons that open a card: details and task.
+export const headerButton = (active: boolean) => `grid size-8 place-items-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised ${active ? "bg-slate-100 dark:bg-raised" : ""}`;
+
 // ThreadInfo is a button that opens a card with where the thread runs, its
 // branch, its changes and the remaining usage of its provider.
 // It stays open while the chat is used; only its button closes it. While the
 // side panel is open (popup) it hides and works as a pop-up that closes on any
 // click or key outside it, without touching the remembered state, which comes
 // back when the side panel closes.
-export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false }: { t: ThreadView; diff: boolean; toggleDiff: () => void; popup?: boolean }) {
+// Only one card shows at a time: hidden is true while the task card is open,
+// and onOpen tells the header that this card is opening instead.
+export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false, hidden = false, onOpen }: { t: ThreadView; diff: boolean; toggleDiff: () => void; popup?: boolean; hidden?: boolean; onOpen?: () => void }) {
   // Each thread remembers whether its panel was left open, in this browser.
   const key = `dory-thread-info:${t.id}`;
   const [open, setOpenState] = useState(() => readOpen(key));
@@ -44,7 +49,7 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false }: 
     document.addEventListener("keydown", close, true);
     return () => { document.removeEventListener("pointerdown", close, true); document.removeEventListener("keydown", close, true); };
   }, [popup, pop]);
-  const shown = popup ? pop : open;
+  const shown = !hidden && (popup ? pop : open);
   const qc = useQueryClient();
   const services = useQuery({ queryKey: ["thread-services", t.id], queryFn: () => api.threadServices(t.id), enabled: shown, refetchInterval: 3000 });
   const [serviceRows, setServiceRows] = useState<{ service: ThreadService; leaving: boolean }[]>([]);
@@ -57,7 +62,10 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false }: 
     return () => clearTimeout(timer);
   }, [services.data]);
   const stopService = useMutation({ mutationFn: (pid: number) => api.stopThreadService(t.id, pid), onSettled: () => qc.invalidateQueries({ queryKey: ["thread-services", t.id] }) });
-  const toggle = () => (popup ? setPop(!pop) : setOpen(!open));
+  const toggle = () => {
+    if (hidden) { onOpen?.(); return popup ? setPop(true) : setOpen(true); }
+    return popup ? setPop(!pop) : setOpen(!open);
+  };
   const setOpen = (v: boolean) => { setOpenState(v); try { if (v) localStorage.setItem(key, "1"); else localStorage.removeItem(key); } catch { /* per-viewer only */ } };
   const panel = useRef<HTMLDivElement>(null);
   const [hover, setHoverNow] = useState<{ el: HTMLElement; w: UsageWindow } | null>(null);
@@ -81,7 +89,7 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false }: 
   return (
     <div ref={wrap}>
       <button type="button" onClick={toggle} title="Información del hilo" aria-label="Información del hilo" aria-expanded={shown}
-        className={`grid size-8 place-items-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised ${shown ? "bg-slate-100 dark:bg-raised" : ""}`}>
+        className={headerButton(shown)}>
         <Info weight="regular" className="size-4" />
       </button>
       {shown && (

@@ -393,7 +393,10 @@ const COLUMN_TONE: Record<Column, string> = {
   cancelled: "bg-slate-100 text-slate-500 dark:bg-raised dark:text-muted",
 };
 
-function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch?: QuickLaunch; onClose: () => void }) {
+// TaskDetail is the task card. The board shows it as a wide modal; a thread shows
+// it as a narrow side card (layout "side") with the same content and actions.
+export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal" }: { id: string; launch?: QuickLaunch; onClose: () => void; layout?: "modal" | "side" }) {
+  const side = layout === "side";
   const qc = useQueryClient();
   const dictating = useDictationInProgress();
   const navigate = useNavigate();
@@ -462,17 +465,24 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
   });
   const archive = useMutation({ mutationFn: () => api.tasks.archive(id), onSuccess: () => { refresh(); onClose(); } });
   const form = useLaunchForm({ section: "task", project: c?.project_id, borderless: true });
+  // Sending opens the thread in the background; with go it also moves to it.
+  const sent = (r: { thread_id: string }, go: boolean) => {
+    if (go) return navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } });
+    launchPopover.current?.hidePopover();
+    refresh();
+    qc.invalidateQueries({ queryKey: ["threads"] });
+  };
   const launch = useMutation({
-    mutationFn: () => { form.remember(); return api.launch(id, form.value); },
-    onSuccess: (r) => navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } }),
+    mutationFn: (_go: boolean) => { form.remember(); return api.launch(id, form.value); },
+    onSuccess: (r, go) => sent(r, go),
   });
   const define = useMutation({
-    mutationFn: () => {
+    mutationFn: (_go: boolean) => {
       form.remember();
       const text = planMessage({ id, title: c!.title, description: c!.description });
       return api.createThread({ ...form.value, project_id: c!.project_id, task_id: id, title: `Definir: ${c!.title}`, text });
     },
-    onSuccess: (r) => navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } }),
+    onSuccess: (r, go) => sent(r, go),
   });
   // A quick action from the board opens the detail with the launch popover ready.
   const autoLaunched = useRef(false);
@@ -483,7 +493,23 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
     launchPopover.current.showPopover();
     placeLaunchPopover();
   }); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!c || !draft) return <Modal title="Tarea" onClose={onClose}><ErrorText error={card.error} /></Modal>;
+  useEffect(() => {
+    if (!side) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !document.querySelector(":popover-open")) onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [side, onClose]);
+  // frame is the modal on the board and a plain card in a thread.
+  const frame = (title: string, children: React.ReactNode) => side ? (
+    <div role="region" aria-label={title} className="space-y-4">
+      <div className="flex items-start justify-between gap-2">
+        <h2 className="min-w-0 wrap-break-word text-lg font-semibold leading-tight">{title}</h2>
+        <button type="button" aria-label="Cerrar" onClick={onClose} className="-mr-1 grid size-8 shrink-0 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white"><X weight="regular" aria-hidden="true" className="size-4" /></button>
+      </div>
+      {children}
+    </div>
+  ) : <Modal title={title} onClose={onClose} className="!max-w-5xl sm:!p-6 [&>div:first-child>h2]:text-2xl [&>div:first-child>h2]:leading-tight">{children}</Modal>;
+  if (!c || !draft) return frame("Tarea", <ErrorText error={card.error} />);
   const dirty = draft.title !== c.title || draft.description !== c.description || draft.issue !== (c.issue_number?.toString() ?? "") || draft.pr !== (c.pr_number?.toString() ?? "") || draft.repo !== (c.repository_id ?? "");
   const others = (board.data?.cards ?? []).filter((o) => o.id !== id && (!c.project_id || o.project_id === c.project_id));
   const latest = [...(plans.data ?? [])].sort((a, b) => b.version - a.version)[0];
@@ -564,7 +590,7 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
   const row = "flex min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-slate-100 dark:hover:bg-raised";
   const menuItem = "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-raised";
   return (
-    <Modal title={c.title} onClose={onClose} className="!max-w-5xl sm:!p-6 [&>div:first-child>h2]:text-2xl [&>div:first-child>h2]:leading-tight">
+    frame(c.title, <>
       <div className="flex flex-wrap items-center gap-2">
         <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${COLUMN_TONE[c.column]}`}>{COLUMN_LABELS[c.column]}</span>
         {c.repo && (githubRepo ? <a className={chip} href={githubRepo} target="_blank" rel="noreferrer"><GithubLogo className="size-3.5 shrink-0" /><span className="truncate">{c.repo}</span></a> : <span className={chip}>{c.repo}</span>)}
@@ -627,14 +653,15 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
         {mode === "implement" && !hasPlanContent && !planAccepted && <p className="mb-3 text-xs text-slate-600 dark:text-muted">Se implementará sin plan, a partir de la descripción.</p>}
         {launchBlocked && <p className="mt-3 text-sm text-slate-600 dark:text-muted">{c.blockers.length ? "Resuelve las dependencias para implementar." : "Acepta el plan para implementar."}</p>}
         <ErrorText error={launchAction.error ?? form.error} />
-        <div className="mt-4 flex justify-end">
-          <Button onClick={() => launchAction.mutate()} disabled={!form.ready || launchPending || launchBlocked}>
-            {launchPending ? "Abriendo hilo…" : "Abrir hilo"}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => launchAction.mutate(true)} disabled={!form.ready || launchPending || launchBlocked}>Enviar e ir</Button>
+          <Button onClick={() => launchAction.mutate(false)} disabled={!form.ready || launchPending || launchBlocked}>
+            {launchPending ? "Enviando…" : "Enviar"}
           </Button>
         </div>
       </div>
 
-      <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,16rem)]">
+      <div className={`grid items-start gap-6 ${side ? "" : "md:grid-cols-[minmax(0,1fr)_minmax(0,16rem)]"}`}>
         <div className="min-w-0 space-y-6">
           <section>
             <div className="flex items-center">
@@ -680,7 +707,7 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
           </details>
         </div>
 
-        <aside className="min-w-0 space-y-6 md:border-l md:border-slate-200 md:pl-6 md:dark:border-border">
+        <aside className={`min-w-0 space-y-6 ${side ? "" : "md:border-l md:border-slate-200 md:pl-6 md:dark:border-border"}`}>
           <section>
             <h3 className={heading}><LinkSimple className="size-4" />Dependencias</h3>
             {!deps.data?.length && <p className="px-2 text-sm text-slate-500 dark:text-muted">No depende de otras tareas.</p>}
@@ -719,7 +746,7 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
           </section>
         </aside>
       </div>
-    </Modal>
+    </>)
   );
 }
 
