@@ -62,6 +62,7 @@ func (m *Manager) State(ctx context.Context, serial string) map[string]string {
 	st["font_scale"] = sh("settings", "get", "system", "font_scale")
 	auto, rot := sh("settings", "get", "system", "accelerometer_rotation"), sh("settings", "get", "system", "user_rotation")
 	st["orientation"] = orientationName(auto, rot)
+	st["stay_awake"] = map[bool]string{true: "on", false: "off"}[sh("settings", "get", "global", "stay_on_while_plugged_in") != "0" && sh("settings", "get", "global", "stay_on_while_plugged_in") != ""]
 	st["wifi"] = flag(sh("settings", "get", "global", "wifi_on"))
 	st["data"] = flag(sh("settings", "get", "global", "mobile_data"))
 	if strings.HasPrefix(serial, "emulator-") {
@@ -143,6 +144,16 @@ func (m *Manager) Apply(ctx context.Context, serial string, a Action) (map[strin
 			return nil, err
 		}
 		time.Sleep(700 * time.Millisecond) // the setting flips a moment after the service call
+	case "stay_awake":
+		on, err := onOff(a.Value)
+		if err != nil {
+			return nil, err
+		}
+		// 7 = stay on while charging by AC, USB or wireless; 0 = normal sleep.
+		key = "stay_awake"
+		if _, err := sh("settings", "put", "global", "stay_on_while_plugged_in", map[bool]string{true: "7", false: "0"}[on]); err != nil {
+			return nil, err
+		}
 	case "permission":
 		if !ident.MatchString(a.Package) || !ident.MatchString(a.Perm) {
 			return nil, errors.New("paquete o permiso no válidos")

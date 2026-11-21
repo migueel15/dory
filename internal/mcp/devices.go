@@ -424,7 +424,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		note(ctx, "device_screen", serial, in.State)
 		return map[string]any{"device": serial, "result": "screen " + in.State}, nil
 	})
-	add(srv, "device_setting", "Change a device setting and read the value back. action: dark_mode (yes|no|auto), font_scale (0.5-2.0), orientation (auto|portrait|landscape|reverse_portrait|reverse_landscape), wifi and data (on|off), permission (package, permission, value grant|revoke), location (lat, lon; emulators only)."+deviceFlow, func(ctx context.Context, in struct {
+	add(srv, "device_setting", "Change a device setting and read the value back. action: dark_mode (yes|no|auto), font_scale (0.5-2.0), orientation (auto|portrait|landscape|reverse_portrait|reverse_landscape), wifi and data (on|off), stay_awake (on|off: screen stays on while the phone charges by cable), permission (package, permission, value grant|revoke), location (lat, lon; emulators only)."+deviceFlow, func(ctx context.Context, in struct {
 		deviceRef
 		devices.Action
 	}) (any, error) {

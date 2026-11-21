@@ -247,6 +247,7 @@ function Tools({ node, device }: { node: string; device: Device }) {
       {row("Orientación", <select className={select} value={st.orientation ?? ""} onChange={(e) => apply.mutate({ action: "orientation", value: e.target.value })}><option value="" disabled>—</option><option value="auto">Automática</option><option value="portrait">Vertical</option><option value="landscape">Horizontal</option><option value="reverse_portrait">Vertical invertida</option><option value="reverse_landscape">Horizontal invertida</option></select>)}
       {row("Wi-Fi", toggle("wifi", st.wifi))}
       {row("Datos móviles", toggle("data", st.data))}
+      {row("Pantalla encendida al cargar", toggle("stay_awake", st.stay_awake))}
       <div className="space-y-1 border-t border-slate-200 pt-1.5 dark:border-border">
         <div className="font-medium">Permisos de una app</div>
         <div className="flex gap-1"><input className={`${select} min-w-0 flex-1`} placeholder="com.paquete" value={pkg} onChange={(e) => setPkg(e.target.value)} /><input className={`${select} min-w-0 flex-1`} value={perm} onChange={(e) => setPerm(e.target.value)} /></div>

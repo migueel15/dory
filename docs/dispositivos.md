@@ -27,6 +27,10 @@ El nodo hace de puente entre `adb`, `scrcpy-server` (v3.3.1, embebido en el bina
 
 Los dispositivos conectados por Wi-Fi tienen un botón **Desconectar**. Emparejar y conectar solo se puede hacer desde una sesión autenticada.
 
+## Pantalla de bloqueo
+
+La pantalla de bloqueo con PIN, patrón o huella la marca Android como protegida y sale negra en cualquier captura, también en el vídeo del panel. No se puede evitar desde fuera. Para trabajar con el móvil sin que se bloquee, activa en **Herramientas** «Pantalla encendida al cargar»: no se apaga mientras está enchufado por cable. Si ya está bloqueado, desbloquéalo en el móvil; el teclado del lienzo también escribe el PIN a ciegas.
+
 ## Agentes
 
 Con el ajuste **Los agentes pueden usar dispositivos** (Ajustes → Tareas e hilos → Dispositivos, desactivado por defecto) el MCP del nodo ofrece herramientas `device_*`; con el ajuste apagado no aparecen. Sus llamadas se ven como tarjetas en el hilo y el dispositivo se abre en el panel para que el usuario vea lo que ocurre. Ver [MCP](mcp.md).
