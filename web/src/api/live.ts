@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { noteThreadUpdate } from "./activity";
-import type { Message, Queued, ThreadService, ThreadView, TurnModel } from "./client";
+import type { Message, Queued, ThreadView, TurnModel } from "./client";
 
 // useVisible tracks whether this tab is on screen. Live streams only stay open
 // while it is: over plain HTTP a browser allows about six connections per host.
@@ -100,7 +100,6 @@ export function useThreadLive(threadId: string | undefined) {
     if (!threadId || !visible) return;
     const key = ["thread", threadId];
     const source = new EventSource(`/api/events?thread=${encodeURIComponent(threadId)}`, { withCredentials: true });
-    source.addEventListener("thread.ports", (e) => qc.setQueryData<ThreadService[]>(["thread-services", threadId], JSON.parse((e as MessageEvent).data)));
     source.addEventListener("thread", (e) => {
       const u = JSON.parse((e as MessageEvent).data) as Update;
       if (u.thread_id !== threadId) return;
@@ -123,7 +122,7 @@ export function useThreadLive(threadId: string | undefined) {
       });
     });
     // Whatever changed while the stream was down is reloaded on every (re)open.
-    source.addEventListener("open", () => { qc.invalidateQueries({ queryKey: key }); qc.invalidateQueries({ queryKey: ["thread-services", threadId] }); });
+    source.addEventListener("open", () => { qc.invalidateQueries({ queryKey: key }); });
     return () => source.close();
   }, [threadId, visible, qc]);
 }

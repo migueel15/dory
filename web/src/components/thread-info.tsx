@@ -46,7 +46,7 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false }: 
   }, [popup, pop]);
   const shown = popup ? pop : open;
   const qc = useQueryClient();
-  const services = useQuery({ queryKey: ["thread-services", t.id], queryFn: () => api.threadServices(t.id), enabled: shown });
+  const services = useQuery({ queryKey: ["thread-services", t.id], queryFn: () => api.threadServices(t.id), enabled: shown, refetchInterval: 3000 });
   const [serviceRows, setServiceRows] = useState<{ service: ThreadService; leaving: boolean }[]>([]);
   useEffect(() => {
     const next = services.data ?? [];
