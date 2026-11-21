@@ -8,6 +8,7 @@ El nodo hace de puente entre `adb`, `scrcpy-server` (v3.3.1, embebido en el bina
 
 - **Nodo**: `adb` (platform-tools). Se busca en `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `~/Android/Sdk` y `PATH`. Para emuladores hacen falta además el paquete `emulator`, al menos un AVD creado y KVM (`/dev/kvm`). Los emuladores arrancan con `-no-window`, así que sirven en nodos sin interfaz.
 - **Móvil**: depuración USB o inalámbrica activada y la huella del equipo aceptada.
+- **Xiaomi, Redmi y POCO (HyperOS/MIUI)**: sin activar **Depuración USB (ajustes de seguridad)** en Opciones de desarrollador el vídeo se ve, pero el móvil rechaza toques y teclas (`INJECT_EVENTS`). Requiere sesión de cuenta Xiaomi.
 - **Navegador**: WebCodecs, que exige HTTPS o `localhost`. Si falta, el panel lo explica.
 
 ## Uso

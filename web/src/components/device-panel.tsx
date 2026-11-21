@@ -154,6 +154,7 @@ function Live({ node, device, onBack, floating, onFloat }: { node: string; devic
       <div className="grid min-h-0 flex-1 place-items-center bg-black/5 p-2 dark:bg-black/30">
         <canvas ref={canvas} tabIndex={0} {...input} className="max-h-full max-w-full touch-none rounded-lg bg-black object-contain shadow outline-none focus:ring-2 focus:ring-blue-500/60" />
       </div>
+      {device.transport !== "emulator" && <p className="shrink-0 px-3 pb-1 text-center text-[11px] text-slate-500 dark:text-muted">¿Se ve pero no responde al tocar? En Xiaomi/HyperOS, Opciones de desarrollador → activa «Depuración USB (ajustes de seguridad)».</p>}
       {tools && <Tools node={node} device={device} />}
       <div className="flex shrink-0 items-center justify-center gap-1 border-t border-slate-200 p-1 dark:border-border">
         {bar("Atrás", <ArrowLeft className="size-4" />, (s) => s.back())}
