@@ -68,12 +68,13 @@ export function NoticeInbox() {
     if (!t || !p) return;
     const r = t.getBoundingClientRect();
     const width = Math.min(360, window.innerWidth - 24);
+    const height = Math.min(600, window.innerHeight - 24);
     const left = r.right + 8 + width <= window.innerWidth - 12 ? r.right + 8 : Math.max(12, window.innerWidth - width - 12);
-    const top = left === r.right + 8 ? Math.max(12, Math.min(r.top, window.innerHeight - 480)) : r.bottom + 8;
+    const top = left === r.right + 8 ? Math.max(12, Math.min(r.top, window.innerHeight - height - 12)) : r.bottom + 8;
     p.style.width = `${width}px`;
     p.style.left = `${left}px`;
     p.style.top = `${top}px`;
-    p.style.maxHeight = `${Math.max(200, window.innerHeight - top - 12)}px`;
+    p.style.height = `${Math.min(height, window.innerHeight - top - 12)}px`;
   };
   useEffect(() => {
     const again = () => { if (panel.current?.matches(":popover-open")) place(); };
