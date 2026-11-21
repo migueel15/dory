@@ -94,7 +94,7 @@ Cada interfaz abierta indica a la malla si tiene el foco. Con el modo **Automát
 
 1. Si alguna interfaz tiene el foco, el aviso sale dentro de esa interfaz y no se envía push.
 2. Si ninguna tiene el foco y hay navegadores con avisos activados (push), el servidor envía el push.
-3. Si ninguna tiene el foco y no hay destinos push, las interfaces abiertas muestran una notificación del sistema (en la app de Android, una notificación local).
+3. Si ninguna tiene el foco, las interfaces abiertas muestran además una notificación del sistema, haya o no destinos push. La app de Android la muestra aunque esté cerrada.
 4. Con todo cerrado y sin push, el aviso espera en la bandeja.
 
 Si una interfaz se cierra bruscamente, la malla la da por cerrada a los 45 s.

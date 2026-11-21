@@ -123,8 +123,7 @@ function usePresence() {
 
 // NoticeAlerts shows each new notice where the user is: inside the app when
 // this interface has the focus; as a system notification when none has the
-// focus and there is no push to reach a phone. Otherwise push or the inbox
-// take it, so nothing shows twice.
+// focus, even if push also reaches other devices.
 export function NoticeAlerts() {
   usePresence();
   const notices = useNotices();
@@ -148,7 +147,8 @@ export function NoticeAlerts() {
         for (const n of shown) setTimeout(() => setToasts((t) => t.filter((x) => x.id !== n.id)), 8000);
         return;
       }
-      if (!d || d.focus || d.push) return;
+      // Push reaches other devices; this one still shows it, as each device notifies on its own.
+      if (!d || d.focus) return;
       // The Android app has no Web Push or Notification API: its shell shows it.
       const android = (window as unknown as { DoryAndroid?: { notify(title: string, body: string, tag: string): void } }).DoryAndroid;
       if (android) {
