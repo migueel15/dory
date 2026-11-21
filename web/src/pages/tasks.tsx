@@ -617,6 +617,21 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
         </div>
       </div>
 
+      {side ? (() => {
+        const at = Math.max(0, steps.findIndex((s) => s.state !== "done"));
+        const current = steps.every((s) => s.state === "done") ? steps.length - 1 : at;
+        return (
+          <div aria-label="Progreso de la tarea" className="space-y-1.5">
+            <ol className="grid grid-cols-4 gap-1">
+              {steps.map((s) => (
+                <li key={s.label} title={s.label} aria-label={`${s.label}: ${s.state === "done" ? "hecho" : s.state === "now" ? "en curso" : "pendiente"}`}
+                  className={`h-1.5 rounded-full ${s.state === "done" ? "bg-emerald-600" : s.state === "now" ? "bg-slate-900 dark:bg-white" : "bg-slate-200 dark:bg-border-strong"}`} />
+              ))}
+            </ol>
+            <p className="text-xs text-slate-500 dark:text-muted">Paso {current + 1} de {steps.length} · <span className="font-medium text-slate-900 dark:text-white">{steps[current].label}</span></p>
+          </div>
+        );
+      })() : (
       <ol aria-label="Progreso de la tarea" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
         {steps.map((s, i) => (
           <li key={s.label} className="flex items-center gap-2">
@@ -630,6 +645,7 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
           </li>
         ))}
       </ol>
+      )}
 
       <section aria-label="Siguiente paso" className={`flex flex-wrap items-center gap-3 rounded-xl border p-4 ${next.tone}`}>
         <div className="min-w-0 flex-1">
