@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { useShortcuts } from "./shortcuts";
 import { formatChord } from "./dictation-shortcut";
 import { hasWindowClose } from "../lib/window-close";
+import { ContextMenu } from "./context-menu";
 import { ResizeHandle } from "../pages/thread";
 import { ClipboardText, DeviceMobile, GitDiff, Plus, SidebarSimple, X } from "@phosphor-icons/react";
 
@@ -74,7 +75,9 @@ export function SidePanel({ panel, render, available }: { panel: SidePanelState;
   useEffect(() => { if (panel.open) setOpened(true); }, [panel.open]);
   const [width, setWidth] = useState(() => { try { return Number(localStorage.getItem("dory.thread-panel-width")) || 560; } catch { return 560; } });
   const resize = (w: number) => { setWidth(w); try { localStorage.setItem("dory.thread-panel-width", String(w)); } catch { /* per-viewer only */ } };
-  const missing = available.filter((k) => MULTIPLE.includes(k) || !panel.tabs.includes(k));
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  // Every kind is listed; the ones this thread cannot open (no changes, no task) show dimmed.
+  const kinds = Object.keys(TAB_KINDS) as TabKind[];
   const [renaming, setRenaming] = useState<string | null>(null);
   return (
     // As on main: always mounted, its width slides between 0 and a fixed
@@ -87,6 +90,10 @@ export function SidePanel({ panel, render, available }: { panel: SidePanelState;
       <ResizeHandle panel={aside} width={width} onResize={resize} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col border-l border-slate-200 dark:border-border">
       <div role="tablist" className={`flex shrink-0 items-center gap-1 h-10 border-b border-slate-200 px-2 pb-2 dark:border-border ${hasWindowClose ? "pr-[4.5rem]" : "pr-10"}`}>
+        <button type="button" aria-label="Abrir una pestaña" title="Abrir una pestaña" aria-haspopup="menu" aria-expanded={!!menu}
+          onPointerDown={(e) => { if (menu) e.stopPropagation(); }}
+          onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu(menu ? null : { x: r.left, y: r.bottom + 4 }); }}
+          className="grid size-7 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white"><Plus weight="regular" className="size-4" /></button>
         {panel.tabs.map((k) => (
           <div key={k} className={`group flex items-center rounded-md text-sm ${panel.active === k ? "bg-slate-100 font-medium dark:bg-raised" : "text-slate-500 hover:bg-slate-50 dark:text-muted dark:hover:bg-raised/60"}`}>
             {renaming === k ? (
@@ -99,28 +106,31 @@ export function SidePanel({ panel, render, available }: { panel: SidePanelState;
             <button type="button" onClick={() => panel.close(k)} aria-label={`Cerrar ${panel.label(k)}`} className="mr-1 grid size-5 place-items-center opacity-60 hover:opacity-100"><X weight="regular" className="size-3" /></button>
           </div>
         ))}
-        {missing.map((k) => panel.tabs.length > 0 && (
-          <button key={k} type="button" onClick={() => panel.show(k)} title={`Añadir ${TAB_KINDS[k].label}`} aria-label={`Añadir ${TAB_KINDS[k].label}`}
-            className="grid size-7 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white"><Plus weight="regular" className="size-3.5" /></button>
-        ))}
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         {!opened ? null : panel.active ? render(panel.active) : (
           <div className="grid h-full place-items-center p-6">
-            <div className="space-y-2 text-center">
-              <p className="text-sm text-slate-500 dark:text-muted">Este panel está vacío.</p>
-              {missing.map((k) => (
-                <button key={k} type="button" onClick={() => panel.show(k)}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-border dark:hover:bg-raised">
-                  <Plus weight="regular" className="size-3.5" />{TAB_KINDS[k].icon}{TAB_KINDS[k].label}
-                </button>
-              ))}
+            <div className="w-56">
+              <p className="mb-2 text-center text-sm font-medium">Abrir una pestaña</p>
+              <div className="space-y-0.5">{kinds.map((k) => <KindRow key={k} kind={k} enabled={available.includes(k)} onPick={() => panel.show(k)} />)}</div>
             </div>
           </div>
         )}
       </div>
       </div>
       </div>
+      {menu && <ContextMenu x={menu.x} y={menu.y} label="Abrir una pestaña" onClose={() => setMenu(null)}
+        actions={kinds.map((k) => ({ label: TAB_KINDS[k].label, content: <KindRow kind={k} enabled={available.includes(k)} onPick={() => panel.show(k)} menu /> }))} />}
     </aside>
+  );
+}
+
+// KindRow is one thing the panel can open: its icon and name, dimmed when this thread cannot open it.
+function KindRow({ kind, enabled, onPick, menu = false }: { kind: TabKind; enabled: boolean; onPick: () => void; menu?: boolean }) {
+  return (
+    <button type="button" role={menu ? "menuitem" : undefined} disabled={!enabled} onClick={onPick}
+      className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100 focus:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:hover:bg-raised dark:focus:bg-raised dark:disabled:hover:bg-transparent">
+      {TAB_KINDS[kind].icon}{TAB_KINDS[kind].label}
+    </button>
   );
 }
