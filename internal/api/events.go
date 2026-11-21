@@ -68,6 +68,10 @@ func (e *Events) serve(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 	ping := time.NewTicker(25 * time.Second)
 	defer ping.Stop()
+	ports := time.NewTicker(3 * time.Second)
+	defer ports.Stop()
+	threadID := r.URL.Query().Get("thread")
+	lastPorts := ""
 	send := func(kind string, v any) {
 		raw, _ := json.Marshal(v)
 		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", kind, raw)
@@ -81,6 +85,15 @@ func (e *Events) serve(w http.ResponseWriter, r *http.Request) {
 			send("change", c)
 		case u := <-updates:
 			send("thread", u)
+		case <-ports.C:
+			if threadID != "" {
+				services := runtime.ThreadServices(threadID)
+				raw, _ := json.Marshal(services)
+				if string(raw) != lastPorts {
+					lastPorts = string(raw)
+					send("thread.ports", services)
+				}
+			}
 		case <-ping.C:
 			fmt.Fprint(w, ": ping\n\n")
 			flusher.Flush()

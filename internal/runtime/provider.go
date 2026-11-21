@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -90,6 +91,22 @@ func threadEnv(env []string, id string) []string {
 		out = append(out, "DORY_THREAD_ID="+id)
 	}
 	return out
+}
+
+// providerCommand places a turn outside the Dory service's systemd cgroup
+// when a user manager is available. Detached children can then outlive it.
+func providerCommand(ctx context.Context, threadID, bin string, args ...string) *exec.Cmd {
+	if threadID != "" && os.Getenv("INVOCATION_ID") != "" {
+		if path, err := exec.LookPath("systemd-run"); err == nil {
+			probe, cancel := context.WithTimeout(ctx, 2*time.Second)
+			err = cmdexec.CommandContext(probe, "systemctl", "--user", "show-environment").Run()
+			cancel()
+			if err == nil {
+				return cmdexec.CommandContext(ctx, path, append([]string{"--user", "--scope", "--quiet", "--", bin}, args...)...)
+			}
+		}
+	}
+	return cmdexec.CommandContext(ctx, bin, args...)
 }
 
 // Model is one model a provider offers, with its reasoning effort levels.

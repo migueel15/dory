@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,6 +36,21 @@ type Remote interface {
 }
 
 func (s *Server) mountThreads(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/threads/{id}/services", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
+		writeJSON(w, http.StatusOK, runtime.ThreadServices(t.ID))
+	}))
+	mux.HandleFunc("POST /api/threads/{id}/processes/{pid}/stop", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
+		pid, err := strconv.Atoi(r.PathValue("pid"))
+		if err != nil || pid < 2 {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "PID inválido")
+			return
+		}
+		if err := runtime.StopService(t.ID, pid); err != nil {
+			writeDataError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
 	mux.HandleFunc("GET /api/threads", func(w http.ResponseWriter, r *http.Request) {
 		f, err := parseFilter(r)
 		if err != nil {

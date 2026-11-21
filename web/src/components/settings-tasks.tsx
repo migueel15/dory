@@ -20,6 +20,7 @@ export function TaskSettings() {
       <h2 id="tasks-title" className="text-lg font-semibold">Tareas e hilos</h2>
       {toggle("archive_threads_on_finish", "Archivar hilos al terminar la tarea", "Cuando una tarea pasa a hecha o cancelada, a mano o porque su pull request se mergea o se cierra, se archivan sus hilos y se detienen los que estén en marcha.")}
       {toggle("remove_worktree_on_archive", "Eliminar worktrees al archivar", "Al archivar un hilo se borra su worktree si está limpio y ningún otro hilo lo usa. Con cambios sin commitear se conserva y el hilo archivado lo avisa.")}
+      {toggle("stop_services_on_shutdown", "Cerrar los servicios de los hilos al reiniciar Dory", "Detiene los servicios al cerrar o reiniciar el núcleo de este entorno.")}
       <ErrorText error={current.error ?? save.error} />
     </section>
   );

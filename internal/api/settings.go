@@ -15,6 +15,7 @@ import (
 type Settings struct {
 	ArchiveThreadsOnFinish  bool `json:"archive_threads_on_finish"`
 	RemoveWorktreeOnArchive bool `json:"remove_worktree_on_archive"`
+	StopServicesOnShutdown  bool `json:"stop_services_on_shutdown"`
 }
 
 // SettingsStore reads and saves the Settings of a node.

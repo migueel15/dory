@@ -10,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/migueel15/dory/internal/cmdexec"
 )
 
 type acpParams map[string]any
@@ -47,7 +45,11 @@ func openACP(ctx context.Context, bin, dir string, sandbox bool, threadID ...str
 	if sandbox {
 		args = append(args, "--sandbox")
 	}
-	cmd := cmdexec.CommandContext(ctx, bin, args...)
+	id := ""
+	if len(threadID) > 0 {
+		id = threadID[0]
+	}
+	cmd := providerCommand(ctx, id, bin, args...)
 	cmd.Dir = dir
 	if len(threadID) > 0 {
 		cmd.Env = threadEnv(os.Environ(), threadID[0])

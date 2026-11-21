@@ -8,8 +8,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-
-	"github.com/migueel15/dory/internal/cmdexec"
 )
 
 // Start runs a turn over "codex app-server", Codex's JSON-RPC protocol on
@@ -18,7 +16,7 @@ import (
 // when the turn ends, which ends the process.
 func (c Codex) Start(ctx context.Context, t Turn) (Session, error) {
 	args := []string{"app-server", "--enable", "default_mode_request_user_input"}
-	cmd := cmdexec.CommandContext(ctx, c.bin(), args...)
+	cmd := providerCommand(ctx, t.ThreadID, c.bin(), args...)
 	cmd.Dir = t.Dir
 	cmd.Env = os.Environ()
 	cmd.Env = threadEnv(cmd.Env, t.ThreadID)

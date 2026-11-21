@@ -240,6 +240,9 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		}
 		return err
 	case <-ctx.Done():
+		if srv.Settings.Get().StopServicesOnShutdown {
+			rt.StopAllServices()
+		}
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		return server.Shutdown(shutdown)

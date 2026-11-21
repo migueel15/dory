@@ -10,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/migueel15/dory/internal/cmdexec"
 )
 
 // Claude runs Claude Code headless with its stream-json output.
@@ -70,7 +68,7 @@ func (c Claude) Start(ctx context.Context, t Turn) (Session, error) {
 		}}})
 		args = append(args, "--mcp-config", string(cfg))
 	}
-	cmd := cmdexec.CommandContext(ctx, c.bin(), args...)
+	cmd := providerCommand(ctx, t.ThreadID, c.bin(), args...)
 	cmd.Dir = t.Dir
 	// ask_user waits for the user, so an MCP call may take long (ms).
 	cmd.Env = append(os.Environ(), "MCP_TOOL_TIMEOUT=86400000")

@@ -15,8 +15,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/migueel15/dory/internal/cmdexec"
 )
 
 // Start runs a turn on its own "opencode serve": Dory opens the session,
@@ -25,7 +23,7 @@ import (
 // stops when the turn ends.
 func (o OpenCode) Start(ctx context.Context, t Turn) (Session, error) {
 	password := rand.Text()
-	cmd := cmdexec.CommandContext(ctx, o.bin(), "serve", "--hostname", "127.0.0.1", "--port", "0")
+	cmd := providerCommand(ctx, t.ThreadID, o.bin(), "serve", "--hostname", "127.0.0.1", "--port", "0")
 	cmd.Dir = t.Dir
 	cmd.Env = append(os.Environ(), "OPENCODE_SERVER_PASSWORD="+password)
 	cmd.Env = threadEnv(cmd.Env, t.ThreadID)
