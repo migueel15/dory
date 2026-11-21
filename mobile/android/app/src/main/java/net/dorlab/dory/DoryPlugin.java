@@ -149,6 +149,7 @@ public class DoryPlugin extends Plugin {
                 call.reject("No se pudo guardar el nodo de captura.");
                 return;
             }
+            NoticeService.start(getContext());
             call.resolve();
         });
     }

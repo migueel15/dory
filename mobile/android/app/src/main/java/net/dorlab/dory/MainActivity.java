@@ -94,6 +94,10 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(DoryPlugin.class);
         super.onCreate(savedInstanceState);
         bridge.getWebView().addJavascriptInterface(new NoticeBridge(), "DoryAndroid");
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS);
+        }
+        NoticeService.start(this);
         bridge.getWebView().setWebChromeClient(new BridgeWebChromeClient(bridge) {
             @Override
             public void onPermissionRequest(PermissionRequest request) {
