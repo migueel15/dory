@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/migueel15/dory/internal/devices"
 )
@@ -21,11 +22,62 @@ func (s *Server) mountDevices(mux *http.ServeMux) {
 	}
 	mux.HandleFunc("GET /api/nodes/{node}/devices", s.onNode(s.listDevices))
 	mux.HandleFunc("GET /api/nodes/{node}/devices/{serial}/stream", s.onNode(s.streamDevice))
+	mux.HandleFunc("POST /api/nodes/{node}/devices/avd/{name}/start", s.onNode(func(w http.ResponseWriter, r *http.Request) {
+		s.deviceDone(w, nil, s.Devices.StartAVD(r.PathValue("name")))
+	}))
+	mux.HandleFunc("POST /api/nodes/{node}/devices/{serial}/stop", s.onNode(func(w http.ResponseWriter, r *http.Request) {
+		serial, _ := url.PathUnescape(r.PathValue("serial"))
+		var body struct {
+			Confirm bool `json:"confirm"`
+		}
+		if r.ContentLength > 0 && !decode(w, r, &body) {
+			return
+		}
+		// Powering off a real phone is not undone from here: the interface asks first.
+		if !strings.HasPrefix(serial, "emulator-") && !body.Confirm {
+			writeError(w, http.StatusBadRequest, "confirm_required", "apagar un móvil físico necesita confirmación")
+			return
+		}
+		s.deviceDone(w, nil, s.Devices.Stop(r.Context(), serial))
+	}))
+	mux.HandleFunc("POST /api/nodes/{node}/devices/pair", s.onNode(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Address string `json:"address"`
+			Code    string `json:"code"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		out, err := s.Devices.Pair(r.Context(), body.Address, body.Code)
+		s.deviceDone(w, out, err)
+	}))
+	mux.HandleFunc("POST /api/nodes/{node}/devices/connect", s.onNode(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Address string `json:"address"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		out, err := s.Devices.Connect(r.Context(), body.Address)
+		s.deviceDone(w, out, err)
+	}))
+	mux.HandleFunc("POST /api/nodes/{node}/devices/{serial}/disconnect", s.onNode(func(w http.ResponseWriter, r *http.Request) {
+		serial, _ := url.PathUnescape(r.PathValue("serial"))
+		s.deviceDone(w, nil, s.Devices.Disconnect(r.Context(), serial))
+	}))
+}
+
+func (s *Server) deviceDone(w http.ResponseWriter, out any, err error) {
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "device_error", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": out})
 }
 
 func (s *Server) listDevices(w http.ResponseWriter, r *http.Request) {
 	m := s.Devices
-	out := map[string]any{"tools": m.Tools, "devices": []deviceView{}, "avds": devices.ListAVDs(r.Context(), m.Tools)}
+	out := map[string]any{"tools": m.Tools, "devices": []deviceView{}, "avds": devices.ListAVDs(r.Context(), m.Tools), "avd_states": m.AVDStates()}
 	if m.Tools.ADB != "" {
 		list, err := m.ADB.Devices(r.Context())
 		if err != nil {

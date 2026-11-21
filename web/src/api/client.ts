@@ -247,7 +247,13 @@ export const repoName = (remote: string) => remote.match(/github\.com[:/]([^/]+\
 
 export type DeviceTools = { adb: string; emulator: string; kvm: boolean; sdk: string };
 export type Device = { serial: string; state: string; model: string; product: string; transport: "usb" | "wifi" | "emulator"; avd?: string; streaming: boolean };
-export type DeviceList = { tools: DeviceTools; devices: Device[]; avds: string[]; error?: string };
+export type AvdState = { status: "starting" | "booting" | "ready" | "failed"; error?: string };
+export type DeviceList = { tools: DeviceTools; devices: Device[]; avds: string[]; avd_states: Record<string, AvdState>; error?: string };
 export const devicesApi = {
   list: (node = "local") => req<DeviceList>("GET", `/nodes/${node}/devices`),
+  startAvd: (name: string, node = "local") => req<{ ok: boolean }>("POST", `/nodes/${node}/devices/avd/${encodeURIComponent(name)}/start`),
+  stop: (serial: string, confirm: boolean, node = "local") => req<{ ok: boolean }>("POST", `/nodes/${node}/devices/${encodeURIComponent(serial)}/stop`, { confirm }),
+  pair: (address: string, code: string, node = "local") => req<{ message: string }>("POST", `/nodes/${node}/devices/pair`, { address, code }),
+  connect: (address: string, node = "local") => req<{ message: string }>("POST", `/nodes/${node}/devices/connect`, { address }),
+  disconnect: (serial: string, node = "local") => req<{ ok: boolean }>("POST", `/nodes/${node}/devices/${encodeURIComponent(serial)}/disconnect`),
 };

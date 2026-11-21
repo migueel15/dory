@@ -19,7 +19,7 @@ import { ThreadInfo } from "../components/thread-info";
 import { useThreadMenu } from "../components/thread-menu";
 import { useThreadsFold } from "../lib/threads-fold";
 import { DevicePanel } from "../components/device-panel";
-import { SidePanel, SidePanelToggle, useSidePanel, type SidePanelState } from "../components/side-panel";
+import { kindOf, SidePanel, SidePanelToggle, useSidePanel, type SidePanelState } from "../components/side-panel";
 
 // ThreadView is a whole thread page: header, chat and, on demand, its changes
 // and the plan of its task.
@@ -40,7 +40,7 @@ export function ThreadView() {
         <ThreadChat threadId={threadId} />
       </div>
       <SidePanel panel={panel} available={[...(local ? ["diff" as const] : []), ...(taskId ? ["plan" as const] : []), "device" as const]}
-        render={(k) => (k === "diff" ? <Changes threadId={threadId} /> : k === "device" ? <DevicePanel node={thread?.node_id ?? "local"} /> : taskId && <PlanDoc taskId={taskId} />)} />
+        render={(k) => (k === "diff" ? <Changes threadId={threadId} /> : kindOf(k) === "device" ? (panel.open ? <DevicePanel key={k} node={thread?.node_id ?? "local"} serial={panel.meta[k]?.serial ?? null} onSerial={(serial, name) => panel.setMeta(k, serial ? { serial, ...(panel.meta[k]?.name ? {} : { name }) } : { serial: undefined })} /> : null) : taskId && <PlanDoc taskId={taskId} />)} />
     </div>
   );
 }

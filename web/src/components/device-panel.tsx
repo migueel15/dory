@@ -1,24 +1,24 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Circle, Cpu, DeviceMobile, Plugs, Power, Square, SpeakerHigh, SpeakerLow, WifiHigh } from "@phosphor-icons/react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Circle, CircleNotch, Cpu, DeviceMobile, Plugs, Power, Square, SpeakerHigh, SpeakerLow, WifiHigh } from "@phosphor-icons/react";
 import { devicesApi, type Device, type DeviceList } from "../api/client";
 import { DeviceStream, Key, keyFor, webCodecsProblem, type StreamStatus } from "../lib/scrcpy";
-import { ErrorText } from "./ui";
+import { askConfirm } from "./confirm";
+import { Button, ErrorText } from "./ui";
 
 // DevicePanel shows an Android device or emulator of the thread's node live.
 // Only the visible tab streams: it connects on mount and closes on unmount.
-export function DevicePanel({ node }: { node: string }) {
-  const [serial, setSerial] = useState<string | null>(() => { try { return localStorage.getItem("dory.device-serial"); } catch { return null; } });
-  const pick = (s: string | null) => { setSerial(s); try { if (s) localStorage.setItem("dory.device-serial", s); else localStorage.removeItem("dory.device-serial"); } catch { /* per-browser only */ } };
-  const list = useQuery({ queryKey: ["devices", node], queryFn: () => devicesApi.list(node), refetchInterval: serial ? false : 4000 });
+// The chosen device is kept by the tab; if it drops, the tab waits for it.
+export function DevicePanel({ node, serial, onSerial }: { node: string; serial: string | null; onSerial: (serial: string | null, name: string) => void }) {
+  const list = useQuery({ queryKey: ["devices", node], queryFn: () => devicesApi.list(node), refetchInterval: 4000 });
   const problem = webCodecsProblem();
   if (problem) return <Notice title="Vídeo no disponible">{problem}</Notice>;
   if (list.error) return <div className="p-4"><ErrorText error={list.error} /></div>;
   if (!list.data) return <div className="p-4 text-sm text-slate-500 dark:text-muted">Buscando dispositivos…</div>;
   if (!list.data.tools.adb) return <Setup list={list.data} />;
   const dev = list.data.devices.find((d) => d.serial === serial);
-  if (serial && dev?.state === "device") return <Live key={serial} node={node} device={dev} onBack={() => pick(null)} />;
-  return <Picker list={list.data} selected={serial} onPick={pick} />;
+  if (serial && dev?.state === "device") return <Live key={serial} node={node} device={dev} onBack={() => onSerial(null, "")} />;
+  return <Picker node={node} list={list.data} lost={serial} onPick={(d) => onSerial(d.serial, d.avd || d.model || d.serial)} />;
 }
 
 function Notice({ title, children }: { title: string; children: React.ReactNode }) {
@@ -41,22 +41,83 @@ function Setup({ list }: { list: DeviceList }) {
 
 const transportIcon = (d: Device) => d.transport === "wifi" ? <WifiHigh className="size-4" /> : d.transport === "emulator" ? <Cpu className="size-4" /> : <Plugs className="size-4" />;
 
-function Picker({ list, selected, onPick }: { list: DeviceList; selected: string | null; onPick: (s: string) => void }) {
+const label = (d: Device) => d.avd || d.model || d.serial;
+
+function Picker({ node, list, lost, onPick }: { node: string; list: DeviceList; lost: string | null; onPick: (d: Device) => void }) {
+  const qc = useQueryClient();
+  const refresh = () => qc.invalidateQueries({ queryKey: ["devices", node] });
+  const run = useMutation({ mutationFn: (f: () => Promise<unknown>) => f(), onSettled: refresh });
+  const stopped = list.avds.filter((a) => !list.devices.some((d) => d.avd === a));
+  const stop = async (d: Device) => {
+    const emu = d.transport === "emulator";
+    if (emu || await askConfirm(`¿Apagar ${label(d)}? El móvil se apagará y habrá que encenderlo a mano.`, "Apagar")) run.mutate(() => devicesApi.stop(d.serial, true, node));
+  };
   return (
     <div className="space-y-4 p-4 text-sm">
-      {selected && <p className="text-slate-500 dark:text-muted">El dispositivo seleccionado no está disponible.</p>}
+      {lost && <p className="text-amber-600 dark:text-amber-400">El dispositivo de esta pestaña no está disponible; se recuperará solo cuando vuelva.</p>}
       <div className="space-y-1">
         {list.devices.length === 0 && <p className="text-slate-500 dark:text-muted">No hay dispositivos conectados. Activa la depuración USB o inalámbrica en el móvil, o arranca un emulador.</p>}
         {list.devices.map((d) => (
-          <button key={d.serial} type="button" disabled={d.state !== "device"} onClick={() => onPick(d.serial)}
-            className="flex w-full items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-left hover:bg-slate-50 disabled:opacity-50 dark:border-border dark:hover:bg-raised">
-            {transportIcon(d)}
-            <span className="min-w-0 flex-1"><span className="block truncate font-medium">{d.avd || d.model || d.serial}</span><span className="block truncate text-xs text-slate-500 dark:text-muted">{d.state === "device" ? d.serial : d.state === "unauthorized" ? "Acepta la depuración en el móvil" : d.state}</span></span>
-          </button>
+          <div key={d.serial} className="flex items-center gap-1 rounded-md border border-slate-200 pr-1 dark:border-border">
+            <button type="button" disabled={d.state !== "device"} onClick={() => onPick(d)} className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-slate-50 disabled:opacity-50 dark:hover:bg-raised">
+              {transportIcon(d)}
+              <span className="min-w-0 flex-1"><span className="block truncate font-medium">{label(d)}</span><span className="block truncate text-xs text-slate-500 dark:text-muted">{d.state === "device" ? d.serial : d.state === "unauthorized" ? "Acepta la depuración en el móvil" : d.state}</span></span>
+            </button>
+            {d.transport === "wifi" && <button type="button" onClick={() => run.mutate(() => devicesApi.disconnect(d.serial, node))} className="rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">Desconectar</button>}
+            {d.state === "device" && <button type="button" onClick={() => stop(d)} className="rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">Apagar</button>}
+          </div>
         ))}
       </div>
-      {list.avds.some((a) => !list.devices.some((d) => d.avd === a)) && (
-        <p className="text-xs text-slate-500 dark:text-muted">Emuladores sin arrancar: {list.avds.filter((a) => !list.devices.some((d) => d.avd === a)).join(", ")}.</p>
+      {stopped.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-slate-500 dark:text-muted">Emuladores</p>
+          {stopped.map((a) => {
+            const st = list.avd_states[a];
+            const busy = st?.status === "starting" || st?.status === "booting";
+            return (
+              <div key={a} className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 dark:border-border">
+                <Cpu className="size-4" /><span className="min-w-0 flex-1 truncate font-medium">{a}</span>
+                {st?.status === "failed" && <span className="max-w-40 truncate text-xs text-red-500" title={st.error}>{st.error}</span>}
+                {busy ? <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-muted"><CircleNotch className="size-3.5 animate-spin" />{st.status === "starting" ? "Arrancando…" : "Iniciando Android…"}</span>
+                  : <Button variant="ghost" onClick={() => run.mutate(() => devicesApi.startAvd(a, node))}>Iniciar</Button>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {list.tools.emulator && !list.tools.kvm && <p className="text-xs text-amber-600 dark:text-amber-400">KVM no está disponible en este nodo: los emuladores no arrancarán.</p>}
+      {run.error && <ErrorText error={run.error} />}
+      <WifiForm node={node} onDone={refresh} />
+    </div>
+  );
+}
+
+// WifiForm pairs with and connects to a phone over wireless debugging.
+function WifiForm({ node, onDone }: { node: string; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [pairAddr, setPairAddr] = useState("");
+  const [code, setCode] = useState("");
+  const [addr, setAddr] = useState("");
+  const [note, setNote] = useState("");
+  const act = useMutation({ mutationFn: (f: () => Promise<{ message: string }>) => f(), onSuccess: (r) => { setNote(String(r.message ?? "")); onDone(); } });
+  const field = "w-full rounded-md border border-slate-300 bg-transparent px-2 py-1 dark:border-border-strong";
+  return (
+    <div className="border-t border-slate-200 pt-3 dark:border-border">
+      <button type="button" onClick={() => setOpen(!open)} className="font-medium">{open ? "▾" : "▸"} Conectar por Wi-Fi</button>
+      {open && (
+        <div className="mt-2 space-y-3">
+          <ol className="list-decimal space-y-0.5 pl-4 text-xs text-slate-500 dark:text-muted">
+            <li>En el móvil: Ajustes → Opciones de desarrollador → Depuración inalámbrica.</li>
+            <li>Si es la primera vez, «Vincular dispositivo con código» y escribe aquí la dirección y el código.</li>
+            <li>Después conecta con la dirección que aparece en la pantalla de Depuración inalámbrica.</li>
+          </ol>
+          <div className="space-y-1"><div className="flex gap-1"><input className={field} placeholder="IP:puerto de vinculación" value={pairAddr} onChange={(e) => setPairAddr(e.target.value)} /><input className={`${field} w-28`} placeholder="Código" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} /></div>
+            <Button variant="ghost" disabled={act.isPending || !pairAddr || !code} onClick={() => act.mutate(() => devicesApi.pair(pairAddr.trim(), code.trim(), node))}>Vincular</Button></div>
+          <div className="space-y-1"><input className={field} placeholder="IP:puerto de conexión" value={addr} onChange={(e) => setAddr(e.target.value)} />
+            <Button variant="ghost" disabled={act.isPending || !addr} onClick={() => act.mutate(() => devicesApi.connect(addr.trim(), node))}>Conectar</Button></div>
+          {note && <p className="text-xs text-emerald-600 dark:text-emerald-400">{note}</p>}
+          {act.error && <ErrorText error={act.error} />}
+        </div>
       )}
     </div>
   );

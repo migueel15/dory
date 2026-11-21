@@ -66,3 +66,22 @@ func TestReadMetaAndPackets(t *testing.T) {
 		t.Error("expected EOF")
 	}
 }
+
+func TestInputValidation(t *testing.T) {
+	for _, ok := range []string{"192.168.1.5:37000", "phone.local:5555"} {
+		if !hostPort.MatchString(ok) {
+			t.Errorf("%s should pass", ok)
+		}
+	}
+	for _, bad := range []string{"-s:1", "a b:1", "1.2.3.4", "x:99999999", ";rm:1"} {
+		if hostPort.MatchString(bad) {
+			t.Errorf("%s should fail", bad)
+		}
+	}
+	if !avdName.MatchString("Xiaomi_14T_Pro") || avdName.MatchString("-avd") || avdName.MatchString("a b") {
+		t.Error("avd names")
+	}
+	if !pairCode.MatchString("123456") || pairCode.MatchString("12 34") {
+		t.Error("pair code")
+	}
+}

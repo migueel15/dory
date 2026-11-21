@@ -14,10 +14,15 @@ export const TAB_KINDS: Record<TabKind, { label: string; icon: ReactNode }> = {
   device: { label: "Dispositivo", icon: <DeviceMobile className="size-4" /> },
 };
 
-type State = { open: boolean; tabs: TabKind[]; active: TabKind | null };
-const empty: State = { open: false, tabs: [], active: null };
+// A tab is a kind ("diff", "plan") or, for the kinds that allow several,
+// "kind:<id>"; per-tab data (a custom name, the chosen device) lives in meta.
+export type TabMeta = { name?: string; serial?: string };
+type State = { open: boolean; tabs: string[]; active: string | null; meta: Record<string, TabMeta> };
+const empty: State = { open: false, tabs: [], active: null, meta: {} };
+export const kindOf = (key: string) => key.split(":")[0] as TabKind;
+const MULTIPLE: TabKind[] = ["device"];
 const read = (key: string): State => {
-  try { const v = JSON.parse(localStorage.getItem(key) ?? "null"); return v && Array.isArray(v.tabs) ? { ...empty, ...v, tabs: v.tabs.filter((k: string) => k in TAB_KINDS) } : empty; } catch { return empty; }
+  try { const v = JSON.parse(localStorage.getItem(key) ?? "null"); return v && Array.isArray(v.tabs) ? { ...empty, ...v, tabs: v.tabs.filter((k: string) => kindOf(k) in TAB_KINDS) } : empty; } catch { return empty; }
 };
 
 // useSidePanel keeps, per thread and in this browser, whether the panel is
@@ -30,13 +35,20 @@ export function useSidePanel(threadId: string) {
   return {
     ...s,
     toggle: () => save({ ...s, open: !s.open }),
-    // show opens the panel on a tab, adding it when the thread has none of that kind.
-    show: (kind: TabKind) => save({ open: true, tabs: s.tabs.includes(kind) ? s.tabs : [...s.tabs, kind], active: kind }),
-    focus: (kind: TabKind) => save({ ...s, active: kind }),
-    close: (kind: TabKind) => {
-      const tabs = s.tabs.filter((k) => k !== kind);
+    // show opens the panel on a tab, adding it when the thread has none of that kind;
+    // kinds that allow several always get a new tab.
+    show: (kind: TabKind, meta?: TabMeta) => {
+      const tab = MULTIPLE.includes(kind) ? `${kind}:${Math.random().toString(36).slice(2, 8)}` : kind;
+      save({ ...s, open: true, tabs: s.tabs.includes(tab) ? s.tabs : [...s.tabs, tab], active: tab, meta: meta ? { ...s.meta, [tab]: meta } : s.meta });
+    },
+    focus: (tab: string) => save({ ...s, active: tab }),
+    setMeta: (tab: string, meta: TabMeta) => save({ ...s, meta: { ...s.meta, [tab]: { ...s.meta[tab], ...meta } } }),
+    label: (tab: string) => s.meta[tab]?.name || TAB_KINDS[kindOf(tab)].label,
+    close: (tab: string) => {
+      const tabs = s.tabs.filter((k) => k !== tab);
+      const { [tab]: _, ...meta } = s.meta;
       // Closing the last tab closes the panel too.
-      save({ ...s, open: tabs.length > 0 && s.open, tabs, active: s.active === kind ? tabs[tabs.length - 1] ?? null : s.active });
+      save({ ...s, open: tabs.length > 0 && s.open, tabs, meta, active: s.active === tab ? tabs[tabs.length - 1] ?? null : s.active });
     },
   };
 }
@@ -54,14 +66,15 @@ export function SidePanelToggle({ panel }: { panel: SidePanelState }) {
 
 // SidePanel draws the tabs and the active one; with no tabs it offers what
 // can be created.
-export function SidePanel({ panel, render, available }: { panel: SidePanelState; render: (kind: TabKind) => ReactNode; available: TabKind[] }) {
+export function SidePanel({ panel, render, available }: { panel: SidePanelState; render: (tab: string) => ReactNode; available: TabKind[] }) {
   const aside = useRef<HTMLElement>(null);
   // The content mounts on first open and then stays, so closing slides it out.
   const [opened, setOpened] = useState(panel.open);
   useEffect(() => { if (panel.open) setOpened(true); }, [panel.open]);
   const [width, setWidth] = useState(() => { try { return Number(localStorage.getItem("dory.thread-panel-width")) || 560; } catch { return 560; } });
   const resize = (w: number) => { setWidth(w); try { localStorage.setItem("dory.thread-panel-width", String(w)); } catch { /* per-viewer only */ } };
-  const missing = available.filter((k) => !panel.tabs.includes(k));
+  const missing = available.filter((k) => MULTIPLE.includes(k) || !panel.tabs.includes(k));
+  const [renaming, setRenaming] = useState<string | null>(null);
   return (
     // As on main: always mounted, its width slides between 0 and a fixed
     // pixel width while the content stays pinned right at full width, so it
@@ -75,8 +88,14 @@ export function SidePanel({ panel, render, available }: { panel: SidePanelState;
       <div role="tablist" className={`flex shrink-0 items-center gap-1 h-10 border-b border-slate-200 px-2 pb-2 dark:border-border ${hasWindowClose ? "pr-[4.5rem]" : "pr-10"}`}>
         {panel.tabs.map((k) => (
           <div key={k} className={`group flex items-center rounded-md text-sm ${panel.active === k ? "bg-slate-100 font-medium dark:bg-raised" : "text-slate-500 hover:bg-slate-50 dark:text-muted dark:hover:bg-raised/60"}`}>
-            <button type="button" role="tab" aria-selected={panel.active === k} onClick={() => panel.focus(k)} className="flex items-center gap-1.5 py-1 pl-2.5 pr-1">{TAB_KINDS[k].icon}{TAB_KINDS[k].label}</button>
-            <button type="button" onClick={() => panel.close(k)} aria-label={`Cerrar ${TAB_KINDS[k].label}`} className="mr-1 grid size-5 place-items-center opacity-60 hover:opacity-100"><X weight="regular" className="size-3" /></button>
+            {renaming === k ? (
+              <input autoFocus defaultValue={panel.label(k)} aria-label="Nombre de la pestaña" className="mx-1 w-28 rounded bg-white px-1.5 py-0.5 text-sm outline-none ring-1 ring-slate-300 dark:bg-surface dark:ring-border-strong"
+                onBlur={(e) => { panel.setMeta(k, { name: e.target.value.trim() }); setRenaming(null); }}
+                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") setRenaming(null); }} />
+            ) : (
+              <button type="button" role="tab" aria-selected={panel.active === k} onClick={() => panel.focus(k)} onDoubleClick={() => MULTIPLE.includes(kindOf(k)) && setRenaming(k)} className="flex items-center gap-1.5 py-1 pl-2.5 pr-1">{TAB_KINDS[kindOf(k)].icon}{panel.label(k)}</button>
+            )}
+            <button type="button" onClick={() => panel.close(k)} aria-label={`Cerrar ${panel.label(k)}`} className="mr-1 grid size-5 place-items-center opacity-60 hover:opacity-100"><X weight="regular" className="size-3" /></button>
           </div>
         ))}
         {missing.map((k) => panel.tabs.length > 0 && (
