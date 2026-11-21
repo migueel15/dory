@@ -405,6 +405,13 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         GradientDrawable fade = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
             new int[] {0x00000000, 0x20000000, 0x80000000, 0xd9000000, 0xff000000, 0xff000000});
         panel.setBackground(fade);
+        panel.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            int height = bottom - top;
+            if (height <= 0) return;
+            float end = Math.min(0.99f, (float) dp(160) / height);
+            fade.setColors(new int[] {0x00000000, 0x20000000, 0x80000000, 0xd9000000, 0xff000000, 0xff000000},
+                new float[] {0f, end * 0.2f, end * 0.5f, end * 0.8f, end, 1f});
+        });
         panel.setPadding(dp(24), dp(160), dp(24), 0);
         FrameLayout.LayoutParams panelSize = new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
