@@ -11,7 +11,7 @@ import (
 
 func TestThreadControlTools(t *testing.T) {
 	tools := toolsOf(t, build(&api.Server{Devices: devices.NewManager()}, false))
-	for _, n := range []string{"list_models", "list_threads", "get_thread", "thread_configure", "thread_send", "thread_stop"} {
+	for _, n := range []string{"list_models", "list_threads", "get_thread", "thread_configure", "thread_send", "thread_stop", "thread_spawn"} {
 		if tools[n] == nil {
 			t.Errorf("missing %s", n)
 		}

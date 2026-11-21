@@ -273,7 +273,9 @@ func (m *Manager) Usage() map[string][]Window {
 
 // NewThread describes a thread to create.
 type NewThread struct {
-	ProjectID, TaskID   *string
+	ProjectID, TaskID *string
+	// ParentID makes the thread a subagent of another thread.
+	ParentID            *string
 	Provider, Model     string
 	Effort, RuntimeMode string
 	Title               string
@@ -291,7 +293,7 @@ func (m *Manager) Create(ctx context.Context, n NewThread) (data.Thread, error) 
 	if _, ok := m.provider(n.Provider); !ok {
 		return data.Thread{}, fmt.Errorf("%w: %s", ErrProvider, n.Provider)
 	}
-	t := data.Thread{NodeID: m.node, ProjectID: n.ProjectID, TaskID: n.TaskID, Provider: n.Provider, Model: n.Model,
+	t := data.Thread{NodeID: m.node, ProjectID: n.ProjectID, TaskID: n.TaskID, ParentID: n.ParentID, Provider: n.Provider, Model: n.Model,
 		Effort: n.Effort, RuntimeMode: n.RuntimeMode, Title: n.Title, Branch: n.Branch}
 	if n.TaskID != nil {
 		linked := now()
@@ -678,6 +680,9 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 	m.mu.Unlock()
 	if configured != nil {
 		m.save(bg, Message{ID: newRunID(), ThreadID: t.ID, Role: "system", Text: "No se pudo cambiar el modelo: " + configured.Error(), Status: "failed", CreatedAt: now()})
+	}
+	if q.RunID == "" && t.ParentID != nil {
+		m.notifyParent(bg, t, status, ctx.Err() != nil)
 	}
 	if q.RunID != "" {
 		m.publish(Update{ThreadID: t.ID, Queue: remaining})

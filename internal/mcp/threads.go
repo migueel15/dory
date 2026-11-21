@@ -206,6 +206,24 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		}
 		return map[string]any{"thread_id": in.ThreadID, "sent": true, "queued": len(m.Queue(in.ThreadID)) > 0}, nil
 	})
+	add(srv, "thread_spawn", "Launch a subagent: a child thread of this conversation that works on prompt in the same folder and task, with its own provider and model (list_models), e.g. when the user asks \"abre un hilo con haiku que revise X\" or to split work in parallel. The child does not see this conversation, so put every detail it needs in prompt. Its result arrives here as a message when its turn ends: do not poll it; continue with other work or end your turn. Subagents cannot launch subagents, and at most 5 work at once.", func(ctx context.Context, in struct {
+		Prompt   string `json:"prompt" jsonschema:"Self-contained task for the subagent"`
+		Title    string `json:"title,omitempty" jsonschema:"Short title; the first line of prompt by default"`
+		Provider string `json:"provider,omitempty" jsonschema:"Harness id from list_models; this thread's by default; another one needs model"`
+		Model    string `json:"model,omitempty" jsonschema:"Model slug or name; this thread's by default"`
+		Effort   string `json:"effort,omitempty"`
+	}) (any, error) {
+		parent := caller(ctx)
+		if parent == "" {
+			return nil, errors.New("thread_spawn only works inside a Dory thread")
+		}
+		child, err := m.Spawn(ctx, parent, runtime.Subagent{Prompt: in.Prompt, Title: in.Title, Provider: in.Provider, Model: in.Model, Effort: in.Effort})
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"thread_id": child.ID, "title": child.Title, "provider": child.Provider, "model": child.Model, "effort": child.Effort,
+			"status": child.Status, "next": "Its result will arrive here as a message when it finishes. Do not poll it; continue with other work or end your turn."}, nil
+	})
 	add(srv, "thread_stop", "Stop the running turn of a thread and drop its queued messages.", func(ctx context.Context, in struct {
 		ThreadID string `json:"thread_id"`
 	}) (any, error) {
