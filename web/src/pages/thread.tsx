@@ -47,6 +47,14 @@ export function ThreadView() {
     window.addEventListener("dory-device", on);
     return () => window.removeEventListener("dory-device", on);
   }, [threadId]);
+  useEffect(() => {
+    if (!window.doryDesktop?.browser) return;
+    const on = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === threadId) latest.current.show("browser");
+    };
+    window.addEventListener("dory-browser-open", on);
+    return () => window.removeEventListener("dory-browser-open", on);
+  }, [threadId]);
   const deviceView = (k: string, floating = false) => <DevicePanel key={k} node={thread?.node_id ?? "local"} serial={panel.meta[k]?.serial ?? null} floating={floating} onFloat={(v) => panel.setMeta(k, { floating: v })}
     onSerial={(serial, name) => panel.setMeta(k, serial ? { serial, ...(panel.meta[k]?.name ? {} : { name }) } : { serial: undefined })} />;
   return (

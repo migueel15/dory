@@ -58,7 +58,7 @@ Cada hilo tiene un navegador propio en su nodo. Las herramientas solo funcionan 
 
 | Herramienta | Qué hace |
 |---|---|
-| `browser_open` | Abre una URL en la pestaña activa o en una nueva (`new_tab`) |
+| `browser_open` | Abre una URL en la pestaña activa o en una nueva (`new_tab`). Si el hilo está abierto en Dory Desktop, despliega el panel lateral y selecciona **Navegador** |
 | `browser_tabs` | Lista las pestañas y cuál está activa |
 | `browser_activate`, `browser_close` | Trae al frente o cierra una pestaña |
 | `browser_navigate` | Va a una URL, o `back`, `forward` o `reload` |
