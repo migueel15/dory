@@ -87,7 +87,8 @@ export function listenShortcuts(e: KeyboardEvent) {
   if (!pressed) return;
   const command = commands.find((c) => c.id !== "dictation" && sameChord(shortcut(c.id), pressed));
   if (!command || sameChord(shortcut("dictation"), pressed)) return;
-  const dialog = document.querySelector('dialog[open], [role="dialog"], [role="listbox"]');
+  // Closed popovers stay in the DOM with role="dialog"; only open ones block shortcuts.
+  const dialog = [...document.querySelectorAll('dialog[open], [role="dialog"], [role="listbox"]')].find((el) => !el.hasAttribute("popover") || el.matches(":popover-open"));
   if (dialog && command.id !== "new-idea" && !(command.id === "palette" && dialog.getAttribute("aria-label") === "Comandos")) return;
   if (runCommand(command.id)) { e.preventDefault(); e.stopPropagation(); }
 }

@@ -49,6 +49,8 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false, hi
     document.addEventListener("keydown", close, true);
     return () => { document.removeEventListener("pointerdown", close, true); document.removeEventListener("keydown", close, true); };
   }, [popup, pop]);
+  // The task card replaces this one: opening it closes this card for good.
+  useEffect(() => { if (hidden) { setPop(false); setOpen(false); } }, [hidden]); // eslint-disable-line react-hooks/exhaustive-deps
   const shown = !hidden && (popup ? pop : open);
   const qc = useQueryClient();
   const services = useQuery({ queryKey: ["thread-services", t.id], queryFn: () => api.threadServices(t.id), enabled: shown, refetchInterval: 3000 });

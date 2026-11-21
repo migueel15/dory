@@ -139,8 +139,12 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
   // Opening a thread marks it as read.
   useEffect(() => { if (t && !t.read_at && t.status !== "working") act.mutate({ action: "read" }); }, [t?.id, t?.status]); // eslint-disable-line react-hooks/exhaustive-deps
   const fold = useThreadsFold();
-  const [taskOpen, setTaskOpen] = useState(false);
-  useEffect(() => setTaskOpen(false), [threadId]);
+  // Like the details card, each thread remembers whether its task card was left open.
+  const taskKey = `dory-thread-task:${threadId}`;
+  const readTask = () => { try { return localStorage.getItem(taskKey) === "1"; } catch { return false; } };
+  const [taskOpen, setTaskOpenState] = useState(readTask);
+  useEffect(() => setTaskOpenState(readTask()), [taskKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const setTaskOpen = useCallback((v: boolean) => { setTaskOpenState(v); try { if (v) localStorage.setItem(taskKey, "1"); else localStorage.removeItem(taskKey); } catch { /* per-viewer only */ } }, [taskKey]);
   if (!t) return <div className="h-12 shrink-0" />;
   return (
     <div className={`relative z-20 flex shrink-0 flex-wrap items-center gap-2 pb-2 pl-1 pr-11 transition-[padding,margin] ${fold ? (fold.folded ? "sm:pl-10" : "sm:pl-2") : ""} duration-300 ease-out motion-reduce:transition-none sm:-mt-2 ${hasWindowClose ? "sm:pr-20" : ""} ${panel.open ? "lg:!pr-1" : ""} ${panel.open ? "lg:mr-0 sm:-mr-2" : "sm:-mr-2"}`}>

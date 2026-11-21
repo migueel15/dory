@@ -419,7 +419,10 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
     const trigger = launchAnchor.current ?? launchTrigger.current;
     const popover = launchPopover.current;
     if (!trigger || !popover) return;
-    const { right, top, bottom } = trigger.getBoundingClientRect();
+    const rect = trigger.getBoundingClientRect();
+    // The anchor is not laid out yet (the detail is still opening): retry next frame.
+    if (rect.width === 0 && rect.height === 0) { requestAnimationFrame(() => { if (popover.matches(":popover-open")) placeLaunchPopover(); }); return; }
+    const { right, top, bottom } = rect;
     const width = Math.min(368, window.innerWidth - 24);
     const below = Math.max(0, window.innerHeight - bottom - 20);
     const above = Math.max(0, top - 20);
@@ -490,21 +493,25 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
     if (!initialLaunch || autoLaunched.current || !c || !draft || !planDoc.data || !launchPopover.current) return;
     autoLaunched.current = true;
     setMode(initialLaunch);
-    launchPopover.current.showPopover();
-    placeLaunchPopover();
+    const popover = launchPopover.current;
+    // Anchor to the matching action button of the detail once it is laid out,
+    // and again when the dialog's opening animation ends.
+    requestAnimationFrame(() => {
+      launchAnchor.current = document.querySelector<HTMLElement>(`[data-launch="${initialLaunch}"]`);
+      popover.showPopover();
+      placeLaunchPopover();
+      const dialog = popover.closest("dialog") ?? popover.parentElement;
+      const again = () => { if (popover.matches(":popover-open")) placeLaunchPopover(); };
+      dialog?.addEventListener("animationend", again, { once: true });
+      dialog?.addEventListener("transitionend", again, { once: true });
+      setTimeout(again, 300);
+    });
   }); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!side) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !document.querySelector(":popover-open")) onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [side, onClose]);
   // frame is the modal on the board and a plain card in a thread.
   const frame = (title: string, children: React.ReactNode) => side ? (
     <div role="region" aria-label={title} className="space-y-4">
       <div className="flex items-start justify-between gap-2">
         <h2 className="min-w-0 wrap-break-word text-lg font-semibold leading-tight">{title}</h2>
-        <button type="button" aria-label="Cerrar" onClick={onClose} className="-mr-1 grid size-8 shrink-0 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white"><X weight="regular" aria-hidden="true" className="size-4" /></button>
       </div>
       {children}
     </div>
@@ -561,7 +568,7 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
     <Link to="/threads/$threadId" params={{ threadId: t.id }} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-accent dark:hover:bg-accent-hover"><Chats className="size-4" />{label}</Link>
   );
   const launchButton = (label: string, next: "define" | "implement", disabled = false, variant: "default" | "ghost" = "default") => (
-    <Button variant={variant} onClick={(e) => openLaunch(e.currentTarget, next)} disabled={disabled || !planDoc.data || launchPending}>{next === "define" ? <ClipboardText className="size-4" /> : <Rocket className="size-4" />}{label}</Button>
+    <Button data-launch={next} variant={variant} onClick={(e) => openLaunch(e.currentTarget, next)} disabled={disabled || !planDoc.data || launchPending}>{next === "define" ? <ClipboardText className="size-4" /> : <Rocket className="size-4" />}{label}</Button>
   );
   const prLink = pullRoute && <Link to="/github/$owner/$repo/$kind/$number" params={pullRoute} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-accent dark:hover:bg-accent-hover"><GitPullRequest className="size-4" />Abrir PR</Link>;
   // The pull request decides the column; stage only counts without one.
@@ -610,6 +617,21 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
         </div>
       </div>
 
+      {side ? (() => {
+        const at = Math.max(0, steps.findIndex((s) => s.state !== "done"));
+        const current = steps.every((s) => s.state === "done") ? steps.length - 1 : at;
+        return (
+          <div aria-label="Progreso de la tarea" className="space-y-1.5">
+            <ol className="grid grid-cols-4 gap-1">
+              {steps.map((s) => (
+                <li key={s.label} title={s.label} aria-label={`${s.label}: ${s.state === "done" ? "hecho" : s.state === "now" ? "en curso" : "pendiente"}`}
+                  className={`h-1.5 rounded-full ${s.state === "done" ? "bg-emerald-600" : s.state === "now" ? "bg-slate-900 dark:bg-white" : "bg-slate-200 dark:bg-border-strong"}`} />
+              ))}
+            </ol>
+            <p className="text-xs text-slate-500 dark:text-muted">Paso {current + 1} de {steps.length} · <span className="font-medium text-slate-900 dark:text-white">{steps[current].label}</span></p>
+          </div>
+        );
+      })() : (
       <ol aria-label="Progreso de la tarea" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
         {steps.map((s, i) => (
           <li key={s.label} className="flex items-center gap-2">
@@ -623,6 +645,7 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
           </li>
         ))}
       </ol>
+      )}
 
       <section aria-label="Siguiente paso" className={`flex flex-wrap items-center gap-3 rounded-xl border p-4 ${next.tone}`}>
         <div className="min-w-0 flex-1">
