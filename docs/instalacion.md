@@ -31,6 +31,12 @@ curl -fL -o ~/.local/bin/dory "https://github.com/migueel15/dory/releases/downlo
 chmod +x ~/.local/bin/dory && dory restart
 ```
 
+### Navegador de los hilos
+
+El navegador de los hilos usa Chromium en el nodo, sin interfaz. Dory busca `chromium`, `chromium-browser`, `google-chrome-stable`, `google-chrome` o `chrome` en el `PATH`, o la ruta de `DORY_CHROMIUM`. Sin él, las herramientas `browser_*` devuelven un error. En Arch: `sudo pacman -S chromium`; en Debian o Ubuntu: `sudo apt install chromium`.
+
+El perfil (cookies y sesiones) se guarda en `browser-profile/` dentro del directorio de datos y lo comparten todos los hilos del nodo. Chromium arranca al usarlo y se cierra tras 10 minutos sin uso.
+
 ## App de escritorio
 
 La app de Electron está en `desktop/` y lleva el binario dentro. Basta con instalarla: al abrirla por primera vez copia su núcleo a `~/.local/bin/dory` (en Windows, `%LOCALAPPDATA%\Dory\bin\dory.exe`) y lo deja como servicio de usuario (`dory service install`), así que el núcleo sigue en marcha al cerrar la ventana y arranca con la sesión. Si ya había un `dory` instalado por otra vía, la app lo respeta. En las siguientes versiones actualiza el núcleo que instaló ella. Al cerrar la ventana, la app sigue en segundo plano con un icono en la bandeja del sistema (en Linux necesita un panel con StatusNotifierItem, como KDE, Waybar o Quickshell; en GNOME, la extensión AppIndicator); se abre desde ahí y se cierra con **Salir**. Arranca oculta al iniciar sesión, así que el móvil y la malla siempre encuentran el nodo. Con el AppImage, además, instala su icono y la entrada `~/.local/share/applications/dory.desktop`, para que Dory aparezca con su icono en el lanzador de aplicaciones, y enlaza `~/.local/bin/Dory.AppImage` para que `dory open` y el lanzador abran la app.

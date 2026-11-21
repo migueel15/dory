@@ -25,3 +25,21 @@ Los agentes leen todo lo que necesitan del trabajo en curso y escriben lo suyo. 
 | `recall` | Busca memorias por texto, proyecto, labels o tipo |
 | `search` | Busca en tareas y memorias |
 | `ask_user` | Pregunta al usuario; el hilo queda esperando su respuesta |
+
+## Navegador del hilo
+
+Cada hilo tiene un navegador propio en su nodo. Las herramientas solo funcionan dentro de un hilo y se ejecutan en el nodo que lo ejecuta, aunque nadie tenga el hilo abierto y aunque el nodo no tenga interfaz.
+
+| Herramienta | Qué hace |
+|---|---|
+| `browser_open` | Abre una URL en la pestaña activa o en una nueva (`new_tab`) |
+| `browser_tabs` | Lista las pestañas y cuál está activa |
+| `browser_activate`, `browser_close` | Trae al frente o cierra una pestaña |
+| `browser_navigate` | Va a una URL, o `back`, `forward` o `reload` |
+| `browser_screenshot` | Devuelve una imagen PNG de la vista o de la página entera (`full_page`) |
+| `browser_read` | Devuelve URL, título, texto visible y los elementos interactivos con las coordenadas de su centro |
+| `browser_console` | Devuelve los últimos mensajes de consola y excepciones |
+| `browser_click`, `browser_type`, `browser_key`, `browser_scroll` | Actúan por coordenadas o por selector CSS |
+| `browser_resize` | Cambia el tamaño de la vista de una pestaña que corre en el nodo |
+
+Una pestaña corre en el Chromium sin interfaz del nodo, o en una vista nativa de la app de escritorio mientras el usuario la tiene en la pestaña **Navegador** del panel lateral. Mientras el usuario ha tomado el control, las acciones devuelven un error y la lectura y las capturas siguen funcionando.
