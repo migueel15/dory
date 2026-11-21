@@ -68,7 +68,9 @@ func (c Claude) Start(ctx context.Context, t Turn) (Session, error) {
 		}}})
 		args = append(args, "--mcp-config", string(cfg))
 	}
-	cmd := providerCommand(ctx, t.ThreadID, c.bin(), args...)
+	// A turn cancellation is a protocol request, not a signal to every child
+	// in the provider's process group.
+	cmd := providerCommand(context.WithoutCancel(ctx), t.ThreadID, c.bin(), args...)
 	cmd.Dir = t.Dir
 	// ask_user waits for the user, so an MCP call may take long (ms).
 	cmd.Env = append(os.Environ(), "MCP_TOOL_TIMEOUT=86400000")
@@ -78,9 +80,32 @@ func (c Claude) Start(ctx context.Context, t Turn) (Session, error) {
 		return nil, err
 	}
 	s := newClaudeSession(t.RunID, in, t.FullAccess)
-	if s.events, err = pipe(ctx, cmd, s.handle); err != nil {
+	events, err := pipe(ctx, cmd, s.handle)
+	if err != nil {
 		return nil, err
 	}
+	forward := make(chan Event, 64)
+	done := make(chan struct{})
+	s.events = forward
+	go func() {
+		defer close(done)
+		defer close(forward)
+		for event := range events {
+			forward <- event
+		}
+	}()
+	go func() {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			_ = s.write(map[string]any{"type": "control_request", "request_id": newRunID(), "request": map[string]any{"subtype": "interrupt"}})
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				_ = cmd.Process.Kill()
+			}
+		}
+	}()
 	if err = s.write(map[string]any{"type": "user", "parent_tool_use_id": nil,
 		"message": map[string]any{"role": "user", "content": t.Text}}); err != nil {
 		return nil, err
