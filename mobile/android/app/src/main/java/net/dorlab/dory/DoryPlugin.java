@@ -104,22 +104,28 @@ public class DoryPlugin extends Plugin {
         }).start();
     }
 
+    /** Trades the device token for a web session cookie and returns the node origin. */
+    static String session(String address, String pin, String token) throws Exception {
+        HttpsURLConnection c = Pin.open("https://" + address + "/device/v1/session", pin, null);
+        send(c, "POST", token, "");
+        String origin = "https://" + address;
+        CookieManager cm = CookieManager.getInstance();
+        Map<String, List<String>> headers = c.getHeaderFields();
+        List<String> cookies = headers.get("Set-Cookie");
+        if (cookies == null) cookies = headers.get("set-cookie");
+        if (cookies != null) for (String v : cookies) cm.setCookie(origin, v);
+        cm.flush();
+        Pin.byHost.put(address, pin);
+        return origin;
+    }
+
     /** Trades the token for a session and shows the node in the web view. */
     @PluginMethod
     public void open(PluginCall call) {
         String address = call.getString("address"), pin = call.getString("pin"), token = call.getString("token");
         new Thread(() -> {
             try {
-                HttpsURLConnection c = Pin.open("https://" + address + "/device/v1/session", pin, null);
-                send(c, "POST", token, "");
-                String origin = "https://" + address;
-                CookieManager cm = CookieManager.getInstance();
-                Map<String, List<String>> headers = c.getHeaderFields();
-                List<String> cookies = headers.get("Set-Cookie");
-                if (cookies == null) cookies = headers.get("set-cookie");
-                if (cookies != null) for (String v : cookies) cm.setCookie(origin, v);
-                cm.flush();
-                Pin.byHost.put(address, pin);
+                String origin = session(address, pin, token);
                 getActivity().runOnUiThread(() -> getBridge().getWebView().loadUrl(origin + "/"));
                 call.resolve();
             } catch (Exception e) {

@@ -98,6 +98,13 @@ public class NoticeService extends Service {
         return PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
+    /** Opens the node that sent the notice on the page it points to. */
+    private PendingIntent openNotice(String id, JSONObject node, String url) {
+        Intent open = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .putExtra(MainActivity.NOTICE_NODE, node.toString()).putExtra(MainActivity.NOTICE_URL, url.startsWith("/") ? url : "/");
+        return PendingIntent.getActivity(this, id.hashCode(), open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
     /** Tries the paired nodes in turn; notices replicate, so any one is enough. */
     private void loop() {
         long backoff = 2_000;
@@ -186,20 +193,20 @@ public class NoticeService extends Service {
             seen.add(n.getString("id"));
             String mode = modes.getOrDefault(n.getString("kind"), "auto");
             if (mode.equals("off") || mode.equals("app") || (mode.equals("auto") && focus)) continue;
-            show(n);
+            show(n, node);
         }
         while (seen.size() > 300) seen.remove(seen.iterator().next());
         prefs(this).edit().putStringSet("seen-notices", seen).apply();
     }
 
-    private void show(JSONObject n) {
+    private void show(JSONObject n, JSONObject node) {
         if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) return;
         // Same id as the interface's local notification, so one replaces the other.
         String id = n.optString("id");
         try {
             NotificationManagerCompat.from(this).notify(id.hashCode(), new NotificationCompat.Builder(this, "notices")
                 .setSmallIcon(R.mipmap.ic_launcher).setContentTitle(n.optString("title")).setContentText(n.optString("body"))
-                .setAutoCancel(true).setContentIntent(openApp()).build());
+                .setAutoCancel(true).setContentIntent(openNotice(id, node, n.optString("url"))).build());
         } catch (SecurityException ignored) {
             // Permission revoked meanwhile.
         }
