@@ -128,4 +128,58 @@ export class DeviceStream {
   send(msg: Uint8Array) {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(msg);
   }
+
+  // --- control: scrcpy control messages, big endian ---
+  private msg(size: number, fill: (v: DataView) => void) {
+    const b = new Uint8Array(size);
+    fill(new DataView(b.buffer));
+    this.send(b);
+  }
+
+  // touch sends a pointer event in device pixels; action 0 down, 1 up, 2 move.
+  touch(action: 0 | 1 | 2, x: number, y: number, pointer = 0) {
+    const { width, height } = this.size;
+    if (!width) return;
+    this.msg(32, (v) => {
+      v.setUint8(0, 2); v.setUint8(1, action);
+      v.setBigInt64(2, BigInt(pointer === 0 ? -2 : pointer)); // -2 is scrcpy's generic finger
+      v.setInt32(10, Math.round(x)); v.setInt32(14, Math.round(y));
+      v.setUint16(18, width); v.setUint16(20, height);
+      v.setUint16(22, action === 1 ? 0 : 0xffff);
+      v.setInt32(24, action === 2 ? 0 : 1); v.setInt32(28, action === 1 ? 0 : 1);
+    });
+  }
+
+  // scroll sends a wheel step; positive vertical scrolls up.
+  scroll(x: number, y: number, h: number, vert: number) {
+    const { width, height } = this.size;
+    if (!width) return;
+    const fix = (n: number) => Math.round(Math.max(-1, Math.min(1, n / 16)) * 32767);
+    this.msg(21, (v) => {
+      v.setUint8(0, 3); v.setInt32(1, Math.round(x)); v.setInt32(5, Math.round(y));
+      v.setUint16(9, width); v.setUint16(11, height);
+      v.setInt16(13, fix(h)); v.setInt16(15, fix(vert)); v.setInt32(17, 0);
+    });
+  }
+
+  keycode(code: number) {
+    for (const action of [0, 1]) this.msg(14, (v) => { v.setUint8(0, 0); v.setUint8(1, action); v.setInt32(2, code); v.setInt32(6, 0); v.setInt32(10, 0); });
+  }
+
+  text(text: string) {
+    const bytes = new TextEncoder().encode(text);
+    const b = new Uint8Array(5 + bytes.length);
+    new DataView(b.buffer).setUint32(1, bytes.length);
+    b[0] = 1; b.set(bytes, 5);
+    this.send(b);
+  }
+
+  // back goes back, or wakes the screen when it is off.
+  back() { for (const action of [0, 1]) this.msg(2, (v) => { v.setUint8(0, 4); v.setUint8(1, action); }); }
+  displayPower(on: boolean) { this.msg(2, (v) => { v.setUint8(0, 10); v.setUint8(1, on ? 1 : 0); }); }
 }
+
+// Android keycodes used by the bar and the keyboard.
+export const Key = { home: 3, back: 4, power: 26, volUp: 24, volDown: 25, appSwitch: 187, enter: 66, del: 67, tab: 61, esc: 111, up: 19, down: 20, left: 21, right: 22, fwdDel: 112, space: 62 };
+const byName: Record<string, number> = { Enter: Key.enter, Backspace: Key.del, Tab: Key.tab, Escape: Key.esc, ArrowUp: Key.up, ArrowDown: Key.down, ArrowLeft: Key.left, ArrowRight: Key.right, Delete: Key.fwdDel };
+export const keyFor = (name: string) => byName[name];
