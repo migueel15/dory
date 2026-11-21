@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Bell, BellRinging, Tray } from "@phosphor-icons/react";
+import { Bell, BellRinging, Tray, X } from "@phosphor-icons/react";
 import { api, req } from "../api/client";
 import { Button, Modal } from "./ui";
 
@@ -123,8 +123,7 @@ function usePresence() {
 
 // NoticeAlerts shows each new notice where the user is: inside the app when
 // this interface has the focus; as a system notification when none has the
-// focus and there is no push to reach a phone. Otherwise push or the inbox
-// take it, so nothing shows twice.
+// focus, even if push also reaches other devices.
 export function NoticeAlerts() {
   usePresence();
   const notices = useNotices();
@@ -138,37 +137,54 @@ export function NoticeAlerts() {
     if (!known) return;
     const fresh = notices.data.filter((n) => !n.read_at && !known.has(n.id) && Date.now() - Date.parse(n.created_at) < 120_000);
     if (fresh.length === 0) return;
-    const focused = document.hasFocus();
-    Promise.all([req<NoticeSetting[]>("GET", "/notice-settings"), focused ? Promise.resolve(undefined) : req<{ focus: boolean; push: boolean }>("GET", "/presence")]).then(([settings, d]) => {
+    const focused = document.visibilityState === "visible" && document.hasFocus();
+    req<NoticeSetting[]>("GET", "/notice-settings").then((settings) => {
       const mode = (n: Notice) => settings.find((s) => s.kind === n.kind)?.mode ?? "auto";
       if (focused) {
         const shown = fresh.filter((n) => mode(n) === "auto" || mode(n) === "app");
-        if (shown.length === 0) return;
         setToasts((t) => [...shown, ...t].slice(0, 3));
         for (const n of shown) setTimeout(() => setToasts((t) => t.filter((x) => x.id !== n.id)), 8000);
-        return;
       }
-      if (!d || d.focus || d.push) return;
-      // The Android app has no Web Push or Notification API: its shell shows it.
-      const android = (window as unknown as { DoryAndroid?: { notify(title: string, body: string, tag: string): void } }).DoryAndroid;
-      if (android) {
-        for (const n of fresh.filter((n) => mode(n) === "auto")) android.notify(n.title, n.body, n.id);
-        return;
-      }
+      // The Android app's native service notifies on its own.
+      if ((window as unknown as { DoryAndroid?: unknown }).DoryAndroid) return;
       if (!("Notification" in window) || Notification.permission !== "granted") return;
-      for (const n of fresh.filter((n) => mode(n) === "auto")) new Notification(n.title, { body: n.body, tag: n.id, icon: "/icon-192.png" }).onclick = () => { window.focus(); if (n.url) location.assign(n.url); };
+      // Same tag as the push of this notice, so a browser with both shows it once.
+      // "Always push" also notifies the focused interface.
+      for (const n of fresh.filter((n) => mode(n) === "push" || (!focused && mode(n) === "auto"))) new Notification(n.title, { body: n.body, tag: n.id, icon: "/icon-192.png" }).onclick = () => { window.focus(); if (n.url) location.assign(n.url); };
     }).catch(() => {});
   }, [notices.data]);
   if (toasts.length === 0) return null;
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex w-80 max-w-[calc(100%-2rem)] flex-col gap-2" role="status">
+    <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-80 max-w-[calc(100%-2rem)] flex-col gap-2" role="status">
       {toasts.map((n) => (
-        <button key={n.id} type="button" onClick={() => { setToasts((t) => t.filter((x) => x.id !== n.id)); if (n.url) navigate({ to: n.url as never }); }}
-          className="rounded-lg border border-slate-200 bg-white p-3 text-left shadow-lg dark:border-border dark:bg-surface">
-          <span className="block text-sm font-semibold">{n.title}</span>
-          {n.body && <span className="block truncate text-sm text-slate-500 dark:text-muted">{n.body}</span>}
-        </button>
+        <Toast key={n.id} notice={n} onDismiss={() => setToasts((t) => t.filter((x) => x.id !== n.id))}
+          onOpen={() => { setToasts((t) => t.filter((x) => x.id !== n.id)); if (n.url) navigate({ to: n.url as never }); }} />
       ))}
+    </div>
+  );
+}
+
+// Toast is one in-app notice. A sideways swipe or the close button dismisses
+// it, so it never blocks the composer underneath for long.
+function Toast({ notice: n, onOpen, onDismiss }: { notice: Notice; onOpen: () => void; onDismiss: () => void }) {
+  const [dx, setDx] = useState(0);
+  const start = useRef<number | undefined>(undefined);
+  const moved = useRef(false);
+  return (
+    <div style={{ transform: `translateX(${dx}px)`, opacity: 1 - Math.min(Math.abs(dx) / 160, 0.8), transition: start.current === undefined ? "transform 150ms, opacity 150ms" : "none" }}
+      className="pointer-events-auto flex touch-pan-y items-start rounded-lg border border-slate-200 bg-white shadow-lg dark:border-border dark:bg-surface"
+      onPointerDown={(e) => { start.current = e.clientX; moved.current = false; }}
+      onPointerMove={(e) => { if (start.current === undefined) return; const d = e.clientX - start.current; if (!moved.current && Math.abs(d) > 6) { moved.current = true; e.currentTarget.setPointerCapture(e.pointerId); } if (moved.current) setDx(d); }}
+      onPointerUp={() => { start.current = undefined; if (Math.abs(dx) > 80) onDismiss(); else setDx(0); }}
+      onPointerCancel={() => { start.current = undefined; setDx(0); }}>
+      <button type="button" onClick={() => { if (!moved.current) onOpen(); }} className="min-w-0 flex-1 p-3 text-left">
+        <span className="block text-sm font-semibold">{n.title}</span>
+        {n.body && <span className="block truncate text-sm text-slate-500 dark:text-muted">{n.body}</span>}
+      </button>
+      <button type="button" aria-label="Cerrar aviso" onClick={onDismiss}
+        className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-white">
+        <X weight="regular" aria-hidden="true" className="size-4" />
+      </button>
     </div>
   );
 }
