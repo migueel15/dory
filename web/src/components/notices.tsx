@@ -78,7 +78,11 @@ export function NoticeInbox() {
     p.style.maxHeight = `${beside ? r.bottom - 12 : window.innerHeight - r.bottom - 20}px`;
   };
   useEffect(() => {
-    const again = () => { if (panel.current?.matches(":popover-open")) place(); };
+    const again = (e?: Event) => {
+      // Scrolling the list itself must not move or resize the panel.
+      if (e?.type === "scroll" && panel.current?.contains(e.target as Node)) return;
+      if (panel.current?.matches(":popover-open")) place();
+    };
     window.addEventListener("resize", again);
     window.addEventListener("scroll", again, true);
     return () => { window.removeEventListener("resize", again); window.removeEventListener("scroll", again, true); };
@@ -92,7 +96,7 @@ export function NoticeInbox() {
         {unread.length > 0 && <span className="absolute right-0.5 top-0.5 grid min-w-4 place-items-center rounded-full bg-blue-600 px-1 text-[10px] font-bold leading-4 text-white">{unread.length > 99 ? "99+" : unread.length}</span>}
       </button>
       <div ref={panel} id={popoverId} popover="auto" role="dialog" aria-label="Avisos" onToggle={(e) => { if (e.newState === "open") place(); }}
-        className="fixed m-0 overflow-auto rounded-xl border border-slate-200 bg-white p-3 text-slate-900 shadow-xl dark:border-border-strong dark:bg-surface dark:text-white">
+        className="fixed m-0 overflow-auto [scrollbar-gutter:stable] rounded-xl border border-slate-200 bg-white p-3 text-slate-900 shadow-xl dark:border-border-strong dark:bg-surface dark:text-white">
           <h2 className="mb-2 text-base font-semibold">Avisos</h2>
           <div className="space-y-2">
             {unread.length > 0 && <Button variant="ghost" onClick={() => read.mutate([])}>Marcar todos como leídos</Button>}
