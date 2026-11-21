@@ -439,7 +439,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
       return qc.invalidateQueries({ queryKey: key });
     },
   });
-  const suggest = useSuggest(t.id, t.provider, text, area, setText, addToken);
+  const suggest = useSuggest(threadSource(t.id, t.provider), text, area, setText, addToken);
   const readyToSend = !uploading && !send.isPending && !settings.isPending;
   // While this box is dictating, sending finishes the dictation first and then sends it.
   const canSend = (!!outgoing || files.some((file) => file.done) || dictation.active) && readyToSend && (!dictating || dictation.active) && dictation.phase !== "finishing";
@@ -596,18 +596,24 @@ const titles = { "/": "Comandos", $: "Skills", "@": "Ficheros" } as const;
 // useSuggest autocompletes the composer as in v1: /command (only at the
 // start), $skill and @file of the thread's folder. A pick replaces the typed
 // word with how the harness invokes it.
-function useSuggest(threadId: string, provider: string, text: string, area: React.RefObject<HTMLTextAreaElement | null>, setText: (t: string) => void, onToken: (insert: string, t: Token) => string) {
+// Source is where the menu reads from: a thread, or the harness and project of
+// a thread not created yet (no files, and no /clear: there is no session).
+export type SuggestSource = { key: unknown[]; commands: () => Promise<{ commands: CatalogEntry[]; skills: CatalogEntry[] }>; files?: (q: string) => Promise<string[]> };
+type CatalogEntry = { name: string; description: string; insert: string };
+export const threadSource = (threadId: string, provider: string): SuggestSource => ({ key: [threadId, provider], commands: () => api.threadCommands(threadId), files: (q) => api.threadFiles(threadId, q) });
+
+export function useSuggest(source: SuggestSource, text: string, area: React.RefObject<HTMLTextAreaElement | null>, setText: (t: string) => void, onToken: (insert: string, t: Token) => string = (insert) => insert) {
   const [word, setWord] = useState<{ start: number; sigil: "/" | "$" | "@"; q: string } | null>(null);
   const [index, setIndex] = useState(0);
-  const catalog = useQuery({ queryKey: ["thread-commands", threadId, provider], queryFn: () => api.threadCommands(threadId), enabled: word?.sigil === "/" || word?.sigil === "$", staleTime: 60_000 });
-  const files = useQuery({ queryKey: ["thread-files", threadId, word?.q], queryFn: () => api.threadFiles(threadId, word!.q), enabled: word?.sigil === "@", staleTime: 30_000 });
+  const catalog = useQuery({ queryKey: ["commands", ...source.key], queryFn: source.commands, enabled: word?.sigil === "/" || word?.sigil === "$", staleTime: 60_000 });
+  const files = useQuery({ queryKey: ["files", ...source.key, word?.q], queryFn: () => source.files!(word!.q), enabled: word?.sigil === "@" && !!source.files, staleTime: 30_000 });
   const q = word?.q.toLowerCase() ?? "";
   const hit = (e: { name: string; description: string }) => !q || e.name.toLowerCase().includes(q) || e.description.toLowerCase().includes(q);
   const entry = (e: { name: string; description: string; insert: string }, icon: React.ReactNode, kind: "command" | "skill"): Suggestion => ({ key: e.insert, label: e.insert, hint: e.description, insert: e.insert, icon, token: { kind, value: e.name, title: e.description } });
   const list: Suggestion[] = !word ? []
     : word.sigil === "@" ? (files.data ?? []).map((f) => ({ key: f, label: f.split("/").pop()!, hint: f, insert: `@${f.split("/").pop()}`, icon: <FileIcon className="size-4 shrink-0 text-slate-400" />, token: { kind: "path", value: f } }))
-    : word.sigil === "/" ? [...(catalog.data?.commands ?? []).filter(hit).map((e) => entry(e, <TerminalWindow className="size-4 shrink-0 text-slate-400" />, "command")),
-      ...(catalog.data?.skills ?? []).filter((e) => e.insert.startsWith("/") && hit(e)).map((e) => entry(e, <Lightning className="size-4 shrink-0 text-slate-400" />, "skill"))]
+    : word.sigil === "/" ? [...(catalog.data?.commands ?? []).filter((e) => hit(e) && (source.files || e.insert !== "/clear")).map((e) => entry(e, <TerminalWindow className="size-4 shrink-0 text-slate-400" />, "command")),
+      ...(catalog.data?.skills ?? []).filter(hit).map((e) => entry(e, <Lightning className="size-4 shrink-0 text-slate-400" />, "skill"))]
     : (catalog.data?.skills ?? []).filter(hit).map((e) => entry(e, <Lightning className="size-4 shrink-0 text-slate-400" />, "skill"));
   const shown = list.slice(0, 50);
   const track = () => {
@@ -617,7 +623,7 @@ function useSuggest(threadId: string, provider: string, text: string, area: Reac
     const m = /(^|\s)([/$@])([^\s/$@]*)$/.exec(before);
     const start = m ? before.length - m[3].length - 1 : -1;
     // A command only makes sense at the start of the message.
-    if (!m || (m[2] === "/" && start !== 0)) { setWord(null); return; }
+    if (!m || (m[2] === "/" && start !== 0) || (m[2] === "@" && !source.files)) { setWord(null); return; }
     setWord((w) => (w && w.start === start && w.q === m[3] ? w : { start, sigil: m[2] as "/" | "$" | "@", q: m[3] }));
     setIndex(0);
   };

@@ -118,9 +118,10 @@ export function Entry({ m, threadId = "", fresh = false, openQuestion = false }:
     case "model-change":
       return <ModelChangeDivider change={readModelChange(m.detail)} />;
     case "interrupt":
+    case "clear":
       return (
         <div role="separator" className="flex items-center gap-3 text-[0.6875rem] font-medium uppercase tracking-wide text-slate-400">
-          <span className="h-px flex-1 bg-slate-200 dark:bg-border" /><Stop weight="fill" className="size-3" />{m.text}<span className="h-px flex-1 bg-slate-200 dark:bg-border" />
+          <span className="h-px flex-1 bg-slate-200 dark:bg-border" />{m.role === "interrupt" && <Stop weight="fill" className="size-3" />}{m.text}<span className="h-px flex-1 bg-slate-200 dark:bg-border" />
         </div>
       );
     default:
@@ -516,7 +517,7 @@ function layout(ms: Message[], live: boolean): (Message | Worked)[] {
   };
   let run = "";
   ms.forEach((m, i) => {
-    if (i > start && (m.role === "user" || m.role === "model-change" || (m.run_id && run && m.run_id !== run))) { flush(i, false); start = i; run = ""; }
+    if (i > start && (m.role === "user" || m.role === "model-change" || m.role === "clear" || (m.run_id && run && m.run_id !== run))) { flush(i, false); start = i; run = ""; }
     if (m.run_id) run = m.run_id;
   });
   flush(ms.length, true);

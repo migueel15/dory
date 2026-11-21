@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/migueel15/dory/internal/cmdexec"
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/runtime"
 )
 
 // errNotCloned says the repository of a project has no checkout on this node.
@@ -51,6 +53,28 @@ func (s *Server) mountBranches(mux *http.ServeMux) {
 			out = branches(r.Context(), path)
 		}
 		writeJSON(w, http.StatusOK, out)
+	}))
+}
+
+// mountNewThreadCommands lists the commands and skills a harness offers
+// before its thread exists, for the new thread composer.
+func (s *Server) mountNewThreadCommands(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/nodes/{node}/commands", s.onNode(func(w http.ResponseWriter, r *http.Request) {
+		var dir string
+		if id := r.URL.Query().Get("project"); id != "" {
+			_, path, err := s.projectCheckout(r.Context(), id)
+			if err != nil && !errors.Is(err, errNotCloned) {
+				writeDataError(w, err)
+				return
+			}
+			dir = path
+		}
+		home, _ := os.UserHomeDir()
+		if dir == "" {
+			dir = home // only the user's configuration, never the server's folder
+		}
+		commands, skills := runtime.Commands(home, dir, r.URL.Query().Get("provider"))
+		writeJSON(w, http.StatusOK, map[string]any{"commands": commands, "skills": skills})
 	}))
 }
 

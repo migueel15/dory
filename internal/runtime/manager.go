@@ -356,6 +356,9 @@ func (m *Manager) local(ctx context.Context, id string) (data.Thread, error) {
 
 // Send starts a turn with text, or queues it while another turn runs.
 func (m *Manager) Send(ctx context.Context, id, text string, files ...Attachment) error {
+	if strings.TrimSpace(text) == ClearCommand && len(files) == 0 {
+		return m.Clear(ctx, id)
+	}
 	run := newRunID()
 	m.mu.Lock()
 	t, err := m.local(ctx, id)
@@ -380,6 +383,29 @@ func (m *Manager) Send(ctx context.Context, id, text string, files ...Attachment
 		m.mu.Unlock()
 		return err
 	}
+	return nil
+}
+
+// ClearCommand is Dory's own /clear, the same for every harness.
+const ClearCommand = "/clear"
+
+// Clear forgets the harness session of a thread: its next turn starts a new
+// one, because every runtime starts fresh without a session. The visible
+// messages stay, after a separator.
+func (m *Manager) Clear(ctx context.Context, id string) error {
+	t, err := m.local(ctx, id)
+	if err != nil {
+		return err
+	}
+	if m.Running(id) {
+		return ErrBusy
+	}
+	// Keep session_provider so no history is carried over as a handoff.
+	if _, err := m.db.ExecContext(ctx, `UPDATE thread_runtime SET session_id = '', portable_history = 0 WHERE thread_id = ?`, id); err != nil {
+		return err
+	}
+	closeAll(take(func(key string) bool { return key == liveKey(id, t.Provider) }))
+	m.save(ctx, Message{ID: newRunID(), ThreadID: id, Role: "clear", Text: "Contexto limpiado", CreatedAt: now()})
 	return nil
 }
 

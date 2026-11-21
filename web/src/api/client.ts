@@ -32,7 +32,7 @@ export type Thread = {
   pinned_at: string | null; read_at: string | null; last_activity_at: string | null; snoozed_until: string | null; settled_at: string | null;
   created_at: string; updated_at: string; archived_at: string | null;
 };
-export type Role = "user" | "assistant" | "reasoning" | "tool" | "plan" | "question" | "system" | "interrupt" | "model-change";
+export type Role = "user" | "assistant" | "reasoning" | "tool" | "plan" | "question" | "system" | "interrupt" | "clear" | "model-change";
 // ToolCall is a tool call in Dory's own terms (runtime.ToolCall): every harness
 // maps its tools onto these kinds, and the chat draws one card per kind.
 export type ToolKind = "edit" | "command" | "todo" | "plan" | "read" | "search" | "web" | "agent" | "mcp" | "question" | "other";
@@ -205,6 +205,7 @@ export const api = {
   attachmentUrl: (id: string, file: string) => `/api/threads/${id}/attachments/${file}`,
   queue: (id: string, run: string, action: "edit" | "cancel" | "steer", text?: string) => req<void>("POST", `/threads/${id}/queue/${run}`, { action, text }),
   threadSettings: (id: string, body: { provider?: string; model?: string; effort?: string; runtime_mode?: Thread["runtime_mode"] }) => req<Thread>("POST", `/threads/${id}/settings`, body),
+  nodeCommands: (node: string, provider: string, project?: string) => req<{ commands: Entry[]; skills: Entry[] }>("GET", `/nodes/${node || "local"}/commands?provider=${encodeURIComponent(provider)}&project=${encodeURIComponent(project ?? "")}`),
   threadCommands: (id: string) => req<{ commands: Entry[]; skills: Entry[] }>("GET", `/threads/${id}/commands`),
   threadFiles: (id: string, q: string) => req<string[]>("GET", `/threads/${id}/files?q=${encodeURIComponent(q)}`),
   answer: (id: string, request: string, answers: string[][], files: string[][] = []) => req<void>("POST", `/threads/${id}/requests/${encodeURIComponent(request)}`, { answers, files }),

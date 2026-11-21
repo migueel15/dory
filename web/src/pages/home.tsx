@@ -8,7 +8,7 @@ import { ErrorText, iconButton } from "../components/ui";
 import { useLaunchForm, ProviderIcon } from "../components/launch-picker";
 import { modelEffort, modelId } from "../effort";
 import { useProject } from "../project";
-import { Chip, ModelPicker, composerArea, composerFrame } from "./composer";
+import { Chip, ModelPicker, composerArea, composerFrame, useSuggest } from "./composer";
 import { useCommand, useShortcuts } from "../components/shortcuts";
 import { formatChord } from "../components/dictation-shortcut";
 import { planMessage } from "../lib/auto-message";
@@ -77,6 +77,8 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
       model,
     })),
   );
+  const provider = form.value.provider ?? "";
+  const suggest = useSuggest({ key: ["new", form.value.node, provider, project], commands: () => api.nodeCommands(form.value.node, provider, project || undefined) }, text, box, setText);
   const projectName = (projects.data ?? []).find((p) => p.id === project)?.name;
   return (
     <div className={centered ? "relative" : "space-y-2"}>
@@ -91,10 +93,12 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
         )}
       </div>
       <form data-dictation-panel data-unsaved-draft={!!text.trim() || dictation.active} className={composerFrame} onSubmit={(e) => { e.preventDefault(); submit(); }}>
+        {!dictation.active && suggest.menu}
         {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} className="min-h-16" />}
-        <textarea ref={box} data-dictation-disabled={start.isPending || undefined} rows={2} autoFocus value={dictation.value} readOnly={dictation.active} onChange={(e) => setText(e.target.value)} aria-label="Mensaje"
+        <textarea ref={box} data-dictation-disabled={start.isPending || undefined} rows={2} autoFocus value={dictation.value} readOnly={dictation.active} onChange={(e) => setText(e.target.value)} onSelect={() => { if (!dictation.active) suggest.track(); }} aria-label="Mensaje"
           placeholder={plan ? "Describe la tarea que quieres definir…" : "¿En qué trabajamos?"}
           onKeyDown={(e) => {
+            if (!dictation.active && suggest.onKeyDown(e)) return;
             if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
             if (dictation.active || window.matchMedia("(min-width: 640px)").matches) {
               e.preventDefault();

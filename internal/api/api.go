@@ -100,6 +100,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	s.mountSkills(mux)
 	s.mountFolders(mux)
 	s.mountBranches(mux)
+	s.mountNewThreadCommands(mux)
 	s.mountWorktrees(mux)
 	s.mountWorktreeState(mux)
 	s.mountSettings(mux)
