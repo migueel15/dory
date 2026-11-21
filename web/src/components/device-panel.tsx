@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Circle, CircleNotch, Cpu, DeviceMobile, PictureInPicture, Plugs, Power, SidebarSimple, Sliders, Square, SpeakerHigh, SpeakerLow, WifiHigh } from "@phosphor-icons/react";
+import { ArrowLeft, HandPointing, Circle, CircleNotch, Cpu, DeviceMobile, PictureInPicture, Plugs, Power, SidebarSimple, Sliders, Square, SpeakerHigh, SpeakerLow, WifiHigh } from "@phosphor-icons/react";
 import { devicesApi, type Device, type DeviceList } from "../api/client";
 import { DeviceStream, Key, keyFor, webCodecsProblem, type StreamStatus } from "../lib/scrcpy";
 import { askConfirm } from "./confirm";
@@ -156,7 +156,6 @@ function Live({ node, device, onBack, floating, onFloat }: { node: string; devic
       <div className="relative min-h-0 flex-1 overflow-hidden bg-black/5 dark:bg-black/30">
         <canvas ref={canvas} tabIndex={0} {...input} className="absolute inset-2 size-[calc(100%-1rem)] touch-none bg-transparent object-contain outline-none" />
       </div>
-      {device.transport !== "emulator" && <p className="shrink-0 px-3 pb-1 text-center text-[11px] text-slate-500 dark:text-muted">Si no responde al tocar, activa «Depuración USB (ajustes de seguridad)».</p>}
       {tools && <Tools node={node} device={device} />}
       <div className="flex shrink-0 items-center justify-center gap-1 border-t border-slate-200 p-1 dark:border-border">
         {bar("Atrás", <ArrowLeft className="size-4" />, (s) => s.back())}
@@ -165,6 +164,7 @@ function Live({ node, device, onBack, floating, onFloat }: { node: string; devic
         {bar("Bloquear o encender", <Power className="size-4" />, (s) => s.keycode(Key.power))}
         {bar("Bajar volumen", <SpeakerLow className="size-4" />, (s) => s.keycode(Key.volDown))}
         {bar("Subir volumen", <SpeakerHigh className="size-4" />, (s) => s.keycode(Key.volUp))}
+        <TouchStatus node={node} device={device} />
         <button type="button" title="Herramientas" aria-label="Herramientas" aria-pressed={tools} onClick={() => setTools(!tools)}
           className={`grid size-8 place-items-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised ${tools ? "bg-slate-100 dark:bg-raised" : ""}`}><Sliders className="size-4" /></button>
       </div>
@@ -286,5 +286,27 @@ export function FloatingWindow({ id, children }: { id: string; children: React.R
         onPointerUp={() => { drag.current = null; try { localStorage.setItem(storeKey, JSON.stringify(pos)); } catch { /* per-browser only */ } }} />
       <div className="min-h-0 flex-1">{children}</div>
     </div>
+  );
+}
+
+const touchHelp = `Para controlar el móvil con el ratón y el teclado desde Dory, activa esta opción en el móvil:
+1. Ajustes → Acerca del teléfono → toca 7 veces la versión del sistema para activar las Opciones de desarrollador.
+2. Ajustes → Ajustes adicionales → Opciones de desarrollador.
+3. Con el cable USB conectado, activa «Depuración USB».
+4. Activa «Depuración USB (ajustes de seguridad)» y acepta el aviso (puede pedir cuenta Xiaomi).
+5. Desconecta y vuelve a conectar la depuración, y recarga esta pestaña.`;
+
+// TouchStatus shows whether the device lets Dory inject touches and keys: lit
+// when it does, dimmed with the steps to enable it when it refuses.
+function TouchStatus({ node, device }: { node: string; device: Device }) {
+  const check = useQuery({ queryKey: ["device-input", node, device.serial], queryFn: () => devicesApi.action(device.serial, { action: "input_check" }, node), refetchInterval: 6000 });
+  const on = check.data?.input === "ok";
+  const blocked = check.data?.input === "blocked";
+  const title = on ? "Control táctil activado" : blocked ? touchHelp : check.isLoading ? "Comprobando el control táctil…" : "No se pudo comprobar el control táctil";
+  return (
+    <span title={title} aria-label={on ? "Control táctil activado" : "Control táctil desactivado"} role="img"
+      className={`grid size-8 place-items-center rounded-md ${on ? "text-emerald-500" : "cursor-help text-slate-400 opacity-50 dark:text-muted"}`}>
+      <HandPointing className="size-4" weight={on ? "fill" : "regular"} />
+    </span>
   );
 }

@@ -95,6 +95,8 @@ func (m *Manager) Apply(ctx context.Context, serial string, a Action) (map[strin
 	switch a.Name {
 	case "state":
 		return m.State(ctx, serial), nil
+	case "input_check":
+		return map[string]string{"input": m.InputAllowed(ctx, serial)}, nil
 	case "dark_mode":
 		if a.Value != "yes" && a.Value != "no" && a.Value != "auto" {
 			return nil, errors.New("el modo oscuro admite yes, no o auto")
@@ -188,4 +190,18 @@ func (m *Manager) Apply(ctx context.Context, serial string, a Action) (map[strin
 		return nil, errors.New("acción no admitida")
 	}
 	return map[string]string{key: m.State(ctx, serial)[key]}, nil
+}
+
+// InputAllowed says whether the device lets adb inject touches and keys:
+// "ok", or "blocked" when it refuses (Xiaomi needs "USB debugging (security
+// settings)"). It presses KEYCODE_UNKNOWN, which changes nothing on screen.
+func (m *Manager) InputAllowed(ctx context.Context, serial string) string {
+	out, err := m.ADB.Shell(ctx, serial, 6*time.Second, "input", "keyevent", "0")
+	if err != nil || strings.Contains(out, "SecurityException") || strings.Contains(out, "INJECT_EVENTS") {
+		if strings.Contains(out+fmt.Sprint(err), "INJECT_EVENTS") || strings.Contains(out, "SecurityException") {
+			return "blocked"
+		}
+		return "unknown"
+	}
+	return "ok"
 }
