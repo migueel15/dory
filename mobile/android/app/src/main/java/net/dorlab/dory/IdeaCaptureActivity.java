@@ -64,12 +64,11 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private TextView status;
     private TextView transcript;
     private FrameLayout frame;
-    private VoiceBorderView border;
     private VoiceLevelView level;
     private VoiceIconButton primaryIcon;
     private TextView primaryText;
     private VoiceIconButton close;
-    private TextView send;
+    private VoiceIconButton send;
     private boolean silenced;
 
     private final ActivityResultLauncher<String> microphonePermission =
@@ -148,7 +147,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
                 @Override public void onPartialResults(Bundle results) {
                     if (!current()) return;
                     partial = bestText(results);
-                    transcript.setText(join(committed, partial));
+                    updateTranscript(join(committed, partial));
                     refreshSend();
                     if (state == State.STARTING) display(State.LISTENING, "Escuchando…", null, null);
                 }
@@ -167,7 +166,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
                         closeRecognizer();
                         committed = join(committed, partial);
                         partial = "";
-                        transcript.setText(committed);
+                        updateTranscript(committed);
                         display(State.SPEECH_ERROR, "No se pudo completar el dictado.", "Continuar", IdeaCaptureActivity.this::requestMicrophone);
                     }
                 }
@@ -176,7 +175,6 @@ public class IdeaCaptureActivity extends AppCompatActivity {
                 @Override public void onRmsChanged(float rms) {
                     if (!current()) return;
                     float value = Math.max(0f, Math.min(1f, (rms + 2f) / 12f));
-                    border.setLevel(value);
                     level.setLevel(value);
                 }
                 @Override public void onBufferReceived(byte[] buffer) {}
@@ -227,7 +225,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         closeRecognizer();
         committed = join(committed, text.isEmpty() ? partial : text);
         partial = "";
-        transcript.setText(committed);
+        updateTranscript(committed);
         refreshSend();
         saveDraft();
         main.postDelayed(relisten, 120);
@@ -258,7 +256,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         }
         committed = text;
         ideaId = saved.getString("id", ideaId);
-        transcript.setText(committed);
+        updateTranscript(committed);
         refreshSend();
     }
 
@@ -273,7 +271,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     }
 
     private void refreshSend() {
-        boolean ready = !join(committed, partial).isEmpty();
+        boolean ready = state != State.SAVING && state != State.SAVED && !join(committed, partial).isEmpty();
         send.setEnabled(ready);
         send.setAlpha(ready ? 1f : 0.35f);
     }
@@ -316,7 +314,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
             closeRecognizer();
             committed = join(committed, partial);
             partial = "";
-            transcript.setText(committed);
+            updateTranscript(committed);
             resumeOnStart = true;
             display(State.PAUSED, "En pausa", "Continuar", this::requestMicrophone);
         }
@@ -350,9 +348,6 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         silence(listening);
         level.setColor(tint);
         level.setLive(next == State.LISTENING);
-        border.setMood(next == State.SAVED ? VoiceBorderView.Mood.DONE
-            : failed ? VoiceBorderView.Mood.ERROR
-            : next == State.PAUSED ? VoiceBorderView.Mood.IDLE : VoiceBorderView.Mood.ACTIVE);
         View.OnClickListener click = onAction == null ? null : view -> onAction.run();
         boolean resume = "Continuar".equals(action);
         primaryIcon.setVisibility(resume ? View.VISIBLE : View.GONE);
@@ -362,50 +357,56 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         primaryText.setText(action);
         primaryText.setOnClickListener(click);
         boolean dictating = listening || next == State.PAUSED || next == State.SPEECH_ERROR;
-        send.setVisibility(dictating ? View.VISIBLE : View.GONE);
-        refreshSend();
-        close.setVisibility(next == State.SAVING || next == State.SAVED ? View.GONE : View.VISIBLE);
+        send.setEnabled(dictating && !join(committed, partial).isEmpty());
+        send.setAlpha(send.isEnabled() ? 1f : 0.35f);
+        close.setEnabled(next != State.SAVING && next != State.SAVED);
+        close.setAlpha(close.isEnabled() ? 1f : 0.35f);
+    }
+
+    private void updateTranscript(String text) {
+        transcript.setText(text);
+        transcript.setVisibility(text.isEmpty() ? View.GONE : View.VISIBLE);
+        transcript.post(() -> {
+            if (transcript.getLayout() == null || transcript.getLineCount() == 0) return;
+            int bottom = transcript.getLayout().getLineBottom(transcript.getLineCount() - 1);
+            transcript.scrollTo(0, Math.max(0, bottom - transcript.getHeight() + transcript.getPaddingBottom()));
+        });
     }
 
     private void createView() {
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         frame = new FrameLayout(this);
-        border = new VoiceBorderView(this);
-        frame.addView(border, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(22), dp(20), dp(16), dp(16));
-        panel.setBackground(shape(0xf2101318, 30, 0x2effffff, 1));
+        GradientDrawable fade = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[] {0x00000000, 0xd9000000, 0xff000000, 0xff000000});
+        panel.setBackground(fade);
+        panel.setPadding(dp(24), dp(80), dp(24), 0);
         FrameLayout.LayoutParams panelSize = new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
         frame.addView(panel, panelSize);
         ViewCompat.setOnApplyWindowInsetsListener(frame, (view, windowInsets) -> {
             Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
-            panelSize.setMargins(insets.left + dp(22), insets.top + dp(22), insets.right + dp(22), insets.bottom + dp(24));
-            panel.setLayoutParams(panelSize);
+            panel.setPadding(insets.left + dp(24), dp(80), insets.right + dp(24), insets.bottom + dp(24));
             return windowInsets;
         });
         transcript = label("", 21, FOREGROUND);
-        transcript.setHint("Cuéntame tu idea…");
-        transcript.setHintTextColor(0x66aab7c8);
-        transcript.setMinLines(2);
+        transcript.setVisibility(View.GONE);
         transcript.setMaxLines(6);
         transcript.setLineSpacing(0, 1.1f);
-        transcript.setGravity(Gravity.BOTTOM);
         transcript.setMovementMethod(android.text.method.ScrollingMovementMethod.getInstance());
-        panel.addView(transcript);
-        LinearLayout controls = new LinearLayout(this);
-        controls.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams controlsSize = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        controlsSize.topMargin = dp(18);
-        panel.addView(controls, controlsSize);
+        panel.addView(transcript, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout stateRow = new LinearLayout(this);
+        stateRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams stateSize = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(56));
+        panel.addView(stateRow, stateSize);
         level = new VoiceLevelView(this);
-        controls.addView(level);
+        stateRow.addView(level);
         status = label("", 14, MUTED);
         status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         status.setPadding(dp(12), 0, dp(8), 0);
-        controls.addView(status, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        stateRow.addView(status, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         primaryText = label("", 14, INK);
         primaryText.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         primaryText.setGravity(Gravity.CENTER);
@@ -413,31 +414,28 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         primaryText.setBackground(shape(ACCENT, 24, ACCENT, 0));
         primaryText.setForeground(ripple());
         primaryText.setClickable(true);
-        LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        gap.setMarginEnd(dp(10));
-        controls.addView(primaryText, gap);
-        primaryIcon = new VoiceIconButton(this, 52, ACCENT, INK);
-        controls.addView(primaryIcon, gap);
-        close = new VoiceIconButton(this, 44, 0x1fffffff, FOREGROUND);
-        close.setIcon(VoiceIconButton.Icon.CLOSE, "Cancelar");
+        stateRow.addView(primaryText);
+        primaryIcon = new VoiceIconButton(this, 48, ACCENT, INK);
+        stateRow.addView(primaryIcon);
+
+        FrameLayout controls = new FrameLayout(this);
+        panel.addView(controls, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(100)));
+        VoiceIconButton attach = new VoiceIconButton(this, 56, 0x00000000, FOREGROUND);
+        attach.setIcon(VoiceIconButton.Icon.PLUS, "Adjuntar, próximamente");
+        attach.setEnabled(false);
+        attach.setAlpha(0.55f);
+        controls.addView(attach, new FrameLayout.LayoutParams(dp(56), dp(56), Gravity.START | Gravity.CENTER_VERTICAL));
+        send = new VoiceIconButton(this, 76, ACCENT, INK);
+        send.setIcon(VoiceIconButton.Icon.SEND, "Enviar idea");
+        send.setOnClickListener(view -> sendIdea());
+        controls.addView(send, new FrameLayout.LayoutParams(dp(76), dp(76), Gravity.CENTER));
+        close = new VoiceIconButton(this, 56, 0x00000000, FOREGROUND);
+        close.setIcon(VoiceIconButton.Icon.CLOSE, "Cancelar idea");
         close.setOnClickListener(view -> {
             clearDraft();
             finish();
         });
-        controls.addView(close);
-        send = label("Enviar idea", 18, INK);
-        send.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        send.setGravity(Gravity.CENTER);
-        send.setBackground(shape(ACCENT, 30, ACCENT, 0));
-        RippleDrawable sendRipple = ripple();
-        sendRipple.setRadius(dp(200));
-        send.setForeground(sendRipple);
-        send.setClickable(true);
-        send.setOnClickListener(view -> sendIdea());
-        LinearLayout.LayoutParams sendSize = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(64));
-        sendSize.topMargin = dp(14);
-        sendSize.setMarginEnd(dp(6));
-        panel.addView(send, sendSize);
+        controls.addView(close, new FrameLayout.LayoutParams(dp(56), dp(56), Gravity.END | Gravity.CENTER_VERTICAL));
         setContentView(frame);
         panel.setAlpha(0f);
         panel.setTranslationY(dp(36));
