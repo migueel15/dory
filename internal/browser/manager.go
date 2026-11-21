@@ -21,6 +21,8 @@ const (
 	maxLive      = 8
 	idleTab      = 10 * time.Minute
 	maxConsole   = 200
+	// desktopWait is how long a tab waits for the desktop app to show it.
+	desktopWait = 5 * time.Second
 )
 
 // ErrUserControl refuses the agent's actions while the user drives the tab.
@@ -333,12 +335,19 @@ func (m *Manager) ensure(ctx context.Context, threadID, tabID string) (*page, er
 		m.mu.Unlock()
 		return p, nil
 	}
-	ch := m.chrome
 	m.mu.Unlock()
 	t, err := m.tab(ctx, threadID, tabID)
 	if err != nil {
 		return nil, err
 	}
+	// The desktop app shows the active tab in a native view: give it time
+	// to take the tab, so the node needs no Chromium of its own.
+	if p := m.awaitDesktop(ctx, threadID, t); p != nil {
+		return p, nil
+	}
+	m.mu.Lock()
+	ch := m.chrome
+	m.mu.Unlock()
 	if ch == nil || !ch.alive() {
 		if ch, err = startChrome(m.Profile, m.browserEvent); err != nil {
 			return nil, err
@@ -362,6 +371,42 @@ func (m *Manager) ensure(ctx context.Context, threadID, tabID string) (*page, er
 	}
 	m.adoptLive(p)
 	return p, nil
+}
+
+// awaitDesktop waits for a desktop panel open on the thread to attach the
+// active tab t. It returns nil when there is no such panel or it does not
+// attach in time.
+func (m *Manager) awaitDesktop(ctx context.Context, threadID string, t Tab) *page {
+	if !t.Active {
+		return nil
+	}
+	deadline := time.Now().Add(desktopWait)
+	for {
+		desktop := false
+		for _, c := range m.clients(threadID) {
+			desktop = desktop || c.desktop
+		}
+		if !desktop {
+			return nil
+		}
+		m.mu.Lock()
+		p := m.live[t.ID]
+		if p != nil {
+			p.used = time.Now()
+		}
+		m.mu.Unlock()
+		if p != nil {
+			return p
+		}
+		if time.Now().After(deadline) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }
 
 // adoptLive registers a live page, closing the least used headless pages
