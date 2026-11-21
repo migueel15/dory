@@ -5,7 +5,7 @@ import { useDictationInProgress } from "../components/local-dictation";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ArrowSquareOut, Check, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, CircleNotch, ClipboardText, DotsThree, GitBranch, GitMerge, GitPullRequest, ChatCircle, CircleDashed, Plus, Rocket, X } from "@phosphor-icons/react";
+import { Check, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, CircleNotch, ClipboardText, DotsThree, GitBranch, GitMerge, GitPullRequest, ChatCircle, CircleDashed, Plus, Rocket, X } from "@phosphor-icons/react";
 import { api, COLUMN_LABELS, repoName, type Card, type Column, type Pull, type Stage, type Thread } from "../api/client";
 import { Button, ErrorText, iconButton, Input, Label, Md, Modal, Select } from "../components/ui";
 import { useThreadActivity } from "../api/activity";
@@ -16,6 +16,7 @@ import { ModelLogo } from "../components/model-logo";
 import { askConfirm } from "../components/confirm";
 import { IdeaModal } from "../components/capture";
 import { TaskQuickMenu, type QuickLaunch } from "../components/task-quick-menu";
+import { githubRoute } from "../components/refs";
 import { planMessage } from "../lib/auto-message";
 
 // Fixed meaning of each state color (requirement RF-48).
@@ -499,7 +500,7 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
   const projectRepos = (repos.data ?? []).filter((r) => !c.project_id || r.project_id === c.project_id);
   const githubRepo = c.repo && /^[\w.-]+\/[\w.-]+$/.test(c.repo) ? `https://github.com/${c.repo}` : undefined;
   const pullNumber = c.pull?.number ?? c.pr_number;
-  const pullUrl = c.pull?.url ?? (githubRepo && pullNumber ? `${githubRepo}/pull/${pullNumber}` : undefined);
+  const pullRoute = githubRoute(c.pull?.url) ?? githubRoute(githubRepo && pullNumber ? `${githubRepo}/pull/${pullNumber}` : undefined);
   const openLaunch = (anchor: HTMLElement | null, next: "define" | "implement") => {
     setMode(next);
     launch.reset();
@@ -536,7 +537,7 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
   const launchButton = (label: string, next: "define" | "implement", disabled = false, variant: "default" | "ghost" = "default") => (
     <Button variant={variant} onClick={(e) => openLaunch(e.currentTarget, next)} disabled={disabled || !planDoc.data || launchPending}>{next === "define" ? <ClipboardText className="size-4" /> : <Rocket className="size-4" />}{label}</Button>
   );
-  const prLink = pullUrl && <a href={pullUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-accent dark:hover:bg-accent-hover"><GitPullRequest className="size-4" />Abrir PR<ArrowSquareOut className="size-3.5" /></a>;
+  const prLink = pullRoute && <Link to="/github/$owner/$repo/$kind/$number" params={pullRoute} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-accent dark:hover:bg-accent-hover"><GitPullRequest className="size-4" />Abrir PR</Link>;
   // The pull request decides the column; stage only counts without one.
   const doneByHand = c.column === "done" && c.stage === "done" && !pullNumber;
   const next: Next =
@@ -568,7 +569,7 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
         <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${COLUMN_TONE[c.column]}`}>{COLUMN_LABELS[c.column]}</span>
         {c.repo && (githubRepo ? <a className={chip} href={githubRepo} target="_blank" rel="noreferrer"><GithubLogo className="size-3.5 shrink-0" /><span className="truncate">{c.repo}</span></a> : <span className={chip}>{c.repo}</span>)}
         {c.issue_number && (githubRepo ? <a className={chip} href={`${githubRepo}/issues/${c.issue_number}`} target="_blank" rel="noreferrer">Issue #{c.issue_number}</a> : <span className={chip}>Issue #{c.issue_number}</span>)}
-        {pullNumber && (pullUrl ? <a className={chip} href={pullUrl} target="_blank" rel="noreferrer"><GitPullRequest className="size-3.5" />PR #{pullNumber}{(c.pull?.draft || c.pr_state === "draft") && " · borrador"}</a> : <span className={chip}>PR #{pullNumber}</span>)}
+        {pullNumber && (pullRoute ? <Link className={chip} to="/github/$owner/$repo/$kind/$number" params={pullRoute}><GitPullRequest className="size-3.5" />PR #{pullNumber}{(c.pull?.draft || c.pr_state === "draft") && " · borrador"}</Link> : <span className={chip}>PR #{pullNumber}</span>)}
         {c.branch && <span className={`${chip} font-mono`} title={c.branch}><GitBranch className="size-3.5 shrink-0" /><span className="truncate">{c.branch}</span></span>}
         <button ref={menuTrigger} type="button" popoverTarget={menuId} onClick={openMenu} aria-label="Más acciones" className={`${iconButton} ml-auto`}><DotsThree weight="bold" className="size-5" /></button>
         <div ref={menu} id={menuId} popover="auto" role="menu" className="fixed m-0 w-56 rounded-xl border border-slate-200 bg-white p-1 text-slate-900 shadow-xl dark:border-border dark:bg-surface dark:text-white">
