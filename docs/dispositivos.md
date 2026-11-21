@@ -41,4 +41,4 @@ Un agente con el móvil personal puede enviar mensajes o tocar datos reales: act
 
 - `device_ui` (uiautomator) tarda de 1 a 3 s y falla en pantallas protegidas o animadas; en ese caso el agente usa la captura y las coordenadas.
 - El texto no ASCII solo se puede escribir con el dispositivo abierto en el panel.
-- El vídeo se limita a 1080 px y 6 Mbit/s por defecto.
+- La calidad del vídeo se elige en la cabecera de la pestaña: **Normal** (1080 px, 6 Mbit/s), **Alta** (1920 px, 12 Mbit/s, por defecto) y **Nativa** (resolución de la pantalla, 20 Mbit/s). La nativa consume más ancho de banda en remoto. Cambiar la calidad reinicia el vídeo si nadie más lo está viendo; si hay otro espectador, se une al que ya existe.

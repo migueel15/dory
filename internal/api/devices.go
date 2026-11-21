@@ -125,8 +125,6 @@ func (s *Server) streamDevice(w http.ResponseWriter, r *http.Request) {
 	opts := devices.Options{}
 	opts.MaxSize, _ = strconv.Atoi(q.Get("max_size"))
 	opts.Bitrate, _ = strconv.Atoi(q.Get("bitrate"))
-	opts.MaxSize = min(opts.MaxSize, 2560)
-	opts.Bitrate = min(opts.Bitrate, 20_000_000)
 	ws, err := upgradeWS(w, r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())

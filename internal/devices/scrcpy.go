@@ -85,6 +85,20 @@ type Options struct {
 	Bitrate int
 }
 
+// normalized fills the defaults and keeps the values in a sane range; a
+// MaxSize of 4096 or more leaves the screen at its native size.
+func (o Options) normalized() Options {
+	if o.MaxSize <= 0 {
+		o.MaxSize = 1080
+	}
+	if o.Bitrate <= 0 {
+		o.Bitrate = 6_000_000
+	}
+	o.MaxSize = min(o.MaxSize, 4096)
+	o.Bitrate = min(o.Bitrate, 40_000_000)
+	return o
+}
+
 type scrcpyConn struct {
 	meta    Meta
 	video   net.Conn
@@ -113,12 +127,7 @@ func (c *scrcpyConn) close() {
 
 // startScrcpy pushes the server, starts it and opens the video and control sockets.
 func startScrcpy(ctx context.Context, a ADB, serial string, o Options) (*scrcpyConn, error) {
-	if o.MaxSize <= 0 {
-		o.MaxSize = 1080
-	}
-	if o.Bitrate <= 0 {
-		o.Bitrate = 6_000_000
-	}
+	o = o.normalized()
 	tmp, err := writeTemp(serverJar)
 	if err != nil {
 		return nil, err

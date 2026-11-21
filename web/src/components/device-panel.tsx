@@ -123,20 +123,32 @@ function WifiForm({ node, onDone }: { node: string; onDone: () => void }) {
   );
 }
 
+// Stream quality: the picture is limited to maxSize pixels on its long side
+// and to the bitrate; "Nativa" leaves the screen at its own resolution.
+const QUALITY = {
+  normal: { label: "Normal", maxSize: 1080, bitrate: 6_000_000 },
+  high: { label: "Alta", maxSize: 1920, bitrate: 12_000_000 },
+  native: { label: "Nativa", maxSize: 4096, bitrate: 20_000_000 },
+} as const;
+type Quality = keyof typeof QUALITY;
+const readQuality = (): Quality => { try { const q = localStorage.getItem("dory.device-quality"); return q && q in QUALITY ? (q as Quality) : "high"; } catch { return "high"; } };
+
 const statusText: Record<StreamStatus, string> = { connecting: "Conectando…", live: "En directo", closed: "Desconectado, reintentando…", error: "Error" };
 
 function Live({ node, device, onBack, floating, onFloat }: { node: string; device: Device; onBack: () => void; floating: boolean; onFloat?: (v: boolean) => void }) {
   const [tools, setTools] = useState(false);
+  const [quality, setQuality] = useState<Quality>(readQuality);
+  const pickQuality = (q: Quality) => { setQuality(q); try { localStorage.setItem("dory.device-quality", q); } catch { /* per-browser only */ } };
   const canvas = useRef<HTMLCanvasElement>(null);
   const stream = useRef<DeviceStream | null>(null);
   const [status, setStatus] = useState<StreamStatus>("connecting");
   const [message, setMessage] = useState("");
   useEffect(() => {
-    const s = new DeviceStream(canvas.current!, { node, serial: device.serial }, { status: (st, m) => { setStatus(st); setMessage(m ?? ""); } });
+    const s = new DeviceStream(canvas.current!, { node, serial: device.serial, maxSize: QUALITY[quality].maxSize, bitrate: QUALITY[quality].bitrate }, { status: (st, m) => { setStatus(st); setMessage(m ?? ""); } });
     stream.current = s;
     s.start();
     return () => { s.stop(); stream.current = null; };
-  }, [node, device.serial]);
+  }, [node, device.serial, quality]);
   const input = useDeviceInput(canvas, stream);
   const bar = (title: string, icon: React.ReactNode, run: (s: DeviceStream) => void) => (
     <button type="button" title={title} aria-label={title} onClick={() => stream.current && run(stream.current)}
@@ -148,6 +160,9 @@ function Live({ node, device, onBack, floating, onFloat }: { node: string; devic
         <button type="button" onClick={onBack} className="text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">Dispositivos</button>
         <span className="min-w-0 flex-1 truncate font-medium">{device.avd || device.model || device.serial}</span>
         <span className={status === "live" ? "text-emerald-500" : "text-slate-500 dark:text-muted"}>{statusText[status]}</span>
+        <select value={quality} onChange={(e) => pickQuality(e.target.value as Quality)} title="Calidad del vídeo" aria-label="Calidad del vídeo" className="rounded border border-slate-300 bg-transparent px-1 py-0.5 text-xs dark:border-border-strong dark:bg-surface">
+          {(Object.keys(QUALITY) as Quality[]).map((q) => <option key={q} value={q}>{QUALITY[q].label}</option>)}
+        </select>
         {onFloat && <button type="button" onClick={() => onFloat(!floating)} title={floating ? "Abrir en el panel lateral" : "Flotar sobre el chat"} aria-label={floating ? "Abrir en el panel lateral" : "Flotar sobre el chat"} className="text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">{floating ? <SidebarSimple className="size-4 -scale-x-100" /> : <PictureInPicture className="size-4" />}</button>}
       </div>
       {message && <div className="p-2"><ErrorText error={new Error(message)} /></div>}

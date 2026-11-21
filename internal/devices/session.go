@@ -29,6 +29,7 @@ type Sub struct {
 type Session struct {
 	m      *Manager
 	serial string
+	opts   Options
 	ready  chan struct{}
 	err    error
 
@@ -60,11 +61,12 @@ func NewManager() *Manager {
 
 // Subscribe joins the stream of a device, starting scrcpy for the first viewer.
 func (m *Manager) Subscribe(ctx context.Context, serial string, o Options) (*Sub, Meta, error) {
+	o = o.normalized()
 	for {
 		m.mu.Lock()
 		s := m.sessions[serial]
 		if s == nil {
-			s = &Session{m: m, serial: serial, ready: make(chan struct{}), subs: map[*Sub]struct{}{}}
+			s = &Session{m: m, serial: serial, opts: o, ready: make(chan struct{}), subs: map[*Sub]struct{}{}}
 			m.sessions[serial] = s
 			m.mu.Unlock()
 			conn, err := startScrcpy(ctx, m.ADB, serial, o)
@@ -91,6 +93,13 @@ func (m *Manager) Subscribe(ctx context.Context, serial string, o Options) (*Sub
 		s.mu.Lock()
 		if s.closed {
 			s.mu.Unlock()
+			continue
+		}
+		// Nobody is watching and the quality changed: restart with the new one.
+		// With other viewers present, join the stream they already have.
+		if s.opts != o && len(s.subs) == 0 {
+			s.mu.Unlock()
+			s.shutdown()
 			continue
 		}
 		if s.timer != nil {
