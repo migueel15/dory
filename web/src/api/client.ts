@@ -205,6 +205,7 @@ export const api = {
   attachmentUrl: (id: string, file: string) => `/api/threads/${id}/attachments/${file}`,
   queue: (id: string, run: string, action: "edit" | "cancel" | "steer", text?: string) => req<void>("POST", `/threads/${id}/queue/${run}`, { action, text }),
   threadSettings: (id: string, body: { provider?: string; model?: string; effort?: string; runtime_mode?: Thread["runtime_mode"] }) => req<Thread>("POST", `/threads/${id}/settings`, body),
+  nodeCommands: (node: string, provider: string, project?: string) => req<{ commands: Entry[]; skills: Entry[] }>("GET", `/nodes/${node || "local"}/commands?provider=${encodeURIComponent(provider)}&project=${encodeURIComponent(project ?? "")}`),
   threadCommands: (id: string) => req<{ commands: Entry[]; skills: Entry[] }>("GET", `/threads/${id}/commands`),
   threadFiles: (id: string, q: string) => req<string[]>("GET", `/threads/${id}/files?q=${encodeURIComponent(q)}`),
   answer: (id: string, request: string, answers: string[][], files: string[][] = []) => req<void>("POST", `/threads/${id}/requests/${encodeURIComponent(request)}`, { answers, files }),
