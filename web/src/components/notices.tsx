@@ -75,7 +75,8 @@ export function NoticeInbox() {
     p.style.left = `${left}px`;
     p.style.top = beside ? "auto" : `${r.bottom + 8}px`;
     p.style.bottom = beside ? `${window.innerHeight - r.bottom}px` : "auto";
-    p.style.maxHeight = `${beside ? r.bottom - 12 : window.innerHeight - r.bottom - 20}px`;
+    // Under half the room it has, so it reads as a pop-up and not a full column.
+    p.style.maxHeight = `${Math.round(0.45 * (beside ? r.bottom - 12 : window.innerHeight - r.bottom - 20))}px`;
   };
   useEffect(() => {
     const again = (e?: Event) => {
