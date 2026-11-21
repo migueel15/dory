@@ -73,3 +73,37 @@ func TestCodexSessionAsks(t *testing.T) {
 		t.Fatalf("end: %+v closed=%v", last, in.closed)
 	}
 }
+
+func TestCodexSessionHidesMemoryCitations(t *testing.T) {
+	s := newCodexSession(Turn{RunID: "run"}, nil)
+	var visible string
+	notify := func(method string, params map[string]any, want string, emitted bool) {
+		t.Helper()
+		raw, err := json.Marshal(params)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gotEvent := false
+		s.notification(codexRPC{Method: method, Params: raw}, func(event Event) {
+			gotEvent = true
+			visible = event.Message.Text
+		})
+		if gotEvent != emitted || visible != want {
+			t.Fatalf("%s: event = %t, text = %q; want event = %t, text = %q", method, gotEvent, visible, emitted, want)
+		}
+	}
+	item := func(text string) map[string]any {
+		return map[string]any{"item": map[string]any{"id": "msg", "type": "agentMessage", "text": text}}
+	}
+	delta := func(text, want string) {
+		t.Helper()
+		notify("item/agentMessage/delta", map[string]any{"itemId": "msg", "delta": text}, want, true)
+	}
+
+	notify("item/started", item(""), "", false)
+	delta("Respuesta\n<oai-mem", "Respuesta\n")
+	delta("-citation>\n<citation_entries>dato</citation_entries>", "Respuesta\n")
+	delta("</oai-mem-", "Respuesta\n")
+	delta("citation>\nFin", "Respuesta\n\nFin")
+	notify("item/completed", item("Respuesta\n<oai-mem-citation>dato</oai-mem-citation>\nFin"), "Respuesta\n\nFin", true)
+}

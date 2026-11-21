@@ -106,7 +106,7 @@ func (p *codexParser) message(it codexItem, done bool) *Message {
 	}
 	switch it.Type {
 	case "agent_message":
-		m.Role, m.Text = "assistant", it.Text
+		m.Role, m.Text = "assistant", stripCodexMemoryCitations(it.Text, !done)
 	case "reasoning":
 		m.Role, m.Title, m.Text = "reasoning", "Pensando", it.Text
 	case "command_execution":
@@ -164,4 +164,37 @@ func (p *codexParser) message(it codexItem, done bool) *Message {
 		m.Streaming = false
 	}
 	return m
+}
+
+// stripCodexMemoryCitations keeps a possible opening tag out of streaming
+// snapshots until more text arrives and resolves whether it starts a block.
+func stripCodexMemoryCitations(text string, streaming bool) string {
+	const open = "<oai-mem-citation>"
+	const close = "</oai-mem-citation>"
+	var visible strings.Builder
+	for {
+		before, after, found := strings.Cut(text, open)
+		if !found {
+			if streaming {
+				for n := min(len(text), len(open)-1); n > 0; n-- {
+					if strings.HasSuffix(text, open[:n]) {
+						text = text[:len(text)-n]
+						break
+					}
+				}
+			}
+			visible.WriteString(text)
+			return visible.String()
+		}
+		visible.WriteString(before)
+		_, rest, closed := strings.Cut(after, close)
+		if !closed {
+			if !streaming {
+				visible.WriteString(open)
+				visible.WriteString(after)
+			}
+			return visible.String()
+		}
+		text = rest
+	}
 }
