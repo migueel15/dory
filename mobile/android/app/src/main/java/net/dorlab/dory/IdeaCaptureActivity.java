@@ -64,6 +64,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private TextView status;
     private TextView transcript;
     private String transcriptTarget = "";
+    private boolean revealPending;
     private final Runnable revealTranscript = this::revealTranscript;
     private FrameLayout frame;
     private LinearLayout stateRow;
@@ -398,15 +399,18 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         if (common > 0 && common < text.length() && Character.isLowSurrogate(text.charAt(common))) common--;
         if (common < visible.length()) transcript.setText(text.substring(0, common));
         transcript.setVisibility(text.isEmpty() ? View.GONE : View.VISIBLE);
-        main.removeCallbacks(revealTranscript);
-        if (common < text.length()) main.post(revealTranscript);
+        if (common < text.length() && !revealPending) {
+            revealPending = true;
+            main.post(revealTranscript);
+        }
     }
 
     private void revealTranscript() {
+        revealPending = false;
         int shown = transcript.length();
         if (shown >= transcriptTarget.length()) return;
         int remaining = transcriptTarget.codePointCount(shown, transcriptTarget.length());
-        int count = Math.min(remaining, Math.max(1, (remaining + 11) / 12));
+        int count = remaining > 120 ? 3 : remaining > 60 ? 2 : 1;
         int end = transcriptTarget.offsetByCodePoints(shown, count);
         transcript.setText(transcriptTarget.substring(0, end));
         transcript.post(() -> {
@@ -414,7 +418,10 @@ public class IdeaCaptureActivity extends AppCompatActivity {
             int bottom = transcript.getLayout().getLineBottom(transcript.getLineCount() - 1);
             transcript.scrollTo(0, Math.max(0, bottom - transcript.getHeight() + transcript.getPaddingBottom()));
         });
-        if (end < transcriptTarget.length()) main.postDelayed(revealTranscript, 24);
+        if (end < transcriptTarget.length()) {
+            revealPending = true;
+            main.postDelayed(revealTranscript, 32);
+        }
     }
 
     private void createView() {
