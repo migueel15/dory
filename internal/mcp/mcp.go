@@ -326,6 +326,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 		return map[string]any{"stopped": in.PID}, nil
 	})
 
+	addThreadTools(srv, s)
 	addBrowser(srv, s)
 
 	if devices {

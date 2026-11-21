@@ -73,6 +73,9 @@ type Manager struct {
 	asked map[string]bool
 	// steering marks threads whose turn was stopped to run the head of the queue now.
 	steering map[string]bool
+	// pending holds the settings an agent chose for a running thread; they
+	// apply when its turn ends, before the next one starts.
+	pending map[string]ThreadSettings
 	// detected caches what Providers found.
 	detected   []Status
 	detectedAt time.Time
@@ -80,7 +83,7 @@ type Manager struct {
 
 func NewManager(db *sql.DB, store *data.Store, node, dataDir string, providers ...Provider) *Manager {
 	m := &Manager{db: db, store: store, node: node, dataDir: dataDir, providers: map[string]Provider{},
-		running: map[string]context.CancelFunc{}, sessions: map[string]Session{}, queues: map[string][]Queued{}, subs: map[chan Update]string{}, usage: map[string][]Window{}, asked: map[string]bool{}, steering: map[string]bool{}}
+		running: map[string]context.CancelFunc{}, sessions: map[string]Session{}, queues: map[string][]Queued{}, subs: map[chan Update]string{}, usage: map[string][]Window{}, asked: map[string]bool{}, steering: map[string]bool{}, pending: map[string]ThreadSettings{}}
 	for _, p := range providers {
 		m.providers[p.ID()] = p
 	}
@@ -666,8 +669,16 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 		delete(m.running, t.ID)
 	}
 	remaining := append([]Queued{}, m.queues[t.ID]...)
+	var configured error
+	if settings, ok := m.pending[t.ID]; ok {
+		delete(m.pending, t.ID)
+		_, configured = m.configureLocked(bg, t.ID, settings, false)
+	}
 	m.setStatusLocked(bg, t.ID, status, failure)
 	m.mu.Unlock()
+	if configured != nil {
+		m.save(bg, Message{ID: newRunID(), ThreadID: t.ID, Role: "system", Text: "No se pudo cambiar el modelo: " + configured.Error(), Status: "failed", CreatedAt: now()})
+	}
 	if q.RunID != "" {
 		m.publish(Update{ThreadID: t.ID, Queue: remaining})
 		fresh, err := m.store.Threads().Get(bg, t.ID)

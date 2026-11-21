@@ -21,6 +21,12 @@ type ThreadSettings struct {
 func (m *Manager) Configure(ctx context.Context, id string, settings ThreadSettings) (data.Thread, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.configureLocked(ctx, id, settings, true)
+}
+
+// configureLocked applies settings with m.mu held. idle refuses a provider
+// switch while a turn runs; between turns the caller already knows it is safe.
+func (m *Manager) configureLocked(ctx context.Context, id string, settings ThreadSettings, idle bool) (data.Thread, error) {
 	t, err := m.local(ctx, id)
 	if err != nil {
 		return t, err
@@ -31,7 +37,7 @@ func (m *Manager) Configure(ctx context.Context, id string, settings ThreadSetti
 		if _, ok := m.provider(target); !ok {
 			return t, fmt.Errorf("%w: %s", ErrProvider, target)
 		}
-		if _, busy := m.running[id]; busy {
+		if _, busy := m.running[id]; busy && idle {
 			return t, ErrBusy
 		}
 		if settings.Model == nil || strings.TrimSpace(*settings.Model) == "" {
