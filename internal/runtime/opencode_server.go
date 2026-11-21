@@ -25,14 +25,14 @@ import (
 // what the agent left running survives the turn.
 func (o OpenCode) Start(ctx context.Context, t Turn) (Session, error) {
 	srv, _ := liveGet(t.ThreadID, "opencode").(*openCodeServer)
-	if srv != nil && (srv.key != t.Dir || srv.Busy() || srv.exited()) {
+	if srv != nil && (srv.key != openCodeServerKey(t) || srv.Busy() || srv.exited()) {
 		liveDrop(t.ThreadID, "opencode", srv)
 		go srv.Close()
 		srv = nil
 	}
 	if srv == nil {
 		var err error
-		if srv, err = o.serve(t); err != nil {
+		if srv, err = o.serve(ctx, t); err != nil {
 			return nil, err
 		}
 		if t.ThreadID != "" {
@@ -57,8 +57,12 @@ func (o OpenCode) Start(ctx context.Context, t Turn) (Session, error) {
 	return s, nil
 }
 
+func openCodeServerKey(t Turn) string {
+	return t.Dir + "\x00" + t.MCPURL
+}
+
 // serve starts an "opencode serve" for the thread.
-func (o OpenCode) serve(t Turn) (*openCodeServer, error) {
+func (o OpenCode) serve(ctx context.Context, t Turn) (*openCodeServer, error) {
 	password := rand.Text()
 	cmd := providerCommand(context.Background(), t.ThreadID, o.bin(), "serve", "--hostname", "127.0.0.1", "--port", "0")
 	cmd.Dir = t.Dir
@@ -82,12 +86,20 @@ func (o OpenCode) serve(t Turn) (*openCodeServer, error) {
 		return nil, fmt.Errorf("opencode serve: %v %s", err, strings.TrimSpace(stderr.String()))
 	}
 	go io.Copy(io.Discard, out)
-	srv := &openCodeServer{key: t.Dir, cmd: cmd, api: &openCodeAPI{base: base, password: password}, dead: make(chan struct{}), idle: time.Now()}
+	srv := &openCodeServer{key: openCodeServerKey(t), cmd: cmd, api: &openCodeAPI{base: base, password: password}, dead: make(chan struct{}), idle: time.Now()}
 	go func() {
 		cmd.Wait()
 		close(srv.dead)
 		liveDrop(t.ThreadID, "opencode", srv)
 	}()
+	if t.MCPURL != "" {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		if err := srv.api.registerDory(ctx, t); err != nil {
+			srv.Close()
+			return nil, err
+		}
+	}
 	return srv, nil
 }
 
@@ -161,6 +173,47 @@ func listening(r io.Reader, timeout time.Duration) (string, error) {
 // openCodeAPI calls the HTTP API of one opencode serve.
 type openCodeAPI struct {
 	base, password string
+}
+
+func (a *openCodeAPI) registerDory(ctx context.Context, t Turn) error {
+	config := map[string]any{
+		"type": "remote", "url": t.MCPURL, "oauth": false,
+		"headers": map[string]string{"Authorization": "Bearer " + t.MCPToken},
+	}
+	if err := a.do(ctx, http.MethodPut, "/api/experimental/mcp/dory", map[string]any{"config": config}, nil); err != nil {
+		// The server may echo configuration when rejecting a request.
+		return errors.New("opencode: no se pudo registrar el servidor MCP de Dory")
+	}
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var catalog struct {
+			Data []struct {
+				Name   string
+				Status struct{ Status string }
+			}
+		}
+		if err := a.do(ctx, http.MethodGet, "/api/mcp", nil, &catalog); err != nil {
+			return errors.New("opencode: no se pudo consultar el estado del MCP de Dory")
+		}
+		for _, server := range catalog.Data {
+			if server.Name != "dory" {
+				continue
+			}
+			switch server.Status.Status {
+			case "connected":
+				return nil
+			case "pending":
+			default:
+				return errors.New("opencode: el servidor MCP de Dory no se conectó")
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return errors.New("opencode: se agotó el tiempo de conexión al MCP de Dory")
+		case <-ticker.C:
+		}
+	}
 }
 
 func (a *openCodeAPI) do(ctx context.Context, method, path string, body, out any) error {

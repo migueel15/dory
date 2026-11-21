@@ -1,6 +1,6 @@
 # ADR-008: Runtime de agentes propio, sin T3 Code
 
-- Status: accepted
+- Status: parcialmente sustituido por ADR-025 (credenciales MCP)
 - Date: 2026-11-16
 - Supersedes: ADR-002, ADR-005
 

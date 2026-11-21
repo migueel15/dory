@@ -581,6 +581,9 @@ func recall(ctx context.Context, store *data.Store, in recallInput) ([]data.Memo
 
 // threadID returns the given thread or the one of this conversation.
 func threadID(ctx context.Context, id string) (string, error) {
+	if thread := auth.AgentThread(ctx); thread != "" && id != "" && id != thread {
+		return "", errors.New("la credencial MCP está vinculada a otro hilo")
+	}
 	if id == "" {
 		id, _ = ctx.Value(threadKey{}).(string)
 	}

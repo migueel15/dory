@@ -65,7 +65,7 @@ func (c Claude) Start(ctx context.Context, t Turn) (Session, error) {
 	}
 	if t.MCPURL != "" {
 		cfg, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{"dory": map[string]any{
-			"type": "http", "url": t.MCPURL, "headers": map[string]string{"Authorization": "Bearer " + t.MCPToken},
+			"type": "http", "url": t.MCPURL, "headers": map[string]string{"Authorization": "Bearer ${DORY_MCP_TOKEN}"},
 		}}})
 		args = append(args, "--mcp-config", string(cfg))
 	}
@@ -76,6 +76,9 @@ func (c Claude) Start(ctx context.Context, t Turn) (Session, error) {
 		cmd.Dir = t.Dir
 		// ask_user waits for the user, so an MCP call may take long (ms).
 		cmd.Env = append(os.Environ(), "MCP_TOOL_TIMEOUT=86400000")
+		if t.MCPURL != "" {
+			cmd.Env = append(cmd.Env, "DORY_MCP_TOKEN="+t.MCPToken)
+		}
 		cmd.Env = threadEnv(cmd.Env, t.ThreadID)
 		var err error
 		if p, err = openStdio(cmd, t.ThreadID, "claude", key); err != nil {
