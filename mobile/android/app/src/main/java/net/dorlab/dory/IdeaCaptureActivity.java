@@ -52,8 +52,6 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private long lastEvent;
     private final Runnable watchdog = this::checkRecognizer;
     private SpeechRecognizer recognizer;
-    private LocalVoiceRecognizer localRecognizer;
-    private boolean localMode;
     private boolean usingOnDevice;
     private boolean systemFallback;
     private State state = State.STARTING;
@@ -129,10 +127,6 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private void listen() {
         if (isFinishing()) return;
         closeRecognizer();
-        if (LocalVoiceRecognizer.available(this)) {
-            listenLocal();
-            return;
-        }
         usingOnDevice = !systemFallback && Build.VERSION.SDK_INT >= 31
             && SpeechRecognizer.isOnDeviceRecognitionAvailable(this);
         if (!usingOnDevice && !SpeechRecognizer.isRecognitionAvailable(this)) {
@@ -205,41 +199,6 @@ public class IdeaCaptureActivity extends AppCompatActivity {
             closeRecognizer();
             display(State.SPEECH_ERROR, "No se pudo iniciar el reconocedor.", "Reintentar", this::requestMicrophone);
         }
-    }
-
-    private void listenLocal() {
-        localMode = true;
-        display(State.STARTING, "Cargando modelo local…", null, null);
-        LocalVoiceRecognizer session = new LocalVoiceRecognizer(this, new LocalVoiceRecognizer.Listener() {
-            private boolean current() { return localRecognizer != null && !isFinishing(); }
-            @Override public void ready() {
-                if (current()) display(State.LISTENING, "Escuchando…", null, null);
-            }
-            @Override public void text(String value, boolean finished) {
-                if (!current()) return;
-                partial = value;
-                if (finished) {
-                    committed = join(committed, partial);
-                    partial = "";
-                    saveDraft();
-                }
-                updateTranscript(join(committed, partial));
-                refreshSend();
-            }
-            @Override public void level(float value) {
-                if (current()) updateVoice(value);
-            }
-            @Override public void error() {
-                if (!current()) return;
-                closeRecognizer();
-                committed = join(committed, partial);
-                partial = "";
-                updateTranscript(committed);
-                display(State.SPEECH_ERROR, "No se pudo iniciar el dictado local.", "Reintentar", IdeaCaptureActivity.this::requestMicrophone);
-            }
-        });
-        localRecognizer = session;
-        session.start();
     }
 
     /** Silencia los pitidos del reconocedor mientras se dicta, para que reiniciarlo tras cada pausa no suene. */
@@ -328,10 +287,6 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         main.removeCallbacks(watchdog);
         main.removeCallbacks(settleVoice);
         settleVoice();
-        LocalVoiceRecognizer local = localRecognizer;
-        localRecognizer = null;
-        localMode = false;
-        if (local != null) local.stop();
         SpeechRecognizer session = recognizer;
         recognizer = null;
         if (session != null) session.destroy();
@@ -398,8 +353,8 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         boolean failed = next == State.SPEECH_ERROR || next == State.SAVE_ERROR;
         int tint = next == State.SAVED ? GOOD : failed ? BAD : listening || next == State.SAVING ? ACCENT : MUTED;
         status.setTextColor(tint);
-        silence(listening && !localMode);
-        stateRow.setVisibility(listening && !(localMode && next == State.STARTING) ? View.GONE : View.VISIBLE);
+        silence(listening);
+        stateRow.setVisibility(listening ? View.GONE : View.VISIBLE);
         if (!listening) {
             main.removeCallbacks(settleVoice);
             settleVoice();
