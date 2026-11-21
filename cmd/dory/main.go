@@ -21,6 +21,7 @@ import (
 
 	"github.com/migueel15/dory/internal/api"
 	"github.com/migueel15/dory/internal/auth"
+	"github.com/migueel15/dory/internal/browser"
 	"github.com/migueel15/dory/internal/compress"
 	"github.com/migueel15/dory/internal/config"
 	"github.com/migueel15/dory/internal/data"
@@ -160,6 +161,10 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		srv.FinishTasks(ctx)
 	})
 	srv.Remote = net
+	srv.MeshPort = cfg.MeshPort
+	srv.Browser = &browser.Manager{DB: store.DB(), Profile: filepath.Join(cfg.DataDir, "browser-profile"), Busy: rt.Running,
+		Changed: func(id string) { events.Changed("browser", id) }}
+	go srv.Browser.Run(ctx)
 	notices.Columns = srv.TaskColumns
 	notices.InfoChanged = net.Changed
 	notices.PeerInfo = func(ctx context.Context) []json.RawMessage {

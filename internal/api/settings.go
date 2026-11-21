@@ -15,6 +15,9 @@ import (
 type Settings struct {
 	ArchiveThreadsOnFinish  bool `json:"archive_threads_on_finish"`
 	RemoveWorktreeOnArchive bool `json:"remove_worktree_on_archive"`
+	// BrowserTunnelDisabled keeps the desktop app from reaching the loopback
+	// ports of this node through the browser of a thread.
+	BrowserTunnelDisabled bool `json:"browser_tunnel_disabled"`
 }
 
 // SettingsStore reads and saves the Settings of a node.

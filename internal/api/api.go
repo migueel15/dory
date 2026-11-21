@@ -13,6 +13,7 @@ import (
 	"github.com/migueel15/dory/internal/update"
 
 	"github.com/migueel15/dory/internal/auth"
+	"github.com/migueel15/dory/internal/browser"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/dictation"
 	"github.com/migueel15/dory/internal/github"
@@ -56,6 +57,10 @@ type Server struct {
 	InfoChanged func()
 	// Settings holds what this node does when work finishes; nil uses the defaults.
 	Settings *SettingsStore
+	// Browser runs the browsers of the threads of this node; nil disables them.
+	Browser *browser.Manager
+	// MeshPort is the mesh port, which the browser tunnel never reaches.
+	MeshPort int
 }
 
 // Register mounts every /api route; auth owns /api/auth/* on the same mux.
@@ -99,6 +104,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	s.mountUsageHistory(mux)
 	s.mountDictation(mux)
 	s.mountUpdate(mux)
+	s.mountBrowser(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "route not found")
 	})
