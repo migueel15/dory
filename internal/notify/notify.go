@@ -251,13 +251,12 @@ func (n *Notifier) deliver(id string) {
 	if at, err := time.Parse(time.RFC3339Nano, nt.CreatedAt); err != nil || time.Since(at) > fresh {
 		return
 	}
-	// By default, while the user is at some interface (with the focus, or open
-	// and not idle) the notice shows there, not as a push.
+	// By default, with an interface in focus the notice shows in the app, not as a push.
 	switch n.Mode(ctx, nt.Kind) {
 	case ModeOff, ModeApp:
 		return
 	case ModeAuto:
-		if d := n.Delivery(ctx); d.Focus || d.Open {
+		if n.Delivery(ctx).Focus {
 			return
 		}
 	}

@@ -81,16 +81,10 @@ func TestDeliveryCombinesLocalAndPeers(t *testing.T) {
 	if d := n.Delivery(ctx); d.Focus || d.Open || d.Push {
 		t.Fatalf("nothing open: %+v", d)
 	}
-	n.Beat("a", Idle)
-	if d := n.Delivery(ctx); d.Focus || d.Open {
-		t.Fatalf("only an idle interface counts as away: %+v", d)
-	}
 	n.Beat("a", Open)
-	n.Beat("b", Idle)
 	if d := n.Delivery(ctx); d.Focus || !d.Open {
-		t.Fatalf("open without focus beats idle: %+v", d)
+		t.Fatalf("open without focus: %+v", d)
 	}
-	n.Beat("b", Closed)
 	n.PeerInfo = func(context.Context) []json.RawMessage {
 		return []json.RawMessage{json.RawMessage(`{"presence":"focus","push":true}`)}
 	}

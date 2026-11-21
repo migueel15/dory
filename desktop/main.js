@@ -1,7 +1,7 @@
 // Dory desktop: a thin window over the core of this machine. The core is a
 // background service; the app starts it when needed and never stops it, so
 // threads keep running with the window closed (requirement 4.4).
-const { app, BrowserWindow, shell, Menu, Tray, nativeImage, dialog, ipcMain, powerMonitor } = require("electron");
+const { app, BrowserWindow, shell, Menu, Tray, nativeImage, dialog } = require("electron");
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -113,10 +113,6 @@ async function followUpdates(url) {
   check();
   setInterval(check, 2 * 60_000);
 }
-
-// The interface asks whether the user is at this computer: "idle" after five
-// minutes without input, "locked" with the screen locked.
-ipcMain.handle("idle-state", () => powerMonitor.getSystemIdleState(300));
 
 async function open() {
   if (!devURL) await installCore().catch((err) => console.error("dory: install core:", err.message));
