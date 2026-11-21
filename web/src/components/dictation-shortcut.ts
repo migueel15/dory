@@ -60,9 +60,14 @@ export function isTextInput(element: Element) {
   return !!element.closest("input, textarea, select, [contenteditable=true], [role=combobox]");
 }
 
+export function openShortcutPopups() {
+  // Closed popovers retain their ARIA roles in the DOM.
+  return Array.from(document.querySelectorAll('dialog[open], [role="dialog"], [role="listbox"]'))
+    .filter((popup) => !popup.hasAttribute("popover") || popup.matches(":popover-open"));
+}
+
 export function hasDictationPopupOutside(input?: Element) {
-  const popups = document.querySelectorAll('dialog[open], [role="dialog"], [role="listbox"]');
-  return Array.from(popups).some((popup) => !input || !popup.contains(input));
+  return openShortcutPopups().some((popup) => !input || !popup.contains(input));
 }
 
 function dispatchShortcut(event: KeyboardEvent) {

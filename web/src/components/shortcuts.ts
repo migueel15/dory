@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
-import { chordFromEvent, readDictationShortcut, saveDictationShortcut, type Chord } from "./dictation-shortcut";
+import { chordFromEvent, openShortcutPopups, readDictationShortcut, saveDictationShortcut, type Chord } from "./dictation-shortcut";
 
 const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const chord = (code: string, shift = false): Chord => ({ code: `Key${code}`, ctrl: !mac, meta: mac, alt: false, shift });
@@ -87,8 +87,7 @@ export function listenShortcuts(e: KeyboardEvent) {
   if (!pressed) return;
   const command = commands.find((c) => c.id !== "dictation" && sameChord(shortcut(c.id), pressed));
   if (!command || sameChord(shortcut("dictation"), pressed)) return;
-  // Closed popovers stay in the DOM with role="dialog"; only open ones block shortcuts.
-  const dialog = [...document.querySelectorAll('dialog[open], [role="dialog"], [role="listbox"]')].find((el) => !el.hasAttribute("popover") || el.matches(":popover-open"));
+  const [dialog] = openShortcutPopups();
   if (dialog && command.id !== "new-idea" && !(command.id === "palette" && dialog.getAttribute("aria-label") === "Comandos")) return;
   if (runCommand(command.id)) { e.preventDefault(); e.stopPropagation(); }
 }
