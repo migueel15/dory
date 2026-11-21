@@ -49,6 +49,8 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private String ideaId = UUID.randomUUID().toString();
     private boolean resumeOnStart;
     private boolean ended;
+    private long lastEvent;
+    private final Runnable watchdog = this::checkRecognizer;
     private SpeechRecognizer recognizer;
     private boolean usingOnDevice;
     private boolean systemFallback;
@@ -135,7 +137,9 @@ public class IdeaCaptureActivity extends AppCompatActivity {
             recognizer = session;
             session.setRecognitionListener(new RecognitionListener() {
                 private boolean current() {
-                    return recognizer == session && !isFinishing();
+                    if (recognizer != session || isFinishing()) return false;
+                    lastEvent = System.currentTimeMillis();
+                    return true;
                 }
 
                 @Override public void onReadyForSpeech(Bundle params) {
@@ -185,6 +189,8 @@ public class IdeaCaptureActivity extends AppCompatActivity {
                 .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 30000L)
                 .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 30000L);
             session.startListening(dictation);
+            lastEvent = System.currentTimeMillis();
+            main.postDelayed(watchdog, 4000);
         } catch (RuntimeException e) {
             closeRecognizer();
             display(State.SPEECH_ERROR, "No se pudo iniciar el reconocedor.", "Reintentar", this::requestMicrophone);
@@ -203,6 +209,16 @@ public class IdeaCaptureActivity extends AppCompatActivity {
                 audio.adjustStreamVolume(stream, direction, 0);
             } catch (SecurityException ignored) {
             }
+        }
+    }
+
+    /** Si el reconocedor del sistema se atasca sin avisar, no llegan ni niveles de sonido: se reinicia la escucha. */
+    private void checkRecognizer() {
+        if (isFinishing() || recognizer == null || (state != State.LISTENING && state != State.STARTING)) return;
+        if (System.currentTimeMillis() - lastEvent > 10000) {
+            listen();
+        } else {
+            main.postDelayed(watchdog, 4000);
         }
     }
 
@@ -264,6 +280,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
 
     private void closeRecognizer() {
         main.removeCallbacks(relisten);
+        main.removeCallbacks(watchdog);
         SpeechRecognizer session = recognizer;
         recognizer = null;
         if (session != null) session.destroy();
