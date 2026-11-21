@@ -76,6 +76,7 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
   const [agentAt, setAgentAt] = useState<{ tab: string; at: number } | null>(null);
   const [error, setError] = useState("");
   const [attached, setAttached] = useState<string | null>(null);
+  const nativeView = useRef<{ tab: string; shown: boolean } | null>(null);
   const [connected, setConnected] = useState(false);
   const ws = useRef<WebSocket | null>(null);
   const view = useRef<HTMLDivElement>(null);
@@ -84,6 +85,13 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
   activeRef.current = active;
   const send = (m: Record<string, unknown>) => { if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify(m)); };
   const size = () => { const r = view.current?.getBoundingClientRect(); return { width: Math.round(r?.width ?? 0), height: Math.round(r?.height ?? 0) }; };
+  const releaseView = (tab?: string) => {
+    const current = nativeView.current;
+    if (!current || (tab !== undefined && current.tab !== tab)) return;
+    nativeView.current = null;
+    if (current.shown) void desktop()?.hide(current.tab);
+    setAttached(null);
+  };
 
   useEffect(() => {
     const b = desktop();
@@ -96,11 +104,13 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
       ws.current = s;
       s.onopen = () => setConnected(true);
       s.onclose = () => {
+        if (closed) return;
         setConnected(false);
-        setAttached((t) => { if (t) b?.hide(t); return null; });
-        if (!closed) retry = setTimeout(connect, 2000);
+        releaseView();
+        retry = setTimeout(connect, 2000);
       };
       s.onmessage = async (e) => {
+        if (closed) return;
         const m = JSON.parse(e.data as string);
         switch (m.t) {
           case "state": setState(m.state); break;
@@ -113,18 +123,27 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
             break;
           case "attach": {
             if (!b || !view.current) return;
+            if (nativeView.current?.tab !== m.tab) releaseView();
+            const attachment = { tab: m.tab, shown: nativeView.current?.shown ?? false };
+            nativeView.current = attachment;
             const port = loopbackPort(m.url);
             if (remote && port) {
               tunnelThreads.set(port, threadId);
-              if (!(await b.tunnelListen(port))) setError(`El puerto ${port} ya está en uso en este equipo; se muestra lo que hay en él.`);
+              const listening = await b.tunnelListen(port);
+              if (nativeView.current !== attachment) return;
+              if (!listening) setError(`El puerto ${port} ya está en uso en este equipo; se muestra lo que hay en él.`);
             }
+            if (!view.current) return;
+            // Record ownership before sending show so cleanup can queue hide behind it.
+            attachment.shown = true;
             await b.show(m.tab, m.url, view.current.getBoundingClientRect());
+            if (nativeView.current !== attachment) return;
             setAttached(m.tab);
             setFrame(null);
             send({ t: "ready", tab: m.tab });
             break;
           }
-          case "detach": b?.hide(m.tab); setAttached((t) => (t === m.tab ? null : t)); break;
+          case "detach": releaseView(m.tab); break;
           case "cdp":
             b?.cdp(m.tab, m.method, m.params)
               .then((result) => send({ t: "cdp_result", tab: m.tab, id: m.id, result }))
@@ -143,8 +162,8 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
       closed = true;
       clearTimeout(retry);
       offs.forEach((f) => f());
+      releaseView();
       ws.current?.close();
-      setAttached((t) => { if (t) b?.hide(t); return null; });
     };
   }, [threadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -156,8 +175,7 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
     send({ t: "view", tab: activeId, ...size() });
     return () => {
       send({ t: "hide", tab: activeId });
-      const b = desktop();
-      setAttached((t) => { if (t === activeId) b?.hide(t); return t === activeId ? null : t; });
+      releaseView(activeId);
     };
   }, [activeId, connected]); // eslint-disable-line react-hooks/exhaustive-deps
 
