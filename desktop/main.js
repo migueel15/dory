@@ -1,7 +1,8 @@
 // Dory desktop: a thin window over the core of this machine. The core is a
 // background service; the app starts it when needed and never stops it, so
 // threads keep running with the window closed (requirement 4.4).
-const { app, BrowserWindow, shell, Menu, Tray, nativeImage, dialog } = require("electron");
+const { app, BrowserWindow, WebContentsView, ipcMain, shell, Menu, Tray, nativeImage, dialog } = require("electron");
+const net = require("node:net");
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -137,6 +138,84 @@ async function open() {
   await win.loadURL(url);
   if (!devURL) followUpdates(url);
 }
+
+// Thread browser: each visible tab of a thread's browser is a native view
+// over the window, in a session of its own shared by every thread. The page
+// gets no preload and no Node; the interface drives it through its debugger,
+// which the core of the thread's node reaches over the panel channel.
+const views = new Map();
+const fromUI = (e) => win && e.sender === win.webContents;
+
+function browserView(tab, target) {
+  let v = views.get(tab);
+  if (v) return v;
+  const view = new WebContentsView({ webPreferences: { partition: "persist:dory-browser", sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  v = { view };
+  views.set(tab, v);
+  const wc = view.webContents;
+  // New windows become tabs of the same thread; the page stays here.
+  wc.setWindowOpenHandler(({ url: next }) => {
+    if (win) win.webContents.send("browser:open", tab, next);
+    return { action: "deny" };
+  });
+  wc.debugger.attach("1.3");
+  wc.debugger.on("message", (_e, method, params) => { if (win) win.webContents.send("browser:event", tab, method, params); });
+  wc.debugger.on("detach", () => { if (win) win.webContents.send("browser:gone", tab); });
+  win.contentView.addChildView(view);
+  if (target) wc.loadURL(target).catch(() => {});
+  return v;
+}
+
+function dropView(tab) {
+  const v = views.get(tab);
+  if (!v) return;
+  views.delete(tab);
+  try { v.view.webContents.debugger.detach(); } catch {}
+  if (win) win.contentView.removeChildView(v.view);
+  v.view.webContents.close();
+}
+
+const rect = (b) => ({ x: Math.round(b.x), y: Math.round(b.y), width: Math.max(0, Math.round(b.width)), height: Math.max(0, Math.round(b.height)) });
+
+ipcMain.handle("browser:show", (e, tab, target, bounds) => {
+  if (!fromUI(e)) return;
+  browserView(tab, target).view.setBounds(rect(bounds));
+});
+ipcMain.handle("browser:bounds", (e, tab, bounds, visible) => {
+  const v = fromUI(e) && views.get(tab);
+  if (!v) return;
+  v.view.setBounds(rect(bounds));
+  v.view.setVisible(visible !== false);
+});
+ipcMain.handle("browser:hide", (e, tab) => { if (fromUI(e)) dropView(tab); });
+ipcMain.handle("browser:cdp", (e, tab, method, params) => {
+  const v = fromUI(e) && views.get(tab);
+  if (!v) throw new Error("no view");
+  return v.view.webContents.debugger.sendCommand(method, params || {});
+});
+
+// Tunnel: a page of a remote node's thread asks for its localhost. The app
+// listens on the same loopback port here and carries each connection, raw,
+// through the interface to that node, so the page keeps its origin.
+const tunnels = new Map();
+const sockets = new Map();
+let nextSocket = 0;
+ipcMain.handle("tunnel:listen", (e, port) => new Promise((resolve) => {
+  if (!fromUI(e)) return resolve(false);
+  if (tunnels.has(port)) return resolve(true);
+  const server = net.createServer((sock) => {
+    const id = ++nextSocket;
+    sockets.set(id, sock);
+    if (win) win.webContents.send("tunnel:open", id, port);
+    sock.on("data", (chunk) => { if (win) win.webContents.send("tunnel:data", id, chunk); });
+    sock.on("close", () => { sockets.delete(id); if (win) win.webContents.send("tunnel:close", id); });
+    sock.on("error", () => {});
+  });
+  server.once("error", () => resolve(false));
+  server.listen(port, "127.0.0.1", () => { tunnels.set(port, server); resolve(true); });
+}));
+ipcMain.on("tunnel:write", (e, id, data) => { if (fromUI(e)) sockets.get(id)?.write(Buffer.from(data)); });
+ipcMain.on("tunnel:end", (e, id) => { if (fromUI(e)) sockets.get(id)?.destroy(); });
 
 // Started at sign-in, the app runs in the background without a window.
 const hidden = process.argv.includes("--hidden");
