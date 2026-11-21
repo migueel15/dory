@@ -183,7 +183,7 @@ function Toast({ notice: n, onOpen, onDismiss }: { notice: Notice; onOpen: () =>
       </button>
       <button type="button" aria-label="Cerrar aviso" onClick={onDismiss}
         className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-white">
-        <X className="size-4" />
+        <X weight="regular" aria-hidden="true" className="size-4" />
       </button>
     </div>
   );
