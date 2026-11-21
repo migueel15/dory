@@ -84,8 +84,7 @@ export function NoticeInbox() {
       if (panel.current?.matches(":popover-open")) place();
     };
     window.addEventListener("resize", again);
-    window.addEventListener("scroll", again, true);
-    return () => { window.removeEventListener("resize", again); window.removeEventListener("scroll", again, true); };
+    return () => { window.removeEventListener("resize", again); };
   }, []);
   // One wrapper: the sidebar sizes its direct children, and the panel must not be one.
   return (
@@ -96,8 +95,8 @@ export function NoticeInbox() {
         {unread.length > 0 && <span className="absolute right-0.5 top-0.5 grid min-w-4 place-items-center rounded-full bg-blue-600 px-1 text-[10px] font-bold leading-4 text-white">{unread.length > 99 ? "99+" : unread.length}</span>}
       </button>
       <div ref={panel} id={popoverId} popover="auto" role="dialog" aria-label="Avisos" onToggle={(e) => { if (e.newState === "open") place(); }}
-        className="fixed m-0 overflow-auto [scrollbar-gutter:stable] rounded-xl border border-slate-200 bg-white p-3 text-slate-900 shadow-xl dark:border-border-strong dark:bg-surface dark:text-white">
-          <h2 className="mb-2 text-base font-semibold">Avisos</h2>
+        className="fixed m-0 overflow-auto overscroll-contain [scrollbar-gutter:stable] rounded-xl border border-slate-200 bg-white p-3 text-slate-900 shadow-xl dark:border-border-strong dark:bg-surface dark:text-white">
+          <h2 className="sticky -top-3 z-10 -mx-3 -mt-3 mb-2 bg-white px-3 pb-2 pt-3 text-base font-semibold dark:bg-surface">Avisos</h2>
           <div className="space-y-2">
             {unread.length > 0 && <Button variant="ghost" onClick={() => read.mutate([])}>Marcar todos como leídos</Button>}
             {list.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">No hay avisos.</p>}
