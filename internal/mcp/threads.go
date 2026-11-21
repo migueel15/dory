@@ -201,7 +201,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 			}
 			text = fmt.Sprintf("[Mensaje del hilo «%s» (%s)]\n\n%s", title, from, in.Text)
 		}
-		if err := m.Send(ctx, in.ThreadID, text); err != nil {
+		if err := m.SendFrom(ctx, in.ThreadID, from, text); err != nil {
 			return nil, err
 		}
 		return map[string]any{"thread_id": in.ThreadID, "sent": true, "queued": len(m.Queue(in.ThreadID)) > 0}, nil

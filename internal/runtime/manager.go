@@ -44,6 +44,8 @@ type Queued struct {
 	RunID string       `json:"run_id"`
 	Text  string       `json:"text"`
 	Files []Attachment `json:"files,omitempty"`
+	// Sender is the thread whose agent sent the message; empty for the user.
+	Sender string `json:"sender_thread_id,omitempty"`
 }
 
 // Manager owns the threads of this node: it starts turns, keeps their
@@ -361,6 +363,11 @@ func (m *Manager) local(ctx context.Context, id string) (data.Thread, error) {
 
 // Send starts a turn with text, or queues it while another turn runs.
 func (m *Manager) Send(ctx context.Context, id, text string, files ...Attachment) error {
+	return m.SendFrom(ctx, id, "", text, files...)
+}
+
+// SendFrom is Send for a message an agent of the sender thread writes.
+func (m *Manager) SendFrom(ctx context.Context, id, sender, text string, files ...Attachment) error {
 	if strings.TrimSpace(text) == ClearCommand && len(files) == 0 {
 		return m.Clear(ctx, id)
 	}
@@ -372,7 +379,7 @@ func (m *Manager) Send(ctx context.Context, id, text string, files ...Attachment
 		return err
 	}
 	if _, busy := m.running[id]; busy {
-		m.queues[id] = append(m.queues[id], Queued{RunID: run, Text: text, Files: files})
+		m.queues[id] = append(m.queues[id], Queued{RunID: run, Text: text, Files: files, Sender: sender})
 		q := append([]Queued(nil), m.queues[id]...)
 		m.mu.Unlock()
 		m.publish(Update{ThreadID: id, Queue: q})
@@ -381,7 +388,7 @@ func (m *Manager) Send(ctx context.Context, id, text string, files ...Attachment
 	turnCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	m.running[id] = cancel
 	m.mu.Unlock()
-	if err = m.start(turnCtx, t, run, text, files); err != nil {
+	if err = m.start(turnCtx, t, Queued{RunID: run, Text: text, Files: files, Sender: sender}); err != nil {
 		cancel()
 		m.mu.Lock()
 		delete(m.running, id)
@@ -489,7 +496,8 @@ func (m *Manager) Queue(id string) []Queued {
 	return append([]Queued{}, m.queues[id]...)
 }
 
-func (m *Manager) start(ctx context.Context, t data.Thread, run, text string, files []Attachment) error {
+func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
+	run, text, files := q.RunID, q.Text, q.Files
 	p, ok := m.provider(t.Provider)
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrProvider, t.Provider)
@@ -562,7 +570,7 @@ func (m *Manager) start(ctx context.Context, t data.Thread, run, text string, fi
 	if marker.ID != "" {
 		m.saveModelChange(ctx, marker, change)
 	}
-	m.save(ctx, Message{ID: run + ":user", ThreadID: t.ID, RunID: run, Role: "user", Text: text, Detail: attachmentsDetail(files), CreatedAt: startedAt})
+	m.save(ctx, Message{ID: run + ":user", ThreadID: t.ID, RunID: run, Role: "user", Text: text, Detail: attachmentsDetail(files), CreatedAt: startedAt, SenderThreadID: q.Sender})
 	m.setStatus(ctx, t.ID, "working", "")
 	go m.follow(ctx, t, events, marker, change)
 	return nil
@@ -688,7 +696,7 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 		m.publish(Update{ThreadID: t.ID, Queue: remaining})
 		fresh, err := m.store.Threads().Get(bg, t.ID)
 		if err == nil {
-			err = m.start(ctx, fresh, q.RunID, q.Text, q.Files)
+			err = m.start(ctx, fresh, q)
 		}
 		if err != nil {
 			m.mu.Lock()
@@ -727,11 +735,11 @@ func (m *Manager) save(ctx context.Context, msg Message) {
 	if msg.CreatedAt == "" {
 		msg.CreatedAt = at
 	}
-	_, err := m.db.ExecContext(ctx, `INSERT INTO thread_messages(id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, updated_at, tool)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	_, err := m.db.ExecContext(ctx, `INSERT INTO thread_messages(id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, updated_at, tool, sender_thread_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET text = excluded.text, title = excluded.title, detail = excluded.detail,
 			status = excluded.status, streaming = excluded.streaming, updated_at = excluded.updated_at, tool = excluded.tool`,
-		msg.ID, msg.ThreadID, msg.RunID, msg.Role, msg.Text, msg.Title, msg.Detail, msg.Status, streaming, msg.CreatedAt, at, toolJSON(msg.Tool))
+		msg.ID, msg.ThreadID, msg.RunID, msg.Role, msg.Text, msg.Title, msg.Detail, msg.Status, streaming, msg.CreatedAt, at, toolJSON(msg.Tool), msg.SenderThreadID)
 	if err != nil {
 		log.Printf("runtime: save message: %v", err)
 		return
@@ -749,7 +757,7 @@ func toolJSON(t *ToolCall) string {
 
 // Messages returns the conversation of a thread of this node, oldest first.
 func (m *Manager) Messages(ctx context.Context, id string) ([]Message, error) {
-	rows, err := m.db.QueryContext(ctx, `SELECT id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, tool
+	rows, err := m.db.QueryContext(ctx, `SELECT id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, tool, sender_thread_id
 		FROM thread_messages WHERE thread_id = ? ORDER BY seq`, id)
 	if err != nil {
 		return nil, err
@@ -760,7 +768,7 @@ func (m *Manager) Messages(ctx context.Context, id string) ([]Message, error) {
 		var msg Message
 		var streaming int
 		var tool string
-		if err = rows.Scan(&msg.ID, &msg.ThreadID, &msg.RunID, &msg.Role, &msg.Text, &msg.Title, &msg.Detail, &msg.Status, &streaming, &msg.CreatedAt, &tool); err != nil {
+		if err = rows.Scan(&msg.ID, &msg.ThreadID, &msg.RunID, &msg.Role, &msg.Text, &msg.Title, &msg.Detail, &msg.Status, &streaming, &msg.CreatedAt, &tool, &msg.SenderThreadID); err != nil {
 			return nil, err
 		}
 		if tool != "" {

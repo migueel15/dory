@@ -120,7 +120,7 @@ func (m *Manager) notifyParent(ctx context.Context, child data.Thread, status st
 	if result != "" {
 		text += "\n\n" + result
 	}
-	if err := m.Send(ctx, parent.ID, text); err != nil {
+	if err := m.SendFrom(ctx, parent.ID, child.ID, text); err != nil {
 		log.Printf("runtime: notify parent %s: %v", parent.ID, err)
 	}
 }

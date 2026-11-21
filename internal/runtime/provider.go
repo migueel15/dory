@@ -28,6 +28,8 @@ type Message struct {
 	Status    string `json:"status,omitempty"`
 	Streaming bool   `json:"streaming"`
 	CreatedAt string `json:"created_at"`
+	// SenderThreadID is the thread whose agent sent this user message.
+	SenderThreadID string `json:"sender_thread_id,omitempty"`
 	// Tool is set on tool, plan and question messages: the call in Dory's terms.
 	Tool *ToolCall `json:"tool,omitempty"`
 }

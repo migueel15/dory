@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowBendLeftUp, CaretRight } from "@phosphor-icons/react";
-import { api, type Thread } from "../api/client";
+import { ArrowBendLeftUp, CaretRight, Robot } from "@phosphor-icons/react";
+import { api, type Message, type Thread } from "../api/client";
+import { Md } from "./ui";
 import { ProviderIcon } from "./launch-picker";
 
 // useSubagents lists the children of a thread, archived ones included: they
@@ -73,5 +74,36 @@ export function ParentLink({ parentId }: { parentId: string }) {
       className="flex min-w-0 max-w-[40%] shrink items-center gap-1 truncate rounded px-1.5 py-0.5 text-xs text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">
       <ArrowBendLeftUp className="size-3.5 shrink-0" /><span className="truncate">{parent.data?.title || "Hilo padre"}</span>
     </Link>
+  );
+}
+
+// useThreadTitle reads the title of any thread, archived ones included.
+function useThreadTitle(id: string) {
+  return useQuery({ queryKey: ["thread-title", id], queryFn: () => api.threads({ id }, true).then((l) => l[0] ?? null), staleTime: 60_000 }).data?.title;
+}
+
+// AgentMessage is a user turn another thread's agent wrote, such as a
+// subagent handing over its result: folded to one line with its sender, so
+// the user's own messages stay easy to find.
+export function AgentMessage({ m }: { m: Message }) {
+  const [open, setOpen] = useState(false);
+  const sender = m.sender_thread_id!;
+  const title = useThreadTitle(sender);
+  // The first line in brackets says what happened; the rest is the result.
+  const match = m.text.match(/^\[([^\]\n]*)\]\s*/);
+  const header = match?.[1].replace(/\s*\([^)]*\)/, "") ?? "Mensaje de otro agente";
+  const body = match ? m.text.slice(match[0].length) : m.text;
+  return (
+    <div data-message className="w-full max-w-full">
+      <div className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm dark:border-border">
+        <Robot className="size-4 shrink-0 text-slate-500" />
+        <button type="button" onClick={() => body && setOpen(!open)} aria-expanded={open} disabled={!body} className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+          {body && <CaretRight className={`size-3 shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />}
+          <span className="truncate text-slate-600 dark:text-muted">{header}</span>
+        </button>
+        <Link to="/threads/$threadId" params={{ threadId: sender }} title="Abrir el hilo que lo envió" className="max-w-[40%] shrink-0 truncate text-xs text-slate-500 hover:underline">{title || "Ver hilo"}</Link>
+      </div>
+      {open && body && <div className="mt-1 border-l-2 border-slate-200 pl-3 text-sm dark:border-border"><Md>{body}</Md></div>}
+    </div>
   );
 }

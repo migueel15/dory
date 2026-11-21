@@ -46,7 +46,7 @@ export type ToolCall = {
   path?: string; lines?: string; pattern?: string; url?: string; query?: string; agent?: string; summary?: string; steps?: number;
   server?: string; tool?: string; input?: string; questions?: Question[];
 };
-export type Message = { id: string; thread_id?: string; run_id?: string; role: Role; text: string; title?: string; detail?: string; status?: string; streaming: boolean; created_at: string; tool?: ToolCall };
+export type Message = { id: string; thread_id?: string; run_id?: string; role: Role; text: string; title?: string; detail?: string; status?: string; streaming: boolean; created_at: string; tool?: ToolCall; sender_thread_id?: string };
 // Entry is a slash command or skill of a harness; insert is how it is invoked.
 export type Entry = { name: string; description: string; insert: string };
 export type Attachment = { id: string; name: string; mime: string; path: string };

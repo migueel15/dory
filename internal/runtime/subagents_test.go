@@ -46,6 +46,10 @@ func TestSpawnRunsChildAndWakesParent(t *testing.T) {
 	}
 	close(<-claude.ends)
 	wait(t, store, parent.ID, "idle")
+	msgs, _ := m.Messages(ctx, parent.ID)
+	if len(msgs) == 0 || msgs[0].Role != "user" || msgs[0].SenderThreadID != child.ID {
+		t.Fatalf("wake message not attributed to the child: %+v", msgs)
+	}
 }
 
 func TestSpawnLimitsActiveChildren(t *testing.T) {
