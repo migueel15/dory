@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, HandPointing, Circle, CircleNotch, Cpu, DeviceMobile, PictureInPicture, Plugs, Power, SidebarSimple, Sliders, Square, SpeakerHigh, SpeakerLow, WifiHigh } from "@phosphor-icons/react";
+import { ArrowLeft, HandPointing, Circle, CircleNotch, Cpu, DeviceMobile, PictureInPicture, Plugs, Power, SidebarSimple, X, Sliders, Square, SpeakerHigh, SpeakerLow, WifiHigh } from "@phosphor-icons/react";
 import { devicesApi, type Device, type DeviceList } from "../api/client";
 import { DeviceStream, Key, keyFor, webCodecsProblem, type StreamStatus } from "../lib/scrcpy";
 import { askConfirm } from "./confirm";
-import { Button, ErrorText } from "./ui";
+import { Button, ErrorText, Input, Select, iconButton } from "./ui";
 
 // DevicePanel shows an Android device or emulator of the thread's node live.
 // Only the visible tab streams: it connects on mount and closes on unmount.
@@ -160,9 +160,7 @@ function Live({ node, device, onBack, floating, onFloat }: { node: string; devic
         <button type="button" onClick={onBack} className="text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">Dispositivos</button>
         <span className="min-w-0 flex-1 truncate font-medium">{device.avd || device.model || device.serial}</span>
         <span className={status === "live" ? "text-emerald-500" : "text-slate-500 dark:text-muted"}>{statusText[status]}</span>
-        <select value={quality} onChange={(e) => pickQuality(e.target.value as Quality)} title="Calidad del vídeo" aria-label="Calidad del vídeo" className="rounded border border-slate-300 bg-transparent px-1 py-0.5 text-xs dark:border-border-strong dark:bg-surface">
-          {(Object.keys(QUALITY) as Quality[]).map((q) => <option key={q} value={q}>{QUALITY[q].label}</option>)}
-        </select>
+        <Select className="w-24" value={quality} onChange={(v) => pickQuality(v as Quality)} options={(Object.keys(QUALITY) as Quality[]).map((q) => ({ value: q, label: QUALITY[q].label }))} />
         {onFloat && <button type="button" onClick={() => onFloat(!floating)} title={floating ? "Abrir en el panel lateral" : "Flotar sobre el chat"} aria-label={floating ? "Abrir en el panel lateral" : "Flotar sobre el chat"} className="text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">{floating ? <SidebarSimple className="size-4 -scale-x-100" /> : <PictureInPicture className="size-4" />}</button>}
       </div>
       {message && <div className="p-2"><ErrorText error={new Error(message)} /></div>}
@@ -171,7 +169,7 @@ function Live({ node, device, onBack, floating, onFloat }: { node: string; devic
       <div className="relative min-h-0 flex-1 overflow-hidden bg-black/5 dark:bg-black/30">
         <canvas ref={canvas} tabIndex={0} {...input} className="absolute inset-2 size-[calc(100%-1rem)] touch-none bg-transparent object-contain outline-none" />
       </div>
-      {tools && <Tools node={node} device={device} />}
+      {tools && <Tools node={node} device={device} onClose={() => setTools(false)} />}
       <div className="flex shrink-0 items-center justify-center gap-1 border-t border-slate-200 p-1 dark:border-border">
         {bar("Atrás", <ArrowLeft className="size-4" />, (s) => s.back())}
         {bar("Inicio", <Circle className="size-4" />, (s) => s.keycode(Key.home))}
@@ -234,11 +232,9 @@ function useDeviceInput(canvas: React.RefObject<HTMLCanvasElement | null>, strea
   };
 }
 
-const select = "rounded-md border border-slate-300 bg-transparent px-1.5 py-0.5 text-xs dark:border-border-strong dark:bg-surface";
-
 // Tools changes device settings through typed adb actions and shows the value
 // the device reports back after each change; only what the device supports shows.
-function Tools({ node, device }: { node: string; device: Device }) {
+function Tools({ node, device, onClose }: { node: string; device: Device; onClose: () => void }) {
   const qc = useQueryClient();
   const key = ["device-state", node, device.serial];
   const state = useQuery({ queryKey: key, queryFn: () => devicesApi.action(device.serial, { action: "state" }, node), refetchInterval: 8000 });
@@ -250,38 +246,43 @@ function Tools({ node, device }: { node: string; device: Device }) {
   const [pkg, setPkg] = useState("");
   const [perm, setPerm] = useState("android.permission.CAMERA");
   const [coords, setCoords] = useState("40.4168,-3.7038");
-  const row = (name: string, control: React.ReactNode) => <div className="flex items-center justify-between gap-2"><span>{name}</span>{control}</div>;
-  const toggle = (action: string, value?: string) => (
-    <select className={select} value={value ?? ""} onChange={(e) => apply.mutate({ action, value: e.target.value })}><option value="" disabled>—</option><option value="on">Activado</option><option value="off">Desactivado</option></select>
+  const scale = st.font_scale ? Number(st.font_scale).toFixed(2) : "";
+  const scales = ["0.85", "1.00", "1.15", "1.30", "1.50", "2.00"];
+  const row = (name: string, control: React.ReactNode) => <div className="flex min-h-8 items-center justify-between gap-3"><span className="text-slate-600 dark:text-text-secondary">{name}</span>{control}</div>;
+  const check = (action: string, value?: string) => (
+    <input type="checkbox" aria-label={action} checked={value === "on"} disabled={!value || apply.isPending} onChange={(e) => apply.mutate({ action, value: e.target.checked ? "on" : "off" })} />
   );
+  const heading = (text: string) => <h3 className="pt-1 text-xs font-medium text-slate-500 dark:text-muted">{text}</h3>;
   return (
-    <div className="max-h-64 shrink-0 space-y-1.5 overflow-auto border-t border-slate-200 p-3 text-xs dark:border-border">
-      {st.foreground && row("App en primer plano", <span className="max-w-48 truncate text-slate-500 dark:text-muted" title={st.foreground}>{st.foreground}</span>)}
-      {row("Modo oscuro", <select className={select} value={st.dark_mode ?? ""} onChange={(e) => apply.mutate({ action: "dark_mode", value: e.target.value })}><option value="" disabled>—</option><option value="yes">Sí</option><option value="no">No</option><option value="auto">Automático</option></select>)}
-      {row("Tamaño de texto", <select className={select} value={st.font_scale ? Number(st.font_scale).toFixed(2) : ""} onChange={(e) => apply.mutate({ action: "font_scale", value: e.target.value })}>{["0.85", "1.00", "1.15", "1.30", "1.50", "2.00"].map((v) => <option key={v} value={v}>{v}×</option>)}{st.font_scale && !["0.85", "1.00", "1.15", "1.30", "1.50", "2.00"].includes(Number(st.font_scale).toFixed(2)) && <option value={Number(st.font_scale).toFixed(2)}>{Number(st.font_scale).toFixed(2)}×</option>}</select>)}
-      {row("Orientación", <select className={select} value={st.orientation ?? ""} onChange={(e) => apply.mutate({ action: "orientation", value: e.target.value })}><option value="" disabled>—</option><option value="auto">Automática</option><option value="portrait">Vertical</option><option value="landscape">Horizontal</option><option value="reverse_portrait">Vertical invertida</option><option value="reverse_landscape">Horizontal invertida</option></select>)}
-      {row("Wi-Fi", toggle("wifi", st.wifi))}
-      {row("Datos móviles", toggle("data", st.data))}
-      {row("Pantalla encendida al cargar", toggle("stay_awake", st.stay_awake))}
-      <div className="space-y-1 border-t border-slate-200 pt-1.5 dark:border-border">
-        <div className="font-medium">Permisos de una app</div>
-        <div className="flex gap-1"><input className={`${select} min-w-0 flex-1`} placeholder="com.paquete" value={pkg} onChange={(e) => setPkg(e.target.value)} /><input className={`${select} min-w-0 flex-1`} value={perm} onChange={(e) => setPerm(e.target.value)} /></div>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" disabled={!pkg || apply.isPending} onClick={() => apply.mutate({ action: "permission", package: pkg.trim(), permission: perm.trim(), value: "grant" })}>Conceder</Button>
-          <Button variant="ghost" disabled={!pkg || apply.isPending} onClick={() => apply.mutate({ action: "permission", package: pkg.trim(), permission: perm.trim(), value: "revoke" })}>Revocar</Button>
-          {apply.data?.permission && <span className="text-slate-500 dark:text-muted">{apply.data.state === "granted" ? "concedido" : "revocado"}</span>}
-        </div>
+    <section aria-label="Herramientas del dispositivo" className="max-h-72 shrink-0 space-y-2 overflow-auto border-t border-slate-200 bg-white p-3 text-sm dark:border-border dark:bg-surface">
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold">Herramientas</h2>
+        <button type="button" onClick={onClose} aria-label="Cerrar herramientas" className={iconButton}><X weight="regular" className="size-4" /></button>
       </div>
-      {device.transport === "emulator" && (
-        <div className="space-y-1 border-t border-slate-200 pt-1.5 dark:border-border">
-          <div className="font-medium">Ubicación simulada</div>
-          <div className="flex items-center gap-1"><input className={`${select} min-w-0 flex-1`} value={coords} onChange={(e) => setCoords(e.target.value)} placeholder="lat,lon" />
-            <Button variant="ghost" disabled={apply.isPending} onClick={() => { const [lat, lon] = coords.split(",").map(Number); apply.mutate({ action: "location", lat, lon }); }}>Fijar</Button></div>
-          {apply.data?.location && <span className="text-slate-500 dark:text-muted">Ubicación: {apply.data.location}</span>}
-        </div>
-      )}
+      {st.foreground && <p className="truncate text-xs text-slate-500 dark:text-muted" title={st.foreground}>En primer plano: {st.foreground}</p>}
+      {heading("Pantalla")}
+      {row("Modo oscuro", <Select className="w-40" value={st.dark_mode ?? ""} onChange={(v) => apply.mutate({ action: "dark_mode", value: v })} options={[{ value: "yes", label: "Sí" }, { value: "no", label: "No" }, { value: "auto", label: "Automático" }]} />)}
+      {row("Tamaño de texto", <Select className="w-40" value={scale} onChange={(v) => apply.mutate({ action: "font_scale", value: v })} options={[...(scale && !scales.includes(scale) ? [scale] : []), ...scales].map((v) => ({ value: v, label: `${v}×` }))} />)}
+      {row("Orientación", <Select className="w-40" value={st.orientation ?? ""} onChange={(v) => apply.mutate({ action: "orientation", value: v })} options={[{ value: "auto", label: "Automática" }, { value: "portrait", label: "Vertical" }, { value: "landscape", label: "Horizontal" }, { value: "reverse_portrait", label: "Vertical invertida" }, { value: "reverse_landscape", label: "Horizontal invertida" }]} />)}
+      {row("Encendida al cargar", check("stay_awake", st.stay_awake))}
+      {heading("Conexión")}
+      {row("Wi-Fi", check("wifi", st.wifi))}
+      {row("Datos móviles", check("data", st.data))}
+      {heading("Permisos de una app")}
+      <div className="grid grid-cols-2 gap-2"><Input placeholder="com.paquete" value={pkg} onChange={(e) => setPkg(e.target.value)} /><Input value={perm} onChange={(e) => setPerm(e.target.value)} /></div>
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" disabled={!pkg || apply.isPending} onClick={() => apply.mutate({ action: "permission", package: pkg.trim(), permission: perm.trim(), value: "grant" })}>Conceder</Button>
+        <Button variant="ghost" disabled={!pkg || apply.isPending} onClick={() => apply.mutate({ action: "permission", package: pkg.trim(), permission: perm.trim(), value: "revoke" })}>Revocar</Button>
+        {apply.data?.permission && <span className="text-xs text-slate-500 dark:text-muted">{apply.data.state === "granted" ? "Concedido" : "Revocado"}</span>}
+      </div>
+      {device.transport === "emulator" && (<>
+        {heading("Ubicación simulada")}
+        <div className="flex items-center gap-2"><Input placeholder="lat,lon" value={coords} onChange={(e) => setCoords(e.target.value)} />
+          <Button variant="ghost" disabled={apply.isPending} onClick={() => { const [lat, lon] = coords.split(",").map(Number); apply.mutate({ action: "location", lat, lon }); }}>Fijar</Button></div>
+        {apply.data?.location && <p className="text-xs text-slate-500 dark:text-muted">Ubicación: {apply.data.location}</p>}
+      </>)}
       {apply.error && <ErrorText error={apply.error} />}
-    </div>
+    </section>
   );
 }
 
