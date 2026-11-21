@@ -468,7 +468,6 @@ func (m *Manager) start(ctx context.Context, t data.Thread, run, text string, fi
 		return err
 	}
 	prompt := withAttachments(text, files)
-	prompt += "\n\n<dory-service-instructions>When starting a service that should remain available after this turn, launch it detached from the agent process group (for example with setsid), redirect its standard input, output and error, and preserve the inherited DORY_THREAD_ID environment variable.</dory-service-instructions>"
 	var transferred bool
 	if sessionProvider != t.Provider {
 		session = ""

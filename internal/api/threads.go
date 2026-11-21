@@ -45,7 +45,10 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 			writeError(w, http.StatusBadRequest, "invalid_argument", "PID inválido")
 			return
 		}
-		if err := runtime.StopService(t.ID, pid); err != nil {
+		if err := runtime.StopService(t.ID, pid); errors.Is(err, runtime.ErrSharedProcessGroup) {
+			writeError(w, http.StatusConflict, "shared_process_group", err.Error())
+			return
+		} else if err != nil {
 			writeDataError(w, err)
 			return
 		}

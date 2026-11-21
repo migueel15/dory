@@ -2,6 +2,10 @@
 
 package runtime
 
+import "errors"
+
+var ErrSharedProcessGroup = errors.New("el servicio comparte grupo con Dory, el agente o una shell")
+
 type Service struct {
 	PID     int    `json:"pid"`
 	Address string `json:"address"`

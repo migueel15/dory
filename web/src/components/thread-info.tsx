@@ -116,7 +116,7 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false }: 
                 <button type="button" aria-label={`Parar ${address}`} title="Parar servicio" onClick={() => stopService.mutate(s.pid)} disabled={stopService.isPending} className="grid size-7 shrink-0 place-items-center rounded text-slate-500 hover:bg-slate-200 dark:hover:bg-hover [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus:opacity-100"><Square weight="fill" className="size-2.5" /></button>
               </div>;
             })}
-            {stopService.error && <p className="px-1.5 text-xs text-red-600">No se pudo parar el servicio.</p>}
+            {stopService.error && <p className="px-1.5 text-xs text-red-600">{stopService.error.message}</p>}
           </div>}
           {usage.length > 0 && <div className="space-y-1 px-2.5 py-2">
             {usage.map((w) => {

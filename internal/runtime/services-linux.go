@@ -5,6 +5,7 @@ package runtime
 import (
 	"bufio"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -27,8 +28,62 @@ type Service struct {
 }
 
 type procInfo struct {
-	pid, group             int
+	pid, group, parent     int
 	thread, command, start string
+}
+
+var ErrSharedProcessGroup = errors.New("el servicio comparte grupo con Dory, el agente o una shell")
+
+// safeProcessGroup examines every process, not only those with a thread tag.
+// A shell or provider in the same group must never receive a service signal.
+func safeProcessGroup(group int, thread string) bool {
+	if group <= 1 || group == syscall.Getpgrp() {
+		return false
+	}
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return false
+	}
+	marked := processes()
+	for _, entry := range entries {
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil {
+			continue
+		}
+		stat, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "stat"))
+		if err != nil {
+			continue
+		}
+		end := strings.LastIndexByte(string(stat), ')')
+		if end < 0 {
+			continue
+		}
+		fields := strings.Fields(string(stat[end+1:]))
+		if len(fields) < 3 {
+			continue
+		}
+		pgid, err := strconv.Atoi(fields[2])
+		if err != nil || pgid != group {
+			continue
+		}
+		if pid == os.Getpid() {
+			return false
+		}
+		p, ok := marked[pid]
+		if !ok || p.thread != thread || p.group != group || p.parent == os.Getpid() {
+			return false
+		}
+		parentName, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", p.parent))
+		if err == nil && strings.TrimSpace(string(parentName)) == "systemd-run" {
+			return false
+		}
+		name := strings.ToLower(string(stat[strings.IndexByte(string(stat), '(')+1 : end]))
+		switch name {
+		case "sh", "bash", "zsh", "fish", "dash", "ksh", "claude", "codex", "opencode", "agy", "systemd-run", "dory":
+			return false
+		}
+	}
+	return true
 }
 
 func processes() map[int]procInfo {
@@ -68,7 +123,8 @@ func processes() map[int]procInfo {
 		cmd, _ := os.ReadFile(filepath.Join(base, "cmdline"))
 		command := strings.TrimSpace(strings.ReplaceAll(string(cmd), "\x00", " "))
 		group, _ := strconv.Atoi(fields[2])
-		result[pid] = procInfo{pid: pid, group: group, thread: id, command: command, start: fields[19]}
+		parent, _ := strconv.Atoi(fields[1])
+		result[pid] = procInfo{pid: pid, group: group, parent: parent, thread: id, command: command, start: fields[19]}
 	}
 	return result
 }
@@ -143,7 +199,11 @@ func ThreadServices(id string) []Service {
 	sockets := sockets()
 	out := []Service{}
 	for _, p := range processes() {
-		if p.thread != id {
+		if p.thread != id || p.pid == os.Getpid() || p.parent == os.Getpid() {
+			continue
+		}
+		parentName, _ := os.ReadFile(fmt.Sprintf("/proc/%d/comm", p.parent))
+		if strings.TrimSpace(string(parentName)) == "systemd-run" {
 			continue
 		}
 		// The provider's own control endpoint is not a service started by it.
@@ -177,8 +237,7 @@ func ThreadServices(id string) []Service {
 }
 
 // StopService checks ownership and process identity again before each signal.
-// A listener can share its process group with the agent; signalling that group
-// would interrupt unrelated work, so only the verified process is signalled.
+// A listener sharing a process group with an agent or shell cannot be stopped safely.
 func StopService(id string, pid int) error {
 	fd, err := unix.PidfdOpen(pid, 0)
 	if err != nil {
@@ -199,14 +258,17 @@ func StopService(id string, pid int) error {
 	if !listening {
 		return ErrNotFound
 	}
+	if !safeProcessGroup(p.group, id) {
+		return ErrSharedProcessGroup
+	}
 	type member struct {
 		fd int
 		p  procInfo
 	}
 	var members []member
-	if p.group == pid {
+	{
 		for child, info := range processes() {
-			if child == pid || info.thread != id || info.group != pid {
+			if child == pid || info.thread != id || info.group != p.group {
 				continue
 			}
 			childFD, err := unix.PidfdOpen(child, 0)
@@ -214,7 +276,7 @@ func StopService(id string, pid int) error {
 				continue
 			}
 			current, ok := processes()[child]
-			if !ok || current.start != info.start || current.thread != id || current.group != pid {
+			if !ok || current.start != info.start || current.thread != id || current.group != p.group {
 				unix.Close(childFD)
 				continue
 			}
