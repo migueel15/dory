@@ -11,6 +11,43 @@ const online = new Map(); // id → reachable now
 const found = new Map(); // id → {id, name, address, via}
 
 const $ = (id) => document.getElementById(id);
+let settingsPushed = false;
+function showPage() {
+  const settings = location.hash === "#settings";
+  if (!settings) settingsPushed = false;
+  $("home-view").hidden = settings;
+  $("settings-view").hidden = !settings;
+  $("open-settings").hidden = settings;
+  $("back-home").hidden = !settings;
+  $("page-title").textContent = settings ? "Ajustes" : "Dory";
+  if (location.hash !== "#pair" && $("pair-dialog").open) $("pair-dialog").close();
+}
+$("open-settings").onclick = () => { settingsPushed = true; location.hash = "settings"; };
+$("back-home").onclick = () => {
+  if (settingsPushed) history.back();
+  else { history.replaceState(null, "", location.pathname + location.search); showPage(); }
+};
+window.addEventListener("hashchange", showPage);
+showPage();
+function openPair(environment) {
+  $("pair").reset();
+  $("error").textContent = "";
+  $("address-field").hidden = Boolean(environment);
+  $("address").value = environment ? environment.address : "";
+  $("pair-title").textContent = environment ? `Emparejar ${environment.name}` : "Emparejar entorno";
+  location.hash = "pair";
+  $("pair-dialog").showModal();
+  (environment ? $("code") : $("address")).focus();
+}
+function closePair() {
+  if (location.hash === "#pair") history.back();
+  else if ($("pair-dialog").open) $("pair-dialog").close();
+}
+$("pair-manual").onclick = () => openPair(null);
+$("pair-close").onclick = closePair;
+$("pair-dialog").addEventListener("cancel", event => { event.preventDefault(); closePair(); });
+
+
 let captureNode = localStorage.getItem(CAPTURE_NODE) || "";
 let settingsSaved = Promise.resolve();
 
@@ -141,28 +178,25 @@ function render() {
   captureSelect.value = captureNode;
 
   const pending = [...found.values()].filter((f) => !saved.some((s) => s.id === f.id));
-  $("found-box").hidden = pending.length === 0;
+  $("found-none").hidden = pending.length > 0;
   $("found").replaceChildren(
     ...pending.map((f) => {
       const li = el("li");
       const text = el("div", "grow");
       text.append(el("div", "name", f.name), el("div", "sub", `${f.address} · ${f.via}`));
       li.append(el("span", "dot on"), text);
-      li.onclick = () => {
-        $("address").value = f.address;
-        $("code").focus();
-      };
+      li.onclick = () => openPair(f);
       return li;
     }),
   );
 }
 
 async function open(env) {
-  $("error").textContent = "";
+  $("open-error").textContent = "";
   try {
     await Dory.open({ address: env.address, pin: env.pin, token: env.token });
   } catch (e) {
-    $("error").textContent = `${env.name}: ${e.message}`;
+    $("open-error").textContent = `${env.name}: ${e.message}`;
   }
 }
 
@@ -185,7 +219,7 @@ async function check(env) {
 
 $("pair").onsubmit = async (e) => {
   e.preventDefault();
-  const button = e.target.querySelector("button");
+  const button = $("pair-submit");
   button.disabled = true;
   $("error").textContent = "";
   try {
@@ -195,6 +229,7 @@ $("pair").onsubmit = async (e) => {
     $("address").value = $("code").value = "";
     online.set(env.id, true);
     render();
+    closePair();
     check(env);
   } catch (err) {
     $("error").textContent = err.message;

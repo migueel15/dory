@@ -66,13 +66,13 @@ El WebView solicita el permiso de micrófono o cámara de Android cuando una pá
 
 ### Dictar ideas con el asistente de Android
 
-Abre Dory una vez tras actualizar para que el dictado pueda usar los entornos ya emparejados. Si hay varios, elige el «Nodo de captura» en el selector de entornos de la app. Con un único entorno, Dory lo selecciona automáticamente.
+Abre Dory una vez tras actualizar para que el dictado pueda usar los entornos ya emparejados. Si hay varios, elige el «Nodo de captura» en Ajustes de la app. Con un único entorno, Dory lo selecciona automáticamente.
 
-En el selector de entornos, **Dictado de ideas** permite elegir el reconocedor de Android o descargar y activar Moonshine Tiny o Small para español. La selección y los modelos descargados se guardan en el móvil; los pesos no forman parte de la APK. Moonshine requiere Android 8 o posterior y transcribe localmente. El reconocedor de Android puede procesar el audio fuera del móvil.
+En **Ajustes → Dictado de ideas** puedes elegir el reconocedor de Android o descargar y activar Moonshine Tiny o Small para español. La selección y los modelos descargados se guardan en el móvil; los pesos no forman parte de la APK. Moonshine requiere Android 8 o posterior y transcribe localmente. El reconocedor de Android puede procesar el audio fuera del móvil.
 
 En los ajustes de Android, selecciona Dory como aplicación de asistente digital. En un móvil configurado para abrirlo con el botón de encendido, prueba el gesto. La captura solicita permiso del micrófono la primera vez. El botón central envía la idea y la X la descarta. Una pausa al hablar no envía el texto; al salir, el borrador se conserva y la escucha se pausa. El nodo de Dory recibe el texto definitivo.
 
-Para emparejar, abre en el ordenador **Entornos → Mostrar código** y escribe el código en la app, en el nodo que aparece o con su dirección. Cada nodo se empareja por separado. Los móviles emparejados aparecen en Entornos y se pueden revocar desde ahí.
+Para emparejar, abre en el ordenador **Entornos → Mostrar código**. En la app selecciona el entorno disponible e introduce el código; para escribir la dirección manualmente, usa el botón «+» junto a «Disponibles para emparejar». Cada nodo se empareja por separado. Los móviles emparejados aparecen en Entornos y se pueden revocar desde ahí.
 
 La interfaz también funciona como PWA si publicas un nodo por HTTPS (`tailscale serve --bg --https=443 http://127.0.0.1:7700`, con `public_origin` y `cookie_secure = true`).
 

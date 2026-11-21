@@ -7,13 +7,35 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header><h1>Dory</h1><p>Elige un entorno.</p></header>
+  <header class="topbar">
+    <h1 id="page-title">Dory</h1>
+    <button id="open-settings" class="icon-button" type="button" aria-label="Ajustes">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="M19.4 13.2a7.6 7.6 0 0 0 0-2.4l1.6-1.2-1.5-2.6-1.9.8a7.6 7.6 0 0 0-2.1-1.2L15.2 4h-3l-.4 2.6a7.6 7.6 0 0 0-2.1 1.2l-1.9-.8-1.5 2.6 1.6 1.2a7.6 7.6 0 0 0 0 2.4l-1.6 1.2 1.5 2.6 1.9-.8a7.6 7.6 0 0 0 2.1 1.2l.4 2.6h3l.4-2.6a7.6 7.6 0 0 0 2.1-1.2l1.9.8 1.5-2.6-1.6-1.2Z" transform="translate(-.7 0)"/></svg>
+    </button>
+    <button id="back-home" class="icon-button" type="button" aria-label="Volver" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7M8 12h12"/></svg>
+    </button>
+  </header>
   <main>
-    <section>
-      <h2>Entornos</h2>
-      <ul id="saved"></ul>
-      <p id="none" class="hint">Todavía no has emparejado ningún entorno.</p>
-    </section>
+    <div id="home-view">
+      <section>
+        <h2>Entornos</h2>
+        <ul id="saved"></ul>
+        <p id="none" class="hint">Todavía no has emparejado ningún entorno.</p>
+      </section>
+      <section id="found-box">
+        <div class="section-heading">
+          <h2>Disponibles para emparejar</h2>
+          <button id="pair-manual" class="icon-button" type="button" aria-label="Emparejar con una dirección">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg>
+          </button>
+        </div>
+        <ul id="found"></ul>
+        <p id="found-none" class="hint">No hay entornos disponibles en este momento.</p>
+      </section>
+      <p id="open-error" class="error" role="status"></p>
+    </div>
+    <div id="settings-view" hidden>
     <section aria-labelledby="capture-heading">
       <h2 id="capture-heading">Dictado de ideas</h2>
       <p class="hint" id="capture-hint">Selecciona Dory como asistente digital en los ajustes de Android.</p>
@@ -27,21 +49,27 @@
         <p id="voice-model-status" class="hint" role="status"></p>
       </div>
     </section>
-    <section id="found-box" hidden>
-      <h2>Disponibles para emparejar</h2>
-      <ul id="found"></ul>
-    </section>
-    <section>
-      <h2>Emparejar</h2>
-      <p class="hint">En el ordenador: <b>Entornos → Mostrar código</b>.</p>
-      <form id="pair">
-        <input id="address" placeholder="Dirección: 192.168.1.20 o portatil.tailnet.ts.net" autocapitalize="off" autocorrect="off" spellcheck="false" required />
-        <input id="code" placeholder="Código, p. ej. 1234-5678" inputmode="numeric" required />
-        <button>Emparejar</button>
-      </form>
-      <p id="error" class="error"></p>
-    </section>
+    </div>
   </main>
+  <dialog id="pair-dialog" aria-labelledby="pair-title">
+    <div class="dialog-heading">
+      <h2 id="pair-title">Emparejar entorno</h2>
+      <button id="pair-close" class="icon-button" type="button" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5 5 19"/></svg>
+      </button>
+    </div>
+    <p id="pair-description" class="hint">En el ordenador: <b>Entornos → Mostrar código</b>.</p>
+    <form id="pair">
+      <label id="address-field">Dirección
+        <input id="address" placeholder="192.168.1.20 o nombre del dispositivo" autocapitalize="off" autocorrect="off" spellcheck="false" required />
+      </label>
+      <label>Código
+        <input id="code" placeholder="1234-5678" inputmode="numeric" required />
+      </label>
+      <button id="pair-submit">Emparejar</button>
+    </form>
+    <p id="error" class="error" role="status"></p>
+  </dialog>
   <script src="app.js"></script>
 </body>
 </html>
