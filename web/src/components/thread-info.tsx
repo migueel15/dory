@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDiffBase } from "../lib/diff-base";
-import { Copy, Database, Folder, GitBranch, GitDiff, Globe, Info } from "@phosphor-icons/react";
+import { Copy, Database, Folder, GitBranch, GitDiff, GitPullRequest, Globe, Info } from "@phosphor-icons/react";
+import { Link } from "@tanstack/react-router";
 import { api, type ThreadService, type ThreadView, type UsageWindow } from "../api/client";
 import { expectedRemaining, windowLabel, windowMinutes, windowReset } from "../lib/usage-pace";
 import { HoverCard } from "./tooltip";
@@ -68,6 +69,9 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false }: 
   const node = useQuery({ queryKey: ["node"], queryFn: api.node, staleTime: 60_000 });
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const projectName = t.project_id ? projects.data?.find((p) => p.id === t.project_id)?.name : undefined;
+  // The pull request is the task's: a thread does not keep its own.
+  const card = useQuery({ queryKey: ["card", t.task_id], queryFn: () => api.card(t.task_id!), enabled: shown && !!t.task_id, staleTime: 30_000 });
+  const pr = card.data?.repo && card.data.pr_number ? { repo: card.data.repo, number: card.data.pr_number, title: card.data.pull?.title, state: card.data.pr_state } : undefined;
   const base = useDiffBase(t.id);
   const diff = useQuery({ queryKey: ["thread-diff", t.id, base], queryFn: () => api.threadDiff(t.id, base), enabled: shown && t.local, refetchInterval: shown ? 5000 : false });
   // The environment the thread runs in, which may be a peer of this node.
@@ -95,6 +99,10 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false }: 
           </div>
           <div>
             <div className={row}><GitBranch weight="regular" className="size-4 shrink-0 text-slate-500" /><span className="min-w-0 flex-1 truncate font-medium">{t.branch || "Sin rama"}</span></div>
+            {pr && <Link to="/github/$owner/$repo/$kind/$number" params={{ owner: pr.repo.split("/")[0], repo: pr.repo.split("/")[1], kind: "pulls", number: String(pr.number) }} title={pr.title ?? `PR #${pr.number}`}
+              className={`${row} w-full hover:bg-slate-50 dark:hover:bg-raised`}><GitPullRequest weight="regular" className="size-4 shrink-0 text-slate-500" /><span className="shrink-0 font-medium">#{pr.number}</span>
+              <span className="min-w-0 flex-1 truncate text-xs text-slate-500 dark:text-muted">{pr.title}</span>
+              {pr.state && <span className="shrink-0 text-xs text-slate-500 dark:text-muted">{{ open: "abierta", draft: "borrador", merged: "fusionada", closed: "cerrada" }[pr.state]}</span>}</Link>}
             {t.local && <button type="button" onClick={toggleDiff} aria-pressed={showingDiff} title={showingDiff ? "Cerrar los cambios" : "Ver los cambios al lado"}
               className={`${row} w-full text-left hover:bg-slate-50 dark:hover:bg-raised ${showingDiff ? "bg-slate-50 dark:bg-raised" : ""}`}><GitDiff weight="regular" className="size-4 shrink-0 text-slate-500" /><span className="font-medium">Cambios</span>
               {diff.data?.base && diff.data.base !== "HEAD" && <span className="min-w-0 truncate text-xs text-slate-500 dark:text-muted">contra {diff.data.base}</span>}
