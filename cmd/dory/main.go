@@ -177,6 +177,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	go notices.Run(ctx)
 	srv.InfoChanged = net.Changed
 	srv.Updater = &update.Updater{DataDir: cfg.DataDir, Active: rt.Active, Providers: rt.UpdateAll, Restart: func() {
+		runtime.CloseAllLive()
 		if srv.Settings.Get().StopServicesOnShutdown {
 			rt.StopAllServices()
 		}
@@ -247,6 +248,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		}
 		return err
 	case <-ctx.Done():
+		runtime.CloseAllLive()
 		if srv.Settings.Get().StopServicesOnShutdown {
 			rt.StopAllServices()
 		}

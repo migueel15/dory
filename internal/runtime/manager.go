@@ -186,6 +186,7 @@ func (m *Manager) saveUsage() {
 // Recover marks as stopped the threads that were working when the node went
 // down: their processes died with it.
 func (m *Manager) Recover(ctx context.Context) error {
+	reapLive(context.WithoutCancel(ctx))
 	m.StopArchivedServices()
 	if err := m.dropRequests(ctx); err != nil {
 		return err
