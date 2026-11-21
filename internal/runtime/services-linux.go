@@ -30,6 +30,9 @@ type Service struct {
 type procInfo struct {
 	pid, group, parent     int
 	thread, command, start string
+	// service marks processes started by StartService (DORY_SERVICE=1), so
+	// their wrapper shell and Dory as parent do not block a stop.
+	service bool
 }
 
 var ErrSharedProcessGroup = errors.New("el servicio comparte grupo con Dory, el agente o una shell")
@@ -70,7 +73,13 @@ func safeProcessGroup(group int, thread string) bool {
 			return false
 		}
 		p, ok := marked[pid]
-		if !ok || p.thread != thread || p.group != group || p.parent == os.Getpid() {
+		if !ok || p.thread != thread || p.group != group {
+			return false
+		}
+		if p.service {
+			continue
+		}
+		if p.parent == os.Getpid() {
 			return false
 		}
 		parentName, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", p.parent))
@@ -99,10 +108,13 @@ func processes() map[int]procInfo {
 		if err != nil {
 			continue
 		}
-		id := ""
+		id, service := "", false
 		for _, v := range strings.Split(string(env), "\x00") {
 			if strings.HasPrefix(v, "DORY_THREAD_ID=") {
 				id = strings.TrimPrefix(v, "DORY_THREAD_ID=")
+			}
+			if v == serviceMarker {
+				service = true
 			}
 		}
 		if id == "" {
@@ -124,7 +136,7 @@ func processes() map[int]procInfo {
 		command := strings.TrimSpace(strings.ReplaceAll(string(cmd), "\x00", " "))
 		group, _ := strconv.Atoi(fields[2])
 		parent, _ := strconv.Atoi(fields[1])
-		result[pid] = procInfo{pid: pid, group: group, parent: parent, thread: id, command: command, start: fields[19]}
+		result[pid] = procInfo{pid: pid, group: group, parent: parent, thread: id, command: command, start: fields[19], service: service}
 	}
 	return result
 }
@@ -199,7 +211,7 @@ func ThreadServices(id string) []Service {
 	sockets := sockets()
 	out := []Service{}
 	for _, p := range processes() {
-		if p.thread != id || p.pid == os.Getpid() || p.parent == os.Getpid() {
+		if p.thread != id || p.pid == os.Getpid() || (p.parent == os.Getpid() && !p.service) {
 			continue
 		}
 		parentName, _ := os.ReadFile(fmt.Sprintf("/proc/%d/comm", p.parent))
