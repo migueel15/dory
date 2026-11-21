@@ -64,6 +64,7 @@ type Event struct {
 
 // Turn is one message of the user and everything the agent does after it.
 type Turn struct {
+	ThreadID    string
 	RunID       string
 	Dir         string
 	Text        string
@@ -75,6 +76,20 @@ type Turn struct {
 	FullAccess bool
 	// MCPURL and MCPToken point the agent at the Dory MCP of this node.
 	MCPURL, MCPToken string
+}
+
+// threadEnv marks a provider and its inherited descendants for the owning thread.
+func threadEnv(env []string, id string) []string {
+	out := make([]string, 0, len(env)+1)
+	for _, entry := range env {
+		if !strings.HasPrefix(entry, "DORY_THREAD_ID=") {
+			out = append(out, entry)
+		}
+	}
+	if id != "" {
+		out = append(out, "DORY_THREAD_ID="+id)
+	}
+	return out
 }
 
 // Model is one model a provider offers, with its reasoning effort levels.

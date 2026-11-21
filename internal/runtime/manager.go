@@ -483,7 +483,7 @@ func (m *Manager) start(ctx context.Context, t data.Thread, run, text string, fi
 		}
 	}
 	startedAt := now()
-	turn := Turn{RunID: run, Dir: dir, Text: prompt, Model: t.Model, Effort: t.Effort, Session: session, Attachments: files,
+	turn := Turn{ThreadID: t.ID, RunID: run, Dir: dir, Text: prompt, Model: t.Model, Effort: t.Effort, Session: session, Attachments: files,
 		FullAccess: t.RuntimeMode != "approval-required", MCPURL: m.mcpURL(t.ID), MCPToken: m.MCPToken}
 	var events <-chan Event
 	switch p := p.(type) {

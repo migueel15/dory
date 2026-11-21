@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -40,7 +41,7 @@ type acpConn struct {
 	err    error // read after frames closes
 }
 
-func openACP(ctx context.Context, bin, dir string, sandbox bool) (*acpConn, error) {
+func openACP(ctx context.Context, bin, dir string, sandbox bool, threadID ...string) (*acpConn, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	args := []string{"acp"}
 	if sandbox {
@@ -48,6 +49,9 @@ func openACP(ctx context.Context, bin, dir string, sandbox bool) (*acpConn, erro
 	}
 	cmd := cmdexec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
+	if len(threadID) > 0 {
+		cmd.Env = threadEnv(os.Environ(), threadID[0])
+	}
 	interruptible(cmd)
 	cmd.WaitDelay = 3 * time.Second
 	var stderr strings.Builder

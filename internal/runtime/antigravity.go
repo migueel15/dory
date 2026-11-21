@@ -102,7 +102,7 @@ func (Antigravity) InstallCommand() []string {
 }
 
 func (a Antigravity) Start(ctx context.Context, t Turn) (Session, error) {
-	c, err := openACP(ctx, a.bin(), t.Dir, !t.FullAccess)
+	c, err := openACP(ctx, a.bin(), t.Dir, !t.FullAccess, t.ThreadID)
 	if err != nil {
 		return nil, err
 	}

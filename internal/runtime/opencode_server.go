@@ -28,6 +28,7 @@ func (o OpenCode) Start(ctx context.Context, t Turn) (Session, error) {
 	cmd := cmdexec.CommandContext(ctx, o.bin(), "serve", "--hostname", "127.0.0.1", "--port", "0")
 	cmd.Dir = t.Dir
 	cmd.Env = append(os.Environ(), "OPENCODE_SERVER_PASSWORD="+password)
+	cmd.Env = threadEnv(cmd.Env, t.ThreadID)
 	interruptible(cmd)
 	cmd.WaitDelay = 10 * time.Second
 	out, err := cmd.StdoutPipe()

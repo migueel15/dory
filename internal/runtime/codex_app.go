@@ -21,6 +21,7 @@ func (c Codex) Start(ctx context.Context, t Turn) (Session, error) {
 	cmd := cmdexec.CommandContext(ctx, c.bin(), args...)
 	cmd.Dir = t.Dir
 	cmd.Env = os.Environ()
+	cmd.Env = threadEnv(cmd.Env, t.ThreadID)
 	if t.MCPURL != "" {
 		cmd.Args = append(cmd.Args,
 			"-c", fmt.Sprintf("mcp_servers.dory.url=%q", t.MCPURL),
