@@ -40,6 +40,14 @@ Con el ajuste **Los agentes pueden usar dispositivos** activado en el nodo ([Dis
 | `device_swipe` | Desliza entre dos puntos |
 | `device_type` | Escribe en el campo enfocado |
 | `device_key` | Pulsa atrás, inicio, recientes, enter… |
-| `device_launch` | Abre una app por paquete |
+| `device_launch` | Abre una app por su nombre («WhatsApp», «Ajustes») o por paquete; si hay varias candidatas, las lista |
 | `device_open_url` | Abre un enlace o *deep link* |
-| `device_apps` | Lista las apps instaladas |
+| `device_apps` | Apps con icono de lanzador (paquete, actividad y nombre legible), con filtro; con `all`, todos los paquetes |
+| `device_scroll` | Desplaza el contenido arriba, abajo, izquierda o derecha, sin coordenadas |
+| `device_long_press` | Mantiene pulsado un elemento o un punto |
+| `device_tap_text` | Lee la pantalla y toca el elemento con ese texto en una sola llamada |
+| `device_find` / `device_wait_for` | Comprueba, o espera hasta 30 s, a que un texto aparezca en pantalla, sin imágenes |
+| `device_state` | Estado en texto: app en primer plano, pantalla, batería, modo oscuro, orientación, Wi-Fi y datos |
+| `device_notifications` | Notificaciones activas con app, título y texto |
+| `device_screen` | Enciende o apaga la pantalla, o pasa un bloqueo sin PIN |
+| `device_setting` | Cambia modo oscuro, tamaño de texto, orientación, Wi-Fi, datos, permisos o ubicación (emulador) y devuelve el valor leído |

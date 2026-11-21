@@ -31,7 +31,7 @@ Los dispositivos conectados por Wi-Fi tienen un botón **Desconectar**. Empareja
 
 Con el ajuste **Los agentes pueden usar dispositivos** (Ajustes → Tareas e hilos → Dispositivos, desactivado por defecto) el MCP del nodo ofrece herramientas `device_*`; con el ajuste apagado no aparecen. Sus llamadas se ven como tarjetas en el hilo y el dispositivo se abre en el panel para que el usuario vea lo que ocurre. Ver [MCP](mcp.md).
 
-Un agente con el móvil personal puede enviar mensajes o tocar datos reales: activa el ajuste solo en nodos donde lo quieras. Los agentes no pueden apagar móviles físicos.
+Un agente con el móvil personal puede enviar mensajes o tocar datos reales: activa el ajuste solo en nodos donde lo quieras. Los agentes no pueden apagar móviles físicos ni apagar el Wi-Fi de un móvil conectado por Wi-Fi (se perdería la conexión).
 
 ## Límites
 

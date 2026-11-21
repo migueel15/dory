@@ -249,19 +249,25 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		note(ctx, "device_key", serial, in.Key)
 		return map[string]any{"device": serial, "result": "pressed " + in.Key}, nil
 	})
-	add(srv, "device_launch", "Open an app by package name (see device_apps)."+deviceFlow, func(ctx context.Context, in struct {
+	add(srv, "device_launch", "Open an app by its name (\"WhatsApp\", \"Ajustes\") or exact package. Names are matched against the apps with a launcher icon; several matches return the candidates."+deviceFlow, func(ctx context.Context, in struct {
 		deviceRef
-		Package string `json:"package"`
+		Name    string `json:"name,omitempty" jsonschema:"App name as people call it"`
+		Package string `json:"package,omitempty" jsonschema:"Exact package name, instead of name"`
 	}) (any, error) {
 		serial, err := pick(ctx, in.Serial)
 		if err != nil {
 			return nil, err
 		}
-		if err := m.Launch(ctx, serial, in.Package); err != nil {
+		query := firstOf(in.Name, in.Package)
+		if query == "" {
+			return nil, errors.New("indica name o package")
+		}
+		app, err := m.LaunchByName(ctx, serial, query)
+		if err != nil {
 			return nil, err
 		}
-		note(ctx, "device_launch", serial, in.Package)
-		return map[string]any{"device": serial, "result": "launched " + in.Package}, nil
+		note(ctx, "device_launch", serial, app.Package)
+		return map[string]any{"device": serial, "result": "launched " + app.Name, "package": app.Package}, nil
 	})
 	add(srv, "device_open_url", "Open a link or deep link (https://..., whatsapp://send?phone=..., geo:...) with the app that handles it."+deviceFlow, func(ctx context.Context, in struct {
 		deviceRef
@@ -277,21 +283,174 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		note(ctx, "device_open_url", serial, in.URL)
 		return map[string]any{"device": serial, "result": "opened " + in.URL}, nil
 	})
-	add(srv, "device_apps", "List the installed apps (user apps unless all is true), optionally filtered by part of the package name."+deviceFlow, func(ctx context.Context, in struct {
+	add(srv, "device_apps", "List installed apps. By default the apps with a launcher icon, each with package, main activity and a readable name; with all, every package (user apps unless system is true). filter narrows by name or package."+deviceFlow, func(ctx context.Context, in struct {
 		deviceRef
-		All    bool   `json:"all,omitempty"`
+		All    bool   `json:"all,omitempty" jsonschema:"List raw packages instead of launcher apps"`
+		System bool   `json:"system,omitempty" jsonschema:"With all, include system packages"`
 		Filter string `json:"filter,omitempty"`
 	}) (any, error) {
 		serial, err := pick(ctx, in.Serial)
 		if err != nil {
 			return nil, err
 		}
-		pkgs, err := m.Apps(ctx, serial, in.All, in.Filter)
+		if in.All {
+			pkgs, err := m.Apps(ctx, serial, in.System, in.Filter)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"device": serial, "packages": pkgs}, nil
+		}
+		apps, err := m.LauncherApps(ctx, serial)
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"device": serial, "packages": pkgs}, nil
+		if in.Filter != "" {
+			apps = devices.FindApp(apps, in.Filter)
+		}
+		return map[string]any{"device": serial, "apps": apps}, nil
 	})
+	add(srv, "device_scroll", "Scroll the content: down shows what is below, up what is above, left/right for carousels. No coordinates needed."+deviceFlow, func(ctx context.Context, in struct {
+		deviceRef
+		Direction string `json:"direction" jsonschema:"up, down, left or right"`
+		Times     int    `json:"times,omitempty" jsonschema:"Repeat, default 1, at most 10"`
+	}) (any, error) {
+		serial, err := pick(ctx, in.Serial)
+		if err != nil {
+			return nil, err
+		}
+		for i := 0; i < min(max(in.Times, 1), 10); i++ {
+			if err := m.Scroll(ctx, serial, in.Direction); err != nil {
+				return nil, err
+			}
+			time.Sleep(250 * time.Millisecond)
+		}
+		note(ctx, "device_scroll", serial, in.Direction)
+		return map[string]any{"device": serial, "result": "scrolled " + in.Direction}, nil
+	})
+	act("device_long_press", "Press and hold an element of the last device_ui (index, text or id) or a point (x, y), e.g. to select a message or open a context menu.", func(ctx context.Context, serial string, in tapInput) (string, error) {
+		x, y, what, err := m.Resolve(serial, devices.Target{X: in.X, Y: in.Y, Index: in.Index, Text: in.Text, ID: in.ID})
+		if err != nil {
+			return "", err
+		}
+		if err := m.LongPress(ctx, serial, x, y); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("long pressed %d,%d %s", x, y, what), nil
+	})
+	add(srv, "device_tap_text", "Read the screen and tap the first element whose text or description matches, in one call. Prefer it over device_ui + device_tap for a known label."+deviceFlow, func(ctx context.Context, in struct {
+		deviceRef
+		Text string `json:"text"`
+	}) (any, error) {
+		serial, err := pick(ctx, in.Serial)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := m.UI(ctx, serial); err != nil {
+			return nil, err
+		}
+		x, y, what, err := m.Resolve(serial, devices.Target{Text: in.Text})
+		if err != nil {
+			return nil, err
+		}
+		if err := m.Tap(ctx, serial, x, y); err != nil {
+			return nil, err
+		}
+		note(ctx, "device_tap_text", serial, in.Text)
+		return map[string]any{"device": serial, "result": fmt.Sprintf("tapped %q at %d,%d", what, x, y)}, nil
+	})
+	add(srv, "device_find", "Check whether a text is on screen and where, without an image."+deviceFlow, func(ctx context.Context, in struct {
+		deviceRef
+		Text string `json:"text"`
+	}) (any, error) {
+		serial, err := pick(ctx, in.Serial)
+		if err != nil {
+			return nil, err
+		}
+		els, err := m.Find(ctx, serial, in.Text)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"device": serial, "found": len(els) > 0, "elements": els}, nil
+	})
+	add(srv, "device_wait_for", "Wait until a text appears on screen (polls every second, default 10 s, at most 30 s)."+deviceFlow, func(ctx context.Context, in struct {
+		deviceRef
+		Text    string `json:"text"`
+		Seconds int    `json:"seconds,omitempty"`
+	}) (any, error) {
+		serial, err := pick(ctx, in.Serial)
+		if err != nil {
+			return nil, err
+		}
+		secs := min(max(in.Seconds, 1), 30)
+		if in.Seconds == 0 {
+			secs = 10
+		}
+		els, ok, err := m.WaitFor(ctx, serial, in.Text, time.Duration(secs)*time.Second)
+		if err != nil {
+			return nil, err
+		}
+		note(ctx, "device_wait_for", serial, in.Text)
+		return map[string]any{"device": serial, "found": ok, "elements": els}, nil
+	})
+	add(srv, "device_state", "Read the device state as text: app in front, screen on/off, battery, charging, dark mode, text size, orientation, Wi-Fi and data."+deviceFlow, func(ctx context.Context, in deviceRef) (any, error) {
+		serial, err := pick(ctx, in.Serial)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"device": serial, "state": m.Overview(ctx, serial)}, nil
+	})
+	add(srv, "device_notifications", "List the active notifications (app, title, text)."+deviceFlow, func(ctx context.Context, in deviceRef) (any, error) {
+		serial, err := pick(ctx, in.Serial)
+		if err != nil {
+			return nil, err
+		}
+		list, err := m.Notifications(ctx, serial)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"device": serial, "notifications": list}, nil
+	})
+	add(srv, "device_screen", "Turn the screen on or off, or unlock a lock screen that has no PIN (state: on, off, unlock)."+deviceFlow, func(ctx context.Context, in struct {
+		deviceRef
+		State string `json:"state"`
+	}) (any, error) {
+		serial, err := pick(ctx, in.Serial)
+		if err != nil {
+			return nil, err
+		}
+		if err := m.Screen(ctx, serial, in.State); err != nil {
+			return nil, err
+		}
+		note(ctx, "device_screen", serial, in.State)
+		return map[string]any{"device": serial, "result": "screen " + in.State}, nil
+	})
+	add(srv, "device_setting", "Change a device setting and read the value back. action: dark_mode (yes|no|auto), font_scale (0.5-2.0), orientation (auto|portrait|landscape|reverse_portrait|reverse_landscape), wifi and data (on|off), permission (package, permission, value grant|revoke), location (lat, lon; emulators only)."+deviceFlow, func(ctx context.Context, in struct {
+		deviceRef
+		devices.Action
+	}) (any, error) {
+		serial, err := pick(ctx, in.Serial)
+		if err != nil {
+			return nil, err
+		}
+		if in.Action.Name == "state" || in.Action.Name == "" {
+			return nil, errors.New("indica una acción; para leer el estado usa device_state")
+		}
+		out, err := m.Apply(ctx, serial, in.Action)
+		if err != nil {
+			return nil, err
+		}
+		note(ctx, "device_setting", serial, in.Action.Name)
+		return map[string]any{"device": serial, "value": out}, nil
+	})
+}
+
+func firstOf(v ...string) string {
+	for _, s := range v {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 func sortedKeys() []string {

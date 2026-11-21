@@ -111,3 +111,58 @@ UI hierchary dumped to: /dev/tty`
 		t.Errorf("%d %d %v", x, y, err)
 	}
 }
+
+func TestLauncherAndFindApp(t *testing.T) {
+	out := `3 activities found:
+  Activity #0:
+    priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true
+    com.whatsapp/.Main
+  Activity #1:
+    priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true
+    com.whatsapp.w4b/.Main
+  Activity #2:
+    priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true
+    com.android.settings/.Settings
+`
+	apps := ParseLauncher(out)
+	if len(apps) != 3 {
+		t.Fatalf("%+v", apps)
+	}
+	if got := FindApp(apps, "WhatsApp"); len(got) != 1 || got[0].Package != "com.whatsapp" {
+		t.Errorf("whatsapp: %+v", got)
+	}
+	if got := FindApp(apps, "ajustes"); len(got) != 1 || got[0].Package != "com.android.settings" {
+		t.Errorf("ajustes: %+v", got)
+	}
+	if got := FindApp(apps, "w4b"); len(got) != 1 {
+		t.Errorf("w4b: %+v", got)
+	}
+	if got := FindApp(apps, "nada"); len(got) != 0 {
+		t.Errorf("nada: %+v", got)
+	}
+}
+
+func TestParseNotifications(t *testing.T) {
+	dump := `    NotificationRecord(0x05b988e8: pkg=net.dorlab.dory user=UserHandle{0} id=1 tag=null importance=4 key=0|x bbbc=0: Notification(channel=n))
+      icon=Icon(typ=RESOURCE pkg=net.dorlab.dory id=0x7f0c0000)
+                android.title=String (Un agente te necesita)
+                android.text=String (Abrir el panel)
+    NotificationRecord(0x0d0453e7: pkg=android user=UserHandle{-1} id=0 tag=-1|android importance=4 key=k bbbc=0: Notification(channel=D))
+      icon=Icon(typ=RESOURCE pkg=android id=0x1)
+`
+	n := ParseNotifications(dump)
+	if len(n) != 1 || n[0].Package != "net.dorlab.dory" || n[0].Title != "Un agente te necesita" || n[0].Text != "Abrir el panel" {
+		t.Errorf("%+v", n)
+	}
+}
+
+func TestResolveContains(t *testing.T) {
+	m := NewManager()
+	m.lastUI = map[string][]UIElement{"s": {{Index: 0, Text: "Buscar o escribir", CenterX: 5, CenterY: 6}, {Index: 1, Text: "Buscar", CenterX: 1, CenterY: 2}}}
+	if x, _, _, err := m.Resolve("s", Target{Text: "buscar"}); err != nil || x != 1 {
+		t.Errorf("exact should win: %d %v", x, err)
+	}
+	if x, _, _, err := m.Resolve("s", Target{Text: "escribir"}); err != nil || x != 5 {
+		t.Errorf("contains: %d %v", x, err)
+	}
+}

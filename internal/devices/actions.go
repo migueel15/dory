@@ -133,6 +133,10 @@ func (m *Manager) Apply(ctx context.Context, serial string, a Action) (map[strin
 		if err != nil {
 			return nil, err
 		}
+		// Turning Wi-Fi off would drop the adb connection this very device uses.
+		if a.Name == "wifi" && !on && !strings.HasPrefix(serial, "emulator-") && (strings.Contains(serial, "._adb-tls-") || strings.Contains(serial, ":")) {
+			return nil, errors.New("no se puede apagar el Wi-Fi de un dispositivo conectado por Wi-Fi: se perdería la conexión")
+		}
 		verb := map[bool]string{true: "enable", false: "disable"}[on]
 		key = a.Name
 		if _, err := sh("svc", a.Name, verb); err != nil {

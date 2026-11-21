@@ -136,15 +136,28 @@ func (m *Manager) Resolve(serial string, t Target) (int, int, string, error) {
 	if len(els) == 0 {
 		return 0, 0, "", errors.New("llama antes a device_ui, o usa coordenadas")
 	}
-	for _, e := range els {
-		switch {
-		case t.Index != nil && e.Index == *t.Index:
-		case t.ID != "" && e.ID == t.ID:
-		case t.Text != "" && (strings.EqualFold(e.Text, t.Text) || strings.EqualFold(e.Desc, t.Text)):
-		default:
-			continue
+	pick := func(match func(e UIElement) bool) (int, int, string, bool) {
+		for _, e := range els {
+			if match(e) {
+				return e.CenterX, e.CenterY, firstNonEmpty(e.Text, e.Desc, e.ID), true
+			}
 		}
-		return e.CenterX, e.CenterY, firstNonEmpty(e.Text, e.Desc, e.ID), nil
+		return 0, 0, "", false
+	}
+	q := strings.ToLower(t.Text)
+	for _, match := range []func(e UIElement) bool{
+		func(e UIElement) bool { return t.Index != nil && e.Index == *t.Index },
+		func(e UIElement) bool { return t.ID != "" && e.ID == t.ID },
+		func(e UIElement) bool {
+			return q != "" && (strings.EqualFold(e.Text, t.Text) || strings.EqualFold(e.Desc, t.Text))
+		},
+		func(e UIElement) bool {
+			return q != "" && (strings.Contains(strings.ToLower(e.Text), q) || strings.Contains(strings.ToLower(e.Desc), q))
+		},
+	} {
+		if x, y, what, ok := pick(match); ok {
+			return x, y, what, nil
+		}
 	}
 	return 0, 0, "", errors.New("no hay ningún elemento así en la última interfaz leída; vuelve a llamar a device_ui")
 }
@@ -206,7 +219,7 @@ func (m *Manager) InputText(ctx context.Context, serial, text string) error {
 }
 
 var keyCodes = map[string]string{"back": "4", "home": "3", "recents": "187", "enter": "66", "delete": "67", "tab": "61", "escape": "111", "up": "19", "down": "20", "left": "21", "right": "22",
-	"power": "26", "volume_up": "24", "volume_down": "25", "search": "84", "menu": "82", "space": "62", "wakeup": "224"}
+	"power": "26", "sleep": "223", "volume_up": "24", "volume_down": "25", "search": "84", "menu": "82", "space": "62", "wakeup": "224"}
 
 // KeyNames lists the keys device_key accepts.
 func KeyNames() []string {
