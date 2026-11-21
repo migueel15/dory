@@ -68,7 +68,8 @@ func TestCodexSessionAsks(t *testing.T) {
 	if m := msgs["r1:msg_000a970bc8682c1a016afd84614c4087d2bd6e535796a43126"]; m.Text != "Blue" || m.Streaming {
 		t.Fatalf("answer message: %+v", m)
 	}
-	if last := events[len(events)-1]; !last.Done || last.Err != "" || !in.closed {
+	// The process serves the next turn of the thread, so stdin stays open.
+	if last := events[len(events)-1]; !last.Done || last.Err != "" || in.closed {
 		t.Fatalf("end: %+v closed=%v", last, in.closed)
 	}
 }

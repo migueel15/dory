@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -30,6 +32,7 @@ type acpError struct {
 func (e *acpError) Error() string { return fmt.Sprintf("Antigravity (%d): %s", e.Code, e.Message) }
 
 type acpConn struct {
+	cmd    *exec.Cmd
 	in     io.WriteCloser
 	frames chan acpFrame
 	done   chan struct{}
@@ -72,7 +75,7 @@ func openACP(ctx context.Context, bin, dir string, sandbox bool, threadID ...str
 		cancel()
 		return nil, err
 	}
-	c := &acpConn{in: in, frames: make(chan acpFrame, 32), done: make(chan struct{}), cancel: cancel}
+	c := &acpConn{cmd: cmd, in: in, frames: make(chan acpFrame, 32), done: make(chan struct{}), cancel: cancel}
 	go func() {
 		defer close(c.done)
 		defer close(c.frames)
@@ -113,6 +116,53 @@ func (c *acpConn) close() {
 		<-c.done
 	}
 	c.cancel()
+}
+
+func (c *acpConn) exited() bool {
+	select {
+	case <-c.done:
+		return true
+	default:
+		return false
+	}
+}
+
+// stop ends the process group, with what the agent started.
+func (c *acpConn) stop() {
+	c.in.Close()
+	select {
+	case <-c.done:
+	case <-time.After(2 * time.Second):
+		stopGroup(c.cmd, syscall.SIGTERM)
+		select {
+		case <-c.done:
+		case <-time.After(5 * time.Second):
+			stopGroup(c.cmd, syscall.SIGKILL)
+		}
+	}
+	c.cancel()
+}
+
+// drain discards frames until the response to call id, so a cancelled
+// prompt leaves nothing for the next one. It reports whether it arrived.
+func (c *acpConn) drain(id int, timeout time.Duration) bool {
+	deadline := time.After(timeout)
+	for {
+		select {
+		case <-deadline:
+			return false
+		case frame, ok := <-c.frames:
+			if !ok {
+				return false
+			}
+			if frame.Method != "" && len(frame.ID) != 0 {
+				_ = c.unsupported(frame)
+			}
+			if frame.Method == "" && string(frame.ID) == itoa(id) {
+				return true
+			}
+		}
+	}
 }
 
 func (c *acpConn) send(frame acpParams) error {

@@ -14,16 +14,53 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
-// Start runs a turn on its own "opencode serve": Dory opens the session,
-// follows its events and sends the prompt over the HTTP API. The question
-// tool opens a form that pauses the turn until the user replies. The server
-// stops when the turn ends.
+// Start runs a turn on the "opencode serve" of its thread: Dory opens the
+// session, follows its events and sends the prompt over the HTTP API. The
+// question tool opens a form that pauses the turn until the user replies.
+// The server stays open for the next turn of the thread (see live.go), so
+// what the agent left running survives the turn.
 func (o OpenCode) Start(ctx context.Context, t Turn) (Session, error) {
+	srv, _ := liveGet(t.ThreadID, "opencode").(*openCodeServer)
+	if srv != nil && (srv.key != t.Dir || srv.Busy() || srv.exited()) {
+		liveDrop(t.ThreadID, "opencode", srv)
+		go srv.Close()
+		srv = nil
+	}
+	if srv == nil {
+		var err error
+		if srv, err = o.serve(t); err != nil {
+			return nil, err
+		}
+		if t.ThreadID != "" {
+			liveSet(t.ThreadID, "opencode", srv)
+		}
+	}
+	srv.mu.Lock()
+	srv.busy = true
+	srv.mu.Unlock()
+	events := make(chan Event, 64)
+	s := &openCodeSession{api: srv.api, turn: t, events: events,
+		parser: newOpenCodeEvents(t.RunID)}
+	go func() {
+		s.run(ctx, events)
+		srv.mu.Lock()
+		srv.busy, srv.idle = false, time.Now()
+		srv.mu.Unlock()
+		if t.ThreadID == "" {
+			srv.Close()
+		}
+	}()
+	return s, nil
+}
+
+// serve starts an "opencode serve" for the thread.
+func (o OpenCode) serve(t Turn) (*openCodeServer, error) {
 	password := rand.Text()
-	cmd := providerCommand(ctx, t.ThreadID, o.bin(), "serve", "--hostname", "127.0.0.1", "--port", "0")
+	cmd := providerCommand(context.Background(), t.ThreadID, o.bin(), "serve", "--hostname", "127.0.0.1", "--port", "0")
 	cmd.Dir = t.Dir
 	cmd.Env = append(os.Environ(), "OPENCODE_SERVER_PASSWORD="+password)
 	cmd.Env = threadEnv(cmd.Env, t.ThreadID)
@@ -45,11 +82,56 @@ func (o OpenCode) Start(ctx context.Context, t Turn) (Session, error) {
 		return nil, fmt.Errorf("opencode serve: %v %s", err, strings.TrimSpace(stderr.String()))
 	}
 	go io.Copy(io.Discard, out)
-	events := make(chan Event, 64)
-	s := &openCodeSession{api: &openCodeAPI{base: base, password: password}, turn: t, events: events,
-		parser: newOpenCodeEvents(t.RunID)}
-	go s.run(ctx, cmd, events)
-	return s, nil
+	srv := &openCodeServer{key: t.Dir, cmd: cmd, api: &openCodeAPI{base: base, password: password}, dead: make(chan struct{}), idle: time.Now()}
+	go func() {
+		cmd.Wait()
+		close(srv.dead)
+		liveDrop(t.ThreadID, "opencode", srv)
+	}()
+	return srv, nil
+}
+
+// openCodeServer is the "opencode serve" of a thread, kept between turns.
+type openCodeServer struct {
+	key  string
+	cmd  *exec.Cmd
+	api  *openCodeAPI
+	dead chan struct{}
+
+	mu   sync.Mutex
+	busy bool
+	idle time.Time
+}
+
+func (s *openCodeServer) Busy() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.busy
+}
+
+func (s *openCodeServer) IdleSince() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.idle
+}
+
+func (s *openCodeServer) exited() bool {
+	select {
+	case <-s.dead:
+		return true
+	default:
+		return false
+	}
+}
+
+// Close stops the server's process group, with what the agent started.
+func (s *openCodeServer) Close() {
+	stopGroup(s.cmd, syscall.SIGTERM)
+	select {
+	case <-s.dead:
+	case <-time.After(5 * time.Second):
+		stopGroup(s.cmd, syscall.SIGKILL)
+	}
 }
 
 // listening reads the server banner until it says where it listens.
@@ -159,16 +241,11 @@ func (s *openCodeSession) Answer(id string, answers [][]string) error {
 
 // run opens or resumes the session, follows its events, sends the prompt
 // and stops the server when the turn ends.
-func (s *openCodeSession) run(ctx context.Context, cmd *exec.Cmd, events chan<- Event) {
+func (s *openCodeSession) run(ctx context.Context, events chan<- Event) {
 	defer close(events)
-	streamCtx, stop := context.WithCancel(ctx)
-	defer func() {
-		stop()
-		if cmd.Process != nil {
-			cmd.Process.Signal(os.Interrupt)
-		}
-		cmd.Wait()
-	}()
+	// The stream outlives a cancellation until the session confirms it stopped.
+	streamCtx, stop := context.WithCancel(context.WithoutCancel(ctx))
+	defer stop()
 	fail := func(err error) {
 		msg := err.Error()
 		if ctx.Err() != nil {
@@ -213,7 +290,24 @@ func (s *openCodeSession) run(ctx context.Context, cmd *exec.Cmd, events chan<- 
 	}
 	defer res.Body.Close()
 	go func() {
-		if err := s.api.do(ctx, "POST", "/api/session/"+session+"/prompt", map[string]any{"text": t.Text}, nil); err != nil {
+		select {
+		case <-streamCtx.Done():
+		case <-ctx.Done():
+			// Interrupting is a request to the server, which stays open.
+			bg, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if s.api.do(bg, "POST", "/api/session/"+session+"/interrupt", map[string]any{}, nil) != nil {
+				stop()
+			}
+			cancel()
+			select {
+			case <-streamCtx.Done():
+			case <-time.After(10 * time.Second):
+				stop()
+			}
+		}
+	}()
+	go func() {
+		if err := s.api.do(streamCtx, "POST", "/api/session/"+session+"/prompt", map[string]any{"text": t.Text}, nil); err != nil {
 			s.parser.failed(err.Error())
 			stop()
 		}

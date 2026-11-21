@@ -1,17 +1,14 @@
 package runtime
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"sort"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -73,185 +70,32 @@ func (c Claude) Start(ctx context.Context, t Turn) (Session, error) {
 		args = append(args, "--mcp-config", string(cfg))
 	}
 	key := strings.Join([]string{t.Model, t.Effort, fmt.Sprint(t.FullAccess), t.Dir, t.MCPURL}, "\x00")
-	p, _ := liveGet(t.ThreadID, "claude").(*claudeProc)
-	if p == nil || p.key != key || p.Busy() || p.exited() {
-		if p != nil {
-			liveDrop(t.ThreadID, "claude", p)
-			go p.Close()
-		}
+	p := reuseStdio(t.ThreadID, "claude", key)
+	if p == nil {
+		cmd := providerCommand(context.Background(), t.ThreadID, c.bin(), args...)
+		cmd.Dir = t.Dir
+		// ask_user waits for the user, so an MCP call may take long (ms).
+		cmd.Env = append(os.Environ(), "MCP_TOOL_TIMEOUT=86400000")
+		cmd.Env = threadEnv(cmd.Env, t.ThreadID)
 		var err error
-		if p, err = c.open(t, key, args); err != nil {
+		if p, err = openStdio(cmd, t.ThreadID, "claude", key); err != nil {
 			return nil, err
-		}
-		if t.ThreadID != "" {
-			liveSet(t.ThreadID, "claude", p)
 		}
 	}
 	s := newClaudeSession(t.RunID, p.in, t.FullAccess)
-	out := make(chan Event, 64)
-	s.events, s.out = out, out
-	p.mu.Lock()
-	p.cur = s
-	p.mu.Unlock()
-	if t.ThreadID == "" {
-		// Without a thread nothing can reuse it: it ends with the turn.
-		go func() { <-s.done; p.Close() }()
-	}
-	go func() {
-		select {
-		case <-s.done:
-		case <-ctx.Done():
-			// A turn cancellation is a protocol request, not a signal to
-			// what the agent started.
-			_ = s.write(map[string]any{"type": "control_request", "request_id": newRunID(), "request": map[string]any{"subtype": "interrupt"}})
-			select {
-			case <-s.done:
-			case <-time.After(5 * time.Second):
-				liveDrop(t.ThreadID, "claude", p)
-				p.Close()
-			}
-		}
-	}()
+	turn := p.begin(t.ThreadID, s.handle)
+	s.events = turn.out
+	// A turn cancellation is a protocol request, not a signal to what the
+	// agent started.
+	p.watch(ctx, t.ThreadID, "claude", turn, func() {
+		_ = s.write(map[string]any{"type": "control_request", "request_id": newRunID(), "request": map[string]any{"subtype": "interrupt"}})
+	})
 	if err := s.write(map[string]any{"type": "user", "parent_tool_use_id": nil,
 		"message": map[string]any{"role": "user", "content": t.Text}}); err != nil {
-		p.mu.Lock()
-		if p.cur == s {
-			p.cur = nil
-		}
-		p.mu.Unlock()
+		p.abort(turn)
 		return nil, err
 	}
 	return s, nil
-}
-
-// claudeProc is a Claude Code process kept open between the turns of a
-// thread, so the background jobs it started survive the end of a turn.
-type claudeProc struct {
-	key  string
-	cmd  *exec.Cmd
-	in   io.WriteCloser
-	dead chan struct{}
-
-	mu   sync.Mutex
-	cur  *claudeSession
-	idle time.Time
-}
-
-func (p *claudeProc) Busy() bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.cur != nil
-}
-
-func (p *claudeProc) IdleSince() time.Time {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.idle
-}
-
-func (p *claudeProc) exited() bool {
-	select {
-	case <-p.dead:
-		return true
-	default:
-		return false
-	}
-}
-
-// Close ends stdin and, as Claude Code waits for its background jobs, then
-// stops its process group with them.
-func (p *claudeProc) Close() {
-	p.mu.Lock()
-	_ = p.in.Close()
-	p.mu.Unlock()
-	select {
-	case <-p.dead:
-		return
-	case <-time.After(2 * time.Second):
-	}
-	stopGroup(p.cmd, syscall.SIGTERM)
-	select {
-	case <-p.dead:
-	case <-time.After(5 * time.Second):
-		stopGroup(p.cmd, syscall.SIGKILL)
-	}
-}
-
-// open starts the process; each line of stdout goes to the turn running on it.
-func (c Claude) open(t Turn, key string, args []string) (*claudeProc, error) {
-	cmd := providerCommand(context.Background(), t.ThreadID, c.bin(), args...)
-	cmd.Dir = t.Dir
-	// ask_user waits for the user, so an MCP call may take long (ms).
-	cmd.Env = append(os.Environ(), "MCP_TOOL_TIMEOUT=86400000")
-	cmd.Env = threadEnv(cmd.Env, t.ThreadID)
-	interruptible(cmd)
-	cmd.WaitDelay = 10 * time.Second
-	in, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, err
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-	var stderr strings.Builder
-	cmd.Stderr = &limited{w: &stderr, n: 8 << 10}
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-	p := &claudeProc{key: key, cmd: cmd, in: in, dead: make(chan struct{}), idle: time.Now()}
-	go func() {
-		scanner := bufio.NewScanner(stdout)
-		scanner.Buffer(make([]byte, 64<<10), 32<<20)
-		for scanner.Scan() {
-			p.mu.Lock()
-			s := p.cur
-			p.mu.Unlock()
-			if s != nil {
-				s.handle(scanner.Bytes(), func(e Event) { p.emit(s, e) })
-			}
-		}
-		err := cmd.Wait()
-		close(p.dead)
-		liveDrop(t.ThreadID, "claude", p)
-		p.mu.Lock()
-		s := p.cur
-		p.mu.Unlock()
-		if s != nil {
-			msg := strings.TrimSpace(stderr.String())
-			switch {
-			case err != nil && msg == "":
-				msg = err.Error()
-			case msg == "":
-				msg = "el agente terminó sin respuesta"
-			}
-			p.emit(s, Event{Done: true, Err: msg})
-		}
-	}()
-	return p, nil
-}
-
-// emit delivers an event of turn s; the Done event ends the turn and frees
-// the process for the next one.
-func (p *claudeProc) emit(s *claudeSession, e Event) {
-	p.mu.Lock()
-	if s.finished {
-		p.mu.Unlock()
-		return
-	}
-	if e.Done {
-		s.finished = true
-		if p.cur == s {
-			p.cur = nil
-			p.idle = time.Now()
-		}
-	}
-	p.mu.Unlock()
-	s.out <- e
-	if e.Done {
-		close(s.out)
-		close(s.done)
-	}
 }
 
 // claudeSession speaks Claude Code's control protocol on stdin while its
@@ -264,10 +108,6 @@ type claudeSession struct {
 	mu      sync.Mutex
 	in      io.WriteCloser
 	pending map[string]claudeAsk
-
-	out      chan Event
-	done     chan struct{}
-	finished bool // guarded by the claudeProc mutex
 }
 
 // claudeAsk is an AskUserQuestion call waiting for the user.
@@ -278,7 +118,7 @@ type claudeAsk struct {
 
 func newClaudeSession(run string, in io.WriteCloser, fullAccess bool) *claudeSession {
 	return &claudeSession{parser: &claudeParser{run: run, texts: map[string]*Message{}, tools: map[string]*Message{}},
-		in: in, fullAccess: fullAccess, pending: map[string]claudeAsk{}, done: make(chan struct{})}
+		in: in, fullAccess: fullAccess, pending: map[string]claudeAsk{}}
 }
 
 func (s *claudeSession) Events() <-chan Event { return s.events }
