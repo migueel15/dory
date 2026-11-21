@@ -5,7 +5,7 @@ import { useDictationInProgress } from "../components/local-dictation";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ArrowSquareOut, Check, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, CircleNotch, ClipboardText, DotsThree, GitBranch, GitMerge, GitPullRequest, ChatCircle, CircleDashed, Plus, Rocket, X } from "@phosphor-icons/react";
+import { Check, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, CircleNotch, ClipboardText, DotsThree, GitBranch, GitMerge, GitPullRequest, ChatCircle, CircleDashed, Plus, Rocket, X } from "@phosphor-icons/react";
 import { api, COLUMN_LABELS, repoName, type Card, type Column, type Pull, type Stage, type Thread } from "../api/client";
 import { Button, ErrorText, iconButton, Input, Label, Md, Modal, Select } from "../components/ui";
 import { useThreadActivity } from "../api/activity";
@@ -16,6 +16,7 @@ import { ModelLogo } from "../components/model-logo";
 import { askConfirm } from "../components/confirm";
 import { IdeaModal } from "../components/capture";
 import { TaskQuickMenu, type QuickLaunch } from "../components/task-quick-menu";
+import { githubRoute } from "../components/refs";
 import { planMessage } from "../lib/auto-message";
 
 // Fixed meaning of each state color (requirement RF-48).
@@ -392,7 +393,10 @@ const COLUMN_TONE: Record<Column, string> = {
   cancelled: "bg-slate-100 text-slate-500 dark:bg-raised dark:text-muted",
 };
 
-function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch?: QuickLaunch; onClose: () => void }) {
+// TaskDetail is the task card. The board shows it as a wide modal; a thread shows
+// it as a narrow side card (layout "side") with the same content and actions.
+export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal" }: { id: string; launch?: QuickLaunch; onClose: () => void; layout?: "modal" | "side" }) {
+  const side = layout === "side";
   const qc = useQueryClient();
   const dictating = useDictationInProgress();
   const navigate = useNavigate();
@@ -415,7 +419,10 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
     const trigger = launchAnchor.current ?? launchTrigger.current;
     const popover = launchPopover.current;
     if (!trigger || !popover) return;
-    const { right, top, bottom } = trigger.getBoundingClientRect();
+    const rect = trigger.getBoundingClientRect();
+    // The anchor is not laid out yet (the detail is still opening): retry next frame.
+    if (rect.width === 0 && rect.height === 0) { requestAnimationFrame(() => { if (popover.matches(":popover-open")) placeLaunchPopover(); }); return; }
+    const { right, top, bottom } = rect;
     const width = Math.min(368, window.innerWidth - 24);
     const below = Math.max(0, window.innerHeight - bottom - 20);
     const above = Math.max(0, top - 20);
@@ -461,17 +468,24 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
   });
   const archive = useMutation({ mutationFn: () => api.tasks.archive(id), onSuccess: () => { refresh(); onClose(); } });
   const form = useLaunchForm({ section: "task", project: c?.project_id, borderless: true });
+  // Sending opens the thread in the background; with go it also moves to it.
+  const sent = (r: { thread_id: string }, go: boolean) => {
+    if (go) return navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } });
+    launchPopover.current?.hidePopover();
+    refresh();
+    qc.invalidateQueries({ queryKey: ["threads"] });
+  };
   const launch = useMutation({
-    mutationFn: () => { form.remember(); return api.launch(id, form.value); },
-    onSuccess: (r) => navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } }),
+    mutationFn: (_go: boolean) => { form.remember(); return api.launch(id, form.value); },
+    onSuccess: (r, go) => sent(r, go),
   });
   const define = useMutation({
-    mutationFn: () => {
+    mutationFn: (_go: boolean) => {
       form.remember();
       const text = planMessage({ id, title: c!.title, description: c!.description });
       return api.createThread({ ...form.value, project_id: c!.project_id, task_id: id, title: `Definir: ${c!.title}`, text });
     },
-    onSuccess: (r) => navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } }),
+    onSuccess: (r, go) => sent(r, go),
   });
   // A quick action from the board opens the detail with the launch popover ready.
   const autoLaunched = useRef(false);
@@ -479,10 +493,30 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
     if (!initialLaunch || autoLaunched.current || !c || !draft || !planDoc.data || !launchPopover.current) return;
     autoLaunched.current = true;
     setMode(initialLaunch);
-    launchPopover.current.showPopover();
-    placeLaunchPopover();
+    const popover = launchPopover.current;
+    // Anchor to the matching action button of the detail once it is laid out,
+    // and again when the dialog's opening animation ends.
+    requestAnimationFrame(() => {
+      launchAnchor.current = document.querySelector<HTMLElement>(`[data-launch="${initialLaunch}"]`);
+      popover.showPopover();
+      placeLaunchPopover();
+      const dialog = popover.closest("dialog") ?? popover.parentElement;
+      const again = () => { if (popover.matches(":popover-open")) placeLaunchPopover(); };
+      dialog?.addEventListener("animationend", again, { once: true });
+      dialog?.addEventListener("transitionend", again, { once: true });
+      setTimeout(again, 300);
+    });
   }); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!c || !draft) return <Modal title="Tarea" onClose={onClose}><ErrorText error={card.error} /></Modal>;
+  // frame is the modal on the board and a plain card in a thread.
+  const frame = (title: string, children: React.ReactNode) => side ? (
+    <div role="region" aria-label={title} className="space-y-4">
+      <div className="flex items-start justify-between gap-2">
+        <h2 className="min-w-0 wrap-break-word text-lg font-semibold leading-tight">{title}</h2>
+      </div>
+      {children}
+    </div>
+  ) : <Modal title={title} onClose={onClose} className="!max-w-5xl sm:!p-6 [&>div:first-child>h2]:text-2xl [&>div:first-child>h2]:leading-tight">{children}</Modal>;
+  if (!c || !draft) return frame("Tarea", <ErrorText error={card.error} />);
   const dirty = draft.title !== c.title || draft.description !== c.description || draft.issue !== (c.issue_number?.toString() ?? "") || draft.pr !== (c.pr_number?.toString() ?? "") || draft.repo !== (c.repository_id ?? "");
   const others = (board.data?.cards ?? []).filter((o) => o.id !== id && (!c.project_id || o.project_id === c.project_id));
   const latest = [...(plans.data ?? [])].sort((a, b) => b.version - a.version)[0];
@@ -499,7 +533,7 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
   const projectRepos = (repos.data ?? []).filter((r) => !c.project_id || r.project_id === c.project_id);
   const githubRepo = c.repo && /^[\w.-]+\/[\w.-]+$/.test(c.repo) ? `https://github.com/${c.repo}` : undefined;
   const pullNumber = c.pull?.number ?? c.pr_number;
-  const pullUrl = c.pull?.url ?? (githubRepo && pullNumber ? `${githubRepo}/pull/${pullNumber}` : undefined);
+  const pullRoute = githubRoute(c.pull?.url) ?? githubRoute(githubRepo && pullNumber ? `${githubRepo}/pull/${pullNumber}` : undefined);
   const openLaunch = (anchor: HTMLElement | null, next: "define" | "implement") => {
     setMode(next);
     launch.reset();
@@ -534,9 +568,9 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
     <Link to="/threads/$threadId" params={{ threadId: t.id }} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-accent dark:hover:bg-accent-hover"><Chats className="size-4" />{label}</Link>
   );
   const launchButton = (label: string, next: "define" | "implement", disabled = false, variant: "default" | "ghost" = "default") => (
-    <Button variant={variant} onClick={(e) => openLaunch(e.currentTarget, next)} disabled={disabled || !planDoc.data || launchPending}>{next === "define" ? <ClipboardText className="size-4" /> : <Rocket className="size-4" />}{label}</Button>
+    <Button data-launch={next} variant={variant} onClick={(e) => openLaunch(e.currentTarget, next)} disabled={disabled || !planDoc.data || launchPending}>{next === "define" ? <ClipboardText className="size-4" /> : <Rocket className="size-4" />}{label}</Button>
   );
-  const prLink = pullUrl && <a href={pullUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-accent dark:hover:bg-accent-hover"><GitPullRequest className="size-4" />Abrir PR<ArrowSquareOut className="size-3.5" /></a>;
+  const prLink = pullRoute && <Link to="/github/$owner/$repo/$kind/$number" params={pullRoute} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-accent dark:hover:bg-accent-hover"><GitPullRequest className="size-4" />Abrir PR</Link>;
   // The pull request decides the column; stage only counts without one.
   const doneByHand = c.column === "done" && c.stage === "done" && !pullNumber;
   const next: Next =
@@ -563,12 +597,12 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
   const row = "flex min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-slate-100 dark:hover:bg-raised";
   const menuItem = "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-raised";
   return (
-    <Modal title={c.title} onClose={onClose} className="!max-w-5xl sm:!p-6 [&>div:first-child>h2]:text-2xl [&>div:first-child>h2]:leading-tight">
+    frame(c.title, <>
       <div className="flex flex-wrap items-center gap-2">
         <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${COLUMN_TONE[c.column]}`}>{COLUMN_LABELS[c.column]}</span>
         {c.repo && (githubRepo ? <a className={chip} href={githubRepo} target="_blank" rel="noreferrer"><GithubLogo className="size-3.5 shrink-0" /><span className="truncate">{c.repo}</span></a> : <span className={chip}>{c.repo}</span>)}
         {c.issue_number && (githubRepo ? <a className={chip} href={`${githubRepo}/issues/${c.issue_number}`} target="_blank" rel="noreferrer">Issue #{c.issue_number}</a> : <span className={chip}>Issue #{c.issue_number}</span>)}
-        {pullNumber && (pullUrl ? <a className={chip} href={pullUrl} target="_blank" rel="noreferrer"><GitPullRequest className="size-3.5" />PR #{pullNumber}{(c.pull?.draft || c.pr_state === "draft") && " · borrador"}</a> : <span className={chip}>PR #{pullNumber}</span>)}
+        {pullNumber && (pullRoute ? <Link className={chip} to="/github/$owner/$repo/$kind/$number" params={pullRoute}><GitPullRequest className="size-3.5" />PR #{pullNumber}{(c.pull?.draft || c.pr_state === "draft") && " · borrador"}</Link> : <span className={chip}>PR #{pullNumber}</span>)}
         {c.branch && <span className={`${chip} font-mono`} title={c.branch}><GitBranch className="size-3.5 shrink-0" /><span className="truncate">{c.branch}</span></span>}
         <button ref={menuTrigger} type="button" popoverTarget={menuId} onClick={openMenu} aria-label="Más acciones" className={`${iconButton} ml-auto`}><DotsThree weight="bold" className="size-5" /></button>
         <div ref={menu} id={menuId} popover="auto" role="menu" className="fixed m-0 w-56 rounded-xl border border-slate-200 bg-white p-1 text-slate-900 shadow-xl dark:border-border dark:bg-surface dark:text-white">
@@ -583,6 +617,21 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
         </div>
       </div>
 
+      {side ? (() => {
+        const at = Math.max(0, steps.findIndex((s) => s.state !== "done"));
+        const current = steps.every((s) => s.state === "done") ? steps.length - 1 : at;
+        return (
+          <div aria-label="Progreso de la tarea" className="space-y-1.5">
+            <ol className="grid grid-cols-4 gap-1">
+              {steps.map((s) => (
+                <li key={s.label} title={s.label} aria-label={`${s.label}: ${s.state === "done" ? "hecho" : s.state === "now" ? "en curso" : "pendiente"}`}
+                  className={`h-1.5 rounded-full ${s.state === "done" ? "bg-emerald-600" : s.state === "now" ? "bg-slate-900 dark:bg-white" : "bg-slate-200 dark:bg-border-strong"}`} />
+              ))}
+            </ol>
+            <p className="text-xs text-slate-500 dark:text-muted">Paso {current + 1} de {steps.length} · <span className="font-medium text-slate-900 dark:text-white">{steps[current].label}</span></p>
+          </div>
+        );
+      })() : (
       <ol aria-label="Progreso de la tarea" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
         {steps.map((s, i) => (
           <li key={s.label} className="flex items-center gap-2">
@@ -596,6 +645,7 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
           </li>
         ))}
       </ol>
+      )}
 
       <section aria-label="Siguiente paso" className={`flex flex-wrap items-center gap-3 rounded-xl border p-4 ${next.tone}`}>
         <div className="min-w-0 flex-1">
@@ -626,14 +676,15 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
         {mode === "implement" && !hasPlanContent && !planAccepted && <p className="mb-3 text-xs text-slate-600 dark:text-muted">Se implementará sin plan, a partir de la descripción.</p>}
         {launchBlocked && <p className="mt-3 text-sm text-slate-600 dark:text-muted">{c.blockers.length ? "Resuelve las dependencias para implementar." : "Acepta el plan para implementar."}</p>}
         <ErrorText error={launchAction.error ?? form.error} />
-        <div className="mt-4 flex justify-end">
-          <Button onClick={() => launchAction.mutate()} disabled={!form.ready || launchPending || launchBlocked}>
-            {launchPending ? "Abriendo hilo…" : "Abrir hilo"}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => launchAction.mutate(true)} disabled={!form.ready || launchPending || launchBlocked}>Enviar e ir</Button>
+          <Button onClick={() => launchAction.mutate(false)} disabled={!form.ready || launchPending || launchBlocked}>
+            {launchPending ? "Enviando…" : "Enviar"}
           </Button>
         </div>
       </div>
 
-      <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,16rem)]">
+      <div className={`grid items-start gap-6 ${side ? "" : "md:grid-cols-[minmax(0,1fr)_minmax(0,16rem)]"}`}>
         <div className="min-w-0 space-y-6">
           <section>
             <div className="flex items-center">
@@ -679,7 +730,7 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
           </details>
         </div>
 
-        <aside className="min-w-0 space-y-6 md:border-l md:border-slate-200 md:pl-6 md:dark:border-border">
+        <aside className={`min-w-0 space-y-6 ${side ? "" : "md:border-l md:border-slate-200 md:pl-6 md:dark:border-border"}`}>
           <section>
             <h3 className={heading}><LinkSimple className="size-4" />Dependencias</h3>
             {!deps.data?.length && <p className="px-2 text-sm text-slate-500 dark:text-muted">No depende de otras tareas.</p>}
@@ -718,7 +769,7 @@ function TaskDetail({ id, launch: initialLaunch, onClose }: { id: string; launch
           </section>
         </aside>
       </div>
-    </Modal>
+    </>)
   );
 }
 

@@ -3,6 +3,7 @@ package auth
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -137,8 +138,24 @@ func publicUser(u User) any {
 	}{u.ID, u.Username}
 }
 
-// Middleware authenticates /api and /mcp. agentToken, when set, is the
-// secret this node hands to its own agents: it grants write access to /mcp.
+// AgentMCPToken derives a credential for the given thread from the node secret.
+func AgentMCPToken(secret, thread string) string {
+	if secret == "" || thread == "" {
+		return ""
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte("dory-mcp-thread:" + thread))
+	return "dory-agent." + hex.EncodeToString(mac.Sum(nil))
+}
+
+type agentThreadKey struct{}
+
+func AgentThread(ctx context.Context) string {
+	thread, _ := ctx.Value(agentThreadKey{}).(string)
+	return thread
+}
+
+// Middleware authenticates /api and /mcp. The agent secret stays on the node.
 func Middleware(svc Store, cfg config.Config, agentToken string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -158,10 +175,16 @@ func Middleware(svc Store, cfg config.Config, agentToken string) func(http.Handl
 					return
 				}
 				var t Token
-				if mcp && agentToken != "" && subtle.ConstantTimeCompare([]byte(fields[1]), []byte(agentToken)) == 1 {
+				if strings.HasPrefix(fields[1], "dory-agent.") {
+					thread := r.URL.Query().Get("thread")
+					expected := AgentMCPToken(agentToken, thread)
+					if !mcp || !hmac.Equal([]byte(fields[1]), []byte(expected)) {
+						failure(w, 401)
+						return
+					}
 					v.user, v.scopes = User{ID: "agent", Username: "agent"}, []string{"write"}
 					ctx := context.WithValue(r.Context(), identityKey{}, v)
-					next.ServeHTTP(w, r.WithContext(ctx))
+					next.ServeHTTP(w, r.WithContext(context.WithValue(ctx, agentThreadKey{}, thread)))
 					return
 				}
 				t, err = svc.FindToken(r.Context(), digest(fields[1]))

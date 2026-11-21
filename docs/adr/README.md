@@ -9,7 +9,7 @@
 | [ADR-005](adr-005-suscripcion-t3-code.md) | Suscripción persistente a T3 Code | superseded por ADR-008 |
 | [ADR-006](adr-006-dictado-local.md) | Transcripción local del dictado en el servidor | accepted |
 | [ADR-007](adr-007-malla-de-nodos.md) | Malla de nodos iguales con SQLite y registro de operaciones | accepted |
-| [ADR-008](adr-008-runtime-propio.md) | Runtime de agentes propio, sin T3 Code | accepted |
+| [ADR-008](adr-008-runtime-propio.md) | Runtime de agentes propio, sin T3 Code | parcialmente sustituido por ADR-025 |
 | [ADR-009](adr-009-malla-y-avisos.md) | Emparejamiento, sincronización y avisos entre nodos | accepted |
 | [ADR-010](adr-010-contexto-entre-proveedores.md) | Contexto entre proveedores de un mismo hilo | accepted |
 | [ADR-011](adr-011-modelos-de-dictado-local.md) | Modelos de dictado local para el compositor | accepted |
@@ -26,3 +26,4 @@
 | [ADR-022](adr-022-captura-de-ideas-desde-android.md) | Captura de ideas desde el asistente de Android | superseded by ADR-023 |
 | [ADR-023](adr-023-modelos-del-asistente-android.md) | Modelos del asistente de Android | accepted |
 | [ADR-024](adr-024-navegador-del-hilo.md) | Navegador del hilo con dos motores | accepted |
+| [ADR-025](adr-025-credenciales-mcp-por-hilo.md) | Credenciales MCP por hilo gestionado | accepted |

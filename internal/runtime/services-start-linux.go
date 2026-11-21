@@ -14,6 +14,9 @@ import (
 	"time"
 )
 
+// serviceMarker tags every process of a service started by Dory.
+const serviceMarker = "DORY_SERVICE=1"
+
 var (
 	userScopeOnce sync.Once
 	userScopePath string
@@ -66,7 +69,7 @@ func (m *Manager) StartService(ctx context.Context, thread, command string) (pid
 	}
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = dir
-	cmd.Env = threadEnv(os.Environ(), thread)
+	cmd.Env = append(threadEnv(os.Environ(), thread), serviceMarker)
 	cmd.Stdout, cmd.Stderr = out, out
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {

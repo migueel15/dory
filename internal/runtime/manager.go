@@ -54,7 +54,7 @@ type Manager struct {
 	node      string
 	dataDir   string
 	providers map[string]Provider
-	// MCPURL and MCPToken are handed to every agent so it can reach Dory.
+	// MCPURL is the local endpoint. MCPToken is the node secret used to derive thread credentials.
 	MCPURL, MCPToken string
 
 	mu      sync.Mutex
@@ -512,7 +512,16 @@ func (m *Manager) start(ctx context.Context, t data.Thread, run, text string, fi
 	}
 	startedAt := now()
 	turn := Turn{ThreadID: t.ID, RunID: run, Dir: dir, Text: prompt, Model: t.Model, Effort: t.Effort, Session: session, Attachments: files,
-		FullAccess: t.RuntimeMode != "approval-required", MCPURL: m.mcpURL(t.ID), MCPToken: m.MCPToken}
+		FullAccess: t.RuntimeMode != "approval-required"}
+	if err := m.prepareMCP(ctx, t.Provider, &turn); err != nil {
+		return err
+	}
+	if sessionProvider != t.Provider {
+		// A previous visit to the destination may have left a live process.
+		// Start a new conversation there with the current portable history.
+		key := liveKey(t.ID, t.Provider)
+		closeAll(take(func(candidate string) bool { return candidate == key }))
+	}
 	var events <-chan Event
 	switch p := p.(type) {
 	case Interactive:
@@ -973,13 +982,6 @@ func gitCmd(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	return cmdexec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).CombinedOutput()
 }
 
-func (m *Manager) mcpURL(thread string) string {
-	if m.MCPURL == "" {
-		return ""
-	}
-	return m.MCPURL + "?thread=" + thread
-}
-
 // Adopted returns the harness sessions that already are Dory threads.
 func (m *Manager) Adopted(ctx context.Context) (map[string]string, error) {
 	rows, err := m.db.QueryContext(ctx, `SELECT session_id, thread_id FROM thread_runtime WHERE session_id <> ''`)
@@ -1134,6 +1136,9 @@ func (m *Manager) resync(ctx context.Context, thread string, e External) error {
 		id := msg.ID
 		if msg.Role != "model-change" {
 			id = thread + ":" + id
+		}
+		if msg.Role == "user" {
+			msg.Text = strings.TrimPrefix(msg.Text, doryInstructions+"\n\n")
 		}
 		m.restoreAttachments(thread, &msg)
 		if _, err = tx.ExecContext(ctx, `INSERT INTO thread_messages(id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, updated_at, tool)

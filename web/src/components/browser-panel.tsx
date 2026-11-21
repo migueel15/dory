@@ -57,16 +57,26 @@ function loopbackPort(url: string): number | null {
   } catch { return null; }
 }
 
-// overlayOpen tells whether a menu or dialog of the interface is open; the
-// native view hides then, since it would cover it.
-const overlayOpen = () => !!document.querySelector('[role=dialog],[role=alertdialog],[role=menu],[role=listbox],[data-radix-popper-content-wrapper]');
+const OVERLAY_SELECTOR = 'dialog[open],[role=dialog],[role=alertdialog],[role=menu],[role=listbox],[data-radix-popper-content-wrapper]';
+
+function overlayCoversBrowser(box: { x: number; y: number; width: number; height: number }) {
+  return Array.from(document.querySelectorAll(OVERLAY_SELECTOR)).some((overlay) => {
+    const bounds = overlay.getBoundingClientRect();
+    if (!bounds.width || !bounds.height || getComputedStyle(overlay).visibility !== "visible") return false;
+    return overlay.matches(':modal,[aria-modal="true"]') ||
+      (bounds.left < box.x + box.width && bounds.right > box.x &&
+        bounds.top < box.y + box.height && bounds.bottom > box.y);
+  });
+}
 
 export function BrowserPanel({ threadId, remote }: { threadId: string; remote: boolean }) {
   const [state, setState] = useState<BrowserState>({ tabs: [], user_control: false });
+  const [preview, setPreview] = useState<{ tab: string; src: string } | null>(null);
   const [frame, setFrame] = useState<Frame | null>(null);
   const [agentAt, setAgentAt] = useState<{ tab: string; at: number } | null>(null);
   const [error, setError] = useState("");
   const [attached, setAttached] = useState<string | null>(null);
+  const nativeView = useRef<{ tab: string; shown: boolean } | null>(null);
   const [connected, setConnected] = useState(false);
   const ws = useRef<WebSocket | null>(null);
   const view = useRef<HTMLDivElement>(null);
@@ -75,6 +85,13 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
   activeRef.current = active;
   const send = (m: Record<string, unknown>) => { if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify(m)); };
   const size = () => { const r = view.current?.getBoundingClientRect(); return { width: Math.round(r?.width ?? 0), height: Math.round(r?.height ?? 0) }; };
+  const releaseView = (tab?: string) => {
+    const current = nativeView.current;
+    if (!current || (tab !== undefined && current.tab !== tab)) return;
+    nativeView.current = null;
+    if (current.shown) void desktop()?.hide(current.tab);
+    setAttached(null);
+  };
 
   useEffect(() => {
     const b = desktop();
@@ -87,11 +104,13 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
       ws.current = s;
       s.onopen = () => setConnected(true);
       s.onclose = () => {
+        if (closed) return;
         setConnected(false);
-        setAttached((t) => { if (t) b?.hide(t); return null; });
-        if (!closed) retry = setTimeout(connect, 2000);
+        releaseView();
+        retry = setTimeout(connect, 2000);
       };
       s.onmessage = async (e) => {
+        if (closed) return;
         const m = JSON.parse(e.data as string);
         switch (m.t) {
           case "state": setState(m.state); break;
@@ -104,18 +123,27 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
             break;
           case "attach": {
             if (!b || !view.current) return;
+            if (nativeView.current?.tab !== m.tab) releaseView();
+            const attachment = { tab: m.tab, shown: nativeView.current?.shown ?? false };
+            nativeView.current = attachment;
             const port = loopbackPort(m.url);
             if (remote && port) {
               tunnelThreads.set(port, threadId);
-              if (!(await b.tunnelListen(port))) setError(`El puerto ${port} ya está en uso en este equipo; se muestra lo que hay en él.`);
+              const listening = await b.tunnelListen(port);
+              if (nativeView.current !== attachment) return;
+              if (!listening) setError(`El puerto ${port} ya está en uso en este equipo; se muestra lo que hay en él.`);
             }
+            if (!view.current) return;
+            // Record ownership before sending show so cleanup can queue hide behind it.
+            attachment.shown = true;
             await b.show(m.tab, m.url, view.current.getBoundingClientRect());
+            if (nativeView.current !== attachment) return;
             setAttached(m.tab);
             setFrame(null);
             send({ t: "ready", tab: m.tab });
             break;
           }
-          case "detach": b?.hide(m.tab); setAttached((t) => (t === m.tab ? null : t)); break;
+          case "detach": releaseView(m.tab); break;
           case "cdp":
             b?.cdp(m.tab, m.method, m.params)
               .then((result) => send({ t: "cdp_result", tab: m.tab, id: m.id, result }))
@@ -134,8 +162,8 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
       closed = true;
       clearTimeout(retry);
       offs.forEach((f) => f());
+      releaseView();
       ws.current?.close();
-      setAttached((t) => { if (t) b?.hide(t); return null; });
     };
   }, [threadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -147,18 +175,17 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
     send({ t: "view", tab: activeId, ...size() });
     return () => {
       send({ t: "hide", tab: activeId });
-      const b = desktop();
-      setAttached((t) => { if (t === activeId) b?.hide(t); return t === activeId ? null : t; });
+      releaseView(activeId);
     };
   }, [activeId, connected]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keep the native view on the panel area, clipped by the panel while it
-  // slides, and out of the way of menus and dialogs.
   useEffect(() => {
     const b = desktop();
     if (!b || !attached) return;
     let last = "";
     let raf = 0;
+    let capture: "idle" | "pending" | "ready" = "idle";
+    let disposed = false;
     const tick = () => {
       const el = view.current;
       if (el) {
@@ -166,14 +193,35 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
         const clip = el.closest("aside")?.getBoundingClientRect() ?? r;
         const x = Math.max(r.left, clip.left), y = Math.max(r.top, clip.top);
         const box = { x, y, width: Math.max(0, Math.min(r.right, clip.right) - x), height: Math.max(0, Math.min(r.bottom, clip.bottom) - y) };
-        const visible = !el.closest("[aria-hidden=true]") && box.width > 1 && !overlayOpen() && document.visibilityState === "visible";
+        const panelVisible = !el.closest("[aria-hidden=true]") && box.width > 1 && box.height > 1 && document.visibilityState === "visible";
+        const covered = panelVisible && overlayCoversBrowser(box);
+        if (covered && capture === "idle") {
+          capture = "pending";
+          void b.cdp(attached, "Page.captureScreenshot", { format: "jpeg", quality: 85 })
+            .then(async (result) => {
+              const image = new Image();
+              image.src = `data:image/jpeg;base64,${(result as { data: string }).data}`;
+              await image.decode();
+              if (!disposed) setPreview({ tab: attached, src: image.src });
+            })
+            .catch(() => {})
+            .finally(() => { capture = "ready"; });
+        } else if (!covered && capture === "ready") {
+          capture = "idle";
+          setPreview(null);
+        }
+        const visible = panelVisible && (!covered || capture === "pending");
         const key = `${box.x},${box.y},${box.width},${box.height},${visible}`;
-        if (key !== last) { last = key; b.bounds(attached, box, visible); }
+        if (key !== last) { last = key; void b.bounds(attached, box, visible); }
       }
       raf = requestAnimationFrame(tick);
     };
     tick();
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(raf);
+      setPreview(null);
+    };
   }, [attached]);
 
   // A headless page follows the size of the panel.
@@ -215,7 +263,9 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
               {connected && <button type="button" onClick={() => send({ t: "open", url: "about:blank", new: true })} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 hover:bg-slate-50 dark:border-border dark:hover:bg-raised"><Plus className="size-3.5" />Nueva pestaña</button>}
             </div>
           </div>
-        ) : attached === active.id ? null : (
+        ) : attached === active.id ? (
+          preview?.tab === active.id && <img src={preview.src} alt="" className="pointer-events-none absolute inset-0 h-full w-full" draggable={false} />
+        ) : (
           <Screencast tab={active.id} frame={frame?.tab === active.id ? frame : null} send={send} />
         )}
       </div>

@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Bell, BellRinging, Tray, X } from "@phosphor-icons/react";
 import { api, req } from "../api/client";
-import { Button, Modal } from "./ui";
+import { Button } from "./ui";
 
 const b64 = (s: string) => {
   const raw = atob((s + "=".repeat((4 - (s.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
@@ -48,7 +48,9 @@ function useNotices() {
 // NoticeInbox shows the inbox with its unread counter. Reading a notice marks
 // it read on every device.
 export function NoticeInbox() {
-  const [open, setOpen] = useState(false);
+  const popoverId = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const notices = useNotices();
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -57,18 +59,45 @@ export function NoticeInbox() {
   const unread = list.filter((n) => !n.read_at);
   const go = (n: Notice) => {
     if (!n.read_at) read.mutate([n.id]);
-    setOpen(false);
+    panel.current?.hidePopover();
     if (n.url) navigate({ to: n.url as never });
   };
+  // place opens the panel to the right of the icon, clamped to the viewport.
+  const place = () => {
+    const t = trigger.current, p = panel.current;
+    if (!t || !p) return;
+    const r = t.getBoundingClientRect();
+    const width = Math.min(360, window.innerWidth - 24);
+    const left = r.right + 8 + width <= window.innerWidth - 12 ? r.right + 8 : Math.max(12, window.innerWidth - width - 12);
+    // Beside the icon it grows upwards from the icon's bottom edge; below it, downwards.
+    const beside = left === r.right + 8;
+    p.style.width = `${width}px`;
+    p.style.left = `${left}px`;
+    p.style.top = beside ? "auto" : `${r.bottom + 8}px`;
+    p.style.bottom = beside ? `${window.innerHeight - r.bottom}px` : "auto";
+    // Under half the room it has, so it reads as a pop-up and not a full column.
+    p.style.maxHeight = `${Math.round(0.45 * (beside ? r.bottom - 12 : window.innerHeight - r.bottom - 20))}px`;
+  };
+  useEffect(() => {
+    const again = (e?: Event) => {
+      // Scrolling the list itself must not move or resize the panel.
+      if (e?.type === "scroll" && panel.current?.contains(e.target as Node)) return;
+      if (panel.current?.matches(":popover-open")) place();
+    };
+    window.addEventListener("resize", again);
+    return () => { window.removeEventListener("resize", again); };
+  }, []);
+  // One wrapper: the sidebar sizes its direct children, and the panel must not be one.
   return (
-    <>
-      <button type="button" title="Avisos" aria-label={unread.length ? `Avisos, ${unread.length} sin leer` : "Avisos"} onClick={() => setOpen(true)}
-        className="relative grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-slate-200 sm:min-h-0 sm:min-w-0 dark:hover:bg-raised">
+    <div>
+      <button ref={trigger} type="button" popoverTarget={popoverId} title="Avisos" aria-label={unread.length ? `Avisos, ${unread.length} sin leer` : "Avisos"} onClick={() => requestAnimationFrame(place)}
+        className="relative grid size-full min-h-11 min-w-11 place-items-center rounded-md hover:bg-slate-200 sm:min-h-0 sm:min-w-0 dark:hover:bg-raised">
         <Tray className="size-5" />
         {unread.length > 0 && <span className="absolute right-0.5 top-0.5 grid min-w-4 place-items-center rounded-full bg-blue-600 px-1 text-[10px] font-bold leading-4 text-white">{unread.length > 99 ? "99+" : unread.length}</span>}
       </button>
-      {open && (
-        <Modal title="Avisos" onClose={() => setOpen(false)}>
+      <div ref={panel} id={popoverId} popover="auto" role="dialog" aria-label="Avisos" onToggle={(e) => { if (e.newState === "open") place(); }}
+        className="fixed m-0 overflow-auto overscroll-contain [scrollbar-gutter:stable] rounded-xl border border-slate-200 bg-white p-3 text-slate-900 shadow-xl dark:border-border dark:bg-surface dark:text-white">
+          <h2 className="sticky -top-3 z-10 -mx-3 -mt-3 mb-2 bg-white px-3 pb-2 pt-3 text-base font-semibold dark:bg-surface">Avisos</h2>
           <div className="space-y-2">
             {unread.length > 0 && <Button variant="ghost" onClick={() => read.mutate([])}>Marcar todos como leídos</Button>}
             {list.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">No hay avisos.</p>}
@@ -87,9 +116,8 @@ export function NoticeInbox() {
               ))}
             </ul>
           </div>
-        </Modal>
-      )}
-    </>
+      </div>
+    </div>
   );
 }
 

@@ -33,7 +33,7 @@ El kanban tiene estas columnas, que se calculan solas a partir de los hilos y de
 
 A mano se mueven tareas entre Inbox, Ready y Cancelled. Con **Marcar como hecha** (menú rápido o menú de la tarea) una tarea pasa a Done cuando su trabajo fue directo a `main` y no tiene PR; si tiene una PR sin fusionar (abierta, en borrador o cerrada) se rechaza, y con una PR fusionada ya está en Done sola. La PR manda: si a una tarea hecha a mano se le asocia después una PR sin fusionar, vuelve al flujo normal. **Reabrir** devuelve las tareas hechas a mano o canceladas a Ready; no desarchiva sus hilos. Cada tarjeta muestra su rama, su PR y un único icono de estado: azul trabajando, naranja te necesita, amarillo CI en curso, ámbar review, verde lista, morado fusionada, rojo fallo y gris inactiva. El tooltip explica el estado.
 
-Al abrir una carta ves su título, estado y descripción. Desde **Referencias** puedes abrir el repositorio, la issue y la PR en GitHub cuando están disponibles. Los hilos y las tareas de las que depende se abren desde sus nombres. En pantallas anchas, las referencias y dependencias quedan a la derecha.
+Al abrir una carta ves su título, estado y descripción. El botón **Abrir PR** y la referencia **PR #…** llevan al detalle de la pull request en Dory. Los enlaces al repositorio y a la issue abren GitHub cuando están disponibles. Los hilos y las tareas de las que depende se abren desde sus nombres. En pantallas anchas, las referencias y dependencias quedan a la derecha.
 
 En el detalle de una tarea puedes:
 

@@ -3,11 +3,11 @@ import { useCommand } from "../components/shortcuts";
 import { hasWindowClose } from "../lib/window-close";
 import { PlanDoc } from "../components/plan-doc";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { Circle, CircleNotch, GitDiff, Kanban, WarningCircle, XCircle } from "@phosphor-icons/react";
 import { api } from "../api/client";
 import { useThreadLive } from "../api/live";
-import { Button, ErrorText, pill, uuid } from "../components/ui";
+import { Button, ErrorText, uuid } from "../components/ui";
 import { Messages, ModelChangeDivider, ToEnd, useFollow } from "./chat";
 import { Chip, Composer, Queue } from "./composer";
 import { QuoteSelection } from "../components/quote-selection";
@@ -15,7 +15,8 @@ import { ProviderIcon } from "../components/launch-picker";
 import { Diff, type Suggestion } from "./github-diff";
 import { setDiffBase, useDiffBase } from "../lib/diff-base";
 import { addDraftQuote, removeDraftQuotes, useDraftQuotes } from "../lib/draft-quotes";
-import { ThreadInfo } from "../components/thread-info";
+import { headerButton, ThreadInfo } from "../components/thread-info";
+import { TaskDetail } from "./tasks";
 import { useThreadMenu } from "../components/thread-menu";
 import { useThreadsFold } from "../lib/threads-fold";
 import { BrowserPanel } from "../components/browser-panel";
@@ -46,6 +47,14 @@ export function ThreadView() {
     };
     window.addEventListener("dory-device", on);
     return () => window.removeEventListener("dory-device", on);
+  }, [threadId]);
+  useEffect(() => {
+    if (!window.doryDesktop?.browser) return;
+    const on = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === threadId) latest.current.show("browser");
+    };
+    window.addEventListener("dory-browser-open", on);
+    return () => window.removeEventListener("dory-browser-open", on);
   }, [threadId]);
   const deviceView = (k: string, floating = false) => <DevicePanel key={k} node={thread?.node_id ?? "local"} serial={panel.meta[k]?.serial ?? null} floating={floating} onFloat={(v) => panel.setMeta(k, { floating: v })}
     onSerial={(serial, name) => panel.setMeta(k, serial ? { serial, ...(panel.meta[k]?.name ? {} : { name }) } : { serial: undefined })} />;
@@ -89,6 +98,29 @@ function useThread(threadId?: string) {
   return useQuery({ queryKey: ["thread", threadId], queryFn: () => api.thread(threadId!), enabled: !!threadId, staleTime: 5_000 });
 }
 
+// TaskCard opens the thread's task as a side card in the place of the details
+// card, with the same component the board uses. While the side panel is open it
+// closes on any click outside, like the details card.
+function TaskCard({ taskId, open, setOpen, popup }: { taskId: string; open: boolean; setOpen: (v: boolean) => void; popup: boolean }) {
+  const wrap = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!popup || !open) return;
+    const close = (e: Event) => { if (!wrap.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("pointerdown", close, true);
+    return () => document.removeEventListener("pointerdown", close, true);
+  }, [popup, open, setOpen]);
+  return (
+    <div ref={wrap}>
+      <button type="button" onClick={() => setOpen(!open)} title="Ver la tarea" aria-label="Ver la tarea" aria-expanded={open} className={headerButton(open)}><Kanban weight="regular" className="size-4" /></button>
+      {open && (
+        <div className="notif-in absolute right-1 top-11 z-30 max-h-[calc(100dvh-7rem)] w-[min(24rem,calc(100vw-1rem))] overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-xl dark:border-border dark:bg-surface">
+          <TaskDetail key={taskId} id={taskId} layout="side" onClose={() => setOpen(false)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }) {
   const qc = useQueryClient();
   const t = useThread(threadId).data;
@@ -107,6 +139,12 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
   // Opening a thread marks it as read.
   useEffect(() => { if (t && !t.read_at && t.status !== "working") act.mutate({ action: "read" }); }, [t?.id, t?.status]); // eslint-disable-line react-hooks/exhaustive-deps
   const fold = useThreadsFold();
+  // Like the details card, each thread remembers whether its task card was left open.
+  const taskKey = `dory-thread-task:${threadId}`;
+  const readTask = () => { try { return localStorage.getItem(taskKey) === "1"; } catch { return false; } };
+  const [taskOpen, setTaskOpenState] = useState(readTask);
+  useEffect(() => setTaskOpenState(readTask()), [taskKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const setTaskOpen = useCallback((v: boolean) => { setTaskOpenState(v); try { if (v) localStorage.setItem(taskKey, "1"); else localStorage.removeItem(taskKey); } catch { /* per-viewer only */ } }, [taskKey]);
   if (!t) return <div className="h-12 shrink-0" />;
   return (
     <div className={`relative z-20 flex shrink-0 flex-wrap items-center gap-2 pb-2 pl-1 pr-11 transition-[padding,margin] ${fold ? (fold.folded ? "sm:pl-10" : "sm:pl-2") : ""} duration-300 ease-out motion-reduce:transition-none sm:-mt-2 ${hasWindowClose ? "sm:pr-20" : ""} ${panel.open ? "lg:!pr-1" : ""} ${panel.open ? "lg:mr-0 sm:-mr-2" : "sm:-mr-2"}`}>
@@ -118,8 +156,8 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
       ) : (
         <h1 className="min-w-0 flex-1 cursor-text truncate font-semibold" title={`${t.title} · doble clic para renombrar`} onDoubleClick={() => { setTitle(t.title); setEditing(true); }} onContextMenu={menu.open}>{t.title || "Hilo"}</h1>
       )}
-      {t.task_id && <Link to="/tasks" search={{ task: t.task_id } as never} className={`${pill} !px-2`} title="Ver la tarea"><Kanban className="size-4" /></Link>}
-      <ThreadInfo t={t} popup={panel.open} diff={panel.open && panel.active === "diff"} toggleDiff={() => (panel.open && panel.active === "diff" ? panel.toggle() : panel.show("diff"))} />
+      {t.task_id && <TaskCard taskId={t.task_id} open={taskOpen} setOpen={setTaskOpen} popup={panel.open} />}
+      <ThreadInfo t={t} popup={panel.open} hidden={!!t.task_id && taskOpen} onOpen={() => setTaskOpen(false)} diff={panel.open && panel.active === "diff"} toggleDiff={() => (panel.open && panel.active === "diff" ? panel.toggle() : panel.show("diff"))} />
       <ErrorText error={act.error ?? menu.error} />
       {menu.menu}
     </div>

@@ -659,7 +659,16 @@ func (m *Mesh) Forward(w http.ResponseWriter, r *http.Request, node string) bool
 			pr.Out.Header.Del("Cookie")
 			pr.Out.Header.Del("Authorization")
 		},
-		Transport:     &http.Transport{TLSClientConfig: m.id.clientTLS(key, nil), ResponseHeaderTimeout: 15 * time.Second},
+		// The TLS dial is ours: for WebSocket upgrades the transport would
+		// offer only http/1.1, and the peer would answer with the device
+		// certificate instead of the node's.
+		Transport: &http.Transport{
+			DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				d := &tls.Dialer{Config: m.id.clientTLS(key, nil)}
+				return d.DialContext(ctx, network, addr)
+			},
+			ResponseHeaderTimeout: 15 * time.Second,
+		},
 		FlushInterval: -1,
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
 			failed = true
