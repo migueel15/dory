@@ -9,7 +9,8 @@ export type Project = { id: string; slug: string; name: string; description: str
 export type RepositoryLocation = { repository_id: string; node_id: string; path: string };
 export type Repository = { id: string; project_id: string; remote_url: string; default_branch: string; created_at: string; updated_at: string; archived_at: string | null };
 export type Stage = "inbox" | "ready" | "done" | "cancelled";
-export type NodeSettings = { archive_threads_on_finish: boolean; remove_worktree_on_archive: boolean; browser_tunnel_disabled?: boolean };
+export type NodeSettings = { archive_threads_on_finish: boolean; remove_worktree_on_archive: boolean; stop_services_on_shutdown: boolean; agents_use_devices: boolean; browser_tunnel_disabled?: boolean };
+export type ThreadService = { pid: number; address: string; port: number; command: string; kind: string };
 export type KeptWorktree = { thread_id: string; path: string; dirty: boolean };
 export type Task = {
   id: string; project_id: string | null; repository_id: string | null; title: string; description: string; stage: Stage;
@@ -209,6 +210,8 @@ export const api = {
   answer: (id: string, request: string, answers: string[][], files: string[][] = []) => req<void>("POST", `/threads/${id}/requests/${encodeURIComponent(request)}`, { answers, files }),
   interrupt: (id: string) => req<void>("POST", `/threads/${id}/interrupt`),
   threadDiff: (id: string, base = "") => req<{ diff: string; branch: string; base?: string; branches?: string[] }>("GET", `/threads/${id}/diff${base ? `?base=${encodeURIComponent(base)}` : ""}`),
+  threadServices: (id: string) => req<ThreadService[]>("GET", `/threads/${id}/services`),
+  stopThreadService: (id: string, pid: number) => req<void>("POST", `/threads/${id}/processes/${pid}/stop`),
   threadAction: (id: string, body: { action: ThreadActionName; title?: string; until?: string; task_id?: string }) => req<Thread>("POST", `/threads/${id}/actions`, body),
   issueTask: (repo: string, number: number, body: { title: string; description: string }) => req<Task>("POST", `/github/repos/${repo}/issues/${number}/tasks`, body),
   githubPullRefs: (repo: string, q: string) => req<{ pulls: { number: number; title: string; state: "open" | "draft" | "merged" | "closed" }[] }>("GET", `/github/repos/${repo}/pull-refs?q=${encodeURIComponent(q)}`),
@@ -244,3 +247,17 @@ export const COLUMN_LABELS: Record<Column, string> = {
 
 // repoName extracts owner/name from a GitHub remote.
 export const repoName = (remote: string) => remote.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/)?.[1] ?? remote;
+
+export type DeviceTools = { adb: string; emulator: string; kvm: boolean; sdk: string };
+export type Device = { serial: string; state: string; model: string; product: string; transport: "usb" | "wifi" | "emulator"; avd?: string; streaming: boolean };
+export type AvdState = { status: "starting" | "booting" | "ready" | "failed"; error?: string };
+export type DeviceList = { tools: DeviceTools; devices: Device[]; avds: string[]; avd_states: Record<string, AvdState>; error?: string };
+export const devicesApi = {
+  list: (node = "local") => req<DeviceList>("GET", `/nodes/${node}/devices`),
+  startAvd: (name: string, node = "local") => req<{ ok: boolean }>("POST", `/nodes/${node}/devices/avd/${encodeURIComponent(name)}/start`),
+  stop: (serial: string, confirm: boolean, node = "local") => req<{ ok: boolean }>("POST", `/nodes/${node}/devices/${encodeURIComponent(serial)}/stop`, { confirm }),
+  pair: (address: string, code: string, node = "local") => req<{ message: string }>("POST", `/nodes/${node}/devices/pair`, { address, code }),
+  connect: (address: string, node = "local") => req<{ message: string }>("POST", `/nodes/${node}/devices/connect`, { address }),
+  action: (serial: string, body: Record<string, unknown>, node = "local") => req<Record<string, string>>("POST", `/nodes/${node}/devices/${encodeURIComponent(serial)}/action`, body),
+  disconnect: (serial: string, node = "local") => req<{ ok: boolean }>("POST", `/nodes/${node}/devices/${encodeURIComponent(serial)}/disconnect`),
+};

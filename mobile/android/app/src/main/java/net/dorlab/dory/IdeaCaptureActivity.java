@@ -1,13 +1,15 @@
 package net.dorlab.dory;
 
 import android.Manifest;
-import android.app.KeyguardManager;
 import android.app.role.RoleManager;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
 import android.graphics.Typeface;
+import android.content.res.ColorStateList;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -17,9 +19,8 @@ import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.view.Gravity;
 import android.view.View;
-import android.widget.Button;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import androidx.activity.OnBackPressedCallback;
@@ -35,27 +36,47 @@ import java.util.UUID;
 import org.json.JSONObject;
 
 public class IdeaCaptureActivity extends AppCompatActivity {
-    private enum State { STARTING, LISTENING, PAUSING, PAUSED, SPEECH_ERROR, SAVING, SAVE_ERROR, SAVED }
+    private enum State { STARTING, LISTENING, FINISHING, PAUSED, SPEECH_ERROR, SAVING, SAVE_ERROR, SAVED }
 
     private static final int ACCENT = 0xff93c5fd;
     private static final int FOREGROUND = 0xffe5e7eb;
     private static final int MUTED = 0xffaab7c8;
+    private static final int GOOD = 0xff4ade80;
+    private static final int BAD = 0xfff87171;
+    private static final int INK = 0xff0b1220;
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final String ideaId = UUID.randomUUID().toString();
+    private static final long DRAFT_LIFETIME = 12L * 60 * 60 * 1000;
+    private String ideaId = UUID.randomUUID().toString();
+    private boolean resumeOnStart;
+    private boolean ended;
+    private long lastEvent;
+    private final Runnable watchdog = this::checkRecognizer;
     private SpeechRecognizer recognizer;
+    private MoonshineCapture moonshine;
+    private String moonshineStopAction = "";
+    private boolean foreground;
     private boolean usingOnDevice;
     private boolean systemFallback;
     private State state = State.STARTING;
     private String committed = "";
     private String partial = "";
-    private final Runnable finishPause = () -> finishSpeech(partial);
+    private final Runnable relisten = () -> {
+        if (!isFinishing() && (state == State.LISTENING || state == State.STARTING)) listen();
+    };
     private String destinationId;
     private TextView status;
     private TextView transcript;
+    private String transcriptTarget = "";
+    private boolean revealPending;
+    private final Runnable revealTranscript = this::revealTranscript;
     private FrameLayout frame;
-    private ImageView mic;
-    private Button primary;
-    private Button cancel;
+    private LinearLayout stateRow;
+    private final Runnable settleVoice = this::settleVoice;
+    private VoiceIconButton primaryIcon;
+    private TextView primaryText;
+    private VoiceIconButton close;
+    private VoiceIconButton send;
+    private boolean silenced;
 
     private final ActivityResultLauncher<String> microphonePermission =
         registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
@@ -67,16 +88,16 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        KeyguardManager keyguard = getSystemService(KeyguardManager.class);
-        if (!Intent.ACTION_ASSIST.equals(getIntent().getAction()) || keyguard.isDeviceLocked() || !canAssist()) {
+        if (!Intent.ACTION_ASSIST.equals(getIntent().getAction()) || !canAssist()) {
             finish();
             return;
         }
         createView();
+        restoreDraft();
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                if (state != State.SAVING) finish();
+                if (state != State.SAVING && state != State.FINISHING) finish();
             }
         });
         try {
@@ -109,40 +130,50 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private void listen() {
         if (isFinishing()) return;
         closeRecognizer();
+        String model = AssistantModels.selected(this);
+        if (!AssistantModels.ANDROID.equals(model)) {
+            if (!AssistantModels.installed(this, model)) {
+                display(State.SPEECH_ERROR, "El modelo seleccionado no está disponible.", "Continuar", this::requestMicrophone);
+                return;
+            }
+            listenMoonshine(model);
+            return;
+        }
         usingOnDevice = !systemFallback && Build.VERSION.SDK_INT >= 31
             && SpeechRecognizer.isOnDeviceRecognitionAvailable(this);
         if (!usingOnDevice && !SpeechRecognizer.isRecognitionAvailable(this)) {
             display(State.SPEECH_ERROR, "No hay un reconocedor de voz disponible.", "Reintentar", this::listen);
             return;
         }
-        display(State.STARTING, "Activando micrófono…", null, null);
+        if (state != State.LISTENING) display(State.STARTING, "Activando micrófono…", null, null);
         try {
             SpeechRecognizer session = usingOnDevice
                 ? SpeechRecognizer.createOnDeviceSpeechRecognizer(this) : SpeechRecognizer.createSpeechRecognizer(this);
             recognizer = session;
             session.setRecognitionListener(new RecognitionListener() {
                 private boolean current() {
-                    return recognizer == session && !isFinishing();
+                    if (recognizer != session || isFinishing()) return false;
+                    lastEvent = System.currentTimeMillis();
+                    return true;
                 }
 
                 @Override public void onReadyForSpeech(Bundle params) {
-                    if (current() && state == State.STARTING) {
-                        display(State.LISTENING, "Escuchando…", "Pausar", IdeaCaptureActivity.this::pause);
-                    }
+                    if (current() && state == State.STARTING) display(State.LISTENING, "Escuchando…", null, null);
                 }
                 @Override public void onPartialResults(Bundle results) {
                     if (!current()) return;
                     partial = bestText(results);
-                    transcript.setText(join(committed, partial));
-                    if (state == State.STARTING) display(State.LISTENING, "Escuchando…", "Pausar", IdeaCaptureActivity.this::pause);
+                    updateTranscript(join(committed, partial));
+                    refreshSend();
+                    if (state == State.STARTING) display(State.LISTENING, "Escuchando…", null, null);
                 }
                 @Override public void onResults(Bundle results) {
-                    if (current()) finishSpeech(bestText(results));
+                    if (current()) keepListening(bestText(results));
                 }
                 @Override public void onError(int error) {
                     if (!current()) return;
-                    if (state == State.PAUSING) {
-                        finishSpeech(partial);
+                    if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                        keepListening(partial);
                     } else if (usingOnDevice && partial.isEmpty() && (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
                         || error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE)) {
                         systemFallback = true;
@@ -151,53 +182,186 @@ public class IdeaCaptureActivity extends AppCompatActivity {
                         closeRecognizer();
                         committed = join(committed, partial);
                         partial = "";
-                        transcript.setText(committed);
-                        String message = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
-                            ? "No se detectó voz." : "No se pudo completar el dictado.";
-                        display(State.SPEECH_ERROR, message, "Continuar", IdeaCaptureActivity.this::requestMicrophone);
+                        updateTranscript(committed);
+                        display(State.SPEECH_ERROR, "No se pudo completar el dictado.", "Continuar", IdeaCaptureActivity.this::requestMicrophone);
                     }
                 }
                 @Override public void onBeginningOfSpeech() {}
                 @Override public void onEndOfSpeech() {}
-                @Override public void onRmsChanged(float rms) {}
+                @Override public void onRmsChanged(float rms) {
+                    if (!current()) return;
+                    float value = Math.max(0f, Math.min(1f, (rms - 1f) / 11f));
+                    updateVoice(value);
+                    main.removeCallbacks(settleVoice);
+                    main.postDelayed(settleVoice, 200);
+                }
                 @Override public void onBufferReceived(byte[] buffer) {}
                 @Override public void onEvent(int eventType, Bundle params) {}
             });
             Intent dictation = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
-                .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+                .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 30000L)
+                .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 30000L);
             session.startListening(dictation);
+            lastEvent = System.currentTimeMillis();
+            main.postDelayed(watchdog, 4000);
         } catch (RuntimeException e) {
             closeRecognizer();
             display(State.SPEECH_ERROR, "No se pudo iniciar el reconocedor.", "Reintentar", this::requestMicrophone);
         }
     }
 
-    private void pause() {
-        display(State.PAUSING, "Pausando…", null, null);
-        main.postDelayed(finishPause, 1600);
-        recognizer.stopListening();
+    private void listenMoonshine(String model) {
+        display(State.STARTING, "Cargando modelo…", null, null);
+        stateRow.setVisibility(View.VISIBLE);
+        final MoonshineCapture[] ref = new MoonshineCapture[1];
+        ref[0] = new MoonshineCapture(this, model, new MoonshineCapture.Listener() {
+            private boolean current() { return moonshine == ref[0] && !ended; }
+            @Override public void ready() {
+                if (current() && state == State.STARTING) display(State.LISTENING, "Escuchando…", null, null);
+            }
+            @Override public void text(String value, boolean complete) {
+                if (!current()) return;
+                partial = value;
+                if (complete) {
+                    committed = join(committed, value);
+                    partial = "";
+                    saveDraft();
+                }
+                updateTranscript(join(committed, partial));
+                refreshSend();
+            }
+            @Override public void level(float value) {
+                if (current() && state == State.LISTENING) updateVoice(value);
+            }
+            @Override public void finished() {
+                if (!current()) return;
+                moonshine = null;
+                committed = join(committed, partial);
+                partial = "";
+                updateTranscript(committed);
+                saveDraft();
+                String action = moonshineStopAction;
+                moonshineStopAction = "";
+                if ("send".equals(action) && !committed.isEmpty()) save();
+                else if ("pause".equals(action)) {
+                    display(State.PAUSED, "En pausa", "Continuar", IdeaCaptureActivity.this::requestMicrophone);
+                    if (foreground) requestMicrophone();
+                }
+            }
+            @Override public void error() {
+                if (!current()) return;
+                moonshine = null;
+                committed = join(committed, partial);
+                partial = "";
+                saveDraft();
+                updateTranscript(committed);
+                display(State.SPEECH_ERROR, "No se pudo completar el dictado local.", "Reintentar", IdeaCaptureActivity.this::requestMicrophone);
+            }
+        });
+        moonshine = ref[0];
+        silence(false);
+        ref[0].start();
     }
 
-    private void finishSpeech(String text) {
-        boolean paused = state == State.PAUSING;
-        closeRecognizer();
-        if (paused && text.isEmpty()) text = partial;
-        partial = "";
-        committed = join(committed, text);
-        transcript.setText(committed);
-        if (paused) {
-            display(State.PAUSED, "En pausa", "Continuar", this::requestMicrophone);
-        } else if (text.isEmpty()) {
-            display(State.SPEECH_ERROR, "No se detectó voz.", "Continuar", this::requestMicrophone);
-        } else {
-            save();
+    private void stopMoonshine(String action) {
+        moonshineStopAction = action;
+        display(State.FINISHING, "Terminando dictado…", null, null);
+        moonshine.stop();
+    }
+
+    /** Silencia los pitidos del reconocedor mientras se dicta, para que reiniciarlo tras cada pausa no suene. */
+    private void silence(boolean on) {
+        if (silenced == on) return;
+        AudioManager audio = getSystemService(AudioManager.class);
+        if (audio == null) return;
+        silenced = on;
+        int direction = on ? AudioManager.ADJUST_MUTE : AudioManager.ADJUST_UNMUTE;
+        for (int stream : new int[] {AudioManager.STREAM_MUSIC, AudioManager.STREAM_SYSTEM, AudioManager.STREAM_NOTIFICATION}) {
+            try {
+                audio.adjustStreamVolume(stream, direction, 0);
+            } catch (SecurityException ignored) {
+            }
         }
     }
 
+    /** Si el reconocedor del sistema se atasca sin avisar, no llegan ni niveles de sonido: se reinicia la escucha. */
+    private void checkRecognizer() {
+        if (isFinishing() || recognizer == null || (state != State.LISTENING && state != State.STARTING)) return;
+        if (System.currentTimeMillis() - lastEvent > 10000) {
+            listen();
+        } else {
+            main.postDelayed(watchdog, 4000);
+        }
+    }
+
+    /** Una pausa al hablar no termina la idea: se conserva lo dictado y se vuelve a escuchar. */
+    private void keepListening(String text) {
+        closeRecognizer();
+        committed = join(committed, text.isEmpty() ? partial : text);
+        partial = "";
+        updateTranscript(committed);
+        refreshSend();
+        saveDraft();
+        main.postDelayed(relisten, 120);
+    }
+
+    /** El dictado en curso sobrevive a salir con Inicio o Atrás: solo Enviar o la X lo terminan. */
+    private SharedPreferences drafts() {
+        return getSharedPreferences("idea-draft", MODE_PRIVATE);
+    }
+
+    private void saveDraft() {
+        String text = join(committed, partial);
+        if (ended || text.isEmpty()) return;
+        drafts().edit().putString("text", text).putString("id", ideaId).putLong("at", System.currentTimeMillis()).apply();
+    }
+
+    private void clearDraft() {
+        ended = true;
+        drafts().edit().clear().apply();
+    }
+
+    private void restoreDraft() {
+        SharedPreferences saved = drafts();
+        String text = saved.getString("text", "");
+        if (text.isEmpty() || System.currentTimeMillis() - saved.getLong("at", 0) > DRAFT_LIFETIME) {
+            saved.edit().clear().apply();
+            return;
+        }
+        committed = text;
+        ideaId = saved.getString("id", ideaId);
+        updateTranscript(committed);
+        refreshSend();
+    }
+
+    private void sendIdea() {
+        if (state == State.SAVING || state == State.SAVED || state == State.FINISHING) return;
+        String text = join(committed, partial);
+        if (text.isEmpty()) return;
+        if (moonshine != null) {
+            stopMoonshine("send");
+            return;
+        }
+        closeRecognizer();
+        committed = text;
+        partial = "";
+        save();
+    }
+
+    private void refreshSend() {
+        boolean ready = state != State.SAVING && state != State.SAVED && state != State.FINISHING && !join(committed, partial).isEmpty();
+        send.setEnabled(ready);
+        send.setAlpha(ready ? 1f : 0.65f);
+    }
+
     private void closeRecognizer() {
-        main.removeCallbacks(finishPause);
+        main.removeCallbacks(relisten);
+        main.removeCallbacks(watchdog);
+        main.removeCallbacks(settleVoice);
+        settleVoice();
         SpeechRecognizer session = recognizer;
         recognizer = null;
         if (session != null) session.destroy();
@@ -212,6 +376,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
                 CaptureNodes.sendIdea(node, ideaId, text);
                 main.post(() -> {
                     if (isFinishing() || isDestroyed()) return;
+                    clearDraft();
                     display(State.SAVED, "Idea guardada", null, null);
                     main.postDelayed(this::finish, 1000);
                 });
@@ -228,17 +393,34 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
-        if (recognizer != null) {
+        foreground = false;
+        if ((state == State.LISTENING || state == State.STARTING) && moonshine != null) {
+            stopMoonshine("pause");
+        } else if (state == State.LISTENING || state == State.STARTING) {
             closeRecognizer();
             committed = join(committed, partial);
             partial = "";
+            updateTranscript(committed);
+            resumeOnStart = true;
             display(State.PAUSED, "En pausa", "Continuar", this::requestMicrophone);
-            transcript.setText(committed);
+        }
+        saveDraft();
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        foreground = true;
+        if (resumeOnStart && state == State.PAUSED) {
+            resumeOnStart = false;
+            requestMicrophone();
         }
     }
 
     @Override
     protected void onDestroy() {
+        silence(false);
+        if (moonshine != null) moonshine.stop();
         closeRecognizer();
         main.removeCallbacksAndMessages(null);
         super.onDestroy();
@@ -248,12 +430,78 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         state = next;
         status.setText(message);
         boolean listening = next == State.LISTENING || next == State.STARTING;
-        frame.setBackground(shape(Color.TRANSPARENT, 24, listening ? ACCENT : MUTED));
-        mic.setColorFilter(listening ? ACCENT : MUTED);
-        primary.setVisibility(action == null ? View.GONE : View.VISIBLE);
-        primary.setText(action);
-        primary.setOnClickListener(onAction == null ? null : view -> onAction.run());
-        cancel.setVisibility(next == State.SAVING || next == State.SAVED ? View.GONE : View.VISIBLE);
+        boolean failed = next == State.SPEECH_ERROR || next == State.SAVE_ERROR;
+        int tint = next == State.SAVED ? GOOD : failed ? BAD : listening || next == State.SAVING ? ACCENT : MUTED;
+        status.setTextColor(tint);
+        silence(listening && moonshine == null && AssistantModels.ANDROID.equals(AssistantModels.selected(this)));
+        stateRow.setVisibility(listening ? View.GONE : View.VISIBLE);
+        if (!listening) {
+            main.removeCallbacks(settleVoice);
+            settleVoice();
+        }
+        View.OnClickListener click = onAction == null ? null : view -> onAction.run();
+        boolean resume = "Continuar".equals(action);
+        primaryIcon.setVisibility(resume ? View.VISIBLE : View.GONE);
+        if (resume) primaryIcon.setIcon(VoiceIconButton.Icon.PLAY, action);
+        primaryIcon.setOnClickListener(click);
+        primaryText.setVisibility(action == null || resume ? View.GONE : View.VISIBLE);
+        primaryText.setText(action);
+        primaryText.setOnClickListener(click);
+        boolean dictating = listening || next == State.PAUSED || next == State.SPEECH_ERROR;
+        send.setEnabled(dictating && !join(committed, partial).isEmpty());
+        send.setAlpha(send.isEnabled() ? 1f : 0.65f);
+        close.setEnabled(next != State.SAVING && next != State.SAVED && next != State.FINISHING);
+        close.setAlpha(close.isEnabled() ? 1f : 0.35f);
+    }
+
+    private void updateVoice(float level) {
+        if (send == null) return;
+        send.animate().cancel();
+        float target = 1f + 0.25f * level;
+        float current = send.getScaleX();
+        float scale = current + (target - current) * (target > current ? 0.8f : 0.6f);
+        send.setScaleX(scale);
+        send.setScaleY(scale);
+    }
+
+    private void settleVoice() {
+        if (send == null) return;
+        send.animate().scaleX(1f).scaleY(1f).setDuration(180)
+            .setInterpolator(new DecelerateInterpolator()).start();
+    }
+
+    private void updateTranscript(String text) {
+        String visible = transcript.getText().toString();
+        transcriptTarget = text;
+        int common = 0;
+        while (common < visible.length() && common < text.length()
+            && visible.charAt(common) == text.charAt(common)) common++;
+        if (common > 0 && common < text.length() && Character.isLowSurrogate(text.charAt(common))) common--;
+        if (common < visible.length()) transcript.setText(text.substring(0, common));
+        transcript.setVisibility(text.isEmpty() ? View.GONE : View.VISIBLE);
+        if (common < text.length() && !revealPending) {
+            revealPending = true;
+            main.post(revealTranscript);
+        }
+    }
+
+    private void revealTranscript() {
+        revealPending = false;
+        int shown = transcript.length();
+        if (shown >= transcriptTarget.length()) return;
+        int remaining = transcriptTarget.codePointCount(shown, transcriptTarget.length());
+        int count = remaining > 120 ? 3 : remaining > 60 ? 2 : 1;
+        int end = transcriptTarget.offsetByCodePoints(shown, count);
+        transcript.setText(transcriptTarget.substring(0, end));
+        transcript.post(() -> {
+            if (transcript.getLayout() == null || transcript.getLineCount() == 0) return;
+            int bottom = transcript.getLayout().getLineBottom(transcript.getLineCount() - 1);
+            transcript.scrollTo(0, Math.max(0, bottom - transcript.getHeight() + transcript.getPaddingBottom()));
+        });
+        if (end < transcriptTarget.length()) {
+            revealPending = true;
+            main.postDelayed(revealTranscript, 32);
+        }
     }
 
     private void createView() {
@@ -261,47 +509,84 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         frame = new FrameLayout(this);
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(18), dp(16), dp(18), dp(10));
-        panel.setBackground(shape(0xff15181d, 24, 0xff354354));
+        GradientDrawable fade = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[] {0x00000000, 0x20000000, 0x80000000, 0xd9000000, 0xff000000, 0xff000000});
+        panel.setBackground(fade);
+        panel.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            int height = bottom - top;
+            if (height <= 0) return;
+            float end = Math.min(0.99f, (float) dp(160) / height);
+            fade.setColors(new int[] {0x00000000, 0x20000000, 0x80000000, 0xd9000000, 0xff000000, 0xff000000},
+                new float[] {0f, end * 0.2f, end * 0.5f, end * 0.8f, end, 1f});
+        });
+        panel.setPadding(dp(24), dp(160), dp(24), 0);
         FrameLayout.LayoutParams panelSize = new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
         frame.addView(panel, panelSize);
         ViewCompat.setOnApplyWindowInsetsListener(frame, (view, windowInsets) -> {
             Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
-            panelSize.setMargins(insets.left + dp(12), insets.top + dp(12), insets.right + dp(12), insets.bottom + dp(12));
-            panel.setLayoutParams(panelSize);
+            panel.setPadding(insets.left + dp(24), dp(160), insets.right + dp(24), insets.bottom + dp(24));
             return windowInsets;
         });
-        LinearLayout heading = new LinearLayout(this);
-        heading.setGravity(Gravity.CENTER_VERTICAL);
-        mic = new ImageView(this);
-        mic.setImageResource(android.R.drawable.ic_btn_speak_now);
-        mic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        heading.addView(mic, new LinearLayout.LayoutParams(dp(28), dp(28)));
-        TextView title = label("Guarda tu idea", 20, FOREGROUND);
-        title.setPadding(dp(8), 0, 0, 0);
-        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        heading.addView(title);
-        panel.addView(heading);
+        transcript = label("", 21, FOREGROUND);
+        transcript.setVisibility(View.GONE);
+        transcript.setMaxLines(6);
+        transcript.setLineSpacing(0, 1.1f);
+        transcript.setMovementMethod(android.text.method.ScrollingMovementMethod.getInstance());
+        LinearLayout.LayoutParams transcriptSize = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        transcriptSize.bottomMargin = dp(12);
+        panel.addView(transcript, transcriptSize);
+
+        stateRow = new LinearLayout(this);
+        stateRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams stateSize = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(56));
+        panel.addView(stateRow, stateSize);
         status = label("", 14, MUTED);
         status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        panel.addView(status);
-        transcript = label("", 17, FOREGROUND);
-        transcript.setMaxLines(5);
-        transcript.setGravity(Gravity.BOTTOM);
-        transcript.setMovementMethod(android.text.method.ScrollingMovementMethod.getInstance());
-        panel.addView(transcript);
-        LinearLayout actions = new LinearLayout(this);
-        actions.setGravity(Gravity.END);
-        cancel = new Button(this);
-        cancel.setText("Cancelar");
-        cancel.setOnClickListener(view -> finish());
-        actions.addView(cancel);
-        primary = new Button(this);
-        actions.addView(primary);
-        panel.addView(actions);
+        status.setPadding(dp(12), 0, dp(8), 0);
+        stateRow.addView(status, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        primaryText = label("", 14, INK);
+        primaryText.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        primaryText.setGravity(Gravity.CENTER);
+        primaryText.setPadding(dp(18), dp(11), dp(18), dp(11));
+        primaryText.setBackground(shape(ACCENT, 24, ACCENT, 0));
+        primaryText.setForeground(ripple());
+        primaryText.setClickable(true);
+        stateRow.addView(primaryText);
+        primaryIcon = new VoiceIconButton(this, 48, ACCENT, INK);
+        stateRow.addView(primaryIcon);
+
+        FrameLayout controls = new FrameLayout(this);
+        panel.addView(controls, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(100)));
+        VoiceIconButton attach = new VoiceIconButton(this, 56, 0x00000000, FOREGROUND);
+        attach.setIcon(VoiceIconButton.Icon.PLUS, "Adjuntar, próximamente");
+        attach.setEnabled(false);
+        attach.setAlpha(0.55f);
+        controls.addView(attach, new FrameLayout.LayoutParams(dp(56), dp(56), Gravity.START | Gravity.CENTER_VERTICAL));
+        send = new VoiceIconButton(this, 76, ACCENT, INK);
+        send.setIcon(VoiceIconButton.Icon.SEND, "Enviar idea");
+        send.setOnClickListener(view -> sendIdea());
+        controls.addView(send, new FrameLayout.LayoutParams(dp(76), dp(76), Gravity.CENTER));
+        close = new VoiceIconButton(this, 56, 0x00000000, FOREGROUND);
+        close.setIcon(VoiceIconButton.Icon.CLOSE, "Cancelar idea");
+        close.setOnClickListener(view -> {
+            clearDraft();
+            if (moonshine != null) moonshine.stop();
+            finish();
+        });
+        controls.addView(close, new FrameLayout.LayoutParams(dp(56), dp(56), Gravity.END | Gravity.CENTER_VERTICAL));
         setContentView(frame);
+        panel.setAlpha(0f);
+        panel.setTranslationY(dp(36));
+        panel.animate().alpha(1f).translationY(0f).setDuration(320).setInterpolator(new DecelerateInterpolator()).start();
         display(State.STARTING, "Preparando dictado…", null, null);
+    }
+
+    private RippleDrawable ripple() {
+        GradientDrawable mask = new GradientDrawable();
+        mask.setCornerRadius(dp(24));
+        mask.setColor(0xffffffff);
+        return new RippleDrawable(ColorStateList.valueOf(0x33000000), null, mask);
     }
 
     private TextView label(String text, int size, int color) {
@@ -312,11 +597,11 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         return view;
     }
 
-    private GradientDrawable shape(int background, int radius, int stroke) {
+    private GradientDrawable shape(int background, int radius, int stroke, int strokeDp) {
         GradientDrawable shape = new GradientDrawable();
         shape.setColor(background);
         shape.setCornerRadius(dp(radius));
-        shape.setStroke(dp(2), stroke);
+        if (strokeDp > 0) shape.setStroke(dp(strokeDp), stroke);
         return shape;
     }
 

@@ -28,6 +28,9 @@ import java.util.ArrayList;
 import java.util.Map;
 
 public class MainActivity extends BridgeActivity {
+    /** Whether the app is on screen; then notices show inside the interface. */
+    static volatile boolean visible;
+    static final String NOTICE_NODE = "notice-node", NOTICE_URL = "notice-url";
     private PermissionRequest pendingPermission;
     private boolean mediaPromptOpen;
     private final ActivityResultLauncher<String[]> mediaPermissions = registerForActivityResult(
@@ -66,6 +69,41 @@ public class MainActivity extends BridgeActivity {
             .setSmallIcon(R.mipmap.ic_launcher).setContentTitle(title).setContentText(body).setAutoCancel(true).setContentIntent(tap).build());
     }
 
+    @Override
+    public void onResume() {
+        super.onResume();
+        visible = true;
+    }
+
+    @Override
+    public void onPause() {
+        visible = false;
+        super.onPause();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        openNotice(intent);
+    }
+
+    /** A tapped notice opens its node, with a fresh session, on the page it points to. */
+    private void openNotice(Intent intent) {
+        String raw = intent == null ? null : intent.getStringExtra(NOTICE_NODE);
+        if (raw == null) return;
+        String path = intent.getStringExtra(NOTICE_URL);
+        intent.removeExtra(NOTICE_NODE);
+        new Thread(() -> {
+            try {
+                org.json.JSONObject node = new org.json.JSONObject(raw);
+                String origin = DoryPlugin.session(node.getString("address"), node.getString("pin"), node.getString("token"));
+                runOnUiThread(() -> bridge.getWebView().loadUrl(origin + (path == null || !path.startsWith("/") ? "/" : path)));
+            } catch (Exception ignored) {
+                // Unreachable node: the app stays on the list of environments.
+            }
+        }).start();
+    }
+
     private boolean trustedOrigin(Uri origin) {
         if (origin == null || !"https".equalsIgnoreCase(origin.getScheme()) || origin.getHost() == null) return false;
         Uri page = Uri.parse(bridge.getWebView().getUrl() == null ? "" : bridge.getWebView().getUrl());
@@ -94,6 +132,11 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(DoryPlugin.class);
         super.onCreate(savedInstanceState);
         bridge.getWebView().addJavascriptInterface(new NoticeBridge(), "DoryAndroid");
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS);
+        }
+        NoticeService.start(this);
+        openNotice(getIntent());
         bridge.getWebView().setWebChromeClient(new BridgeWebChromeClient(bridge) {
             @Override
             public void onPermissionRequest(PermissionRequest request) {

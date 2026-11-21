@@ -129,6 +129,23 @@ type askInput struct {
 // Handler serves the tools. The caller authenticates the request; a thread
 // passes its id as ?thread= so questions reach the right conversation.
 func Handler(s *api.Server) http.Handler {
+	plain, withDevices := build(s, false), build(s, true)
+	h := sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server {
+		// The device tools exist only while the node setting allows agents to use devices.
+		if s.Devices != nil && s.Settings.Get().AgentsUseDevices {
+			return withDevices
+		}
+		return plain
+	}, &sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if id := r.URL.Query().Get("thread"); id != "" {
+			r = r.WithContext(context.WithValue(r.Context(), threadKey{}, id))
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+func build(s *api.Server, devices bool) *sdk.Server {
 	srv := sdk.NewServer(&sdk.Implementation{Name: "dory", Version: "2.0.0"}, nil)
 	store := s.Store
 
@@ -276,15 +293,45 @@ func Handler(s *api.Server) http.Handler {
 		return map[string]any{"answers": out}, nil
 	})
 
+	add(srv, "start_service", "Start a long-running process for this conversation, such as a dev server, a database or a watcher, in its worktree. Dory runs it detached, so it keeps running after your turn ends until the user stops it or the thread is archived, and the user sees its ports in the thread panel. Use it instead of backgrounding the command in your shell. Returns its pid and log file.", func(ctx context.Context, in struct {
+		Command string `json:"command" jsonschema:"Shell command to run, e.g. npm run dev -- --port 5173"`
+	}) (any, error) {
+		id, _ := ctx.Value(threadKey{}).(string)
+		if id == "" {
+			return nil, errors.New("start_service only works inside a Dory thread")
+		}
+		pid, log, err := s.Runtime.StartService(ctx, id, in.Command)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"pid": pid, "log": log}, nil
+	})
+	add(srv, "list_services", "List the processes of this conversation listening on a port, with their pid, address, port and command.", func(ctx context.Context, _ struct{}) (any, error) {
+		id, _ := ctx.Value(threadKey{}).(string)
+		if id == "" {
+			return nil, errors.New("list_services only works inside a Dory thread")
+		}
+		return runtime.ThreadServices(id), nil
+	})
+	add(srv, "stop_service", "Stop a listening process of this conversation by pid.", func(ctx context.Context, in struct {
+		PID int `json:"pid"`
+	}) (any, error) {
+		id, _ := ctx.Value(threadKey{}).(string)
+		if id == "" {
+			return nil, errors.New("stop_service only works inside a Dory thread")
+		}
+		if err := runtime.StopService(id, in.PID); err != nil {
+			return nil, err
+		}
+		return map[string]any{"stopped": in.PID}, nil
+	})
+
 	addBrowser(srv, s)
 
-	h := sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return srv }, &sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if id := r.URL.Query().Get("thread"); id != "" {
-			r = r.WithContext(context.WithValue(r.Context(), threadKey{}, id))
-		}
-		h.ServeHTTP(w, r)
-	})
+	if devices {
+		addDeviceTools(srv, s)
+	}
+	return srv
 }
 
 func sessionStart(ctx context.Context, s *api.Server, in sessionInput) (any, error) {

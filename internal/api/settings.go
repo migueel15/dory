@@ -15,6 +15,10 @@ import (
 type Settings struct {
 	ArchiveThreadsOnFinish  bool `json:"archive_threads_on_finish"`
 	RemoveWorktreeOnArchive bool `json:"remove_worktree_on_archive"`
+	StopServicesOnShutdown  bool `json:"stop_services_on_shutdown"`
+	// AgentsUseDevices lets the agents of this node drive Android devices
+	// through the device_* tools; off by default.
+	AgentsUseDevices bool `json:"agents_use_devices"`
 	// BrowserTunnelDisabled keeps the desktop app from reaching the loopback
 	// ports of this node through the browser of a thread.
 	BrowserTunnelDisabled bool `json:"browser_tunnel_disabled"`

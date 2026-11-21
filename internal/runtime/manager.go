@@ -186,6 +186,8 @@ func (m *Manager) saveUsage() {
 // Recover marks as stopped the threads that were working when the node went
 // down: their processes died with it.
 func (m *Manager) Recover(ctx context.Context) error {
+	reapLive(context.WithoutCancel(ctx))
+	m.StopArchivedServices()
 	if err := m.dropRequests(ctx); err != nil {
 		return err
 	}
@@ -483,7 +485,7 @@ func (m *Manager) start(ctx context.Context, t data.Thread, run, text string, fi
 		}
 	}
 	startedAt := now()
-	turn := Turn{RunID: run, Dir: dir, Text: prompt, Model: t.Model, Effort: t.Effort, Session: session, Attachments: files,
+	turn := Turn{ThreadID: t.ID, RunID: run, Dir: dir, Text: prompt, Model: t.Model, Effort: t.Effort, Session: session, Attachments: files,
 		FullAccess: t.RuntimeMode != "approval-required", MCPURL: m.mcpURL(t.ID), MCPToken: m.MCPToken}
 	var events <-chan Event
 	switch p := p.(type) {

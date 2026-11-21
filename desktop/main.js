@@ -280,6 +280,10 @@ function startAtLogin() {
   } catch {}
 }
 
+// Chromium decodes video on the CPU on Linux unless VA-API is switched on. The
+// device panel decodes a high-resolution H.264 stream, so let the GPU do it.
+if (process.platform === "linux") app.commandLine.appendSwitch("enable-features", "AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL,VaapiIgnoreDriverChecks");
+
 // One window per machine: a second launch focuses the first.
 if (!app.requestSingleInstanceLock()) {
   app.quit();

@@ -53,6 +53,7 @@ La bandeja reúne los hilos de todos los nodos, con filtros (activos, te necesit
 - **Hilos de otras máquinas:** se abren a través de su nodo; si ese nodo está apagado, el hilo no está disponible.
 - **Acciones:** renombrar, fijar y archivar. Archivar borra el worktree.
 - **Cambios:** ver el diff del worktree contra la rama base.
+- **Servicios:** en Linux, la información del hilo muestra los puertos TCP de procesos marcados con el identificador del hilo y permite detenerlos cuando no comparten grupo con el agente ni con una shell. Los procesos que no conservan la marca no aparecen. Los enlaces HTTP se abren en el navegador externo cuando el hilo pertenece al nodo consultado. Los puertos de otros entornos se muestran sin enlace local.
 - **Planificar esta conversación:** el botón del compositor solicita un plan al agente del mismo hilo sin enviar el borrador. Si está trabajando, la solicitud se encola. El agente reutiliza la tarea vinculada o crea y vincula una; solo el usuario acepta el plan.
 - **Plan:** si el hilo tiene tarea, el panel lateral muestra su plan. Se actualiza en directo mientras el agente lo escribe y se abre solo cuando lo cambia. Se edita directamente sobre el texto con formato: «# » crea un título, «- » una lista y «[] » una casilla. Se guarda solo al dejar de escribir. Con **Seguir** activado, la vista va a cada cambio del agente antes de mostrarlo. Si el agente cambia el plan mientras escribes, sus cambios se combinan con los tuyos sin moverte el cursor. Si los dos tocáis la misma línea, se quedan las dos versiones, la suya citada debajo de la tuya, para que elijas.
 
@@ -90,18 +91,18 @@ La bandeja de avisos (icono de bandeja, junto a la campana) guarda cada aviso co
 
 Eventos que generan aviso: el agente terminó, el agente falló, un agente te necesita, plan listo para revisar, plan aceptado (tarea lista para implementar) y tarea lista para mergear (pasa a la columna *Ready to merge*, sin tener en cuenta el CI).
 
-Cada interfaz abierta indica a la malla si tiene el foco. Con el modo **Automático**:
+Como en una app de mensajería, cada aviso llega a todos tus dispositivos a la vez. Con el modo **Automático**:
 
-1. Si alguna interfaz tiene el foco, el aviso sale dentro de esa interfaz y no se envía push.
-2. Si ninguna tiene el foco y hay navegadores con avisos activados (push), el servidor envía el push.
-3. Si ninguna tiene el foco y no hay destinos push, las interfaces abiertas muestran una notificación del sistema (en la app de Android, una notificación local).
+1. En la interfaz que tiene el foco, el aviso sale dentro de la app.
+2. En el resto (otra ventana, el navegador en segundo plano, el móvil con la app cerrada) llega como notificación del sistema.
+3. El servidor envía también push a los navegadores suscritos.
 4. Con todo cerrado y sin push, el aviso espera en la bandeja.
 
 Si una interfaz se cierra bruscamente, la malla la da por cerrada a los 45 s.
 
 En **Ajustes → Avisos** eliges para cada tipo de evento: Automático, Siempre push (también con foco), Solo en la app (nunca push) o Desactivado (no genera aviso). El ajuste es común a toda la malla.
 
-La app de Android no recibe Web Push: sus avisos son notificaciones locales mientras la interfaz del nodo sigue abierta. Con la app cerrada o suspendida por Android no llega nada hasta abrirla.
+La app de Android no usa Web Push ni servicios de Google. Igual que Gotify, mantiene un servicio en primer plano conectado al flujo de eventos de un nodo emparejado (prueba los nodos guardados por turnos) y muestra una notificación nativa por cada aviso nuevo sin leer, salvo mientras la propia app está en pantalla, y nada para los tipos en *Solo en la app* o *Desactivado*. El servicio deja fija la notificación «Dory conectado a la malla», que puedes silenciar desde los ajustes del canal. Arranca al abrir la app, al guardar nodos y al encender el móvil. Si el móvil no alcanza ningún nodo (fuera de la red local y sin Tailscale), reintenta cada vez más espaciado hasta que vuelve a tener conexión.
 
 ## Apariencia
 

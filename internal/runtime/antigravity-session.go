@@ -15,6 +15,7 @@ import (
 type antigravitySession struct {
 	ctx       context.Context
 	conn      *acpConn
+	lv        *acpLive
 	turn      Turn
 	id        string
 	live      bool

@@ -8,39 +8,52 @@ import (
 	"os"
 	"strings"
 	"sync"
-
-	"github.com/migueel15/dory/internal/cmdexec"
 )
 
 // Start runs a turn over "codex app-server", Codex's JSON-RPC protocol on
 // stdio: initialize, start or resume the thread, start the turn. Its
-// request_user_input pauses the turn until the user answers. Stdin closes
-// when the turn ends, which ends the process.
+// request_user_input pauses the turn until the user answers. The process
+// stays open for the next turn of the thread (see live.go), which only
+// starts a turn, so what the agent left running survives.
 func (c Codex) Start(ctx context.Context, t Turn) (Session, error) {
-	args := []string{"app-server", "--enable", "default_mode_request_user_input"}
-	cmd := cmdexec.CommandContext(ctx, c.bin(), args...)
-	cmd.Dir = t.Dir
-	cmd.Env = os.Environ()
-	if t.MCPURL != "" {
-		cmd.Args = append(cmd.Args,
-			"-c", fmt.Sprintf("mcp_servers.dory.url=%q", t.MCPURL),
-			"-c", `mcp_servers.dory.bearer_token_env_var="DORY_MCP_TOKEN"`,
-			// ask_user waits for the user, so a call may take long.
-			"-c", "mcp_servers.dory.tool_timeout_sec=86400")
-		cmd.Env = append(cmd.Env, "DORY_MCP_TOKEN="+t.MCPToken)
+	key := strings.Join([]string{t.Model, fmt.Sprint(t.FullAccess), t.Dir, t.MCPURL}, "\x00")
+	p := reuseStdio(t.ThreadID, "codex", key)
+	if p == nil {
+		args := []string{"app-server", "--enable", "default_mode_request_user_input"}
+		cmd := providerCommand(context.Background(), t.ThreadID, c.bin(), args...)
+		cmd.Dir = t.Dir
+		cmd.Env = threadEnv(os.Environ(), t.ThreadID)
+		if t.MCPURL != "" {
+			cmd.Args = append(cmd.Args,
+				"-c", fmt.Sprintf("mcp_servers.dory.url=%q", t.MCPURL),
+				"-c", `mcp_servers.dory.bearer_token_env_var="DORY_MCP_TOKEN"`,
+				// ask_user waits for the user, so a call may take long.
+				"-c", "mcp_servers.dory.tool_timeout_sec=86400")
+			cmd.Env = append(cmd.Env, "DORY_MCP_TOKEN="+t.MCPToken)
+		}
+		var err error
+		if p, err = openStdio(cmd, t.ThreadID, "codex", key); err != nil {
+			return nil, err
+		}
 	}
-	in, err := cmd.StdinPipe()
+	s := newCodexSession(t, p.in)
+	s.proc = p
+	turn := p.begin(t.ThreadID, s.handle)
+	s.events = turn.out
+	// Call ids stay unique on the process across turns.
+	s.next = p.turns * 1_000_000
+	p.watch(ctx, t.ThreadID, "codex", turn, s.interrupt)
+	var err error
+	if thread := p.get("thread"); thread != "" {
+		err = s.startTurn(thread)
+	} else {
+		err = s.call("initialize", map[string]any{
+			"clientInfo":   map[string]any{"name": "dory", "title": "Dory", "version": "2"},
+			"capabilities": map[string]any{"experimentalApi": true, "requestAttestation": false},
+		})
+	}
 	if err != nil {
-		return nil, err
-	}
-	s := newCodexSession(t, in)
-	if s.events, err = pipe(ctx, cmd, s.handle); err != nil {
-		return nil, err
-	}
-	if err = s.call("initialize", map[string]any{
-		"clientInfo":   map[string]any{"name": "dory", "title": "Dory", "version": "2"},
-		"capabilities": map[string]any{"experimentalApi": true, "requestAttestation": false},
-	}); err != nil {
+		p.abort(turn)
 		return nil, err
 	}
 	return s, nil
@@ -52,6 +65,8 @@ type codexSession struct {
 	turn   Turn
 	parser *codexParser
 	events <-chan Event
+	proc   *stdioProc
+	turnID string
 
 	mu      sync.Mutex
 	in      io.WriteCloser
@@ -169,12 +184,18 @@ func (s *codexSession) response(r codexRPC, emit func(Event)) {
 		if res.Model != "" || res.ReasoningEffort != "" {
 			emit(Event{Settings: &ReportedSettings{Model: res.Model, Effort: res.ReasoningEffort}})
 		}
-		params := map[string]any{"threadId": res.Thread.ID,
-			"input": []any{map[string]any{"type": "text", "text": t.Text, "text_elements": []any{}}}}
-		if t.Effort != "" {
-			params["effort"] = t.Effort
+		s.proc.set("thread", res.Thread.ID)
+		s.startTurn(res.Thread.ID)
+	case "turn/start":
+		var res struct {
+			Turn struct {
+				ID string `json:"id"`
+			} `json:"turn"`
 		}
-		s.call("turn/start", params)
+		_ = json.Unmarshal(r.Result, &res)
+		s.mu.Lock()
+		s.turnID = res.Turn.ID
+		s.mu.Unlock()
 	}
 }
 
@@ -335,7 +356,25 @@ func (s *codexSession) notification(r codexRPC, emit func(Event)) {
 	}
 }
 
-// finish ends the turn and lets the process exit.
+// startTurn sends the user's text as a new turn of the thread.
+func (s *codexSession) startTurn(thread string) error {
+	params := map[string]any{"threadId": thread,
+		"input": []any{map[string]any{"type": "text", "text": s.turn.Text, "text_elements": []any{}}}}
+	if s.turn.Effort != "" {
+		params["effort"] = s.turn.Effort
+	}
+	return s.call("turn/start", params)
+}
+
+// interrupt asks Codex to stop the running turn.
+func (s *codexSession) interrupt() {
+	s.mu.Lock()
+	turn := s.turnID
+	s.mu.Unlock()
+	_ = s.call("turn/interrupt", map[string]any{"threadId": s.proc.get("thread"), "turnId": turn})
+}
+
+// finish ends the turn; the process stays open for the next one.
 func (s *codexSession) finish(emit func(Event), failure string) {
 	s.mu.Lock()
 	if s.closed {
@@ -343,7 +382,6 @@ func (s *codexSession) finish(emit func(Event), failure string) {
 		return
 	}
 	s.closed = true
-	s.in.Close()
 	s.mu.Unlock()
 	for _, m := range s.texts {
 		if m.Streaming {

@@ -19,6 +19,8 @@ Ajustes de limpieza del nodo, en las tablas `[tasks]` y `[threads]`. También se
 | `tasks.archive_threads_on_finish` | `false` | Al pasar una tarea a hecha o cancelada (a mano, por MCP, o porque su PR se fusiona o se cierra) se detienen y archivan sus hilos. El archivado por merge o cierre llega con el retraso del refresco de GitHub. Solo afecta a los hilos de este nodo |
 | `threads.remove_worktree_on_archive` | `true` | Al archivar un hilo se borra su worktree si está limpio y ningún otro hilo lo usa. Con cambios sin commitear se conserva: la lista de hilos avisa y ofrece **Eliminar worktree**, que lo borra a la fuerza |
 
+En **Ajustes → Tareas e hilos**, «Cerrar los servicios de los hilos al reiniciar Dory» está desactivado por defecto. Si se activa, el nodo termina los procesos marcados de sus hilos al recibir la señal de parada. Al archivar un hilo también se detienen sus procesos marcados. El seguimiento de servicios usa `/proc` en Linux; en los demás sistemas no se muestran servicios. En systemd se necesita un gestor de usuario disponible para iniciar el proveedor en un scope separado.
+
 Otras variables:
 
 - `DORY_GITHUB_TOKEN`: token de GitHub. Tiene prioridad sobre el inicio de sesión desde la interfaz y sobre la sesión de `gh`. El token no sale del nodo.

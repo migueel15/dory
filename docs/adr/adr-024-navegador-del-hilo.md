@@ -1,4 +1,4 @@
-# ADR-023: Navegador del hilo con dos motores
+# ADR-024: Navegador del hilo con dos motores
 
 - Status: accepted
 - Date: 2026-11-21

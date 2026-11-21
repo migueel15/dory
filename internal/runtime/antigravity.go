@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -101,16 +102,42 @@ func (Antigravity) InstallCommand() []string {
 	return []string{"sh", "-c", `installer=$(mktemp) || exit; trap 'rm -f "$installer"' EXIT; curl -fsSL https://antigravity.google/cli/install.sh -o "$installer" && bash "$installer"`}
 }
 
+// Start runs a turn on the "agy acp" of its thread. The process and its ACP
+// session stay open for the next turn (see live.go), which only sends a
+// prompt, so what the agent left running survives the turn.
 func (a Antigravity) Start(ctx context.Context, t Turn) (Session, error) {
-	c, err := openACP(ctx, a.bin(), t.Dir, !t.FullAccess)
-	if err != nil {
-		return nil, err
+	key := strings.Join([]string{t.Dir, fmt.Sprint(t.FullAccess), t.MCPURL}, "\x00")
+	lv, _ := liveGet(t.ThreadID, "antigravity").(*acpLive)
+	if lv != nil && (lv.key != key || lv.Busy() || lv.conn.exited()) {
+		liveDrop(t.ThreadID, "antigravity", lv)
+		go lv.Close()
+		lv = nil
 	}
-	s := newAntigravitySession(ctx, c, t)
+	if lv == nil {
+		c, err := openACP(context.Background(), a.bin(), t.Dir, !t.FullAccess, t.ThreadID)
+		if err != nil {
+			return nil, err
+		}
+		lv = &acpLive{key: key, conn: c, idle: time.Now()}
+		if t.ThreadID != "" {
+			liveSet(t.ThreadID, "antigravity", lv)
+		}
+	}
+	lv.mu.Lock()
+	lv.busy = true
+	lv.mu.Unlock()
+	s := newAntigravitySession(ctx, lv.conn, t)
+	s.lv = lv
 	go func() {
 		defer close(s.events)
 		err := s.run()
-		c.close()
+		lv.mu.Lock()
+		lv.busy, lv.idle = false, time.Now()
+		lv.mu.Unlock()
+		if t.ThreadID == "" || lv.conn.exited() {
+			liveDrop(t.ThreadID, "antigravity", lv)
+			lv.Close()
+		}
 		done := Event{Done: true}
 		if err != nil {
 			done.Err = err.Error()
@@ -120,38 +147,77 @@ func (a Antigravity) Start(ctx context.Context, t Turn) (Session, error) {
 	return s, nil
 }
 
+// acpLive is the ACP process of a thread with its session, kept between turns.
+type acpLive struct {
+	key  string
+	conn *acpConn
+
+	mu      sync.Mutex
+	busy    bool
+	idle    time.Time
+	info    acpInitialize
+	session acpSessionInfo
+	id      string
+}
+
+func (l *acpLive) Busy() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.busy
+}
+
+func (l *acpLive) IdleSince() time.Time {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.idle
+}
+
+func (l *acpLive) Close() { l.conn.stop() }
+
 func (s *antigravitySession) run() error {
 	setup, cancel := context.WithTimeout(s.ctx, 45*time.Second)
 	defer cancel()
-	info, err := s.conn.initialize(setup)
-	if err != nil {
-		return err
+	if s.lv == nil {
+		s.lv = &acpLive{conn: s.conn}
 	}
-	servers, err := antigravityMCP(info, s.turn)
-	if err != nil {
-		return err
-	}
-	params := acpParams{"cwd": s.turn.Dir, "mcpServers": servers}
-	method := "session/new"
-	if s.turn.Session != "" {
-		method = "session/load"
-		params["sessionId"] = s.turn.Session
-	}
-	var session acpSessionInfo
-	if err := s.conn.call(setup, method, params, &session, s.handle); err != nil {
-		var rpcErr *acpError
-		if errors.As(err, &rpcErr) && (rpcErr.Code == -32000 && strings.Contains(strings.ToLower(rpcErr.Message), "auth")) {
-			return fmt.Errorf("inicia sesión en Antigravity con agy acp --login: %w", err)
+	lv := s.lv
+	lv.mu.Lock()
+	info, session, id := lv.info, lv.session, lv.id
+	lv.mu.Unlock()
+	if id == "" {
+		var err error
+		if info, err = s.conn.initialize(setup); err != nil {
+			return err
 		}
-		return err
+		servers, err := antigravityMCP(info, s.turn)
+		if err != nil {
+			return err
+		}
+		params := acpParams{"cwd": s.turn.Dir, "mcpServers": servers}
+		method := "session/new"
+		if s.turn.Session != "" {
+			method = "session/load"
+			params["sessionId"] = s.turn.Session
+		}
+		if err := s.conn.call(setup, method, params, &session, s.handle); err != nil {
+			var rpcErr *acpError
+			if errors.As(err, &rpcErr) && (rpcErr.Code == -32000 && strings.Contains(strings.ToLower(rpcErr.Message), "auth")) {
+				return fmt.Errorf("inicia sesión en Antigravity con agy acp --login: %w", err)
+			}
+			return err
+		}
+		id = session.SessionID
+		if id == "" {
+			id = s.turn.Session
+		}
+		if id == "" {
+			return errors.New("Antigravity no devolvió el identificador de sesión")
+		}
+		lv.mu.Lock()
+		lv.info, lv.session, lv.id = info, session, id
+		lv.mu.Unlock()
 	}
-	s.id = session.SessionID
-	if s.id == "" {
-		s.id = s.turn.Session
-	}
-	if s.id == "" {
-		return errors.New("Antigravity no devolvió el identificador de sesión")
-	}
+	s.id = id
 	s.emit(Event{Session: s.id})
 	if err := s.configure(setup, session); err != nil {
 		return err
@@ -171,9 +237,14 @@ func (s *antigravitySession) run() error {
 			}
 		}
 	}
-	err = s.conn.call(s.ctx, "session/prompt", acpParams{"sessionId": s.id, "prompt": blocks}, nil, s.handle)
+	prompt := s.conn.next + 1
+	err := s.conn.call(s.ctx, "session/prompt", acpParams{"sessionId": s.id, "prompt": blocks}, nil, s.handle)
 	if s.ctx.Err() != nil {
 		_ = s.conn.send(acpParams{"method": "session/cancel", "params": acpParams{"sessionId": s.id}})
+		// The next turn must not read what is left of this prompt.
+		if !s.conn.drain(prompt, 10*time.Second) {
+			s.lv.conn.stop()
+		}
 	}
 	s.finishChunk()
 	return err

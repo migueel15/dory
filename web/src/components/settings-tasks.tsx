@@ -21,6 +21,9 @@ export function TaskSettings() {
       {toggle("archive_threads_on_finish", "Archivar hilos al terminar la tarea", "Cuando una tarea pasa a hecha o cancelada, a mano o porque su pull request se mergea o se cierra, se archivan sus hilos y se detienen los que estén en marcha.")}
       {toggle("remove_worktree_on_archive", "Eliminar worktrees al archivar", "Al archivar un hilo se borra su worktree si está limpio y ningún otro hilo lo usa. Con cambios sin commitear se conserva y el hilo archivado lo avisa.")}
       {toggle("browser_tunnel_disabled", "Bloquear el túnel del navegador", "La app de escritorio no podrá abrir los puertos de localhost de este nodo desde el navegador de un hilo remoto. Los puertos de Dory nunca son accesibles.")}
+      {toggle("stop_services_on_shutdown", "Cerrar los servicios de los hilos al reiniciar Dory", "Detiene los servicios al cerrar o reiniciar el núcleo de este entorno.")}
+      <h2 className="pt-2 text-lg font-semibold">Dispositivos</h2>
+      {toggle("agents_use_devices", "Los agentes pueden usar dispositivos", "Los agentes de este nodo ven y controlan los móviles y emuladores Android (pantalla, toques, texto, apps). Un agente puede enviar mensajes o tocar datos reales del móvil: sus acciones se ven en directo en el panel Dispositivo y quedan en el hilo. Desactivado por defecto.")}
       <ErrorText error={current.error ?? save.error} />
     </section>
   );

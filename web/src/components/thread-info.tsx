@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDiffBase } from "../lib/diff-base";
-import { Copy, Folder, GitBranch, GitDiff, Info } from "@phosphor-icons/react";
-import { api, type ThreadView, type UsageWindow } from "../api/client";
+import { Copy, Database, Folder, GitBranch, GitDiff, Globe, Info } from "@phosphor-icons/react";
+import { api, type ThreadService, type ThreadView, type UsageWindow } from "../api/client";
 import { expectedRemaining, windowLabel, windowMinutes, windowReset } from "../lib/usage-pace";
 import { HoverCard } from "./tooltip";
 import { EnvIcon } from "./env-icon";
@@ -45,6 +45,18 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false }: 
     return () => { document.removeEventListener("pointerdown", close, true); document.removeEventListener("keydown", close, true); };
   }, [popup, pop]);
   const shown = popup ? pop : open;
+  const qc = useQueryClient();
+  const services = useQuery({ queryKey: ["thread-services", t.id], queryFn: () => api.threadServices(t.id), enabled: shown, refetchInterval: 3000 });
+  const [serviceRows, setServiceRows] = useState<{ service: ThreadService; leaving: boolean }[]>([]);
+  useEffect(() => {
+    const next = services.data ?? [];
+    const key = (s: ThreadService) => `${s.pid}:${s.address}:${s.port}`;
+    const present = new Set(next.map(key));
+    setServiceRows((rows) => [...next.map((service) => ({ service, leaving: false })), ...rows.filter((row) => !present.has(key(row.service))).map((row) => ({ ...row, leaving: true }))]);
+    const timer = setTimeout(() => setServiceRows((rows) => rows.filter((row) => !row.leaving)), 180);
+    return () => clearTimeout(timer);
+  }, [services.data]);
+  const stopService = useMutation({ mutationFn: (pid: number) => api.stopThreadService(t.id, pid), onSettled: () => qc.invalidateQueries({ queryKey: ["thread-services", t.id] }) });
   const toggle = () => (popup ? setPop(!pop) : setOpen(!open));
   const setOpen = (v: boolean) => { setOpenState(v); try { if (v) localStorage.setItem(key, "1"); else localStorage.removeItem(key); } catch { /* per-viewer only */ } };
   const panel = useRef<HTMLDivElement>(null);
@@ -90,6 +102,26 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false }: 
               {stat ? <span className="shrink-0 font-mono tabular-nums"><span className="text-emerald-600 dark:text-emerald-400">+{stat.add.toLocaleString("es-ES")}</span> <span className="text-red-600 dark:text-red-400">-{stat.del.toLocaleString("es-ES")}</span></span> : <span className="text-xs text-slate-400">…</span>}
             </button>}
           </div>
+          {!!serviceRows.length && <div className="px-2.5 py-2">
+            <div className="px-1.5 pb-1 text-xs text-slate-500">Servidores</div>
+            {serviceRows.map(({ service: s, leaving }) => {
+              const names: Record<string, string> = { postgresql: "postgres", redis: "redis", mysql: "mysql", mongodb: "mongodb", vite: "vite", next: "next", docker: "docker" };
+              const local = ["127.0.0.1", "::1", "0.0.0.0", "::"].includes(s.address) || s.address.startsWith("127.");
+              const address = `${local ? "localhost" : s.address.includes(":") ? `[${s.address}]` : s.address}:${s.port}`;
+              const name = names[s.kind] ?? s.command.split(" ")[0]?.split("/").pop()?.replace(/\d+(\.\d+)*$/, "") ?? "proceso";
+              const Icon = ["postgresql", "redis", "mysql", "mongodb"].includes(s.kind) ? Database : Globe;
+              const link = local && self?.id === t.node_id && !["postgresql", "redis", "mysql", "mongodb"].includes(s.kind);
+              return <div key={`${s.pid}:${s.address}:${s.port}`} className={`${leaving ? "service-out" : "notif-in"} group flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 hover:bg-slate-100 dark:hover:bg-raised`}>
+                <Icon className="size-4 shrink-0 text-slate-500" />
+                <div className="min-w-0 flex-1" title={s.command}>
+                  {link ? <a href={`http://${address}`} target="_blank" rel="noreferrer" className="block truncate text-sm font-semibold">{address}</a> : <div className="truncate text-sm font-semibold">{address}</div>}
+                  <div className="truncate text-xs text-slate-500">Agente · {name}</div>
+                </div>
+                <button type="button" aria-label={`Parar ${address}`} title="Parar" onClick={() => stopService.mutate(s.pid)} disabled={stopService.isPending} className="grid size-6 shrink-0 place-items-center rounded [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus:opacity-100"><span className="size-2.5 rounded-[2px] bg-red-500" /></button>
+              </div>;
+            })}
+            {stopService.error && <p className="px-1.5 text-xs text-red-600">{stopService.error.message}</p>}
+          </div>}
           {usage.length > 0 && <div className="space-y-1 px-2.5 py-2">
             {usage.map((w) => {
               const left = Math.max(0, 100 - Math.round(w.utilization * 100));
