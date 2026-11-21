@@ -8,7 +8,10 @@ const CAPTURE_NODE = "dory.capture-node";
 
 let saved = JSON.parse(localStorage.getItem(KEY) || "[]");
 const online = new Map(); // id → reachable now
-const found = new Map(); // id → {id, name, address, via}
+const localFound = new Map(); // id → anuncio reciente de la red local
+const meshFound = new Map(); // nodo emparejado → última lista de pares conectados
+const LOCAL_TTL = 30_000;
+const MESH_TTL = 60_000;
 
 const $ = (id) => document.getElementById(id);
 let settingsPushed = false;
@@ -168,6 +171,7 @@ function render() {
       if (!confirm(`¿Olvidar ${env.name}? Tendrás que emparejarlo de nuevo.`)) return;
       Dory.forget({ address: env.address });
       saved = saved.filter((s) => s.id !== env.id);
+      meshFound.delete(env.id);
       store();
       render();
     };
@@ -186,6 +190,17 @@ function render() {
   }));
   captureSelect.value = captureNode;
 
+  const now = Date.now();
+  const found = new Map();
+  for (const source of meshFound.values()) {
+    if (now - source.at <= MESH_TTL) {
+      for (const entry of source.peers) found.set(entry.id, entry);
+    }
+  }
+  for (const [id, entry] of localFound) {
+    if (now - entry.at <= LOCAL_TTL) found.set(id, entry);
+    else localFound.delete(id);
+  }
   const pending = [...found.values()].filter((f) => !saved.some((s) => s.id === f.id));
   $("found-none").hidden = pending.length > 0;
   $("found").replaceChildren(
@@ -214,14 +229,18 @@ async function open(env) {
 async function check(env) {
   try {
     const { body } = await Dory.get({ address: env.address, pin: env.pin, token: env.token, path: "/api/mesh" });
+    if (!saved.some(node => node.id === env.id)) return;
+    const peers = (JSON.parse(body).peers || [])
+      .filter(peer => peer.connected === true && !peer.revoked && peer.address)
+      .map(peer => {
+        const host = peer.address.replace(/:\d+$/, "");
+        return { id: peer.id, name: peer.name, address: withPort(host), via: `malla de ${env.name}` };
+      });
     online.set(env.id, true);
-    for (const p of JSON.parse(body).peers || []) {
-      if (p.revoked || !p.address) continue;
-      const host = p.address.replace(/:\d+$/, "");
-      found.set(p.id, { id: p.id, name: p.name, address: withPort(host), via: `malla de ${env.name}` });
-    }
+    meshFound.set(env.id, { at: Date.now(), peers });
   } catch {
     online.set(env.id, false);
+    meshFound.delete(env.id);
   }
   render();
 }
@@ -259,7 +278,7 @@ Dory.addListener("found", (f) => {
     if (!online.get(known.id)) check(known);
     return;
   }
-  found.set(f.id, { ...f, via: "red local" });
+  localFound.set(f.id, { ...f, via: "red local", at: Date.now() });
   render();
 });
 
@@ -268,3 +287,4 @@ render();
 Dory.startDiscovery();
 saved.forEach(check);
 setInterval(() => saved.forEach(check), 30_000);
+setInterval(render, 5_000);
