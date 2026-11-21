@@ -40,6 +40,63 @@ $("capture-node").onchange = (event) => {
   captureNode = event.target.value;
   store();
 };
+let voiceModels = null;
+let voiceModelBusy = false;
+
+async function refreshVoiceModels() {
+  try {
+    voiceModels = await Dory.assistantModels();
+    renderVoiceModels();
+  } catch (error) {
+    $("voice-model-status").textContent = error.message || "No se pudieron cargar los modelos.";
+  }
+}
+
+function renderVoiceModels() {
+  if (!voiceModels) return;
+  const choices = [
+    { id: "android", name: "Android", description: "Reconocedor del sistema", installed: true },
+    { id: "tiny", name: "Moonshine Tiny", description: "Modelo local ligero · español", installed: voiceModels.tiny },
+    { id: "small", name: "Moonshine Small", description: "Modelo local · español", installed: voiceModels.small },
+  ];
+  $("voice-model-list").replaceChildren(...choices.filter(choice => choice.id === "android" || voiceModels.supported).map(choice => {
+    const row = el("li");
+    const text = el("div", "grow");
+    text.append(el("div", "name", choice.name), el("div", "model-description", choice.description));
+    row.append(text);
+    const button = el("button", "model-action", choice.id === voiceModels.selected ? "Activo" : choice.installed ? "Activar" : "Descargar");
+    button.disabled = voiceModelBusy || choice.id === voiceModels.selected;
+    button.onclick = async () => {
+      voiceModelBusy = true;
+      renderVoiceModels();
+      try {
+        if (choice.installed) {
+          await Dory.selectAssistantModel({ model: choice.id });
+          $("voice-model-status").textContent = choice.name + " activado.";
+        } else {
+          $("voice-model-status").textContent = "Preparando descarga…";
+          await Dory.downloadAssistantModel({ model: choice.id });
+          $("voice-model-status").textContent = choice.name + " descargado. Puedes activarlo.";
+        }
+        await refreshVoiceModels();
+      } catch (error) {
+        $("voice-model-status").textContent = error.message || "No se pudo completar la operación.";
+      } finally {
+        voiceModelBusy = false;
+        renderVoiceModels();
+      }
+    };
+    row.append(button);
+    return row;
+  }));
+}
+
+Dory.addListener("assistantModelProgress", progress => {
+  const fraction = progress.percent >= 0 ? ` · ${progress.percent}%` : "";
+  $("voice-model-status").textContent = `Descargando archivo ${progress.file} de ${progress.files}${fraction}`;
+});
+refreshVoiceModels();
+
 const withPort = (a) => (/:\d+$/.test(a) || a.startsWith("[") ? a : `${a}:${PORT}`);
 
 function el(tag, cls, text) {

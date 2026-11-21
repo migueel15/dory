@@ -36,7 +36,7 @@ import java.util.UUID;
 import org.json.JSONObject;
 
 public class IdeaCaptureActivity extends AppCompatActivity {
-    private enum State { STARTING, LISTENING, PAUSED, SPEECH_ERROR, SAVING, SAVE_ERROR, SAVED }
+    private enum State { STARTING, LISTENING, FINISHING, PAUSED, SPEECH_ERROR, SAVING, SAVE_ERROR, SAVED }
 
     private static final int ACCENT = 0xff93c5fd;
     private static final int FOREGROUND = 0xffe5e7eb;
@@ -52,6 +52,9 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private long lastEvent;
     private final Runnable watchdog = this::checkRecognizer;
     private SpeechRecognizer recognizer;
+    private MoonshineCapture moonshine;
+    private String moonshineStopAction = "";
+    private boolean foreground;
     private boolean usingOnDevice;
     private boolean systemFallback;
     private State state = State.STARTING;
@@ -94,7 +97,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                if (state != State.SAVING) finish();
+                if (state != State.SAVING && state != State.FINISHING) finish();
             }
         });
         try {
@@ -127,6 +130,15 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private void listen() {
         if (isFinishing()) return;
         closeRecognizer();
+        String model = AssistantModels.selected(this);
+        if (!AssistantModels.ANDROID.equals(model)) {
+            if (!AssistantModels.installed(this, model)) {
+                display(State.SPEECH_ERROR, "El modelo seleccionado no está disponible.", "Continuar", this::requestMicrophone);
+                return;
+            }
+            listenMoonshine(model);
+            return;
+        }
         usingOnDevice = !systemFallback && Build.VERSION.SDK_INT >= 31
             && SpeechRecognizer.isOnDeviceRecognitionAvailable(this);
         if (!usingOnDevice && !SpeechRecognizer.isRecognitionAvailable(this)) {
@@ -201,6 +213,65 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         }
     }
 
+    private void listenMoonshine(String model) {
+        display(State.STARTING, "Cargando modelo…", null, null);
+        stateRow.setVisibility(View.VISIBLE);
+        final MoonshineCapture[] ref = new MoonshineCapture[1];
+        ref[0] = new MoonshineCapture(this, model, new MoonshineCapture.Listener() {
+            private boolean current() { return moonshine == ref[0] && !ended; }
+            @Override public void ready() {
+                if (current() && state == State.STARTING) display(State.LISTENING, "Escuchando…", null, null);
+            }
+            @Override public void text(String value, boolean complete) {
+                if (!current()) return;
+                partial = value;
+                if (complete) {
+                    committed = join(committed, value);
+                    partial = "";
+                    saveDraft();
+                }
+                updateTranscript(join(committed, partial));
+                refreshSend();
+            }
+            @Override public void level(float value) {
+                if (current() && state == State.LISTENING) updateVoice(value);
+            }
+            @Override public void finished() {
+                if (!current()) return;
+                moonshine = null;
+                committed = join(committed, partial);
+                partial = "";
+                updateTranscript(committed);
+                saveDraft();
+                String action = moonshineStopAction;
+                moonshineStopAction = "";
+                if ("send".equals(action) && !committed.isEmpty()) save();
+                else if ("pause".equals(action)) {
+                    display(State.PAUSED, "En pausa", "Continuar", IdeaCaptureActivity.this::requestMicrophone);
+                    if (foreground) requestMicrophone();
+                }
+            }
+            @Override public void error() {
+                if (!current()) return;
+                moonshine = null;
+                committed = join(committed, partial);
+                partial = "";
+                saveDraft();
+                updateTranscript(committed);
+                display(State.SPEECH_ERROR, "No se pudo completar el dictado local.", "Reintentar", IdeaCaptureActivity.this::requestMicrophone);
+            }
+        });
+        moonshine = ref[0];
+        silence(false);
+        ref[0].start();
+    }
+
+    private void stopMoonshine(String action) {
+        moonshineStopAction = action;
+        display(State.FINISHING, "Terminando dictado…", null, null);
+        moonshine.stop();
+    }
+
     /** Silencia los pitidos del reconocedor mientras se dicta, para que reiniciarlo tras cada pausa no suene. */
     private void silence(boolean on) {
         if (silenced == on) return;
@@ -267,9 +338,13 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     }
 
     private void sendIdea() {
-        if (state == State.SAVING || state == State.SAVED) return;
+        if (state == State.SAVING || state == State.SAVED || state == State.FINISHING) return;
         String text = join(committed, partial);
         if (text.isEmpty()) return;
+        if (moonshine != null) {
+            stopMoonshine("send");
+            return;
+        }
         closeRecognizer();
         committed = text;
         partial = "";
@@ -277,7 +352,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     }
 
     private void refreshSend() {
-        boolean ready = state != State.SAVING && state != State.SAVED && !join(committed, partial).isEmpty();
+        boolean ready = state != State.SAVING && state != State.SAVED && state != State.FINISHING && !join(committed, partial).isEmpty();
         send.setEnabled(ready);
         send.setAlpha(ready ? 1f : 0.65f);
     }
@@ -318,7 +393,10 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
-        if (state == State.LISTENING || state == State.STARTING) {
+        foreground = false;
+        if ((state == State.LISTENING || state == State.STARTING) && moonshine != null) {
+            stopMoonshine("pause");
+        } else if (state == State.LISTENING || state == State.STARTING) {
             closeRecognizer();
             committed = join(committed, partial);
             partial = "";
@@ -332,6 +410,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     @Override
     protected void onStart() {
         super.onStart();
+        foreground = true;
         if (resumeOnStart && state == State.PAUSED) {
             resumeOnStart = false;
             requestMicrophone();
@@ -341,6 +420,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         silence(false);
+        if (moonshine != null) moonshine.stop();
         closeRecognizer();
         main.removeCallbacksAndMessages(null);
         super.onDestroy();
@@ -353,7 +433,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         boolean failed = next == State.SPEECH_ERROR || next == State.SAVE_ERROR;
         int tint = next == State.SAVED ? GOOD : failed ? BAD : listening || next == State.SAVING ? ACCENT : MUTED;
         status.setTextColor(tint);
-        silence(listening);
+        silence(listening && moonshine == null && AssistantModels.ANDROID.equals(AssistantModels.selected(this)));
         stateRow.setVisibility(listening ? View.GONE : View.VISIBLE);
         if (!listening) {
             main.removeCallbacks(settleVoice);
@@ -370,7 +450,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         boolean dictating = listening || next == State.PAUSED || next == State.SPEECH_ERROR;
         send.setEnabled(dictating && !join(committed, partial).isEmpty());
         send.setAlpha(send.isEnabled() ? 1f : 0.65f);
-        close.setEnabled(next != State.SAVING && next != State.SAVED);
+        close.setEnabled(next != State.SAVING && next != State.SAVED && next != State.FINISHING);
         close.setAlpha(close.isEnabled() ? 1f : 0.35f);
     }
 
@@ -491,6 +571,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         close.setIcon(VoiceIconButton.Icon.CLOSE, "Cancelar idea");
         close.setOnClickListener(view -> {
             clearDraft();
+            if (moonshine != null) moonshine.stop();
             finish();
         });
         controls.addView(close, new FrameLayout.LayoutParams(dp(56), dp(56), Gravity.END | Gravity.CENTER_VERTICAL));

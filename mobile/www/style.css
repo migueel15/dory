@@ -20,3 +20,7 @@ form button { padding: 12px; border: 0; border-radius: 10px; background: var(--a
 form button:disabled { opacity: .6; }
 .error { color: #dc2626; font-size: 14px; min-height: 1em; }
 #capture-node { display: block; width: 100%; margin-top: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--fg); font: inherit; }
+
+.model-description { color: var(--muted); font-size: 13px; }
+.model-action { padding: 8px 12px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--fg); font: inherit; font-size: 14px; }
+.model-action:disabled { color: var(--muted); }
