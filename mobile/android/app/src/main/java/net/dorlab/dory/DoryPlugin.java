@@ -1,6 +1,9 @@
 package net.dorlab.dory;
 
 import android.content.Context;
+import android.content.Intent;
+import android.app.role.RoleManager;
+import android.provider.Settings;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Build;
@@ -158,6 +161,28 @@ public class DoryPlugin extends Plugin {
         Uri page = Uri.parse(String.valueOf(getBridge().getWebView().getUrl()));
         Uri launcher = Uri.parse(getBridge().getLocalUrl());
         return launcher.getScheme().equals(page.getScheme()) && launcher.getAuthority().equals(page.getAuthority());
+    }
+
+    @PluginMethod
+    public void openAssistantSettings(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            if (!isLauncher()) { call.reject("Abre el selector de entornos."); return; }
+            try {
+                if (Build.VERSION.SDK_INT >= 29) {
+                    RoleManager roles = getContext().getSystemService(RoleManager.class);
+                    if (roles != null && roles.isRoleAvailable(RoleManager.ROLE_ASSISTANT)
+                        && !roles.isRoleHeld(RoleManager.ROLE_ASSISTANT)) {
+                        getActivity().startActivity(roles.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT));
+                        call.resolve();
+                        return;
+                    }
+                }
+                getActivity().startActivity(new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS));
+                call.resolve();
+            } catch (Exception e) {
+                call.reject("No se pudo abrir la configuración del asistente.");
+            }
+        });
     }
 
     @PluginMethod

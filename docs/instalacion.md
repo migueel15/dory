@@ -70,7 +70,7 @@ Abre Dory una vez tras actualizar para que el dictado pueda usar los entornos ya
 
 En **Ajustes → Dictado de ideas** puedes elegir el reconocedor de Android o descargar y activar Moonshine Tiny o Small para español. La selección y los modelos descargados se guardan en el móvil; los pesos no forman parte de la APK. Moonshine requiere Android 8 o posterior y transcribe localmente. El reconocedor de Android puede procesar el audio fuera del móvil.
 
-En los ajustes de Android, selecciona Dory como aplicación de asistente digital. En un móvil configurado para abrirlo con el botón de encendido, prueba el gesto. La captura solicita permiso del micrófono la primera vez. El botón central envía la idea y la X la descarta. Una pausa al hablar no envía el texto; al salir, el borrador se conserva y la escucha se pausa. El nodo de Dory recibe el texto definitivo.
+En **Ajustes → Dictado de ideas**, pulsa «Configurar asistente digital» para abrir el selector o los ajustes de aplicaciones predeterminadas de Android y seleccionar Dory. En un móvil configurado para abrirlo con el botón de encendido, prueba el gesto. La captura solicita permiso del micrófono la primera vez. El botón central envía la idea y la X la descarta. Una pausa al hablar no envía el texto; al salir, el borrador se conserva y la escucha se pausa. El nodo de Dory recibe el texto definitivo.
 
 Para emparejar, abre en el ordenador **Entornos → Mostrar código**. En la app selecciona el entorno disponible e introduce el código; para escribir la dirección manualmente, usa el botón «+» junto a «Disponibles para emparejar». Cada nodo se empareja por separado. Los móviles emparejados aparecen en Entornos y se pueden revocar desde ahí.
 

@@ -73,6 +73,15 @@ function store() {
   saveCaptureSettings();
 }
 
+$("choose-assistant").onclick = async () => {
+  try {
+    await Dory.openAssistantSettings();
+  } catch (error) {
+    $("capture-error").textContent = error.message || "No se pudo abrir la configuración del asistente.";
+    $("capture-error").hidden = false;
+  }
+};
+
 $("capture-node").onchange = (event) => {
   captureNode = event.target.value;
   store();
