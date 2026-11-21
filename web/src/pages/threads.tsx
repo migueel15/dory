@@ -1,7 +1,7 @@
 import { KeptWorktrees } from "../components/kept-worktrees";
 import { useCommand } from "../components/shortcuts";
 import { ThreadsFold } from "../lib/threads-fold";
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
 import { Check, FunnelSimple, MagnifyingGlass, Plus, PushPin, SidebarSimple } from "@phosphor-icons/react";
@@ -81,8 +81,9 @@ export function Threads() {
   const repoOf = (projectID: string | null) => (repos.data ?? []).filter((r) => projectID && r.project_id === projectID && !r.archived_at).map((r) => repoName(r.remote_url)).join(", ");
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const listed = new Set((threads.data ?? []).filter((t) => !t.archived_at && !t.settled_at && !snoozed(t)).map((t) => t.id));
     return (threads.data ?? [])
+      // Subagents live in their parent's details, not in the list.
+      .filter((t) => !t.parent_id)
       .filter((t) => !project || t.project_id === project)
       .filter((t) => !q || t.title.toLowerCase().includes(q) || repoOf(t.project_id).toLowerCase().includes(q))
       .filter((t) => {
@@ -90,22 +91,11 @@ export function Threads() {
           case "archived": return !!t.archived_at;
           case "needs": return !t.archived_at && (t.status === "waiting" || t.status === "error");
           case "working": return !t.archived_at && t.status === "working";
-          // A subagent goes under its parent when the parent is listed.
-          default: return !t.archived_at && !t.settled_at && !snoozed(t) && !(t.parent_id && listed.has(t.parent_id));
+          default: return !t.archived_at && !t.settled_at && !snoozed(t);
         }
       })
       .sort((a, b) => (b.pinned_at ? 1 : 0) - (a.pinned_at ? 1 : 0) || (b.last_activity_at ?? b.created_at).localeCompare(a.last_activity_at ?? a.created_at));
   }, [threads.data, repos.data, filter, query, project]);
-  // The live subagents of each thread, shown nested under it in the main list.
-  const kids = useMemo(() => {
-    const out = new Map<string, Thread[]>();
-    if (filter !== "active") return out;
-    for (const t of threads.data ?? []) {
-      if (!t.parent_id || t.archived_at) continue;
-      out.set(t.parent_id, [...(out.get(t.parent_id) ?? []), t]);
-    }
-    return out;
-  }, [threads.data, filter]);
   return (
     <div className="relative flex h-[calc(100dvh-4rem-1px)] min-h-0 sm:h-[calc(100dvh-3rem-2px)]" style={{ "--list-w": `${listWidth}px` } as CSSProperties}>
       {/* The list toggle is pinned to the page corner: the list slides in under it and pushes the thread aside. */}
@@ -160,12 +150,7 @@ export function Threads() {
             ))}
           {filter === "external" && external.isPending && <p className="p-3 text-sm text-slate-500">Leyendo las conversaciones…</p>}
           {filter !== "external" && <ul className="space-y-0.5">{shown.map((t) => (
-            <Fragment key={t.id}>
-              <ThreadRow t={t} sub={repoOf(t.project_id)} refs={refsOf(t.task_id)} env={envOf(t.node_id)} listVisible={!folded} />
-              {!!kids.get(t.id)?.length && <li><ul aria-label="Subagentes" className="ml-4 space-y-0.5 border-l border-slate-200 pl-1 dark:border-border">
-                {kids.get(t.id)!.map((c) => <ThreadRow key={c.id} t={c} sub="Subagente" refs={[]} env={envOf(c.node_id)} listVisible={!folded} />)}
-              </ul></li>}
-            </Fragment>
+            <ThreadRow key={t.id} t={t} sub={repoOf(t.project_id)} refs={refsOf(t.task_id)} env={envOf(t.node_id)} listVisible={!folded} />
           ))}</ul>}
           {filter !== "external" && threads.isSuccess && shown.length === 0 && <p className="p-3 text-sm text-slate-500 dark:text-muted">No hay hilos aquí.</p>}
         </div>
