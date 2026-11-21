@@ -22,8 +22,14 @@ func TestHeadlessTab(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := &Manager{DB: db, Profile: filepath.Join(dir, "profile")}
-	defer m.reap()
-	defer func() { m.mu.Lock(); m.chrome.stop(); m.mu.Unlock() }()
+	t.Cleanup(func() {
+		m.reap()
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.chrome != nil {
+			m.chrome.stop()
+		}
+	})
 	page := `data:text/html,<title>Hola</title><button onclick="document.title='ok'">Pulsa</button><a href="about:blank" target="_blank">nueva</a>`
 	if _, err := m.Open(ctx, "th", page, false); err != nil {
 		t.Fatal(err)
