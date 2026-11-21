@@ -33,6 +33,10 @@ export class DeviceStream {
   private ws: WebSocket | null = null;
   private decoder: VideoDecoder | null = null;
   private ctx: CanvasRenderingContext2D | null;
+  // The newest decoded frame waits here and is painted once per screen refresh,
+  // so a burst of frames never costs more than one draw.
+  private latest: VideoFrame | null = null;
+  private raf = 0;
   private gotKey = false;
   private ts = 0;
   private stopped = false;
@@ -57,7 +61,25 @@ export class DeviceStream {
     this.reset();
   }
 
+  private paint() {
+    this.raf = 0;
+    const f = this.latest;
+    this.latest = null;
+    if (!f) return;
+    if (this.canvas.width !== f.displayWidth || this.canvas.height !== f.displayHeight) {
+      this.canvas.width = f.displayWidth; this.canvas.height = f.displayHeight;
+      this.size = { width: f.displayWidth, height: f.displayHeight };
+      this.on.size?.(f.displayWidth, f.displayHeight);
+    }
+    this.ctx?.drawImage(f, 0, 0);
+    f.close();
+    this.on.status("live");
+  }
+
   private reset() {
+    if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; }
+    this.latest?.close();
+    this.latest = null;
     try { if (this.decoder && this.decoder.state !== "closed") this.decoder.close(); } catch { /* already closed */ }
     this.decoder = null;
     this.gotKey = false;
@@ -95,18 +117,13 @@ export class DeviceStream {
       this.reset();
       this.decoder = new VideoDecoder({
         output: (f) => {
-          if (this.canvas.width !== f.displayWidth || this.canvas.height !== f.displayHeight) {
-            this.canvas.width = f.displayWidth; this.canvas.height = f.displayHeight;
-            this.size = { width: f.displayWidth, height: f.displayHeight };
-            this.on.size?.(f.displayWidth, f.displayHeight);
-          }
-          this.ctx?.drawImage(f, 0, 0);
-          f.close();
-          this.on.status("live");
+          this.latest?.close();
+          this.latest = f;
+          if (!this.raf) this.raf = requestAnimationFrame(() => this.paint());
         },
         error: () => { this.reset(); },
       });
-      try { this.decoder.configure({ codec: codecOf(data), optimizeForLatency: true }); } catch { this.on.status("error", "El navegador no puede decodificar este vídeo."); return; }
+      try { this.decoder.configure({ codec: codecOf(data), optimizeForLatency: true, hardwareAcceleration: "prefer-hardware" }); } catch { this.on.status("error", "El navegador no puede decodificar este vídeo."); return; }
       // The config (SPS/PPS) travels with the next key frame.
       this.pending = data.slice();
       return;
