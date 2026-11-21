@@ -419,7 +419,10 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
     const trigger = launchAnchor.current ?? launchTrigger.current;
     const popover = launchPopover.current;
     if (!trigger || !popover) return;
-    const { right, top, bottom } = trigger.getBoundingClientRect();
+    const rect = trigger.getBoundingClientRect();
+    // The anchor is not laid out yet (the detail is still opening): retry next frame.
+    if (rect.width === 0 && rect.height === 0) { requestAnimationFrame(() => { if (popover.matches(":popover-open")) placeLaunchPopover(); }); return; }
+    const { right, top, bottom } = rect;
     const width = Math.min(368, window.innerWidth - 24);
     const below = Math.max(0, window.innerHeight - bottom - 20);
     const above = Math.max(0, top - 20);
@@ -490,8 +493,19 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
     if (!initialLaunch || autoLaunched.current || !c || !draft || !planDoc.data || !launchPopover.current) return;
     autoLaunched.current = true;
     setMode(initialLaunch);
-    launchPopover.current.showPopover();
-    placeLaunchPopover();
+    const popover = launchPopover.current;
+    // Anchor to the matching action button of the detail once it is laid out,
+    // and again when the dialog's opening animation ends.
+    requestAnimationFrame(() => {
+      launchAnchor.current = document.querySelector<HTMLElement>(`[data-launch="${initialLaunch}"]`);
+      popover.showPopover();
+      placeLaunchPopover();
+      const dialog = popover.closest("dialog") ?? popover.parentElement;
+      const again = () => { if (popover.matches(":popover-open")) placeLaunchPopover(); };
+      dialog?.addEventListener("animationend", again, { once: true });
+      dialog?.addEventListener("transitionend", again, { once: true });
+      setTimeout(again, 300);
+    });
   }); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!side) return;
@@ -561,7 +575,7 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
     <Link to="/threads/$threadId" params={{ threadId: t.id }} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-accent dark:hover:bg-accent-hover"><Chats className="size-4" />{label}</Link>
   );
   const launchButton = (label: string, next: "define" | "implement", disabled = false, variant: "default" | "ghost" = "default") => (
-    <Button variant={variant} onClick={(e) => openLaunch(e.currentTarget, next)} disabled={disabled || !planDoc.data || launchPending}>{next === "define" ? <ClipboardText className="size-4" /> : <Rocket className="size-4" />}{label}</Button>
+    <Button data-launch={next} variant={variant} onClick={(e) => openLaunch(e.currentTarget, next)} disabled={disabled || !planDoc.data || launchPending}>{next === "define" ? <ClipboardText className="size-4" /> : <Rocket className="size-4" />}{label}</Button>
   );
   const prLink = pullRoute && <Link to="/github/$owner/$repo/$kind/$number" params={pullRoute} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-accent dark:hover:bg-accent-hover"><GitPullRequest className="size-4" />Abrir PR</Link>;
   // The pull request decides the column; stage only counts without one.
