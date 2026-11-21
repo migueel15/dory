@@ -25,3 +25,21 @@ Los agentes leen todo lo que necesitan del trabajo en curso y escriben lo suyo. 
 | `recall` | Busca memorias por texto, proyecto, labels o tipo |
 | `search` | Busca en tareas y memorias |
 | `ask_user` | Pregunta al usuario; el hilo queda esperando su respuesta |
+
+## Dispositivos Android
+
+Con el ajuste **Los agentes pueden usar dispositivos** activado en el nodo ([Dispositivos Android](dispositivos.md)), el MCP añade estas herramientas. Flujo: `device_ui` para leer la pantalla, actuar y comprobar de nuevo.
+
+| Herramienta | Qué hace |
+|---|---|
+| `device_list` | Dispositivos conectados y emuladores (AVD) disponibles |
+| `device_open` / `device_close` | Muestra un dispositivo (o arranca un AVD) en el panel del hilo, en el lateral o flotante; lo cierra o apaga un emulador |
+| `device_screenshot` | Captura PNG reducida a 900 px como imagen |
+| `device_ui` | Elementos de la pantalla con texto, id, descripción, límites y centro |
+| `device_tap` | Toca un elemento de la última lectura (índice, texto o id) o unas coordenadas |
+| `device_swipe` | Desliza entre dos puntos |
+| `device_type` | Escribe en el campo enfocado |
+| `device_key` | Pulsa atrás, inicio, recientes, enter… |
+| `device_launch` | Abre una app por paquete |
+| `device_open_url` | Abre un enlace o *deep link* |
+| `device_apps` | Lista las apps instaladas |
