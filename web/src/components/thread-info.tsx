@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDiffBase } from "../lib/diff-base";
-import { Copy, Database, Folder, GitBranch, GitDiff, Globe, Info, Square } from "@phosphor-icons/react";
+import { Copy, Database, Folder, GitBranch, GitDiff, Globe, Info } from "@phosphor-icons/react";
 import { api, type ThreadService, type ThreadView, type UsageWindow } from "../api/client";
 import { expectedRemaining, windowLabel, windowMinutes, windowReset } from "../lib/usage-pace";
 import { HoverCard } from "./tooltip";
@@ -103,17 +103,21 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false }: 
             </button>}
           </div>
           {!!serviceRows.length && <div className="px-2.5 py-2">
-            <div className="px-1.5 pb-1 text-xs font-medium text-slate-500">Servicios</div>
+            <div className="px-1.5 pb-1 text-xs text-slate-500">Servidores</div>
             {serviceRows.map(({ service: s, leaving }) => {
-              const names: Record<string, string> = { postgresql: "PostgreSQL", redis: "Redis", mysql: "MySQL", mongodb: "MongoDB", vite: "Vite", next: "Next.js", node: "Node.js", http: "HTTP", docker: "Docker" };
-              const host = s.address === "0.0.0.0" || s.address === "::" ? "127.0.0.1" : s.address;
-              const address = `${host.includes(":") ? `[${host}]` : host}:${s.port}`;
-              const http = ["http", "vite", "next", "node"].includes(s.kind) && (host === "127.0.0.1" || host === "::1" || host.startsWith("127."));
+              const names: Record<string, string> = { postgresql: "postgres", redis: "redis", mysql: "mysql", mongodb: "mongodb", vite: "vite", next: "next", docker: "docker" };
+              const local = ["127.0.0.1", "::1", "0.0.0.0", "::"].includes(s.address) || s.address.startsWith("127.");
+              const address = `${local ? "localhost" : s.address.includes(":") ? `[${s.address}]` : s.address}:${s.port}`;
+              const name = names[s.kind] ?? s.command.split(" ")[0]?.split("/").pop()?.replace(/\d+(\.\d+)*$/, "") ?? "proceso";
               const Icon = ["postgresql", "redis", "mysql", "mongodb"].includes(s.kind) ? Database : Globe;
-              return <div key={`${s.pid}:${s.address}:${s.port}`} className={`${leaving ? "service-out" : "notif-in"} group flex items-center gap-2 rounded-md px-1.5 py-1.5 text-xs hover:bg-slate-100 dark:hover:bg-raised`}>
-                <Icon className="size-4 shrink-0 text-slate-500" weight="regular" />
-                <div className="min-w-0 flex-1"><div className="truncate font-medium">{names[s.kind] ?? s.command.split(" ")[0]?.split("/").pop() ?? "Proceso"} · {http && self?.id === t.node_id ? <a href={`http://${address}`} target="_blank" rel="noreferrer" className="underline">{address}</a> : address}</div><div className="truncate text-slate-500" title={s.command}>{s.command}</div></div>
-                <button type="button" aria-label={`Parar ${address}`} title="Parar servicio" onClick={() => stopService.mutate(s.pid)} disabled={stopService.isPending} className="grid size-7 shrink-0 place-items-center rounded text-slate-500 hover:bg-slate-200 dark:hover:bg-hover [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus:opacity-100"><Square weight="fill" className="size-2.5" /></button>
+              const link = local && self?.id === t.node_id && !["postgresql", "redis", "mysql", "mongodb"].includes(s.kind);
+              return <div key={`${s.pid}:${s.address}:${s.port}`} className={`${leaving ? "service-out" : "notif-in"} group flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 hover:bg-slate-100 dark:hover:bg-raised`}>
+                <Icon className="size-4 shrink-0 text-slate-500" />
+                <div className="min-w-0 flex-1" title={s.command}>
+                  {link ? <a href={`http://${address}`} target="_blank" rel="noreferrer" className="block truncate text-sm font-semibold">{address}</a> : <div className="truncate text-sm font-semibold">{address}</div>}
+                  <div className="truncate text-xs text-slate-500">Agente · {name}</div>
+                </div>
+                <button type="button" aria-label={`Parar ${address}`} title="Parar" onClick={() => stopService.mutate(s.pid)} disabled={stopService.isPending} className="grid size-6 shrink-0 place-items-center rounded [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus:opacity-100"><span className="size-2.5 rounded-[2px] bg-red-500" /></button>
               </div>;
             })}
             {stopService.error && <p className="px-1.5 text-xs text-red-600">{stopService.error.message}</p>}
