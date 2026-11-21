@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.KeyguardManager;
 import android.app.role.RoleManager;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Typeface;
 import android.content.res.ColorStateList;
@@ -45,7 +46,10 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private static final int BAD = 0xfff87171;
     private static final int INK = 0xff0b1220;
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final String ideaId = UUID.randomUUID().toString();
+    private static final long DRAFT_LIFETIME = 12L * 60 * 60 * 1000;
+    private String ideaId = UUID.randomUUID().toString();
+    private boolean resumeOnStart;
+    private boolean ended;
     private SpeechRecognizer recognizer;
     private boolean usingOnDevice;
     private boolean systemFallback;
@@ -83,6 +87,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
             return;
         }
         createView();
+        restoreDraft();
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
@@ -210,7 +215,37 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         partial = "";
         transcript.setText(committed);
         refreshSend();
+        saveDraft();
         main.postDelayed(relisten, 120);
+    }
+
+    /** El dictado en curso sobrevive a salir con Inicio o Atrás: solo Enviar o la X lo terminan. */
+    private SharedPreferences drafts() {
+        return getSharedPreferences("idea-draft", MODE_PRIVATE);
+    }
+
+    private void saveDraft() {
+        String text = join(committed, partial);
+        if (ended || text.isEmpty()) return;
+        drafts().edit().putString("text", text).putString("id", ideaId).putLong("at", System.currentTimeMillis()).apply();
+    }
+
+    private void clearDraft() {
+        ended = true;
+        drafts().edit().clear().apply();
+    }
+
+    private void restoreDraft() {
+        SharedPreferences saved = drafts();
+        String text = saved.getString("text", "");
+        if (text.isEmpty() || System.currentTimeMillis() - saved.getLong("at", 0) > DRAFT_LIFETIME) {
+            saved.edit().clear().apply();
+            return;
+        }
+        committed = text;
+        ideaId = saved.getString("id", ideaId);
+        transcript.setText(committed);
+        refreshSend();
     }
 
     private void sendIdea() {
@@ -245,6 +280,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
                 CaptureNodes.sendIdea(node, ideaId, text);
                 main.post(() -> {
                     if (isFinishing() || isDestroyed()) return;
+                    clearDraft();
                     display(State.SAVED, "Idea guardada", null, null);
                     main.postDelayed(this::finish, 1000);
                 });
@@ -266,7 +302,18 @@ public class IdeaCaptureActivity extends AppCompatActivity {
             committed = join(committed, partial);
             partial = "";
             transcript.setText(committed);
+            resumeOnStart = true;
             display(State.PAUSED, "En pausa", "Continuar", this::requestMicrophone);
+        }
+        saveDraft();
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        if (resumeOnStart && state == State.PAUSED) {
+            resumeOnStart = false;
+            requestMicrophone();
         }
     }
 
@@ -358,7 +405,10 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         controls.addView(primaryIcon, gap);
         close = new VoiceIconButton(this, 44, 0x1fffffff, FOREGROUND);
         close.setIcon(VoiceIconButton.Icon.CLOSE, "Cancelar");
-        close.setOnClickListener(view -> finish());
+        close.setOnClickListener(view -> {
+            clearDraft();
+            finish();
+        });
         controls.addView(close);
         send = label("Enviar idea", 18, INK);
         send.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
