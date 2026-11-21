@@ -82,28 +82,47 @@ function useThreadTitle(id: string) {
   return useQuery({ queryKey: ["thread-title", id], queryFn: () => api.threads({ id }, true).then((l) => l[0] ?? null), staleTime: 60_000 }).data?.title;
 }
 
+// The header Dory writes on messages between agents: a subagent handing its
+// result to its parent, or thread_send. The harness history may give the
+// message back without its sender, so the header alone identifies it.
+const AGENT_HEADER = /^\[(?:Subagente «(.*?)» \(([0-9a-f-]{36})\) ([^\]\n]+)|Mensaje del hilo «(.*?)» \(([0-9a-f-]{36})\))\]\s*/;
+// Harness markers such as codex web citations (U+E200 … U+E201) are not text.
+const MARKERS = /[^]*/g;
+
+export type AgentNote = { sender: string; title: string; state: string; body: string };
+
+// agentNote reads a user message written by another thread's agent, or null.
+export function agentNote(m: Message): AgentNote | null {
+  const match = m.text.match(AGENT_HEADER);
+  if (!match && !m.sender_thread_id) return null;
+  const body = (match ? m.text.slice(match[0].length) : m.text).replace(MARKERS, "").trim();
+  if (match?.[2]) return { sender: m.sender_thread_id || match[2], title: match[1], state: match[3], body };
+  if (match?.[5]) return { sender: m.sender_thread_id || match[5], title: match[4], state: "", body };
+  return { sender: m.sender_thread_id!, title: "", state: "", body };
+}
+
+const TONE: Record<string, string> = { "terminó": "text-emerald-600 dark:text-emerald-400", "falló": "text-red-600 dark:text-red-400", "espera una respuesta": "text-amber-600 dark:text-amber-400", "se detuvo": "text-slate-500" };
+
 // AgentMessage is a user turn another thread's agent wrote, such as a
-// subagent handing over its result: folded to one line with its sender, so
-// the user's own messages stay easy to find.
-export function AgentMessage({ m }: { m: Message }) {
+// subagent handing over its result: a card folded to one line with its
+// sender and state, so the user's own messages stay easy to find.
+export function AgentMessage({ note }: { note: AgentNote }) {
   const [open, setOpen] = useState(false);
-  const sender = m.sender_thread_id!;
-  const title = useThreadTitle(sender);
-  // The first line in brackets says what happened; the rest is the result.
-  const match = m.text.match(/^\[([^\]\n]*)\]\s*/);
-  const header = match?.[1].replace(/\s*\([^)]*\)/, "") ?? "Mensaje de otro agente";
-  const body = match ? m.text.slice(match[0].length) : m.text;
+  const current = useThreadTitle(note.sender);
+  const title = current || note.title || "Otro hilo";
   return (
     <div data-message className="w-full max-w-full">
-      <div className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm dark:border-border">
+      <div className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm dark:border-border dark:bg-raised/40">
         <Robot className="size-4 shrink-0 text-slate-500" />
-        <button type="button" onClick={() => body && setOpen(!open)} aria-expanded={open} disabled={!body} className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-          {body && <CaretRight className={`size-3 shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />}
-          <span className="truncate text-slate-600 dark:text-muted">{header}</span>
+        <button type="button" onClick={() => note.body && setOpen(!open)} aria-expanded={open} disabled={!note.body} className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+          {note.body && <CaretRight className={`size-3 shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />}
+          <span className="shrink-0 text-slate-500 dark:text-muted">{note.state ? "Subagente" : "Mensaje de"}</span>
+          <span className="min-w-0 truncate font-medium">{title}</span>
+          {note.state && <span className={`shrink-0 ${TONE[note.state] ?? "text-slate-500"}`}>{note.state}</span>}
         </button>
-        <Link to="/threads/$threadId" params={{ threadId: sender }} title="Abrir el hilo que lo envió" className="max-w-[40%] shrink-0 truncate text-xs text-slate-500 hover:underline">{title || "Ver hilo"}</Link>
+        <Link to="/threads/$threadId" params={{ threadId: note.sender }} title="Abrir el hilo que lo envió" className="shrink-0 text-xs text-slate-500 hover:underline">Abrir</Link>
       </div>
-      {open && body && <div className="mt-1 border-l-2 border-slate-200 pl-3 text-sm dark:border-border"><Md>{body}</Md></div>}
+      {open && note.body && <div className="mt-1 border-l-2 border-slate-200 pl-3 text-sm dark:border-border"><Md>{note.body}</Md></div>}
     </div>
   );
 }

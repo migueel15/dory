@@ -36,11 +36,14 @@ func TestSpawnRunsChildAndWakesParent(t *testing.T) {
 	}
 
 	events := <-codex.ends
-	events <- Event{Message: &Message{ID: turn.RunID + ":a", Role: "assistant", Text: "Login correcto"}}
+	events <- Event{Message: &Message{ID: turn.RunID + ":a", Role: "assistant", Text: "Login correcto \uE200cite\uE202turn0search0\uE201"}}
 	events <- Event{Done: true}
 	close(events)
 
 	wake := <-claude.turns
+	if strings.ContainsRune(wake.Text, '\uE200') {
+		t.Fatalf("harness markers reached the parent: %q", wake.Text)
+	}
 	if !strings.Contains(wake.Text, "Revisa el login") || !strings.Contains(wake.Text, "terminó") || !strings.Contains(wake.Text, "Login correcto") {
 		t.Fatalf("parent woke with %q", wake.Text)
 	}

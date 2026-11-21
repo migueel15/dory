@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 
 	"github.com/migueel15/dory/internal/data"
@@ -14,6 +15,10 @@ const MaxActiveChildren = 5
 
 // resultChars caps the result a subagent hands to its parent.
 const resultChars = 4000
+
+// harnessMarkers are inline markers a harness leaves in its answers, such as
+// codex web citations between U+E200 and U+E201; they are not text.
+var harnessMarkers = regexp.MustCompile("\uE200[^\uE201]*\uE201")
 
 // Subagent describes a child thread to launch.
 type Subagent struct {
@@ -110,6 +115,7 @@ func (m *Manager) notifyParent(ctx context.Context, child data.Thread, status st
 			}
 		}
 	}
+	result = strings.TrimSpace(harnessMarkers.ReplaceAllString(result, ""))
 	if r := []rune(result); len(r) > resultChars {
 		result = string(r[:resultChars]) + "…"
 	}
