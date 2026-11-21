@@ -18,6 +18,7 @@ import { addDraftQuote, removeDraftQuotes, useDraftQuotes } from "../lib/draft-q
 import { ThreadInfo } from "../components/thread-info";
 import { useThreadMenu } from "../components/thread-menu";
 import { useThreadsFold } from "../lib/threads-fold";
+import { DevicePanel } from "../components/device-panel";
 import { SidePanel, SidePanelToggle, useSidePanel, type SidePanelState } from "../components/side-panel";
 
 // ThreadView is a whole thread page: header, chat and, on demand, its changes
@@ -38,8 +39,8 @@ export function ThreadView() {
         <Header threadId={threadId} panel={panel} />
         <ThreadChat threadId={threadId} />
       </div>
-      <SidePanel panel={panel} available={[...(local ? ["diff" as const] : []), ...(taskId ? ["plan" as const] : [])]}
-        render={(k) => (k === "diff" ? <Changes threadId={threadId} /> : taskId && <PlanDoc taskId={taskId} />)} />
+      <SidePanel panel={panel} available={[...(local ? ["diff" as const] : []), ...(taskId ? ["plan" as const] : []), "device" as const]}
+        render={(k) => (k === "diff" ? <Changes threadId={threadId} /> : k === "device" ? <DevicePanel node={thread?.node_id ?? "local"} /> : taskId && <PlanDoc taskId={taskId} />)} />
     </div>
   );
 }

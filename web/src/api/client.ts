@@ -244,3 +244,10 @@ export const COLUMN_LABELS: Record<Column, string> = {
 
 // repoName extracts owner/name from a GitHub remote.
 export const repoName = (remote: string) => remote.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/)?.[1] ?? remote;
+
+export type DeviceTools = { adb: string; emulator: string; kvm: boolean; sdk: string };
+export type Device = { serial: string; state: string; model: string; product: string; transport: "usb" | "wifi" | "emulator"; avd?: string; streaming: boolean };
+export type DeviceList = { tools: DeviceTools; devices: Device[]; avds: string[]; error?: string };
+export const devicesApi = {
+  list: (node = "local") => req<DeviceList>("GET", `/nodes/${node}/devices`),
+};

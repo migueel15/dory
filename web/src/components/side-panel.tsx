@@ -3,14 +3,15 @@ import { useShortcuts } from "./shortcuts";
 import { formatChord } from "./dictation-shortcut";
 import { hasWindowClose } from "../lib/window-close";
 import { ResizeHandle } from "../pages/thread";
-import { ClipboardText, GitDiff, Plus, SidebarSimple, X } from "@phosphor-icons/react";
+import { ClipboardText, DeviceMobile, GitDiff, Plus, SidebarSimple, X } from "@phosphor-icons/react";
 
 // A thread's side panel holds tabs of objects related to the thread: its
 // changes and the plan of its task; new kinds join TAB_KINDS.
-export type TabKind = "diff" | "plan";
+export type TabKind = "diff" | "plan" | "device";
 export const TAB_KINDS: Record<TabKind, { label: string; icon: ReactNode }> = {
   diff: { label: "Cambios", icon: <GitDiff className="size-4" /> },
   plan: { label: "Plan", icon: <ClipboardText className="size-4" /> },
+  device: { label: "Dispositivo", icon: <DeviceMobile className="size-4" /> },
 };
 
 type State = { open: boolean; tabs: TabKind[]; active: TabKind | null };

@@ -24,6 +24,7 @@ import (
 	"github.com/migueel15/dory/internal/compress"
 	"github.com/migueel15/dory/internal/config"
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/devices"
 	"github.com/migueel15/dory/internal/dictation"
 	"github.com/migueel15/dory/internal/github"
 	"github.com/migueel15/dory/internal/localdb"
@@ -153,6 +154,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		Node: api.Node{ID: log_.Node(), Name: cfg.NodeName, OS: goruntime.GOOS, Version: version.Read().Short,
 			DataDir: cfg.DataDir, Listen: cfg.Listen, Platform: goruntime.GOOS + "/" + goruntime.GOARCH},
 	}
+	srv.Devices = devices.NewManager()
 	srv.Settings = api.NewSettingsStore(cfg.DataDir, api.Settings{ArchiveThreadsOnFinish: cfg.Tasks.ArchiveThreadsOnFinish, RemoveWorktreeOnArchive: cfg.Threads.RemoveWorktreeOnArchive})
 	go gh.Watch(ctx, func() {
 		events.Changed("github", "")
