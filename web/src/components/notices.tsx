@@ -81,10 +81,11 @@ export function NoticeInbox() {
     window.addEventListener("scroll", again, true);
     return () => { window.removeEventListener("resize", again); window.removeEventListener("scroll", again, true); };
   }, []);
+  // One wrapper: the sidebar sizes its direct children, and the panel must not be one.
   return (
-    <>
+    <div>
       <button ref={trigger} type="button" popoverTarget={popoverId} title="Avisos" aria-label={unread.length ? `Avisos, ${unread.length} sin leer` : "Avisos"} onClick={() => requestAnimationFrame(place)}
-        className="relative grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-slate-200 sm:min-h-0 sm:min-w-0 dark:hover:bg-raised">
+        className="relative grid size-full min-h-11 min-w-11 place-items-center rounded-md hover:bg-slate-200 sm:min-h-0 sm:min-w-0 dark:hover:bg-raised">
         <Tray className="size-5" />
         {unread.length > 0 && <span className="absolute right-0.5 top-0.5 grid min-w-4 place-items-center rounded-full bg-blue-600 px-1 text-[10px] font-bold leading-4 text-white">{unread.length > 99 ? "99+" : unread.length}</span>}
       </button>
@@ -110,7 +111,7 @@ export function NoticeInbox() {
             </ul>
           </div>
       </div>
-    </>
+    </div>
   );
 }
 
