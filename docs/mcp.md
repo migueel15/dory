@@ -1,8 +1,27 @@
 # MCP
 
-Cada nodo sirve un MCP en `http://127.0.0.1:7700/mcp`. Los hilos que lanza Dory lo reciben solos, con un token del nodo. Para otros clientes, crea un token con `dory token create --scopes write`.
+Cada nodo sirve un MCP en `http://127.0.0.1:7700/mcp`. Los hilos gestionados por Dory reciben la conexión automáticamente con una credencial vinculada a su identificador. Para otros clientes, crea un token con `dory token create --scopes write`.
 
 Los agentes leen todo lo que necesitan del trabajo en curso y escriben lo suyo. La columna del kanban se deriva de los hilos y de la PR; lo único que fijan es el `stage` de una tarea con `save_task`, con las mismas reglas que la interfaz.
+
+## Sesiones gestionadas
+
+Al enviar un turno, Dory comprueba el catálogo MCP con la credencial de ese hilo y añade instrucciones sobre las herramientas al mensaje que recibe el arnés. Si falla la comprobación, el envío devuelve un error con el proveedor y el motivo. El catálogo del nodo refleja sus ajustes, por ejemplo la disponibilidad de las herramientas de dispositivos.
+
+| Arnés | Registro de `dory` | Sesión |
+|---|---|---|
+| Codex | Configuración HTTP de `app-server` y bearer en el entorno | `thread/start` o `thread/resume` |
+| Claude Code | `--mcp-config` con un encabezado HTTP que referencia una variable de entorno | Nueva sesión o `--resume` |
+| OpenCode v2 | Registro en memoria por la API del servidor del hilo. Dory espera el estado conectado | El servidor abre o retoma la sesión por su API |
+| Antigravity | `mcpServers` en `session/new` o `session/load`. Usa HTTP cuando el arnés lo anuncia y el puente stdio de Dory en los demás casos | ACP conserva la sesión tras iniciar el turno |
+
+Con el mismo arnés, cambiar el modelo conserva el identificador de sesión. Al cambiar de arnés, el siguiente turno abre una sesión en el destino y lleva la solicitud nueva junto con un extracto del texto visible del hilo. Dory prioriza la petición anterior más reciente y la inicial dentro de 16 KB. Si el destino conservaba un proceso de una visita anterior, Dory lo cierra para abrir la sesión nueva y se detienen los servicios que dependan de ese proceso.
+
+Para probar el flujo desde escritorio, prepara perfiles de cliente con acceso al modelo y sin MCP manual. En un hilo nuevo, pide al agente usar `session_start` y abrir la URL de un mockup local con `browser_open`. Comprueba la pestaña activa con `browser_tabs` y en el panel del mismo hilo. Envía otro turno después de reanudar, cambia de Codex a Claude y pide que continúe la tarea y consulte el catálogo de nuevo. La comprobación local del transporte y los tests de traspaso cubren partes de este recorrido. La prueba completa requiere cuentas de proveedor y escritorio.
+
+La comprobación de transporte con perfiles limpios y un MCP local de prueba alcanzó el catálogo en Codex 0.171.0, Claude Code 2.1.330 y Antigravity 1.5.14 mediante stdio. OpenCode 2.3.2 informó del estado conectado desde el servidor que inicia Dory. Queda por comprobar la reanudación y el cambio de proveedor con modelos autenticados, incluido el panel de escritorio.
+
+## Catálogo
 
 | Herramienta | Qué hace |
 |---|---|

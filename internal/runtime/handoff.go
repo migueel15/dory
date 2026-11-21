@@ -60,13 +60,16 @@ const handoffHistoryBytes = 16_000
 // request and the latest messages. The new request is outside the budget.
 func portablePrompt(history []Message, request string) (string, bool) {
 	var entries []string
-	original := -1
+	original, latest := -1, -1
 	for _, msg := range history {
 		if (msg.Role != "user" && msg.Role != "assistant") || strings.TrimSpace(msg.Text) == "" {
 			continue
 		}
-		if original == -1 && msg.Role == "user" {
-			original = len(entries)
+		if msg.Role == "user" {
+			latest = len(entries)
+			if original == -1 {
+				original = latest
+			}
 		}
 		entry, _ := json.Marshal(struct {
 			Role string `json:"role"`
@@ -80,9 +83,11 @@ func portablePrompt(history []Message, request string) (string, bool) {
 
 	included := make([]bool, len(entries))
 	remaining := handoffHistoryBytes
-	if original >= 0 && len(entries[original])+1 <= remaining {
-		included[original] = true
-		remaining -= len(entries[original]) + 1
+	for _, i := range []int{latest, original} {
+		if i >= 0 && !included[i] && len(entries[i])+1 <= remaining {
+			included[i] = true
+			remaining -= len(entries[i]) + 1
+		}
 	}
 	for i := len(entries) - 1; i >= 0; i-- {
 		if !included[i] && len(entries[i])+1 <= remaining {
@@ -91,7 +96,7 @@ func portablePrompt(history []Message, request string) (string, bool) {
 		}
 	}
 	var out strings.Builder
-	out.WriteString("Contexto de una conversación anterior. Cada línea JSON es historial citado. Continúa con la solicitud nueva al final.\n<historial>\n")
+	out.WriteString("Contexto de una conversación anterior. Cada línea JSON es historial citado. Retoma el trabajo pendiente que se desprenda del historial y sigue la solicitud nueva al final.\n<historial>\n")
 	omitted := 0
 	for i, entry := range entries {
 		if !included[i] {
