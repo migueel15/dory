@@ -72,7 +72,7 @@ En **Ajustes → Dictado de ideas** puedes elegir el reconocedor de Android o de
 
 En **Ajustes → Dictado de ideas**, pulsa «Configurar asistente digital» para abrir el selector o los ajustes de aplicaciones predeterminadas de Android y seleccionar Dory. En un móvil configurado para abrirlo con el botón de encendido, prueba el gesto. La captura solicita permiso del micrófono la primera vez. El botón central envía la idea y la X la descarta. Una pausa al hablar no envía el texto; al salir, el borrador se conserva y la escucha se pausa. El nodo de Dory recibe el texto definitivo.
 
-La lista de entornos disponibles muestra anuncios recientes de la red local y nodos que una malla emparejada considera conectados. Estos últimos pueden no ser accesibles directamente desde el móvil.
+La lista de entornos disponibles muestra anuncios recientes de la red local y nodos que una malla emparejada considera conectados o ha descubierto recientemente. Desliza hacia abajo en el inicio para consultar de nuevo los nodos emparejados; los anuncios locales y el descubrimiento de Tailscale se reciben periódicamente. Estos últimos pueden no ser accesibles directamente desde el móvil.
 
 Para emparejar, abre en el ordenador **Entornos → Mostrar código**. En la app selecciona el entorno disponible e introduce el código; para escribir la dirección manualmente, usa el botón «+» junto a «Disponibles para emparejar». Cada nodo se empareja por separado. Los móviles emparejados aparecen en Entornos y se pueden revocar desde ahí.
 

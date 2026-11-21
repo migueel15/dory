@@ -10,8 +10,10 @@ let saved = JSON.parse(localStorage.getItem(KEY) || "[]");
 const online = new Map(); // id → reachable now
 const localFound = new Map(); // id → anuncio reciente de la red local
 const meshFound = new Map(); // nodo emparejado → última lista de pares conectados
+const checkVersions = new Map();
 const LOCAL_TTL = 30_000;
 const MESH_TTL = 60_000;
+const DISCOVERED_TTL = 75_000;
 
 const $ = (id) => document.getElementById(id);
 let settingsPushed = false;
@@ -194,7 +196,9 @@ function render() {
   const found = new Map();
   for (const source of meshFound.values()) {
     if (now - source.at <= MESH_TTL) {
-      for (const entry of source.peers) found.set(entry.id, entry);
+      for (const entry of source.peers) {
+        if (!entry.expires || now <= entry.expires) found.set(entry.id, entry);
+      }
     }
   }
   for (const [id, entry] of localFound) {
@@ -227,23 +231,86 @@ async function open(env) {
 // check sees whether a paired node answers and learns the other nodes of its
 // mesh, whose addresses also work from outside home through Tailscale.
 async function check(env) {
+  const version = (checkVersions.get(env.id) || 0) + 1;
+  checkVersions.set(env.id, version);
   try {
     const { body } = await Dory.get({ address: env.address, pin: env.pin, token: env.token, path: "/api/mesh" });
-    if (!saved.some(node => node.id === env.id)) return;
-    const peers = (JSON.parse(body).peers || [])
+    if (checkVersions.get(env.id) !== version || !saved.some(node => node.id === env.id)) return;
+    const snapshot = JSON.parse(body);
+    const peers = (snapshot.peers || [])
       .filter(peer => peer.connected === true && !peer.revoked && peer.address)
       .map(peer => {
         const host = peer.address.replace(/:\d+$/, "");
         return { id: peer.id, name: peer.name, address: withPort(host), via: `malla de ${env.name}` };
       });
+    for (const node of snapshot.discovered || []) {
+      const seen = Date.parse(node.seen);
+      if (!node.id || !node.address || !Number.isFinite(seen) || Date.now() - seen > DISCOVERED_TTL) continue;
+      const host = node.address.replace(/:\d+$/, "");
+      peers.push({ id: node.id, name: node.name, address: withPort(host), via: `malla de ${env.name}`, expires: seen + DISCOVERED_TTL });
+    }
     online.set(env.id, true);
     meshFound.set(env.id, { at: Date.now(), peers });
   } catch {
+    if (checkVersions.get(env.id) !== version || !saved.some(node => node.id === env.id)) return;
     online.set(env.id, false);
     meshFound.delete(env.id);
   }
   render();
 }
+
+let refreshing = false;
+let pullStart = null;
+let pullDistance = 0;
+
+async function refreshEnvironments() {
+  if (refreshing) return;
+  refreshing = true;
+  const indicator = $("refresh-indicator");
+  indicator.hidden = false;
+  indicator.textContent = "Actualizando entornos…";
+  try {
+    await Promise.all([Promise.allSettled(saved.map(check)), new Promise(resolve => setTimeout(resolve, 700))]);
+    render();
+  } finally {
+    refreshing = false;
+    indicator.hidden = true;
+    indicator.textContent = "";
+  }
+}
+
+document.addEventListener("touchstart", event => {
+  if (refreshing || location.hash || $("pair-dialog").open || window.scrollY > 0 || event.touches.length !== 1) return;
+  pullStart = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+  pullDistance = 0;
+}, { passive: true });
+
+document.addEventListener("touchmove", event => {
+  if (!pullStart || event.touches.length !== 1) return;
+  const dx = event.touches[0].clientX - pullStart.x;
+  const dy = event.touches[0].clientY - pullStart.y;
+  if (dy < 0 || Math.abs(dx) > dy) { pullStart = null; return; }
+  if (dy < 12) return;
+  event.preventDefault();
+  pullDistance = dy;
+  const indicator = $("refresh-indicator");
+  indicator.hidden = false;
+  indicator.textContent = dy >= 72 ? "Suelta para actualizar" : "Desliza para actualizar";
+}, { passive: false });
+
+function endPull() {
+  if (!pullStart) return;
+  pullStart = null;
+  if (pullDistance >= 72) refreshEnvironments();
+  else if (!refreshing) $("refresh-indicator").hidden = true;
+  pullDistance = 0;
+}
+document.addEventListener("touchend", endPull, { passive: true });
+document.addEventListener("touchcancel", () => {
+  pullStart = null;
+  pullDistance = 0;
+  if (!refreshing) $("refresh-indicator").hidden = true;
+}, { passive: true });
 
 $("pair").onsubmit = async (e) => {
   e.preventDefault();
