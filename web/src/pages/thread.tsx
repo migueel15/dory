@@ -31,6 +31,21 @@ export function ThreadView() {
   const local = thread?.local;
   const taskId = thread?.task_id ?? null;
   useOpenPlanOnAgentEdit(taskId, panel);
+  // The agent opens or closes a device tab; the user watches what it does.
+  const latest = useRef(panel);
+  latest.current = panel;
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ thread: string; action: "open" | "close"; serial: string; floating?: boolean }>).detail;
+      if (d.thread !== threadId) return;
+      const p = latest.current;
+      const tab = p.tabs.find((k) => kindOf(k) === "device" && p.meta[k]?.serial === d.serial);
+      if (d.action === "close") { if (tab) p.close(tab); return; }
+      if (tab) { p.setMeta(tab, { floating: !!d.floating }); p.focus(tab); } else p.show("device", { serial: d.serial, floating: !!d.floating });
+    };
+    window.addEventListener("dory-device", on);
+    return () => window.removeEventListener("dory-device", on);
+  }, [threadId]);
   const deviceView = (k: string, floating = false) => <DevicePanel key={k} node={thread?.node_id ?? "local"} serial={panel.meta[k]?.serial ?? null} floating={floating} onFloat={(v) => panel.setMeta(k, { floating: v })}
     onSerial={(serial, name) => panel.setMeta(k, serial ? { serial, ...(panel.meta[k]?.name ? {} : { name }) } : { serial: undefined })} />;
   return (

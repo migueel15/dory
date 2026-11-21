@@ -31,25 +31,26 @@ export function useSidePanel(threadId: string) {
   const key = `dory-thread-panel:${threadId}`;
   const [s, setS] = useState(() => read(key));
   useEffect(() => setS(read(key)), [key]);
-  const save = (next: State) => { setS(next); try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* per-viewer only */ } };
+  // Updates apply to the latest state, so several in one event do not overwrite each other.
+  const update = (f: (s: State) => State) => setS((prev) => { const next = f(prev); try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* per-viewer only */ } return next; });
   return {
     ...s,
-    toggle: () => save({ ...s, open: !s.open }),
+    toggle: () => update((s) => ({ ...s, open: !s.open })),
     // show opens the panel on a tab, adding it when the thread has none of that kind;
     // kinds that allow several always get a new tab.
     show: (kind: TabKind, meta?: TabMeta) => {
       const tab = MULTIPLE.includes(kind) ? `${kind}:${Math.random().toString(36).slice(2, 8)}` : kind;
-      save({ ...s, open: true, tabs: s.tabs.includes(tab) ? s.tabs : [...s.tabs, tab], active: tab, meta: meta ? { ...s.meta, [tab]: meta } : s.meta });
+      update((s) => ({ ...s, open: true, tabs: s.tabs.includes(tab) ? s.tabs : [...s.tabs, tab], active: tab, meta: meta ? { ...s.meta, [tab]: meta } : s.meta }));
     },
-    focus: (tab: string) => save({ ...s, active: tab }),
-    setMeta: (tab: string, meta: TabMeta) => save({ ...s, meta: { ...s.meta, [tab]: { ...s.meta[tab], ...meta } } }),
+    focus: (tab: string) => update((s) => ({ ...s, active: tab, open: true })),
+    setMeta: (tab: string, meta: TabMeta) => update((s) => ({ ...s, meta: { ...s.meta, [tab]: { ...s.meta[tab], ...meta } } })),
     label: (tab: string) => s.meta[tab]?.name || TAB_KINDS[kindOf(tab)].label,
-    close: (tab: string) => {
+    close: (tab: string) => update((s) => {
       const tabs = s.tabs.filter((k) => k !== tab);
       const { [tab]: _, ...meta } = s.meta;
       // Closing the last tab closes the panel too.
-      save({ ...s, open: tabs.length > 0 && s.open, tabs, meta, active: s.active === tab ? tabs[tabs.length - 1] ?? null : s.active });
-    },
+      return { ...s, open: tabs.length > 0 && s.open, tabs, meta, active: s.active === tab ? tabs[tabs.length - 1] ?? null : s.active };
+    }),
   };
 }
 export type SidePanelState = ReturnType<typeof useSidePanel>;

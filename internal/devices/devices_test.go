@@ -93,3 +93,21 @@ func TestParseForeground(t *testing.T) {
 		t.Errorf("%q %q", p, a)
 	}
 }
+
+func TestParseUI(t *testing.T) {
+	dump := `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" resource-id="" class="android.widget.FrameLayout" clickable="false" bounds="[0,0][1080,2400]"><node index="0" text="Buscar" resource-id="com.whatsapp:id/search" class="android.widget.EditText" clickable="true" bounds="[100,200][500,300]" /><node text="" resource-id="x:id/deco" class="android.view.View" clickable="false" bounds="[0,0][10,10]" /><node text="" content-desc="Más opciones" class="android.widget.ImageView" clickable="true" bounds="[900,100][1000,200]" /></node></hierarchy>
+UI hierchary dumped to: /dev/tty`
+	els, err := ParseUI(dump)
+	if err != nil || len(els) != 2 {
+		t.Fatalf("%v %+v", err, els)
+	}
+	if els[0].Text != "Buscar" || els[0].ID != "search" || els[0].CenterX != 300 || els[0].CenterY != 250 || els[1].Desc != "Más opciones" || els[1].Index != 1 {
+		t.Errorf("%+v", els)
+	}
+	m := NewManager()
+	m.lastUI = map[string][]UIElement{"s": els}
+	x, y, _, err := m.Resolve("s", Target{Text: "más opciones"})
+	if err != nil || x != 950 || y != 150 {
+		t.Errorf("%d %d %v", x, y, err)
+	}
+}

@@ -49,6 +49,7 @@ type Manager struct {
 	mu       sync.Mutex
 	sessions map[string]*Session
 	avds     map[string]*avdProc
+	lastUI   map[string][]UIElement
 }
 
 // NewManager looks for the Android tools and starts empty.

@@ -9,7 +9,7 @@ export type Project = { id: string; slug: string; name: string; description: str
 export type RepositoryLocation = { repository_id: string; node_id: string; path: string };
 export type Repository = { id: string; project_id: string; remote_url: string; default_branch: string; created_at: string; updated_at: string; archived_at: string | null };
 export type Stage = "inbox" | "ready" | "done" | "cancelled";
-export type NodeSettings = { archive_threads_on_finish: boolean; remove_worktree_on_archive: boolean };
+export type NodeSettings = { archive_threads_on_finish: boolean; remove_worktree_on_archive: boolean; agents_use_devices: boolean };
 export type KeptWorktree = { thread_id: string; path: string; dirty: boolean };
 export type Task = {
   id: string; project_id: string | null; repository_id: string | null; title: string; description: string; stage: Stage;
