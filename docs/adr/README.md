@@ -25,3 +25,4 @@
 | [ADR-021](adr-021-publicacion-por-plataforma.md) | Publicación independiente por plataforma | accepted |
 | [ADR-022](adr-022-captura-de-ideas-desde-android.md) | Captura de ideas desde el asistente de Android | superseded by ADR-023 |
 | [ADR-023](adr-023-modelos-del-asistente-android.md) | Modelos del asistente de Android | accepted |
+| [ADR-024](adr-024-navegador-del-hilo.md) | Navegador del hilo con dos motores | accepted |

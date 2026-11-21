@@ -13,6 +13,7 @@ import (
 	"github.com/migueel15/dory/internal/update"
 
 	"github.com/migueel15/dory/internal/auth"
+	"github.com/migueel15/dory/internal/browser"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/devices"
 	"github.com/migueel15/dory/internal/dictation"
@@ -59,6 +60,10 @@ type Server struct {
 	Settings *SettingsStore
 	// Devices bridges Android devices and emulators; nil disables the routes.
 	Devices *devices.Manager
+	// Browser runs the browsers of the threads of this node; nil disables them.
+	Browser *browser.Manager
+	// MeshPort is the mesh port, which the browser tunnel never reaches.
+	MeshPort int
 }
 
 // Register mounts every /api route; auth owns /api/auth/* on the same mux.
@@ -103,6 +108,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	s.mountDictation(mux)
 	s.mountUpdate(mux)
 	s.mountDevices(mux)
+	s.mountBrowser(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "route not found")
 	})

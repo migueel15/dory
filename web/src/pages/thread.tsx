@@ -18,6 +18,7 @@ import { addDraftQuote, removeDraftQuotes, useDraftQuotes } from "../lib/draft-q
 import { ThreadInfo } from "../components/thread-info";
 import { useThreadMenu } from "../components/thread-menu";
 import { useThreadsFold } from "../lib/threads-fold";
+import { BrowserPanel } from "../components/browser-panel";
 import { DevicePanel, FloatingWindow } from "../components/device-panel";
 import { kindOf, SidePanel, SidePanelToggle, useSidePanel, type SidePanelState } from "../components/side-panel";
 
@@ -56,8 +57,8 @@ export function ThreadView() {
         <Header threadId={threadId} panel={panel} />
         <ThreadChat threadId={threadId} />
       </div>
-      <SidePanel panel={panel} available={[...(local ? ["diff" as const] : []), ...(taskId ? ["plan" as const] : []), "device" as const]}
-        render={(k) => (k === "diff" ? <Changes threadId={threadId} /> : kindOf(k) === "device" ? (panel.open ? (panel.meta[k]?.floating
+      <SidePanel panel={panel} available={[...(local ? ["diff" as const] : []), ...(taskId ? ["plan" as const] : []), "device" as const, ...(window.doryDesktop?.browser ? ["browser" as const] : [])]}
+        render={(k) => (k === "diff" ? <Changes threadId={threadId} /> : k === "browser" ? <BrowserPanel threadId={threadId} remote={local === false} /> : kindOf(k) === "device" ? (panel.open ? (panel.meta[k]?.floating
           ? <div className="grid h-full place-items-center p-6 text-center text-sm text-slate-500 dark:text-muted"><div className="space-y-2"><p>El dispositivo flota sobre el chat.</p><Button variant="ghost" onClick={() => panel.setMeta(k, { floating: false })}>Abrir en el panel lateral</Button></div></div>
           : deviceView(k)) : null) : taskId && <PlanDoc taskId={taskId} />)} />
       {panel.tabs.filter((k) => kindOf(k) === "device" && panel.meta[k]?.floating).map((k) => <FloatingWindow key={k} id={`${threadId}:${k}`}>{deviceView(k, true)}</FloatingWindow>)}

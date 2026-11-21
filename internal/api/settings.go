@@ -19,6 +19,9 @@ type Settings struct {
 	// AgentsUseDevices lets the agents of this node drive Android devices
 	// through the device_* tools; off by default.
 	AgentsUseDevices bool `json:"agents_use_devices"`
+	// BrowserTunnelDisabled keeps the desktop app from reaching the loopback
+	// ports of this node through the browser of a thread.
+	BrowserTunnelDisabled bool `json:"browser_tunnel_disabled"`
 }
 
 // SettingsStore reads and saves the Settings of a node.

@@ -24,12 +24,14 @@ import (
 
 type threadKey struct{}
 
+type sdkServer = sdk.Server
+
 // add registers a tool. Tools whose name starts with a read verb need the
 // read scope; the rest need write. Results are JSON text.
 func add[I any](server *sdk.Server, name, description string, fn func(context.Context, I) (any, error)) {
 	sdk.AddTool(server, &sdk.Tool{Name: name, Description: description}, func(ctx context.Context, _ *sdk.CallToolRequest, in I) (*sdk.CallToolResult, any, error) {
 		scope := "write"
-		for _, prefix := range []string{"list_", "get_", "search", "recall", "session_start"} {
+		for _, prefix := range []string{"list_", "get_", "search", "recall", "session_start", "browser_tabs", "browser_read", "browser_screenshot", "browser_console"} {
 			if strings.HasPrefix(name, prefix) {
 				scope = "read"
 			}
@@ -40,6 +42,9 @@ func add[I any](server *sdk.Server, name, description string, fn func(context.Co
 		value, err := fn(ctx, in)
 		if err != nil {
 			return nil, nil, err
+		}
+		if img, ok := value.(pngImage); ok {
+			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.ImageContent{Data: img, MIMEType: "image/png"}}}, nil, nil
 		}
 		raw, err := json.Marshal(value)
 		if err != nil {
@@ -320,6 +325,8 @@ func build(s *api.Server, devices bool) *sdk.Server {
 		}
 		return map[string]any{"stopped": in.PID}, nil
 	})
+
+	addBrowser(srv, s)
 
 	if devices {
 		addDeviceTools(srv, s)

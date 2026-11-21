@@ -26,6 +26,7 @@ const keys: Record<string, string[]> = {
   thread: ["threads", "board", "card", "thread"],
   notice: ["notices"],
   github: ["board", "card", "github", "github-detail"],
+  browser: ["browser"],
 };
 
 // useGithubWatch keeps the node polling GitHub every few seconds while a view

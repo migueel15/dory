@@ -4,15 +4,16 @@ import { formatChord } from "./dictation-shortcut";
 import { hasWindowClose } from "../lib/window-close";
 import { ContextMenu } from "./context-menu";
 import { ResizeHandle } from "../pages/thread";
-import { ClipboardText, DeviceMobile, GitDiff, Plus, SidebarSimple, X } from "@phosphor-icons/react";
+import { Browser, ClipboardText, DeviceMobile, GitDiff, Plus, SidebarSimple, X } from "@phosphor-icons/react";
 
 // A thread's side panel holds tabs of objects related to the thread: its
 // changes and the plan of its task; new kinds join TAB_KINDS.
-export type TabKind = "diff" | "plan" | "device";
+export type TabKind = "diff" | "plan" | "device" | "browser";
 export const TAB_KINDS: Record<TabKind, { label: string; icon: ReactNode }> = {
   diff: { label: "Cambios", icon: <GitDiff className="size-4" /> },
   plan: { label: "Plan", icon: <ClipboardText className="size-4" /> },
   device: { label: "Dispositivo", icon: <DeviceMobile className="size-4" /> },
+  browser: { label: "Navegador", icon: <Browser className="size-4" /> },
 };
 
 // A tab is a kind ("diff", "plan") or, for the kinds that allow several,
@@ -26,12 +27,29 @@ const read = (key: string): State => {
   try { const v = JSON.parse(localStorage.getItem(key) ?? "null"); return v && Array.isArray(v.tabs) ? { ...empty, ...v, tabs: v.tabs.filter((k: string) => kindOf(k) in TAB_KINDS) } : empty; } catch { return empty; }
 };
 
+const PANEL_EVENT = "dory-side-panel";
+
+// showPanelTab opens the side panel of a thread on a tab from anywhere in the
+// interface, whether or not the thread is on screen.
+export function showPanelTab(threadId: string, kind: TabKind) {
+  const key = `dory-thread-panel:${threadId}`;
+  const s = read(key);
+  const next: State = { ...s, open: true, tabs: s.tabs.includes(kind) ? s.tabs : [...s.tabs, kind], active: kind };
+  try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* per-viewer only */ }
+  window.dispatchEvent(new CustomEvent(PANEL_EVENT, { detail: key }));
+}
+
 // useSidePanel keeps, per thread and in this browser, whether the panel is
 // open, which tabs it has and which one is in front.
 export function useSidePanel(threadId: string) {
   const key = `dory-thread-panel:${threadId}`;
   const [s, setS] = useState(() => read(key));
   useEffect(() => setS(read(key)), [key]);
+  useEffect(() => {
+    const on = (e: Event) => { if ((e as CustomEvent).detail === key) setS(read(key)); };
+    window.addEventListener(PANEL_EVENT, on);
+    return () => window.removeEventListener(PANEL_EVENT, on);
+  }, [key]);
   // Updates apply to the latest state, so several in one event do not overwrite each other.
   const update = (f: (s: State) => State) => setS((prev) => { const next = f(prev); try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* per-viewer only */ } return next; });
   return {

@@ -1,7 +1,25 @@
 import { X } from "@phosphor-icons/react";
 
 declare global {
-  interface Window { doryDesktop?: { platform: string; setZoom?: (factor: number) => void } }
+  interface Window { doryDesktop?: { platform: string; setZoom?: (factor: number) => void; browser?: DesktopBrowser } }
+  // DesktopBrowser is the bridge to the native views of the thread browser
+  // (desktop/preload.js); bounds are CSS pixels of the interface.
+  type Bounds = { x: number; y: number; width: number; height: number };
+  interface DesktopBrowser {
+    show(tab: string, url: string, bounds: Bounds): Promise<void>;
+    bounds(tab: string, bounds: Bounds, visible: boolean): Promise<void>;
+    hide(tab: string): Promise<void>;
+    cdp(tab: string, method: string, params: unknown): Promise<unknown>;
+    onEvent(cb: (tab: string, method: string, params: unknown) => void): () => void;
+    onOpen(cb: (tab: string, url: string) => void): () => void;
+    onGone(cb: (tab: string) => void): () => void;
+    tunnelListen(port: number): Promise<boolean>;
+    tunnelWrite(id: number, data: ArrayBuffer): void;
+    tunnelEnd(id: number): void;
+    onTunnelOpen(cb: (id: number, port: number) => void): () => void;
+    onTunnelData(cb: (id: number, data: Uint8Array) => void): () => void;
+    onTunnelClose(cb: (id: number) => void): () => void;
+  }
 }
 
 // The desktop app on Linux may run under window managers without title bars
