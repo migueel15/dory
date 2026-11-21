@@ -268,14 +268,17 @@ async function refreshEnvironments() {
   refreshing = true;
   const indicator = $("refresh-indicator");
   indicator.hidden = false;
-  indicator.textContent = "Actualizando entornos…";
+  indicator.setAttribute("aria-label", "Actualizando entornos");
+  indicator.classList.add("refreshing");
+  $("refresh-icon").style.transform = "";
   try {
     await Promise.all([Promise.allSettled(saved.map(check)), new Promise(resolve => setTimeout(resolve, 700))]);
     render();
   } finally {
     refreshing = false;
     indicator.hidden = true;
-    indicator.textContent = "";
+    indicator.classList.remove("refreshing");
+    indicator.setAttribute("aria-label", "Actualizar entornos");
   }
 }
 
@@ -289,13 +292,18 @@ document.addEventListener("touchmove", event => {
   if (!pullStart || event.touches.length !== 1) return;
   const dx = event.touches[0].clientX - pullStart.x;
   const dy = event.touches[0].clientY - pullStart.y;
-  if (dy < 0 || Math.abs(dx) > dy) { pullStart = null; return; }
+  if (dy < 0 || Math.abs(dx) > dy) {
+    pullStart = null;
+    $("refresh-indicator").hidden = true;
+    return;
+  }
   if (dy < 12) return;
   event.preventDefault();
   pullDistance = dy;
   const indicator = $("refresh-indicator");
   indicator.hidden = false;
-  indicator.textContent = dy >= 72 ? "Suelta para actualizar" : "Desliza para actualizar";
+  indicator.setAttribute("aria-label", dy >= 72 ? "Suelta para actualizar" : "Desliza para actualizar");
+  $("refresh-icon").style.transform = `rotate(${Math.min(dy / 72, 1) * 270}deg)`;
 }, { passive: false });
 
 function endPull() {

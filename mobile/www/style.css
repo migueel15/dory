@@ -41,4 +41,8 @@ dialog input { width: 100%; }
 
 .settings-action { padding: 10px 14px; margin: 0 0 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--fg); font: inherit; font-size: 14px; }
 
-.refresh-indicator { padding: 12px 0 2px; color: var(--muted); text-align: center; font-size: 14px; }
+.refresh-indicator { display: grid; place-items: center; height: 38px; color: var(--accent); }
+.refresh-indicator svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 36 15; }
+.refresh-indicator.refreshing svg { animation: refresh-spin .8s linear infinite; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .refresh-indicator.refreshing svg { animation-duration: 1.6s; } }
