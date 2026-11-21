@@ -61,6 +61,19 @@ func (s *Server) mountDevices(mux *http.ServeMux) {
 		out, err := s.Devices.Connect(r.Context(), body.Address)
 		s.deviceDone(w, out, err)
 	}))
+	mux.HandleFunc("POST /api/nodes/{node}/devices/{serial}/action", s.onNode(func(w http.ResponseWriter, r *http.Request) {
+		serial, _ := url.PathUnescape(r.PathValue("serial"))
+		var a devices.Action
+		if !decode(w, r, &a) {
+			return
+		}
+		out, err := s.Devices.Apply(r.Context(), serial, a)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "device_error", err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	}))
 	mux.HandleFunc("POST /api/nodes/{node}/devices/{serial}/disconnect", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		serial, _ := url.PathUnescape(r.PathValue("serial"))
 		s.deviceDone(w, nil, s.Devices.Disconnect(r.Context(), serial))

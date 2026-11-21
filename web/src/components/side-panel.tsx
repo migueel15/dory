@@ -16,7 +16,7 @@ export const TAB_KINDS: Record<TabKind, { label: string; icon: ReactNode }> = {
 
 // A tab is a kind ("diff", "plan") or, for the kinds that allow several,
 // "kind:<id>"; per-tab data (a custom name, the chosen device) lives in meta.
-export type TabMeta = { name?: string; serial?: string };
+export type TabMeta = { name?: string; serial?: string; floating?: boolean };
 type State = { open: boolean; tabs: string[]; active: string | null; meta: Record<string, TabMeta> };
 const empty: State = { open: false, tabs: [], active: null, meta: {} };
 export const kindOf = (key: string) => key.split(":")[0] as TabKind;

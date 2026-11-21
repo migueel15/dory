@@ -255,5 +255,6 @@ export const devicesApi = {
   stop: (serial: string, confirm: boolean, node = "local") => req<{ ok: boolean }>("POST", `/nodes/${node}/devices/${encodeURIComponent(serial)}/stop`, { confirm }),
   pair: (address: string, code: string, node = "local") => req<{ message: string }>("POST", `/nodes/${node}/devices/pair`, { address, code }),
   connect: (address: string, node = "local") => req<{ message: string }>("POST", `/nodes/${node}/devices/connect`, { address }),
+  action: (serial: string, body: Record<string, unknown>, node = "local") => req<Record<string, string>>("POST", `/nodes/${node}/devices/${encodeURIComponent(serial)}/action`, body),
   disconnect: (serial: string, node = "local") => req<{ ok: boolean }>("POST", `/nodes/${node}/devices/${encodeURIComponent(serial)}/disconnect`),
 };

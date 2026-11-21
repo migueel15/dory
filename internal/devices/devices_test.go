@@ -85,3 +85,11 @@ func TestInputValidation(t *testing.T) {
 		t.Error("pair code")
 	}
 }
+
+func TestParseForeground(t *testing.T) {
+	dump := "  mResumedActivity: ActivityRecord{1a2b3c u0 com.android.settings/.Settings$Sub t12}\n"
+	p, a := ParseForeground(dump)
+	if p != "com.android.settings" || a != ".Settings$Sub" {
+		t.Errorf("%q %q", p, a)
+	}
+}

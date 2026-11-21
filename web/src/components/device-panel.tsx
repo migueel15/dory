@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Circle, CircleNotch, Cpu, DeviceMobile, Plugs, Power, Square, SpeakerHigh, SpeakerLow, WifiHigh } from "@phosphor-icons/react";
+import { ArrowLeft, Circle, CircleNotch, Cpu, DeviceMobile, PictureInPicture, Plugs, Power, SidebarSimple, Sliders, Square, SpeakerHigh, SpeakerLow, WifiHigh } from "@phosphor-icons/react";
 import { devicesApi, type Device, type DeviceList } from "../api/client";
 import { DeviceStream, Key, keyFor, webCodecsProblem, type StreamStatus } from "../lib/scrcpy";
 import { askConfirm } from "./confirm";
@@ -9,7 +9,7 @@ import { Button, ErrorText } from "./ui";
 // DevicePanel shows an Android device or emulator of the thread's node live.
 // Only the visible tab streams: it connects on mount and closes on unmount.
 // The chosen device is kept by the tab; if it drops, the tab waits for it.
-export function DevicePanel({ node, serial, onSerial }: { node: string; serial: string | null; onSerial: (serial: string | null, name: string) => void }) {
+export function DevicePanel({ node, serial, onSerial, floating = false, onFloat }: { node: string; serial: string | null; onSerial: (serial: string | null, name: string) => void; floating?: boolean; onFloat?: (v: boolean) => void }) {
   const list = useQuery({ queryKey: ["devices", node], queryFn: () => devicesApi.list(node), refetchInterval: 4000 });
   const problem = webCodecsProblem();
   if (problem) return <Notice title="Vídeo no disponible">{problem}</Notice>;
@@ -17,7 +17,7 @@ export function DevicePanel({ node, serial, onSerial }: { node: string; serial: 
   if (!list.data) return <div className="p-4 text-sm text-slate-500 dark:text-muted">Buscando dispositivos…</div>;
   if (!list.data.tools.adb) return <Setup list={list.data} />;
   const dev = list.data.devices.find((d) => d.serial === serial);
-  if (serial && dev?.state === "device") return <Live key={serial} node={node} device={dev} onBack={() => onSerial(null, "")} />;
+  if (serial && dev?.state === "device") return <Live key={serial} node={node} device={dev} onBack={() => onSerial(null, "")} floating={floating} onFloat={onFloat} />;
   return <Picker node={node} list={list.data} lost={serial} onPick={(d) => onSerial(d.serial, d.avd || d.model || d.serial)} />;
 }
 
@@ -125,7 +125,8 @@ function WifiForm({ node, onDone }: { node: string; onDone: () => void }) {
 
 const statusText: Record<StreamStatus, string> = { connecting: "Conectando…", live: "En directo", closed: "Desconectado, reintentando…", error: "Error" };
 
-function Live({ node, device, onBack }: { node: string; device: Device; onBack: () => void }) {
+function Live({ node, device, onBack, floating, onFloat }: { node: string; device: Device; onBack: () => void; floating: boolean; onFloat?: (v: boolean) => void }) {
+  const [tools, setTools] = useState(false);
   const canvas = useRef<HTMLCanvasElement>(null);
   const stream = useRef<DeviceStream | null>(null);
   const [status, setStatus] = useState<StreamStatus>("connecting");
@@ -147,11 +148,13 @@ function Live({ node, device, onBack }: { node: string; device: Device; onBack: 
         <button type="button" onClick={onBack} className="text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">Dispositivos</button>
         <span className="min-w-0 flex-1 truncate font-medium">{device.avd || device.model || device.serial}</span>
         <span className={status === "live" ? "text-emerald-500" : "text-slate-500 dark:text-muted"}>{statusText[status]}</span>
+        {onFloat && <button type="button" onClick={() => onFloat(!floating)} title={floating ? "Abrir en el panel lateral" : "Flotar sobre el chat"} aria-label={floating ? "Abrir en el panel lateral" : "Flotar sobre el chat"} className="text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">{floating ? <SidebarSimple className="size-4 -scale-x-100" /> : <PictureInPicture className="size-4" />}</button>}
       </div>
       {message && <div className="p-2"><ErrorText error={new Error(message)} /></div>}
       <div className="grid min-h-0 flex-1 place-items-center bg-black/5 p-2 dark:bg-black/30">
         <canvas ref={canvas} tabIndex={0} {...input} className="max-h-full max-w-full touch-none rounded-lg bg-black object-contain shadow outline-none focus:ring-2 focus:ring-blue-500/60" />
       </div>
+      {tools && <Tools node={node} device={device} />}
       <div className="flex shrink-0 items-center justify-center gap-1 border-t border-slate-200 p-1 dark:border-border">
         {bar("Atrás", <ArrowLeft className="size-4" />, (s) => s.back())}
         {bar("Inicio", <Circle className="size-4" />, (s) => s.keycode(Key.home))}
@@ -159,6 +162,8 @@ function Live({ node, device, onBack }: { node: string; device: Device; onBack: 
         {bar("Bloquear o encender", <Power className="size-4" />, (s) => s.keycode(Key.power))}
         {bar("Bajar volumen", <SpeakerLow className="size-4" />, (s) => s.keycode(Key.volDown))}
         {bar("Subir volumen", <SpeakerHigh className="size-4" />, (s) => s.keycode(Key.volUp))}
+        <button type="button" title="Herramientas" aria-label="Herramientas" aria-pressed={tools} onClick={() => setTools(!tools)}
+          className={`grid size-8 place-items-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised ${tools ? "bg-slate-100 dark:bg-raised" : ""}`}><Sliders className="size-4" /></button>
       </div>
     </div>
   );
@@ -209,4 +214,73 @@ function useDeviceInput(canvas: React.RefObject<HTMLCanvasElement | null>, strea
       e.preventDefault();
     },
   };
+}
+
+const select = "rounded-md border border-slate-300 bg-transparent px-1.5 py-0.5 text-xs dark:border-border-strong dark:bg-surface";
+
+// Tools changes device settings through typed adb actions and shows the value
+// the device reports back after each change; only what the device supports shows.
+function Tools({ node, device }: { node: string; device: Device }) {
+  const qc = useQueryClient();
+  const key = ["device-state", node, device.serial];
+  const state = useQuery({ queryKey: key, queryFn: () => devicesApi.action(device.serial, { action: "state" }, node), refetchInterval: 8000 });
+  const apply = useMutation({
+    mutationFn: (body: Record<string, unknown>) => devicesApi.action(device.serial, body, node),
+    onSuccess: (out) => qc.setQueryData(key, (old: Record<string, string> | undefined) => ({ ...old, ...out })),
+  });
+  const st = state.data ?? {};
+  const [pkg, setPkg] = useState("");
+  const [perm, setPerm] = useState("android.permission.CAMERA");
+  const [coords, setCoords] = useState("40.4168,-3.7038");
+  const row = (name: string, control: React.ReactNode) => <div className="flex items-center justify-between gap-2"><span>{name}</span>{control}</div>;
+  const toggle = (action: string, value?: string) => (
+    <select className={select} value={value ?? ""} onChange={(e) => apply.mutate({ action, value: e.target.value })}><option value="" disabled>—</option><option value="on">Activado</option><option value="off">Desactivado</option></select>
+  );
+  return (
+    <div className="max-h-64 shrink-0 space-y-1.5 overflow-auto border-t border-slate-200 p-3 text-xs dark:border-border">
+      {st.foreground && row("App en primer plano", <span className="max-w-48 truncate text-slate-500 dark:text-muted" title={st.foreground}>{st.foreground}</span>)}
+      {row("Modo oscuro", <select className={select} value={st.dark_mode ?? ""} onChange={(e) => apply.mutate({ action: "dark_mode", value: e.target.value })}><option value="" disabled>—</option><option value="yes">Sí</option><option value="no">No</option><option value="auto">Automático</option></select>)}
+      {row("Tamaño de texto", <select className={select} value={st.font_scale ? Number(st.font_scale).toFixed(2) : ""} onChange={(e) => apply.mutate({ action: "font_scale", value: e.target.value })}>{["0.85", "1.00", "1.15", "1.30", "1.50", "2.00"].map((v) => <option key={v} value={v}>{v}×</option>)}{st.font_scale && !["0.85", "1.00", "1.15", "1.30", "1.50", "2.00"].includes(Number(st.font_scale).toFixed(2)) && <option value={Number(st.font_scale).toFixed(2)}>{Number(st.font_scale).toFixed(2)}×</option>}</select>)}
+      {row("Orientación", <select className={select} value={st.orientation ?? ""} onChange={(e) => apply.mutate({ action: "orientation", value: e.target.value })}><option value="" disabled>—</option><option value="auto">Automática</option><option value="portrait">Vertical</option><option value="landscape">Horizontal</option><option value="reverse_portrait">Vertical invertida</option><option value="reverse_landscape">Horizontal invertida</option></select>)}
+      {row("Wi-Fi", toggle("wifi", st.wifi))}
+      {row("Datos móviles", toggle("data", st.data))}
+      <div className="space-y-1 border-t border-slate-200 pt-1.5 dark:border-border">
+        <div className="font-medium">Permisos de una app</div>
+        <div className="flex gap-1"><input className={`${select} min-w-0 flex-1`} placeholder="com.paquete" value={pkg} onChange={(e) => setPkg(e.target.value)} /><input className={`${select} min-w-0 flex-1`} value={perm} onChange={(e) => setPerm(e.target.value)} /></div>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" disabled={!pkg || apply.isPending} onClick={() => apply.mutate({ action: "permission", package: pkg.trim(), permission: perm.trim(), value: "grant" })}>Conceder</Button>
+          <Button variant="ghost" disabled={!pkg || apply.isPending} onClick={() => apply.mutate({ action: "permission", package: pkg.trim(), permission: perm.trim(), value: "revoke" })}>Revocar</Button>
+          {apply.data?.permission && <span className="text-slate-500 dark:text-muted">{apply.data.state === "granted" ? "concedido" : "revocado"}</span>}
+        </div>
+      </div>
+      {device.transport === "emulator" && (
+        <div className="space-y-1 border-t border-slate-200 pt-1.5 dark:border-border">
+          <div className="font-medium">Ubicación simulada</div>
+          <div className="flex items-center gap-1"><input className={`${select} min-w-0 flex-1`} value={coords} onChange={(e) => setCoords(e.target.value)} placeholder="lat,lon" />
+            <Button variant="ghost" disabled={apply.isPending} onClick={() => { const [lat, lon] = coords.split(",").map(Number); apply.mutate({ action: "location", lat, lon }); }}>Fijar</Button></div>
+          {apply.data?.location && <span className="text-slate-500 dark:text-muted">Ubicación: {apply.data.location}</span>}
+        </div>
+      )}
+      {apply.error && <ErrorText error={apply.error} />}
+    </div>
+  );
+}
+
+// FloatingWindow holds a device above the chat: drag it by its bar and
+// resize it by the corner.
+export function FloatingWindow({ id, children }: { id: string; children: React.ReactNode }) {
+  const storeKey = `dory.device-float:${id}`;
+  const [pos, setPos] = useState<{ x: number; y: number }>(() => { try { return JSON.parse(localStorage.getItem(storeKey) ?? "") ; } catch { return { x: Math.max(16, window.innerWidth - 400), y: 80 }; } });
+  const drag = useRef<{ dx: number; dy: number } | null>(null);
+  const clamp = (x: number, y: number) => ({ x: Math.max(0, Math.min(window.innerWidth - 80, x)), y: Math.max(0, Math.min(window.innerHeight - 40, y)) });
+  return (
+    <div className="fixed z-40 flex min-h-[320px] min-w-[240px] resize flex-col overflow-hidden rounded-xl border border-slate-300 bg-white shadow-2xl dark:border-border-strong dark:bg-surface"
+      style={{ left: pos.x, top: pos.y, width: 340, height: 640, maxWidth: "95vw", maxHeight: "92vh" }}>
+      <div className="h-3 shrink-0 cursor-move touch-none bg-slate-100 dark:bg-raised" title="Mover"
+        onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); drag.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y }; }}
+        onPointerMove={(e) => { if (drag.current) setPos(clamp(e.clientX - drag.current.dx, e.clientY - drag.current.dy)); }}
+        onPointerUp={() => { drag.current = null; try { localStorage.setItem(storeKey, JSON.stringify(pos)); } catch { /* per-browser only */ } }} />
+      <div className="min-h-0 flex-1">{children}</div>
+    </div>
+  );
 }
