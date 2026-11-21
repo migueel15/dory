@@ -90,10 +90,6 @@ export function SidePanel({ panel, render, available }: { panel: SidePanelState;
       <ResizeHandle panel={aside} width={width} onResize={resize} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col border-l border-slate-200 dark:border-border">
       <div role="tablist" className={`flex shrink-0 items-center gap-1 h-10 border-b border-slate-200 px-2 pb-2 dark:border-border ${hasWindowClose ? "pr-[4.5rem]" : "pr-10"}`}>
-        <button type="button" aria-label="Abrir una pestaña" title="Abrir una pestaña" aria-haspopup="menu" aria-expanded={!!menu}
-          onPointerDown={(e) => { if (menu) e.stopPropagation(); }}
-          onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu(menu ? null : { x: r.left, y: r.bottom + 4 }); }}
-          className="grid size-7 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white"><Plus weight="regular" className="size-4" /></button>
         {panel.tabs.map((k) => (
           <div key={k} className={`group flex items-center rounded-md text-sm ${panel.active === k ? "bg-slate-100 font-medium dark:bg-raised" : "text-slate-500 hover:bg-slate-50 dark:text-muted dark:hover:bg-raised/60"}`}>
             {renaming === k ? (
@@ -106,6 +102,10 @@ export function SidePanel({ panel, render, available }: { panel: SidePanelState;
             <button type="button" onClick={() => panel.close(k)} aria-label={`Cerrar ${panel.label(k)}`} className="mr-1 grid size-5 place-items-center opacity-60 hover:opacity-100"><X weight="regular" className="size-3" /></button>
           </div>
         ))}
+        <button type="button" aria-label="Abrir una pestaña" title="Abrir una pestaña" aria-haspopup="menu" aria-expanded={!!menu}
+          onPointerDown={(e) => { if (menu) e.stopPropagation(); }}
+          onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu(menu ? null : { x: r.left, y: r.bottom + 4 }); }}
+          className="grid size-7 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white"><Plus weight="regular" className="size-4" /></button>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         {!opened ? null : panel.active ? render(panel.active) : (
