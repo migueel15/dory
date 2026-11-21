@@ -12,7 +12,7 @@ import android.view.View;
 
 /** Botón circular con un icono dibujado a mano: pausa, reanudar o cerrar. */
 public class VoiceIconButton extends View {
-    public enum Icon { PAUSE, PLAY, CLOSE }
+    public enum Icon { PLAY, CLOSE }
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
@@ -55,13 +55,7 @@ public class VoiceIconButton extends View {
         float u = size / 24f;
         paint.setColor(ink);
         paint.setStyle(Paint.Style.FILL);
-        if (icon == Icon.PAUSE) {
-            float bw = 3.2f * u;
-            box.set(c - 4.6f * u, c - 5.6f * u, c - 4.6f * u + bw, c + 5.6f * u);
-            canvas.drawRoundRect(box, u, u, paint);
-            box.offset(6f * u, 0);
-            canvas.drawRoundRect(box, u, u, paint);
-        } else if (icon == Icon.PLAY) {
+        if (icon == Icon.PLAY) {
             path.reset();
             path.moveTo(c - 3.6f * u, c - 6f * u);
             path.lineTo(c + 6.4f * u, c);

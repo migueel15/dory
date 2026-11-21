@@ -36,7 +36,7 @@ import java.util.UUID;
 import org.json.JSONObject;
 
 public class IdeaCaptureActivity extends AppCompatActivity {
-    private enum State { STARTING, LISTENING, PAUSING, PAUSED, SPEECH_ERROR, SAVING, SAVE_ERROR, SAVED }
+    private enum State { STARTING, LISTENING, PAUSED, SPEECH_ERROR, SAVING, SAVE_ERROR, SAVED }
 
     private static final int ACCENT = 0xff93c5fd;
     private static final int FOREGROUND = 0xffe5e7eb;
@@ -52,7 +52,9 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private State state = State.STARTING;
     private String committed = "";
     private String partial = "";
-    private final Runnable finishPause = () -> finishSpeech(partial);
+    private final Runnable relisten = () -> {
+        if (!isFinishing() && (state == State.LISTENING || state == State.STARTING)) listen();
+    };
     private String destinationId;
     private TextView status;
     private TextView transcript;
@@ -62,6 +64,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private VoiceIconButton primaryIcon;
     private TextView primaryText;
     private VoiceIconButton close;
+    private TextView send;
 
     private final ActivityResultLauncher<String> microphonePermission =
         registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
@@ -121,7 +124,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
             display(State.SPEECH_ERROR, "No hay un reconocedor de voz disponible.", "Reintentar", this::listen);
             return;
         }
-        display(State.STARTING, "Activando micrófono…", null, null);
+        if (state != State.LISTENING) display(State.STARTING, "Activando micrófono…", null, null);
         try {
             SpeechRecognizer session = usingOnDevice
                 ? SpeechRecognizer.createOnDeviceSpeechRecognizer(this) : SpeechRecognizer.createSpeechRecognizer(this);
@@ -132,23 +135,22 @@ public class IdeaCaptureActivity extends AppCompatActivity {
                 }
 
                 @Override public void onReadyForSpeech(Bundle params) {
-                    if (current() && state == State.STARTING) {
-                        display(State.LISTENING, "Escuchando…", "Pausar", IdeaCaptureActivity.this::pause);
-                    }
+                    if (current() && state == State.STARTING) display(State.LISTENING, "Escuchando…", null, null);
                 }
                 @Override public void onPartialResults(Bundle results) {
                     if (!current()) return;
                     partial = bestText(results);
                     transcript.setText(join(committed, partial));
-                    if (state == State.STARTING) display(State.LISTENING, "Escuchando…", "Pausar", IdeaCaptureActivity.this::pause);
+                    refreshSend();
+                    if (state == State.STARTING) display(State.LISTENING, "Escuchando…", null, null);
                 }
                 @Override public void onResults(Bundle results) {
-                    if (current()) finishSpeech(bestText(results));
+                    if (current()) keepListening(bestText(results));
                 }
                 @Override public void onError(int error) {
                     if (!current()) return;
-                    if (state == State.PAUSING) {
-                        finishSpeech(partial);
+                    if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                        keepListening(partial);
                     } else if (usingOnDevice && partial.isEmpty() && (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
                         || error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE)) {
                         systemFallback = true;
@@ -158,9 +160,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
                         committed = join(committed, partial);
                         partial = "";
                         transcript.setText(committed);
-                        String message = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
-                            ? "No se detectó voz." : "No se pudo completar el dictado.";
-                        display(State.SPEECH_ERROR, message, "Continuar", IdeaCaptureActivity.this::requestMicrophone);
+                        display(State.SPEECH_ERROR, "No se pudo completar el dictado.", "Continuar", IdeaCaptureActivity.this::requestMicrophone);
                     }
                 }
                 @Override public void onBeginningOfSpeech() {}
@@ -177,7 +177,9 @@ public class IdeaCaptureActivity extends AppCompatActivity {
             Intent dictation = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
-                .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+                .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 30000L)
+                .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 30000L);
             session.startListening(dictation);
         } catch (RuntimeException e) {
             closeRecognizer();
@@ -185,30 +187,34 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         }
     }
 
-    private void pause() {
-        display(State.PAUSING, "Pausando…", null, null);
-        main.postDelayed(finishPause, 1600);
-        recognizer.stopListening();
+    /** Una pausa al hablar no termina la idea: se conserva lo dictado y se vuelve a escuchar. */
+    private void keepListening(String text) {
+        closeRecognizer();
+        committed = join(committed, text.isEmpty() ? partial : text);
+        partial = "";
+        transcript.setText(committed);
+        refreshSend();
+        main.postDelayed(relisten, 120);
     }
 
-    private void finishSpeech(String text) {
-        boolean paused = state == State.PAUSING;
+    private void sendIdea() {
+        if (state == State.SAVING || state == State.SAVED) return;
+        String text = join(committed, partial);
+        if (text.isEmpty()) return;
         closeRecognizer();
-        if (paused && text.isEmpty()) text = partial;
+        committed = text;
         partial = "";
-        committed = join(committed, text);
-        transcript.setText(committed);
-        if (paused) {
-            display(State.PAUSED, "En pausa", "Continuar", this::requestMicrophone);
-        } else if (text.isEmpty()) {
-            display(State.SPEECH_ERROR, "No se detectó voz.", "Continuar", this::requestMicrophone);
-        } else {
-            save();
-        }
+        save();
+    }
+
+    private void refreshSend() {
+        boolean ready = !join(committed, partial).isEmpty();
+        send.setEnabled(ready);
+        send.setAlpha(ready ? 1f : 0.35f);
     }
 
     private void closeRecognizer() {
-        main.removeCallbacks(finishPause);
+        main.removeCallbacks(relisten);
         SpeechRecognizer session = recognizer;
         recognizer = null;
         if (session != null) session.destroy();
@@ -239,12 +245,12 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
-        if (recognizer != null) {
+        if (state == State.LISTENING || state == State.STARTING) {
             closeRecognizer();
             committed = join(committed, partial);
             partial = "";
-            display(State.PAUSED, "En pausa", "Continuar", this::requestMicrophone);
             transcript.setText(committed);
+            display(State.PAUSED, "En pausa", "Continuar", this::requestMicrophone);
         }
     }
 
@@ -266,16 +272,18 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         level.setLive(next == State.LISTENING);
         border.setMood(next == State.SAVED ? VoiceBorderView.Mood.DONE
             : failed ? VoiceBorderView.Mood.ERROR
-            : next == State.PAUSED || next == State.PAUSING ? VoiceBorderView.Mood.IDLE : VoiceBorderView.Mood.ACTIVE);
+            : next == State.PAUSED ? VoiceBorderView.Mood.IDLE : VoiceBorderView.Mood.ACTIVE);
         View.OnClickListener click = onAction == null ? null : view -> onAction.run();
-        boolean pause = "Pausar".equals(action);
         boolean resume = "Continuar".equals(action);
-        primaryIcon.setVisibility(pause || resume ? View.VISIBLE : View.GONE);
-        if (pause || resume) primaryIcon.setIcon(pause ? VoiceIconButton.Icon.PAUSE : VoiceIconButton.Icon.PLAY, action);
+        primaryIcon.setVisibility(resume ? View.VISIBLE : View.GONE);
+        if (resume) primaryIcon.setIcon(VoiceIconButton.Icon.PLAY, action);
         primaryIcon.setOnClickListener(click);
-        primaryText.setVisibility(action == null || pause || resume ? View.GONE : View.VISIBLE);
+        primaryText.setVisibility(action == null || resume ? View.GONE : View.VISIBLE);
         primaryText.setText(action);
         primaryText.setOnClickListener(click);
+        boolean dictating = listening || next == State.PAUSED || next == State.SPEECH_ERROR;
+        send.setVisibility(dictating ? View.VISIBLE : View.GONE);
+        refreshSend();
         close.setVisibility(next == State.SAVING || next == State.SAVED ? View.GONE : View.VISIBLE);
     }
 
@@ -334,6 +342,19 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         close.setIcon(VoiceIconButton.Icon.CLOSE, "Cancelar");
         close.setOnClickListener(view -> finish());
         controls.addView(close);
+        send = label("Enviar idea", 18, INK);
+        send.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        send.setGravity(Gravity.CENTER);
+        send.setBackground(shape(ACCENT, 30, ACCENT, 0));
+        RippleDrawable sendRipple = ripple();
+        sendRipple.setRadius(dp(200));
+        send.setForeground(sendRipple);
+        send.setClickable(true);
+        send.setOnClickListener(view -> sendIdea());
+        LinearLayout.LayoutParams sendSize = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(64));
+        sendSize.topMargin = dp(14);
+        sendSize.setMarginEnd(dp(6));
+        panel.addView(send, sendSize);
         setContentView(frame);
         panel.setAlpha(0f);
         panel.setTranslationY(dp(36));
