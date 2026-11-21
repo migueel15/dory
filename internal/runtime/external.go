@@ -338,7 +338,7 @@ func codexRecord(line []byte, emit func(Message), out []Message, index map[strin
 		text := strings.Join(parts, "\n")
 		switch {
 		case p.Role == "assistant":
-			emit(Message{ID: id, Role: "assistant", Text: text, CreatedAt: r.Timestamp})
+			emit(Message{ID: id, Role: "assistant", Text: stripCodexMemoryCitations(text, false), CreatedAt: r.Timestamp})
 		case p.Role == "user" && !codexContext(text):
 			emit(Message{ID: id, Role: "user", Text: text, CreatedAt: r.Timestamp})
 		}

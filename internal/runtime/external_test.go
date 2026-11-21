@@ -58,7 +58,7 @@ func TestExternalSessions(t *testing.T) {
 {"timestamp":"2026-11-16T01:00:02Z","type":"response_item","payload":{"type":"message","id":"m1","role":"user","content":[{"type":"input_text","text":"Hola codex"}]}}
 {"timestamp":"2026-11-16T01:00:03Z","type":"response_item","payload":{"type":"function_call","name":"exec","arguments":"{\"command\":\"ls\"}","call_id":"k1"}}
 {"timestamp":"2026-11-16T01:00:04Z","type":"response_item","payload":{"type":"function_call_output","call_id":"k1","output":"b.go"}}
-{"timestamp":"2026-11-16T01:00:05Z","type":"response_item","payload":{"type":"message","id":"m2","role":"assistant","content":[{"type":"output_text","text":"hola"}]}}
+{"timestamp":"2026-11-16T01:00:05Z","type":"response_item","payload":{"type":"message","id":"m2","role":"assistant","content":[{"type":"output_text","text":"hola\n\n<oai-mem-citation>\n<citation_entries>referencia</citation_entries>\n</oai-mem-citation>"}]}}
 `), 0o644)
 	list := ExternalSessions(home)
 	if len(list) != 2 {
@@ -79,7 +79,7 @@ func TestExternalSessions(t *testing.T) {
 		t.Fatalf("claude messages %+v", msgs)
 	}
 	msgs, _ = ExternalMessages(byProvider["codex"])
-	if len(msgs) != 3 || msgs[0].Text != "Hola codex" || msgs[1].Text != "b.go" || msgs[2].Text != "hola" {
+	if len(msgs) != 3 || msgs[0].Text != "Hola codex" || msgs[1].Text != "b.go" || msgs[2].Text != "hola\n\n" {
 		t.Fatalf("codex messages %+v", msgs)
 	}
 }
