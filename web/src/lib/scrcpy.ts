@@ -29,6 +29,8 @@ function codecOf(data: Uint8Array): string {
   return "avc1.42e01f";
 }
 
+const DECODERS = ["prefer-hardware", "no-preference"] as const;
+
 export class DeviceStream {
   private ws: WebSocket | null = null;
   private decoder: VideoDecoder | null = null;
@@ -80,6 +82,7 @@ export class DeviceStream {
     if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; }
     this.latest?.close();
     this.latest = null;
+    this.cfg = null;
     try { if (this.decoder && this.decoder.state !== "closed") this.decoder.close(); } catch { /* already closed */ }
     this.decoder = null;
     this.gotKey = false;
@@ -114,18 +117,12 @@ export class DeviceStream {
   private frame(msg: Uint8Array) {
     const kind = msg[0], data = msg.subarray(1);
     if (kind === 0) {
+      // The encoder repeats the same config when it restarts for a new viewer:
+      // keep the decoder. A different one (the screen rotated) needs a new decoder.
+      if (this.cfg && this.cfg.length === data.length && this.cfg.every((b, i) => b === data[i])) return;
       this.reset();
-      this.decoder = new VideoDecoder({
-        output: (f) => {
-          this.latest?.close();
-          this.latest = f;
-          if (!this.raf) this.raf = requestAnimationFrame(() => this.paint());
-        },
-        error: () => { this.reset(); },
-      });
-      try { this.decoder.configure({ codec: codecOf(data), optimizeForLatency: true, hardwareAcceleration: "prefer-hardware" }); } catch { this.on.status("error", "El navegador no puede decodificar este vídeo."); return; }
-      // The config (SPS/PPS) travels with the next key frame.
-      this.pending = data.slice();
+      this.cfg = data.slice();
+      void this.open(this.cfg, this.tier);
       return;
     }
     if (!this.decoder || this.decoder.state !== "configured") return;
@@ -137,6 +134,46 @@ export class DeviceStream {
     } else if (this.gotKey) this.decode("delta", data);
   }
   private pending: Uint8Array | null = null;
+  private cfg: Uint8Array | null = null;
+  // Index into DECODERS of the first option to try; it moves down when one fails.
+  private tier = 0;
+
+  // open starts a decoder with the first option the browser supports. The
+  // stream is Annex B (SPS/PPS in the data), which Chrome only reads when told so;
+  // hardware is preferred but not required, since some browsers lack it.
+  private async open(cfg: Uint8Array, from: number) {
+    const codec = codecOf(cfg);
+    for (let t = from; t < DECODERS.length; t++) {
+      const config = { codec, optimizeForLatency: true, hardwareAcceleration: DECODERS[t], avc: { format: "annexb" } } as VideoDecoderConfig;
+      let ok = false;
+      try { ok = (await VideoDecoder.isConfigSupported(config)).supported === true; } catch { /* try the next one */ }
+      if (!ok) continue;
+      if (this.cfg !== cfg || this.stopped) return; // a newer config or a stop came meanwhile
+      const dec = new VideoDecoder({
+        output: (f) => {
+          this.latest?.close();
+          this.latest = f;
+          if (!this.raf) this.raf = requestAnimationFrame(() => this.paint());
+        },
+        error: () => {
+          // This decoder broke (e.g. the GPU path): go on with the next option.
+          if (this.decoder !== dec || this.cfg !== cfg) return;
+          this.decoder = null;
+          this.gotKey = false;
+          void this.open(cfg, t + 1);
+        },
+      });
+      try { dec.configure(config); } catch { continue; }
+      this.tier = t;
+      this.decoder = dec;
+      this.gotKey = false;
+      // The config (SPS/PPS) travels with the next key frame, which a new decoder asks for.
+      this.pending = cfg.slice();
+      this.send(new Uint8Array([17]));
+      return;
+    }
+    this.on.status("error", "Este navegador no puede decodificar el vídeo del dispositivo (H.264).");
+  }
 
   private decode(type: "key" | "delta", data: Uint8Array) {
     try { this.decoder!.decode(new EncodedVideoChunk({ type, timestamp: (this.ts += 16000), data })); } catch { /* wait for the next key frame */ }
