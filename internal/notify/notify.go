@@ -251,14 +251,11 @@ func (n *Notifier) deliver(id string) {
 	if at, err := time.Parse(time.RFC3339Nano, nt.CreatedAt); err != nil || time.Since(at) > fresh {
 		return
 	}
-	// By default, with an interface in focus the notice shows in the app, not as a push.
+	// Like a messaging app, every device gets the notice; each one decides
+	// whether it shows inside the app (focused) or as a notification.
 	switch n.Mode(ctx, nt.Kind) {
 	case ModeOff, ModeApp:
 		return
-	case ModeAuto:
-		if n.Delivery(ctx).Focus {
-			return
-		}
 	}
 	n.mu.Lock()
 	done := n.pushed[id]

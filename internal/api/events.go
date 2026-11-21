@@ -14,6 +14,9 @@ import (
 type Change struct {
 	Entity string `json:"entity"`
 	ID     string `json:"id"`
+	// Data carries what a notification needs beyond the entity, e.g. which
+	// device an agent opened.
+	Data any `json:"data,omitempty"`
 }
 
 // Events fans out data changes and thread updates to the open clients over
@@ -34,7 +37,19 @@ func (e *Events) Changed(entity, id string) {
 	defer e.mu.Unlock()
 	for ch := range e.subs {
 		select {
-		case ch <- Change{entity, id}:
+		case ch <- Change{Entity: entity, ID: id}:
+		default:
+		}
+	}
+}
+
+// Notify tells the open clients about something that is not a stored change.
+func (e *Events) Notify(c Change) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for ch := range e.subs {
+		select {
+		case ch <- c:
 		default:
 		}
 	}

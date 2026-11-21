@@ -16,6 +16,9 @@ type Settings struct {
 	ArchiveThreadsOnFinish  bool `json:"archive_threads_on_finish"`
 	RemoveWorktreeOnArchive bool `json:"remove_worktree_on_archive"`
 	StopServicesOnShutdown  bool `json:"stop_services_on_shutdown"`
+	// AgentsUseDevices lets the agents of this node drive Android devices
+	// through the device_* tools; off by default.
+	AgentsUseDevices bool `json:"agents_use_devices"`
 }
 
 // SettingsStore reads and saves the Settings of a node.

@@ -1,6 +1,6 @@
 # ADR-022: Captura de ideas desde el asistente de Android
 
-- Status: accepted
+- Status: superseded by ADR-023
 - Date: 2026-11-20
 
 ## Contexto

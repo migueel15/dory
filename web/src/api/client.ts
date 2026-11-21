@@ -9,7 +9,7 @@ export type Project = { id: string; slug: string; name: string; description: str
 export type RepositoryLocation = { repository_id: string; node_id: string; path: string };
 export type Repository = { id: string; project_id: string; remote_url: string; default_branch: string; created_at: string; updated_at: string; archived_at: string | null };
 export type Stage = "inbox" | "ready" | "done" | "cancelled";
-export type NodeSettings = { archive_threads_on_finish: boolean; remove_worktree_on_archive: boolean; stop_services_on_shutdown: boolean };
+export type NodeSettings = { archive_threads_on_finish: boolean; remove_worktree_on_archive: boolean; stop_services_on_shutdown: boolean; agents_use_devices: boolean };
 export type ThreadService = { pid: number; address: string; port: number; command: string; kind: string };
 export type KeptWorktree = { thread_id: string; path: string; dirty: boolean };
 export type Task = {
@@ -247,3 +247,17 @@ export const COLUMN_LABELS: Record<Column, string> = {
 
 // repoName extracts owner/name from a GitHub remote.
 export const repoName = (remote: string) => remote.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/)?.[1] ?? remote;
+
+export type DeviceTools = { adb: string; emulator: string; kvm: boolean; sdk: string };
+export type Device = { serial: string; state: string; model: string; product: string; transport: "usb" | "wifi" | "emulator"; avd?: string; streaming: boolean };
+export type AvdState = { status: "starting" | "booting" | "ready" | "failed"; error?: string };
+export type DeviceList = { tools: DeviceTools; devices: Device[]; avds: string[]; avd_states: Record<string, AvdState>; error?: string };
+export const devicesApi = {
+  list: (node = "local") => req<DeviceList>("GET", `/nodes/${node}/devices`),
+  startAvd: (name: string, node = "local") => req<{ ok: boolean }>("POST", `/nodes/${node}/devices/avd/${encodeURIComponent(name)}/start`),
+  stop: (serial: string, confirm: boolean, node = "local") => req<{ ok: boolean }>("POST", `/nodes/${node}/devices/${encodeURIComponent(serial)}/stop`, { confirm }),
+  pair: (address: string, code: string, node = "local") => req<{ message: string }>("POST", `/nodes/${node}/devices/pair`, { address, code }),
+  connect: (address: string, node = "local") => req<{ message: string }>("POST", `/nodes/${node}/devices/connect`, { address }),
+  action: (serial: string, body: Record<string, unknown>, node = "local") => req<Record<string, string>>("POST", `/nodes/${node}/devices/${encodeURIComponent(serial)}/action`, body),
+  disconnect: (serial: string, node = "local") => req<{ ok: boolean }>("POST", `/nodes/${node}/devices/${encodeURIComponent(serial)}/disconnect`),
+};

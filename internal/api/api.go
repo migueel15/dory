@@ -14,6 +14,7 @@ import (
 
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/devices"
 	"github.com/migueel15/dory/internal/dictation"
 	"github.com/migueel15/dory/internal/github"
 	"github.com/migueel15/dory/internal/runtime"
@@ -56,6 +57,8 @@ type Server struct {
 	InfoChanged func()
 	// Settings holds what this node does when work finishes; nil uses the defaults.
 	Settings *SettingsStore
+	// Devices bridges Android devices and emulators; nil disables the routes.
+	Devices *devices.Manager
 }
 
 // Register mounts every /api route; auth owns /api/auth/* on the same mux.
@@ -99,6 +102,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	s.mountUsageHistory(mux)
 	s.mountDictation(mux)
 	s.mountUpdate(mux)
+	s.mountDevices(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "route not found")
 	})
