@@ -403,15 +403,15 @@ public class IdeaCaptureActivity extends AppCompatActivity {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         GradientDrawable fade = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            new int[] {0x00000000, 0xd9000000, 0xff000000, 0xff000000});
+            new int[] {0x00000000, 0x20000000, 0x80000000, 0xd9000000, 0xff000000, 0xff000000});
         panel.setBackground(fade);
-        panel.setPadding(dp(24), dp(104), dp(24), 0);
+        panel.setPadding(dp(24), dp(160), dp(24), 0);
         FrameLayout.LayoutParams panelSize = new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
         frame.addView(panel, panelSize);
         ViewCompat.setOnApplyWindowInsetsListener(frame, (view, windowInsets) -> {
             Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
-            panel.setPadding(insets.left + dp(24), dp(104), insets.right + dp(24), insets.bottom + dp(24));
+            panel.setPadding(insets.left + dp(24), dp(160), insets.right + dp(24), insets.bottom + dp(24));
             return windowInsets;
         });
         transcript = label("", 21, FOREGROUND);
