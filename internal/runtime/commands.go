@@ -20,7 +20,7 @@ type Entry struct {
 // Commands lists the slash commands and skills of a provider for a thread
 // working in dir, from the user's and the project's configuration.
 func Commands(home, dir, provider string) (commands, skills []Entry) {
-	switch provider {
+	switch driverOf(provider) {
 	case "claude":
 		for _, root := range []string{filepath.Join(home, ".claude", "commands"), filepath.Join(dir, ".claude", "commands")} {
 			commands = append(commands, markdownEntries(root, "/")...)

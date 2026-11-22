@@ -24,7 +24,7 @@ type Admin interface {
 }
 
 func (c Claude) Session(ctx context.Context) (bool, string) {
-	out, err := cmdexec.CommandContext(ctx, c.bin(), "auth", "status").Output()
+	out, err := withEnv(cmdexec.CommandContext(ctx, c.bin(), "auth", "status"), c.Environ()).Output()
 	var st struct {
 		LoggedIn   bool   `json:"loggedIn"`
 		AuthMethod string `json:"authMethod"`
@@ -38,7 +38,7 @@ func (c Claude) LoginCommand() []string  { return []string{c.bin(), "auth", "log
 func (c Claude) UpdateCommand() []string { return []string{c.bin(), "update"} }
 
 func (c Codex) Session(ctx context.Context) (bool, string) {
-	out, err := cmdexec.CommandContext(ctx, c.bin(), "login", "status").CombinedOutput()
+	out, err := withEnv(cmdexec.CommandContext(ctx, c.bin(), "login", "status"), c.Environ()).CombinedOutput()
 	text := strings.TrimSpace(string(out))
 	return err == nil && strings.HasPrefix(text, "Logged in"), text
 }
@@ -94,7 +94,7 @@ func (w jobOutput) Write(p []byte) (int, error) {
 
 // StartJob runs the login, update or install command of a provider in the background.
 func (m *Manager) StartJob(provider, kind string) (*Job, error) {
-	p, ok := m.providers[provider].(Admin)
+	p, ok := m.provider0(provider).(Admin)
 	if !ok {
 		return nil, ErrProvider
 	}
@@ -112,7 +112,10 @@ func (m *Manager) StartJob(provider, kind string) (*Job, error) {
 	j := &Job{ID: strings.ToLower(rand.Text()), Provider: provider, Kind: kind, Started: time.Now()}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	cmd := cmdexec.CommandContext(ctx, args[0], args[1:]...)
-	if (provider == "claude" || provider == antigravityID) && kind == "login" {
+	if env, ok := m.provider0(provider).(interface{ Environ() []string }); ok {
+		cmd.Env = env.Environ()
+	}
+	if d := driverOf(provider); (d == "claude" || d == antigravityID) && kind == "login" {
 		reader, writer, err := os.Pipe()
 		if err != nil {
 			cancel()
@@ -190,13 +193,17 @@ func (m *Manager) JobState(id string) (Job, bool) {
 func (m *Manager) UpdateAll(ctx context.Context) map[string]string {
 	failed := map[string]string{}
 	for _, st := range m.Providers(ctx) {
-		p, ok := m.providers[st.ID].(Admin)
+		p, ok := m.provider0(st.ID).(Admin)
 		if !ok || !st.Installed {
 			continue
 		}
 		args := p.UpdateCommand()
 		run, cancel := context.WithTimeout(ctx, 10*time.Minute)
-		out, err := cmdexec.CommandContext(run, args[0], args[1:]...).CombinedOutput()
+		upd := cmdexec.CommandContext(run, args[0], args[1:]...)
+		if env, ok := p.(interface{ Environ() []string }); ok {
+			upd.Env = env.Environ()
+		}
+		out, err := upd.CombinedOutput()
 		cancel()
 		if err != nil {
 			failed[st.ID] = strings.TrimSpace(string(out))
