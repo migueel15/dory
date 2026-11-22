@@ -111,8 +111,15 @@ func (s *Server) mountSettings(mux *http.ServeMux) {
 	}))
 	mux.HandleFunc("PUT /api/nodes/{node}/settings", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		v := s.Settings.Get()
+		prev := v.Input
+		// Decode into a fresh Input: json merges into an existing pointer and map,
+		// so a removed shortcut would survive and the stored settings would be mutated.
+		v.Input = nil
 		if !decode(w, r, &v) {
 			return
+		}
+		if v.Input == nil {
+			v.Input = prev
 		}
 		if s.Settings == nil {
 			writeError(w, http.StatusServiceUnavailable, "unavailable", "settings are not available")
