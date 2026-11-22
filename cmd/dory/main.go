@@ -163,6 +163,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		notices.Github()
 		srv.FinishTasks(ctx)
 	})
+	srv.StartWorktreeMaintenance(ctx)
 	srv.Remote = net
 	rt.PeerComplete = srv.CompleteOnPeer
 	srv.MeshPort = cfg.MeshPort

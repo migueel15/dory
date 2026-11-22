@@ -61,6 +61,8 @@ type Manager struct {
 	accounts []Account
 	// MCPURL is the local endpoint. MCPToken is the node secret used to derive thread credentials.
 	MCPURL, MCPToken string
+	// WorktreeRoot returns the folder for new worktrees; empty means the data directory.
+	WorktreeRoot func() string
 
 	mu      sync.Mutex
 	running map[string]context.CancelFunc
@@ -324,7 +326,10 @@ func (m *Manager) Create(ctx context.Context, n NewThread) (data.Thread, error) 
 		if n.RepoPath == "" || n.Branch == "" {
 			return t, fmt.Errorf("%w: worktree needs a repository path and a branch", data.ErrInvalid)
 		}
-		dir = filepath.Join(m.dataDir, "worktrees", t.ID)
+		dir = m.newWorktreeDir(t.ID)
+		if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+			return t, err
+		}
 		args := []string{"-C", n.RepoPath, "worktree", "add"}
 		if exists(ctx, n.RepoPath, n.Branch) {
 			args = append(args, dir, n.Branch)
@@ -906,10 +911,30 @@ var ErrDirtyWorktree = errors.New("el worktree tiene cambios sin commitear")
 // thread works in a checkout of the user or has no worktree.
 func (m *Manager) worktreeDir(ctx context.Context, id string) (string, error) {
 	dir, err := m.Dir(ctx, id)
-	if err != nil || !strings.HasPrefix(dir, filepath.Join(m.dataDir, "worktrees")) {
+	if err != nil {
 		return "", err
 	}
-	return dir, nil
+	if strings.HasPrefix(dir, filepath.Join(m.dataDir, "worktrees")) {
+		return dir, nil
+	}
+	// A custom location: dory names the folder after the thread, and a linked
+	// worktree has a .git file where a checkout has a folder.
+	if st, serr := os.Stat(filepath.Join(dir, ".git")); filepath.Base(dir) == id && serr == nil && !st.IsDir() {
+		return dir, nil
+	}
+	return "", nil
+}
+
+// newWorktreeDir is where the worktree of a new thread goes.
+func (m *Manager) newWorktreeDir(id string) string {
+	root := ""
+	if m.WorktreeRoot != nil {
+		root = m.WorktreeRoot()
+	}
+	if root == "" {
+		root = filepath.Join(m.dataDir, "worktrees")
+	}
+	return filepath.Join(root, id)
 }
 
 // Dirty says whether dir has changes that are not committed.
