@@ -85,11 +85,10 @@ func (c Claude) Start(ctx context.Context, t Turn) (Session, error) {
 		cmd := providerCommand(context.Background(), t.ThreadID, c.bin(), args...)
 		cmd.Dir = t.Dir
 		// ask_user waits for the user, so an MCP call may take long (ms).
-		cmd.Env = append(c.Environ(), "MCP_TOOL_TIMEOUT=86400000")
+		cmd.Env = append(threadEnv(c.Environ(), t.ThreadID), "MCP_TOOL_TIMEOUT=86400000")
 		if t.MCPURL != "" {
 			cmd.Env = append(cmd.Env, "DORY_MCP_TOKEN="+t.MCPToken)
 		}
-		cmd.Env = threadEnv(cmd.Env, t.ThreadID)
 		var err error
 		if p, err = openStdio(cmd, t.ThreadID, "claude", key); err != nil {
 			return nil, err
