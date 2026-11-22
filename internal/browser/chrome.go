@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -45,35 +47,14 @@ func startChrome(profile string, onEvent EventFunc) (*chrome, error) {
 	if err := os.MkdirAll(profile, 0o700); err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(bin, "--headless=new", "--remote-debugging-port=0", "--user-data-dir="+profile,
-		"--no-first-run", "--no-default-browser-check", "--disable-gpu", "--hide-scrollbars", "--mute-audio",
-		"--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--window-size=1280,800", "about:blank")
-	stderr, err := cmd.StderrPipe()
+	// A cold start on a loaded machine can stall once; a second launch with
+	// the same profile usually starts at once.
+	cmd, url, err := launchChrome(bin, profile)
+	if err != nil {
+		cmd, url, err = launchChrome(bin, profile)
+	}
 	if err != nil {
 		return nil, err
-	}
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("arrancar Chromium: %w", err)
-	}
-	found := make(chan string, 1)
-	go func() {
-		sc := bufio.NewScanner(stderr)
-		for sc.Scan() {
-			if m := devtoolsLine.FindStringSubmatch(sc.Text()); m != nil {
-				select {
-				case found <- m[1]:
-				default:
-				}
-			}
-		}
-	}()
-	var url string
-	select {
-	case url = <-found:
-	case <-time.After(20 * time.Second):
-		cmd.Process.Kill()
-		cmd.Wait()
-		return nil, errors.New("Chromium no abrió el puerto de depuración")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -91,6 +72,52 @@ func startChrome(profile string, onEvent EventFunc) (*chrome, error) {
 		return nil, err
 	}
 	return &chrome{cmd: cmd, conn: c}, nil
+}
+
+// launchChrome starts Chromium and waits for its DevTools URL. On failure the
+// error carries the last lines Chromium wrote, which explain the cause.
+func launchChrome(bin, profile string) (*exec.Cmd, string, error) {
+	cmd := exec.Command(bin, "--headless=new", "--remote-debugging-port=0", "--user-data-dir="+profile,
+		"--no-first-run", "--no-default-browser-check", "--disable-gpu", "--hide-scrollbars", "--mute-audio",
+		"--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--window-size=1280,800", "about:blank")
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, "", err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, "", fmt.Errorf("arrancar Chromium: %w", err)
+	}
+	found := make(chan string, 1)
+	var mu sync.Mutex
+	var tail []string
+	go func() {
+		sc := bufio.NewScanner(stderr)
+		for sc.Scan() {
+			line := sc.Text()
+			if m := devtoolsLine.FindStringSubmatch(line); m != nil {
+				select {
+				case found <- m[1]:
+				default:
+				}
+				continue
+			}
+			mu.Lock()
+			if tail = append(tail, line); len(tail) > 5 {
+				tail = tail[1:]
+			}
+			mu.Unlock()
+		}
+	}()
+	select {
+	case url := <-found:
+		return cmd, url, nil
+	case <-time.After(20 * time.Second):
+		cmd.Process.Kill()
+		cmd.Wait()
+		mu.Lock()
+		defer mu.Unlock()
+		return nil, "", fmt.Errorf("Chromium no abrió el puerto de depuración: %s", strings.Join(tail, " | "))
+	}
 }
 
 func (ch *chrome) alive() bool {

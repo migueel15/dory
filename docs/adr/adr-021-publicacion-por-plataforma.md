@@ -1,6 +1,6 @@
 # ADR-021: Publicación independiente por plataforma
 
-- Status: accepted
+- Status: parcialmente sustituido por ADR-026 (release compartida)
 - Date: 2026-11-20
 
 ## Context

@@ -10,21 +10,93 @@ on:
 permissions:
   contents: write
 
+# A new push to a pull request replaces its running checks; main and tags
+# never cancel a publication.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      checks: ${{ steps.decide.outputs.checks }}
+      package: ${{ steps.decide.outputs.package }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name != 'workflow_dispatch' && github.ref_type != 'tag'
+        with:
+          filters: |
+            core:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'web/**'
+              - '.github/workflows/release.yml'
+            desktop:
+              - 'desktop/**'
+              - 'scripts/**'
+              - '**/*_windows.go'
+              - '**/*_darwin.go'
+              - 'go.mod'
+              - 'go.sum'
+              - '.github/workflows/release.yml'
+      # Pull requests package only when they touch the desktop build; main
+      # publishes a nightly whenever the shipped code changes; tags always.
+      - id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          CORE: ${{ steps.filter.outputs.core }}
+          DESKTOP: ${{ steps.filter.outputs.desktop }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ] || [ "$EVENT" = workflow_dispatch ]; then
+            package=true
+          elif [ "$EVENT" = pull_request ]; then
+            package=$DESKTOP
+          elif [ "$CORE" = true ] || [ "$DESKTOP" = true ]; then
+            package=true
+          else
+            package=false
+          fi
+          checks=$package; [ "$CORE" = true ] && checks=true
+          echo "checks=$checks" >> "$GITHUB_OUTPUT"
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+
   checks:
+    needs: changes
+    if: needs.changes.outputs.checks == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with: { go-version-file: go.mod }
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
       - run: cd web && npm ci --include=dev && npm run build
-      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - uses: actions/upload-artifact@v4
+        with: { name: web-dist, path: web/dist/, retention-days: 1 }
+      # Chromium needs user namespaces for its sandbox; use the runner's
+      # Google Chrome instead of any distribution wrapper.
+      - run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          echo "DORY_CHROMIUM=$(command -v google-chrome || true)" >> "$GITHUB_ENV"
       - run: go test ./...
 
+  release:
+    needs: [changes, checks]
+    if: github.event_name != 'pull_request' && needs.changes.outputs.package == 'true' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/create-release.sh
+
   platform:
-    needs: checks
+    needs: [changes, checks, release]
+    if: ${{ !cancelled() && needs.changes.outputs.package == 'true' && needs.checks.result == 'success' && needs.release.result != 'failure' }}
     strategy:
       fail-fast: false
       matrix:
@@ -45,8 +117,9 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version-file: go.mod }
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
-      - run: cd web && npm ci --include=dev && npm run build
+        with: { node-version: 22, cache: npm, cache-dependency-path: desktop/package-lock.json }
+      - uses: actions/download-artifact@v4
+        with: { name: web-dist, path: web/dist }
       - name: Build core
         run: |
           channel=nightly; [ "$GITHUB_REF_TYPE" = tag ] && channel=stable
@@ -72,26 +145,11 @@ jobs:
             windows) compgen -G 'out/*Setup*.exe' >/dev/null && compgen -G 'out/*Setup*.exe.blockmap' >/dev/null && test -f out/latest.yml ;;
           esac
       - uses: actions/upload-artifact@v4
+        if: github.event_name == 'pull_request'
         with: { name: 'platform-${{ matrix.platform }}', path: out/ }
-      - name: Publish immutable platform release
-        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
+      - name: Publish into the shared release
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main')
         env:
           GH_TOKEN: ${{ github.token }}
           PLATFORM: ${{ matrix.platform }}
         run: bash scripts/publish-platform.sh
-
-  legacy:
-    needs: [checks, platform]
-    if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main')
-    runs-on: ubuntu-latest
-    concurrency:
-      group: legacy-${{ github.ref }}
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with: { path: assets, merge-multiple: true }
-      - name: Publish complete compatibility release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash scripts/publish-legacy.sh
