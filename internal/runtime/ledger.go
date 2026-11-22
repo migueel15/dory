@@ -362,3 +362,50 @@ func (m *Manager) UsageBreakdown(ctx context.Context, from time.Time) ([]UsageBr
 	}
 	return result, rows.Err()
 }
+
+// UsageTurn holds the counters recorded for a completed turn.
+type UsageTurn struct {
+	ID        string          `json:"id"`
+	Provider  string          `json:"provider"`
+	CreatedAt string          `json:"created_at"`
+	Preview   string          `json:"preview"`
+	Calls     []UsageTurnCall `json:"calls"`
+}
+
+type UsageTurnCall struct {
+	UsageTokens
+	Ordinal   int    `json:"ordinal"`
+	Model     string `json:"model"`
+	Reasoning int64  `json:"reasoning"`
+	Subagent  bool   `json:"subagent"`
+}
+
+func (m *Manager) ThreadUsageTurns(ctx context.Context, thread string, from time.Time) ([]UsageTurn, error) {
+	rows, err := m.db.QueryContext(ctx, `
+		SELECT t.run_id, t.provider, t.created_at, COALESCE(substr(msg.text, 1, 120), ''),
+			s.ordinal, s.model, s.input, s.cache_read, s.cache_write, s.output, s.reasoning, s.subagent != ''
+		FROM usage_turns t JOIN usage_steps s ON s.run_id = t.run_id
+		LEFT JOIN thread_messages msg ON msg.id = t.run_id || ':user' AND msg.thread_id = t.thread_id
+		WHERE t.thread_id = ? AND t.created_at >= ?
+		ORDER BY t.created_at DESC, t.run_id, s.ordinal`, thread, from.UTC().Format(usageTimestamp))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []UsageTurn{}
+	for rows.Next() {
+		var turn UsageTurn
+		var call UsageTurnCall
+		if err := rows.Scan(&turn.ID, &turn.Provider, &turn.CreatedAt, &turn.Preview,
+			&call.Ordinal, &call.Model, &call.Input, &call.CacheRead, &call.CacheWrite,
+			&call.Output, &call.Reasoning, &call.Subagent); err != nil {
+			return nil, err
+		}
+		if len(result) == 0 || result[len(result)-1].ID != turn.ID {
+			result = append(result, turn)
+		}
+		current := &result[len(result)-1]
+		current.Calls = append(current.Calls, call)
+	}
+	return result, rows.Err()
+}

@@ -37,6 +37,19 @@ func (s *Server) mountUsageHistory(mux *http.ServeMux) {
 			// Whole days, today included.
 			from = time.Date(now.Year(), now.Month(), now.Day()-int(span/(24*time.Hour))+1, 0, 0, 0, 0, loc)
 		}
+		if thread := r.PathValue("thread"); thread != "" {
+			if s.Runtime == nil {
+				writeJSON(w, http.StatusOK, []runtime.UsageTurn{})
+				return
+			}
+			turns, err := s.Runtime.ThreadUsageTurns(r.Context(), thread, from)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "usage_turns_failed", "No se pudo leer el consumo del hilo")
+				return
+			}
+			writeJSON(w, http.StatusOK, turns)
+			return
+		}
 		if breakdown {
 			if s.Runtime == nil {
 				writeJSON(w, http.StatusOK, []runtime.UsageBreakdownRow{})
@@ -56,6 +69,9 @@ func (s *Server) mountUsageHistory(mux *http.ServeMux) {
 		serve(w, r, false)
 	}))
 	mux.HandleFunc("GET /api/nodes/{node}/usage/breakdown", s.onNode(func(w http.ResponseWriter, r *http.Request) {
+		serve(w, r, true)
+	}))
+	mux.HandleFunc("GET /api/nodes/{node}/usage/threads/{thread}/turns", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		serve(w, r, true)
 	}))
 }

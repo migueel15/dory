@@ -34,6 +34,16 @@ func TestUsageLedgerStoresCountersAndPreservesTotals(t *testing.T) {
 	if err := m.db.QueryRow(`SELECT COUNT(*), SUM(reasoning) FROM usage_steps`).Scan(&steps, &reasoning); err != nil || steps != 2 || reasoning != 5 {
 		t.Fatalf("steps=%d reasoning=%d err=%v", steps, reasoning, err)
 	}
+	turns, err := m.ThreadUsageTurns(ctx, "thread", at.Add(-time.Second))
+	if err != nil || len(turns) != 1 {
+		t.Fatalf("turns = %+v, err = %v", turns, err)
+	}
+	calls := turns[0].Calls
+	if len(calls) != 2 || calls[0].Ordinal != 0 || calls[0].Input != 100 ||
+		calls[1].Ordinal != 1 || calls[1].CacheWrite != 4 || calls[1].Reasoning != 5 {
+		t.Fatalf("calls = %+v", calls)
+	}
+
 	rows, err := m.UsageBreakdown(ctx, at.Add(-time.Second))
 	if err != nil {
 		t.Fatal(err)

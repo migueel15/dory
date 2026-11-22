@@ -1,7 +1,7 @@
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { api, usable, type UsageBreakdownRow, type UsageRange, type UsageReport, type UsageRow, type UsageWindow } from "../api/client";
+import { api, usable, type UsageBreakdownRow, type UsageRange, type UsageReport, type UsageRow, type UsageTurnCall, type UsageWindow } from "../api/client";
 import { Card, ErrorText, Select, iconButton } from "../components/ui";
 import { AreaChart, StackedBar, compact, percent, providerColor, usd } from "../components/usage-charts";
 import { ProviderIcon, useNodes } from "../components/launch-picker";
@@ -155,7 +155,7 @@ export function Usage() {
           <ErrorText error={breakdownError} />
           {breakdown.some((r) => r.isPending && !r.isError)
             ? <p className="text-sm text-slate-500 dark:text-muted">Leyendo los registros…</p>
-            : <Breakdown rows={breakdown.flatMap((r) => r.data ?? []).filter((row) => !provider || row.provider === provider)} />}
+            : <Breakdown range={range} provider={provider} rows={breakdown.flatMap((r, i) => (r.data ?? []).map((row) => ({ ...row, node: selected[i].value }))).filter((row) => !provider || row.provider === provider)} />}
         </>
       ) : (
         <>
@@ -174,11 +174,12 @@ const CATEGORY_LABELS: Record<string, string> = {
   unattributed_output: "Salida sin atribuir",
 };
 
-function Breakdown({ rows }: { rows: UsageBreakdownRow[] }) {
+function Breakdown({ rows, range, provider }: { rows: (UsageBreakdownRow & { node: string })[]; range: UsageRange; provider: string }) {
   const [thread, setThread] = useState("");
   const threads = new Map(rows.map((r) => [r.thread, r.title || r.thread.slice(0, 8)]));
   const selected = threads.has(thread) ? thread : "";
   const visible = rows.filter((r) => !selected || r.thread === selected);
+  const node = visible[0]?.node;
   const totalOf = (r: Pick<UsageBreakdownRow, Kind>) => KINDS.reduce((sum, kind) => sum + r[kind], 0);
   const sumOf = (group: UsageBreakdownRow[], kind: Kind) => group.reduce((sum, r) => sum + r[kind], 0);
   const total = visible.reduce((sum, row) => sum + totalOf(row), 0);
@@ -217,6 +218,7 @@ function Breakdown({ rows }: { rows: UsageBreakdownRow[] }) {
         </dl>
         {priced > 0 && <p className="mt-3 text-sm tabular-nums">{usd(cost)} a tarifa API · Cobertura {percent(Math.min(1, priced / total))} de los tokens</p>}
       </Card>
+      {selected && node && <ThreadUsage thread={selected} range={range} node={node} provider={provider} />}
       <Card>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -259,6 +261,55 @@ function Breakdown({ rows }: { rows: UsageBreakdownRow[] }) {
       </Card>
     </div>
   );
+}
+
+const callInput = (call: UsageTurnCall) => call.input + call.cache_read + call.cache_write;
+const exact = new Intl.NumberFormat("es-ES");
+const signed = new Intl.NumberFormat("es-ES", { signDisplay: "exceptZero" });
+const CALL_COLUMNS = ["Llamada", "Modelo", "Entrada total", "Cambio de entrada", "Sin caché", "Caché leída", "Caché escrita", "Salida", "Razonamiento"];
+
+function ThreadUsage({ thread, range, node, provider }: { thread: string; range: UsageRange; node: string; provider: string }) {
+  const { data, error, isPending } = useQuery({
+    queryKey: ["usage-breakdown", "turns", node, thread, range],
+    queryFn: () => api.threadUsageTurns(thread, range, node),
+  });
+  const turns = (data ?? []).filter((turn) => !provider || turn.provider === provider);
+
+  return <Card>
+    <h2 className="font-semibold">Uso por turno</h2>
+    <p className="mb-2 text-sm text-slate-500 dark:text-muted">Contadores del proveedor. La diferencia compara la entrada total con la llamada anterior del mismo turno. El razonamiento registrado forma parte de la salida.</p>
+    <ErrorText error={error} />
+    {isPending && <p className="text-sm">Leyendo los turnos…</p>}
+    {data && !turns.length && <p className="text-sm">Sin turnos registrados en este periodo.</p>}
+    {turns.map((turn) => <details key={turn.id} className="border-t border-slate-200 py-2 dark:border-border">
+      <summary className="cursor-pointer text-sm">
+        <span className="font-medium">{turn.preview || date(turn.created_at)}</span>
+        <span className="ml-2 text-slate-500 dark:text-muted">
+          {turn.preview && `${date(turn.created_at)} · `}{PROVIDER_NAMES[turn.provider] ?? turn.provider} · {turn.calls.length} {turn.calls.length === 1 ? "llamada" : "llamadas"} · {exact.format(turn.calls.reduce((sum, call) => sum + callInput(call), 0))} tokens de entrada
+        </span>
+      </summary>
+      <div className="mt-2 overflow-x-auto">
+        <table className="w-full whitespace-nowrap text-sm">
+          <thead className="text-xs text-slate-500 dark:text-muted">
+            <tr>{CALL_COLUMNS.map((label, i) => <th key={label} scope="col" className={`px-2 py-1 ${i < 2 ? "text-left" : "text-right"}`}>{label}</th>)}</tr>
+          </thead>
+          <tbody>
+            {turn.calls.map((call, i) => {
+              const previous = turn.calls[i - 1];
+              const delta = previous && !call.subagent && !previous.subagent && call.model === previous.model ? callInput(call) - callInput(previous) : null;
+              return <tr key={call.ordinal} className="border-t border-slate-200 tabular-nums dark:border-border">
+                <th scope="row" className="px-2 py-1 text-left font-medium">{call.ordinal + 1}{call.subagent && " · Subagente"}</th>
+                <td className="px-2 py-1">{call.model || "—"}</td>
+                <td className="px-2 py-1 text-right">{exact.format(callInput(call))}</td>
+                <td className="px-2 py-1 text-right">{delta === null ? "—" : signed.format(delta)}</td>
+                {[...KINDS.map((kind) => call[kind]), call.reasoning].map((n, index) => <td key={CALL_COLUMNS[index + 4]} className="px-2 py-1 text-right">{exact.format(n)}</td>)}
+              </tr>;
+            })}
+          </tbody>
+        </table>
+      </div>
+    </details>)}
+  </Card>;
 }
 
 function History({ report, provider, money, by, setBy }: { report: UsageReport; provider: string; money: boolean; by: "model" | "day"; setBy: (v: "model" | "day") => void }) {
