@@ -172,3 +172,10 @@ func (s *Server) mountWorktrees(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, out)
 	}))
 }
+
+// ProjectDir is the local checkout of a project's first repository, or "" for
+// a project without repositories.
+func (s *Server) ProjectDir(ctx context.Context, projectID string) (string, error) {
+	_, path, err := s.projectCheckout(ctx, projectID)
+	return path, err
+}

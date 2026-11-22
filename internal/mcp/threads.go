@@ -206,7 +206,83 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		}
 		return map[string]any{"thread_id": in.ThreadID, "sent": true, "queued": len(m.Queue(in.ThreadID)) > 0}, nil
 	})
-	add(srv, "thread_spawn", "Launch a subagent: a child thread of this conversation that works on prompt in the same folder and task, with its own provider and model (list_models), e.g. when the user asks \"abre un hilo con haiku que revise X\" or to split work in parallel. The child does not see this conversation, so put every detail it needs in prompt. Its result arrives here as a message when its turn ends: do not poll it; continue with other work or end your turn. Subagents cannot launch subagents, and at most 5 work at once.", func(ctx context.Context, in struct {
+	add(srv, "thread_create", "Create a new, independent thread (a new chat in the user's list), e.g. when the user asks \"créame un hilo nuevo\" or \"abre un chat que…\". It is not a subagent: it does not report back here. By default it takes this thread's project, provider, model and permission mode; prompt, if given, starts its first turn. For work whose result should come back here, use thread_spawn instead.", func(ctx context.Context, in struct {
+		Prompt    string `json:"prompt,omitempty" jsonschema:"First message of the new thread; empty leaves it waiting for the user"`
+		Title     string `json:"title,omitempty"`
+		Provider  string `json:"provider,omitempty" jsonschema:"Harness id from list_models; another one than this thread's needs model"`
+		Model     string `json:"model,omitempty"`
+		Effort    string `json:"effort,omitempty"`
+		ProjectID string `json:"project_id,omitempty" jsonschema:"Project id; this thread's by default"`
+		TaskID    string `json:"task_id,omitempty" jsonschema:"Task to link the new thread to"`
+	}) (any, error) {
+		var base data.Thread
+		if id := caller(ctx); id != "" {
+			base, _ = s.Store.Threads().Get(ctx, id)
+		}
+		if in.Provider == "" && base.Provider == "" {
+			return nil, errors.New("thread_create needs a provider outside a Dory thread; use list_models")
+		}
+		var settings runtime.ThreadSettings
+		if in.Provider != "" && !strings.EqualFold(in.Provider, base.Provider) {
+			if in.Model == "" {
+				return nil, fmt.Errorf("choose a model for provider %s; use list_models", in.Provider)
+			}
+			settings.Provider = &in.Provider
+		}
+		if in.Model != "" {
+			settings.Model = &in.Model
+		}
+		if in.Effort != "" {
+			settings.Effort = &in.Effort
+		}
+		ref := data.Thread{Provider: base.Provider, Model: base.Model}
+		if settings.Provider != nil {
+			ref.Provider = *settings.Provider
+		}
+		if err := m.ResolveSettings(ctx, ref, &settings); err != nil {
+			return nil, err
+		}
+		n := runtime.NewThread{Provider: ref.Provider, Model: base.Model, Effort: base.Effort, RuntimeMode: base.RuntimeMode, ProjectID: base.ProjectID, Title: in.Title}
+		if settings.Provider != nil {
+			n.Model, n.Effort = "", ""
+		}
+		if settings.Model != nil {
+			n.Model = *settings.Model
+		}
+		if settings.Effort != nil {
+			n.Effort = *settings.Effort
+		}
+		if in.ProjectID != "" {
+			n.ProjectID = &in.ProjectID
+		}
+		if in.TaskID != "" {
+			n.TaskID = &in.TaskID
+		}
+		if n.ProjectID != nil {
+			dir, err := s.ProjectDir(ctx, *n.ProjectID)
+			if err != nil {
+				return nil, err
+			}
+			n.RepoPath = dir
+		}
+		if n.Title == "" {
+			n.Title = firstLine(in.Prompt, 60)
+		}
+		if n.Title == "" {
+			n.Title = "Hilo nuevo"
+		}
+		t, err := m.Create(ctx, n)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(in.Prompt) != "" {
+			if err = m.Send(ctx, t.ID, in.Prompt); err != nil {
+				return nil, err
+			}
+		}
+		return map[string]any{"thread_id": t.ID, "title": t.Title, "provider": t.Provider, "model": t.Model, "project_id": t.ProjectID, "started": in.Prompt != ""}, nil
+	})
+	add(srv, "thread_spawn", "Launch a subagent: a hidden child thread of this conversation that works on prompt in the same folder and task, with its own provider and model (list_models), e.g. when the user asks for a subagent (\"lanza un subagente con haiku que revise X\") or to split work in parallel. It does not show in the thread list; for a new chat the user will see there, use thread_create. The child does not see this conversation, so put every detail it needs in prompt. Its result arrives here as a message when its turn ends: do not poll it; continue with other work or end your turn. Subagents cannot launch subagents, and at most 5 work at once.", func(ctx context.Context, in struct {
 		Prompt   string `json:"prompt" jsonschema:"Self-contained task for the subagent"`
 		Title    string `json:"title,omitempty" jsonschema:"Short title; the first line of prompt by default"`
 		Provider string `json:"provider,omitempty" jsonschema:"Harness id from list_models; this thread's by default; another one needs model"`
@@ -252,6 +328,17 @@ func activity(t data.Thread) string {
 		return *t.LastActivityAt
 	}
 	return t.CreatedAt
+}
+
+func firstLine(text string, limit int) string {
+	text = strings.TrimSpace(text)
+	if i := strings.IndexByte(text, '\n'); i >= 0 {
+		text = text[:i]
+	}
+	if r := []rune(text); len(r) > limit {
+		return string(r[:limit]) + "…"
+	}
+	return text
 }
 
 func clip(text string) string {
