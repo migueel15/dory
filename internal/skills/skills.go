@@ -100,6 +100,8 @@ type Reconciler struct {
 
 	mu   sync.Mutex
 	wake chan struct{}
+	// run keeps one reconcile, or one conflict resolution, at a time.
+	run sync.Mutex
 }
 
 // manifest maps each file the reconciler wrote to the hash it wrote.
@@ -159,6 +161,12 @@ func (r *Reconciler) Run(ctx context.Context) {
 // Reconcile writes, updates and removes skill files, then publishes the
 // state of each skill on this node.
 func (r *Reconciler) Reconcile(ctx context.Context) error {
+	r.run.Lock()
+	defer r.run.Unlock()
+	return r.reconcile(ctx)
+}
+
+func (r *Reconciler) reconcile(ctx context.Context) error {
 	// Seeding writes only when this binary ships something newer, so the
 	// catalog change it causes ends in a reconcile that seeds nothing.
 	if err := SeedSystem(ctx, r.Store); err != nil {
@@ -220,8 +228,13 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 		st.Message = strings.Join(problems, "\n")
 		states[s.ID] = st
 	}
-	// Files written before that no skill wants any more are removed, unless
-	// someone edited them since.
+	// Files written before that no skill wants any more are removed. One
+	// edited since is kept and stays tracked, and its skill is reported in
+	// conflict so the user can resolve it.
+	byName := map[string]string{}
+	for _, s := range all {
+		byName[s.Name] = s.ID
+	}
 	for path, h := range m {
 		if want[path] {
 			continue
@@ -236,6 +249,15 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 			continue
 		}
 		raw, err := os.ReadFile(path)
+		if err == nil && hash(raw) != h {
+			if id, ok := byName[r.ownerName(path)]; ok {
+				st := states[id]
+				st.SkillID, st.NodeID, st.Status = id, r.Node, "conflict"
+				st.Message = strings.TrimSpace(st.Message + "\nconflicto: " + path + " se editó a mano y Dory no la quita")
+				states[id] = st
+				continue
+			}
+		}
 		if err == nil && hash(raw) == h {
 			os.Remove(path)
 			removeEmpty(filepath.Dir(path), r.Home)
@@ -248,6 +270,25 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 		return err
 	}
 	return r.publish(ctx, states)
+}
+
+// roots are the folders that hold one folder per skill on this node.
+func (r *Reconciler) roots() []string {
+	out := []string{filepath.Join(filepath.Dir(r.Manifest), "antigravity-skills")}
+	for _, dir := range Dirs(r.Home) {
+		out = append(out, dir)
+	}
+	return out
+}
+
+// ownerName is the skill folder a file belongs to, or "".
+func (r *Reconciler) ownerName(path string) string {
+	for _, root := range r.roots() {
+		if rel, err := filepath.Rel(root, path); err == nil && !strings.HasPrefix(rel, "..") {
+			return strings.Split(filepath.ToSlash(rel), "/")[0]
+		}
+	}
+	return ""
 }
 
 // write puts content at path when the path is free or holds what Dory wrote

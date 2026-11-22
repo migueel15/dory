@@ -69,6 +69,38 @@ func (s *Server) mountSkills(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
+	// Conflicts live in the folders of one node, so these routes run there.
+	mux.HandleFunc("GET /api/nodes/{node}/skills/{id}/conflicts", s.onNode(func(w http.ResponseWriter, r *http.Request) {
+		if s.Skills == nil {
+			writeError(w, http.StatusNotImplemented, "unavailable", "este nodo no instala skills")
+			return
+		}
+		out, err := s.Skills.Conflicts(r.Context(), r.PathValue("id"))
+		if err != nil {
+			writeDataError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	}))
+	mux.HandleFunc("POST /api/nodes/{node}/skills/{id}/resolve", s.onNode(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Action  string `json:"action"`
+			Harness string `json:"harness"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		if s.Skills == nil {
+			writeError(w, http.StatusNotImplemented, "unavailable", "este nodo no instala skills")
+			return
+		}
+		backup, err := s.Skills.Resolve(r.Context(), r.PathValue("id"), body.Action, body.Harness)
+		if err != nil {
+			writeDataError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"backup": backup})
+	}))
 	mux.HandleFunc("DELETE /api/skills/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if sk, err := s.Store.Skills().Get(r.Context(), r.PathValue("id")); err == nil && sk.Source == "system" {
 			writeError(w, http.StatusBadRequest, "invalid_argument", "las skills del sistema no se pueden archivar; desactívala")

@@ -156,6 +156,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 			DataDir: cfg.DataDir, Listen: cfg.Listen, Platform: goruntime.GOOS + "/" + goruntime.GOARCH},
 	}
 	srv.Devices = devices.NewManager()
+	srv.Skills = reconciler
 	srv.Settings = api.NewSettingsStore(cfg.DataDir, api.Settings{ArchiveThreadsOnFinish: cfg.Tasks.ArchiveThreadsOnFinish, RemoveWorktreeOnArchive: cfg.Threads.RemoveWorktreeOnArchive})
 	go gh.Watch(ctx, func() {
 		events.Changed("github", "")

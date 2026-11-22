@@ -50,28 +50,11 @@ func readSystem(dir string) (data.Skill, error) {
 	if err != nil {
 		return data.Skill{}, err
 	}
-	front, body, ok := strings.Cut(strings.TrimPrefix(string(raw), "---\n"), "\n---\n")
-	if !ok {
-		return data.Skill{}, errors.New("missing frontmatter")
+	s, err := parseSkillMD(string(raw))
+	if err != nil {
+		return s, err
 	}
-	s := data.Skill{BodyMD: strings.TrimSpace(body), Source: "system", Files: map[string]string{}}
-	for _, line := range strings.Split(front, "\n") {
-		key, value, _ := strings.Cut(line, ":")
-		value = strings.TrimSpace(value)
-		if unq, err := strconv.Unquote(value); err == nil {
-			value = unq
-		}
-		switch strings.TrimSpace(key) {
-		case "name":
-			s.Name = value
-		case "description":
-			s.Description = value
-		case "version":
-			if s.Version, err = strconv.ParseInt(value, 10, 64); err != nil {
-				return s, fmt.Errorf("bad version %q", value)
-			}
-		}
-	}
+	s.Source = "system"
 	if s.Name != path.Base(dir) || s.Version < 1 || s.Description == "" {
 		return s, errors.New("frontmatter needs name (the folder), description and version")
 	}
@@ -85,6 +68,35 @@ func readSystem(dir string) (data.Skill, error) {
 		return err
 	})
 	return s, err
+}
+
+// parseSkillMD splits a SKILL.md into its frontmatter fields and body.
+func parseSkillMD(raw string) (data.Skill, error) {
+	front, body, ok := strings.Cut(strings.TrimPrefix(strings.ReplaceAll(raw, "\r\n", "\n"), "---\n"), "\n---\n")
+	if !ok || !strings.HasPrefix(strings.TrimSpace(raw), "---") {
+		return data.Skill{}, errors.New("missing frontmatter")
+	}
+	s := data.Skill{BodyMD: strings.TrimSpace(body), Files: map[string]string{}}
+	for _, line := range strings.Split(front, "\n") {
+		key, value, _ := strings.Cut(line, ":")
+		value = strings.TrimSpace(value)
+		if unq, err := strconv.Unquote(value); err == nil {
+			value = unq
+		}
+		switch strings.TrimSpace(key) {
+		case "name":
+			s.Name = value
+		case "description":
+			s.Description = value
+		case "version":
+			v, err := strconv.ParseInt(value, 10, 64)
+			if err != nil {
+				return s, fmt.Errorf("bad version %q", value)
+			}
+			s.Version = v
+		}
+	}
+	return s, nil
 }
 
 // SeedSystem writes the system skills of this binary into the catalog. It
