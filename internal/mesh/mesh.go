@@ -46,6 +46,7 @@ type Peer struct {
 	LastSeen    string          `json:"last_seen"`
 	Info        json.RawMessage `json:"info"`
 	Revoked     bool            `json:"revoked"`
+	Disabled    bool            `json:"disabled"`
 }
 
 // Mesh is the peer side of a node.
@@ -109,7 +110,7 @@ func (m *Mesh) Changed() {
 
 // Peers lists the paired nodes with their presence.
 func (m *Mesh) Peers(ctx context.Context) ([]Peer, error) {
-	rows, err := m.db.QueryContext(ctx, `SELECT node_id, name, public_key, address, info, COALESCE(last_seen, ''), revoked_at IS NOT NULL FROM peers ORDER BY name`)
+	rows, err := m.db.QueryContext(ctx, `SELECT node_id, name, public_key, address, info, COALESCE(last_seen, ''), revoked_at IS NOT NULL, disabled_at IS NOT NULL FROM peers ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -118,13 +119,13 @@ func (m *Mesh) Peers(ctx context.Context) ([]Peer, error) {
 	for rows.Next() {
 		var p Peer
 		var info string
-		if err = rows.Scan(&p.ID, &p.Name, &p.PublicKey, &p.Address, &info, &p.LastSeen, &p.Revoked); err != nil {
+		if err = rows.Scan(&p.ID, &p.Name, &p.PublicKey, &p.Address, &info, &p.LastSeen, &p.Revoked, &p.Disabled); err != nil {
 			return nil, err
 		}
 		p.Info = json.RawMessage(info)
 		p.Fingerprint = Fingerprint(p.PublicKey)
 		if t, err := time.Parse(time.RFC3339Nano, p.LastSeen); err == nil {
-			p.Connected = !p.Revoked && time.Since(t) < offlineAfter
+			p.Connected = !p.Revoked && !p.Disabled && time.Since(t) < offlineAfter
 		}
 		out = append(out, p)
 	}
@@ -133,7 +134,7 @@ func (m *Mesh) Peers(ctx context.Context) ([]Peer, error) {
 
 func (m *Mesh) member(ctx context.Context, publicKey string) (string, bool) {
 	var id string
-	err := m.db.QueryRowContext(ctx, `SELECT node_id FROM peers WHERE public_key = ? AND revoked_at IS NULL`, publicKey).Scan(&id)
+	err := m.db.QueryRowContext(ctx, `SELECT node_id FROM peers WHERE public_key = ? AND revoked_at IS NULL AND disabled_at IS NULL`, publicKey).Scan(&id)
 	return id, err == nil
 }
 
@@ -381,7 +382,7 @@ func (m *Mesh) acceptPair(w http.ResponseWriter, r *http.Request) {
 
 func (m *Mesh) addPeer(ctx context.Context, node, name, key, address string) error {
 	_, err := m.db.ExecContext(ctx, `INSERT INTO peers(node_id, name, public_key, address, paired_at) VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(node_id) DO UPDATE SET name = excluded.name, public_key = excluded.public_key, address = excluded.address, revoked_at = NULL`,
+		ON CONFLICT(node_id) DO UPDATE SET name = excluded.name, public_key = excluded.public_key, address = excluded.address, revoked_at = NULL, disabled_at = NULL`,
 		node, name, key, address, time.Now().UTC().Format(time.RFC3339Nano))
 	return err
 }
@@ -422,17 +423,43 @@ func (m *Mesh) Pair(ctx context.Context, address, code string) (Peer, error) {
 	return Peer{ID: out.NodeID, Name: out.Name, PublicKey: theirKey, Fingerprint: Fingerprint(theirKey), Address: address}, nil
 }
 
-// Revoke stops trusting a peer.
+// Revoke stops trusting a peer and forgets it. Pairing again adds it back.
 func (m *Mesh) Revoke(ctx context.Context, node string) error {
-	_, err := m.db.ExecContext(ctx, `UPDATE peers SET revoked_at = ? WHERE node_id = ?`, time.Now().UTC().Format(time.RFC3339Nano), node)
+	_, err := m.db.ExecContext(ctx, `DELETE FROM peers WHERE node_id = ?`, node)
+	m.halt(node)
+	return err
+}
+
+// SetEnabled pauses or resumes the sync with a paired node, keeping the
+// pairing. A paused node is neither synced with nor accepted.
+func (m *Mesh) SetEnabled(ctx context.Context, node string, enabled bool) error {
+	var at any
+	if !enabled {
+		at = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+	res, err := m.db.ExecContext(ctx, `UPDATE peers SET disabled_at = ? WHERE node_id = ? AND revoked_at IS NULL`, at, node)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	if enabled {
+		go m.Start(context.Background(), node)
+	} else {
+		m.halt(node)
+	}
+	return nil
+}
+
+func (m *Mesh) halt(node string) {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	if cancel, ok := m.stop[node]; ok {
 		cancel()
 		delete(m.stop, node)
 		delete(m.wake, node)
 	}
-	m.mu.Unlock()
-	return err
 }
 
 // devicePairMaxFails closes pairing after this many wrong codes, so the
@@ -479,7 +506,7 @@ func (m *Mesh) client(want string, got *string) *http.Client {
 }
 
 func (m *Mesh) peer(ctx context.Context, node string) (address, key string, err error) {
-	err = m.db.QueryRowContext(ctx, `SELECT address, public_key FROM peers WHERE node_id = ? AND revoked_at IS NULL`, node).Scan(&address, &key)
+	err = m.db.QueryRowContext(ctx, `SELECT address, public_key FROM peers WHERE node_id = ? AND revoked_at IS NULL AND disabled_at IS NULL`, node).Scan(&address, &key)
 	return address, key, err
 }
 
@@ -490,7 +517,7 @@ func (m *Mesh) Run(ctx context.Context) {
 		log.Printf("mesh: %v", err)
 	}
 	for _, p := range peers {
-		if !p.Revoked {
+		if !p.Revoked && !p.Disabled {
 			go m.Start(ctx, p.ID)
 		}
 	}

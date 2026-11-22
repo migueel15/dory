@@ -36,6 +36,20 @@ func (m *Mesh) Mount(mux *http.ServeMux) {
 		}
 		reply(w, p)
 	})
+	mux.HandleFunc("PUT /api/mesh/peers/{id}/enabled", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Enabled bool `json:"enabled"`
+		}
+		if json.NewDecoder(r.Body).Decode(&body) != nil {
+			writeErr(w, http.StatusBadRequest, "enabled is required")
+			return
+		}
+		if err := m.SetEnabled(r.Context(), r.PathValue("id"), body.Enabled); err != nil {
+			writeErr(w, http.StatusNotFound, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("DELETE /api/mesh/peers/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if err := m.Revoke(r.Context(), r.PathValue("id")); err != nil {
 			writeErr(w, 500, err.Error())

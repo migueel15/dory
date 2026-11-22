@@ -14,7 +14,7 @@ import (
 	"github.com/migueel15/dory/internal/cmdexec"
 )
 
-// Nodes find each other in two ways (requirement RF-04): a UDP beacon on the
+// Nodes find each other in three ways (requirement RF-04): mDNS, a UDP beacon on the
 // local network and the peer list of Tailscale. Both only update addresses
 // of paired nodes or list new nodes to pair; trust always comes from pairing.
 var beaconAddr = &net.UDPAddr{IP: net.IPv4(239, 255, 77, 10), Port: 7711}
@@ -29,6 +29,7 @@ type beacon struct {
 func (m *Mesh) discover(ctx context.Context) {
 	go m.announce(ctx)
 	go m.hear(ctx)
+	go m.mdns(ctx)
 	for {
 		m.tailscale(ctx)
 		select {
