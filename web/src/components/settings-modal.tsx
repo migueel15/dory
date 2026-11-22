@@ -1,6 +1,7 @@
-import { useEffect, useState, type ComponentType } from "react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
-import { Bell, Cpu, GithubLogo, Keyboard, Lightbulb, Microphone, PaintBrush, SquaresFour, X, type IconProps } from "@phosphor-icons/react";
+import { useRouterState } from "@tanstack/react-router";
+import { Bell, Brain, Cpu, ChatsCircle, FolderSimple, GitBranch, GitFork, GithubLogo, HardDrives, Keyboard, Lightbulb, Lightning, Microphone, PaintBrush, SquaresFour, X, type IconProps } from "@phosphor-icons/react";
 import { ProvidersSettings } from "./settings-providers";
 import { DictationSettings } from "./settings-dictation";
 import { ShortcutsSettings } from "./settings-shortcuts";
@@ -9,26 +10,61 @@ import { IdeasSettings } from "./settings-ideas";
 import { GithubSettings } from "./settings-github";
 import { NoticesSettings } from "./settings-notices";
 import { TaskSettings } from "./settings-tasks";
+import { ConnectionsSettings } from "./settings-connections";
+import { ThreadsSettings } from "./settings-threads";
+import { SourceControlSettings } from "./settings-source-control";
+import { WorktreesSettings } from "./settings-worktrees";
+import { ALL_NODES, type SectionProps } from "./settings-node";
+import { useNodes } from "./launch-picker";
+import { Select } from "./ui";
+import { Projects } from "../pages/projects";
+import { Memories } from "../pages/crud";
+import { Skills } from "../pages/skills";
 
-type Section = { id: string; label: string; icon: ComponentType<IconProps>; component: ComponentType };
+// A section receives the selected node ("all" or a node id). perNode: false
+// hides the selector (device-local or global sections).
+type Section = { id: string; label: string; icon: ComponentType<IconProps>; component: ComponentType<SectionProps>; perNode?: false };
 
-// SECTIONS are the parts of the settings, in the order of the side bar.
-const SECTIONS: Section[] = [
-  { id: "providers", label: "Proveedores", icon: Cpu, component: ProvidersSettings },
-  { id: "shortcuts", label: "Atajos", icon: Keyboard, component: ShortcutsSettings },
-  { id: "dictation", label: "Dictado", icon: Microphone, component: DictationSettings },
-  { id: "ideas", label: "Ideas", icon: Lightbulb, component: IdeasSettings },
-  { id: "tasks", label: "Tareas", icon: SquaresFour, component: TaskSettings },
-  { id: "notices", label: "Avisos", icon: Bell, component: NoticesSettings },
-  { id: "github", label: "GitHub", icon: GithubLogo, component: GithubSettings },
-  { id: "appearance", label: "Apariencia", icon: PaintBrush, component: AppearanceSettings },
+// GROUPS are the titled blocks of the side bar, in order. To add a section, add
+// a file with its component and one line here.
+const GROUPS: { title: string; sections: Section[] }[] = [
+  { title: "General", sections: [
+    { id: "appearance", label: "Apariencia", icon: PaintBrush, component: AppearanceSettings, perNode: false },
+    { id: "shortcuts", label: "Atajos", icon: Keyboard, component: ShortcutsSettings },
+    { id: "dictation", label: "Dictado", icon: Microphone, component: DictationSettings },
+    { id: "notices", label: "Avisos", icon: Bell, component: NoticesSettings },
+    { id: "connections", label: "Conexiones", icon: HardDrives, component: ConnectionsSettings },
+  ] },
+  { title: "Agentes", sections: [
+    { id: "providers", label: "Proveedores", icon: Cpu, component: ProvidersSettings },
+    { id: "threads", label: "Hilos", icon: ChatsCircle, component: ThreadsSettings },
+    { id: "skills", label: "Skills", icon: Lightning, component: Skills },
+    { id: "memories", label: "Memorias", icon: Brain, component: Memories, perNode: false },
+  ] },
+  { title: "Código", sections: [
+    { id: "projects", label: "Proyectos", icon: FolderSimple, component: Projects, perNode: false },
+    { id: "source-control", label: "Control de versiones", icon: GitBranch, component: SourceControlSettings },
+    { id: "worktrees", label: "Worktrees", icon: GitFork, component: WorktreesSettings },
+    { id: "github", label: "GitHub", icon: GithubLogo, component: GithubSettings },
+  ] },
+  { title: "Tareas", sections: [
+    { id: "tasks", label: "Tareas", icon: SquaresFour, component: TaskSettings },
+    { id: "ideas", label: "Ideas", icon: Lightbulb, component: IdeasSettings },
+  ] },
 ];
+const SECTIONS = GROUPS.flatMap((g) => g.sections);
 
 // SettingsModal covers most of the screen over a dimmed background. A click
 // outside it or Escape closes it. It renders on the body, so no ancestor of
 // the button that opens it can clip or position it.
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [active, setActive] = useState(SECTIONS[0].id);
+  const [node, setNode] = useState(ALL_NODES);
+  const nodes = useNodes();
+  // Following a link inside a section (a project, say) leaves the modal.
+  const path = useRouterState({ select: (r) => r.location.pathname });
+  const first = useRef(path);
+  useEffect(() => { if (path !== first.current) onClose(); }, [path, onClose]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -40,12 +76,17 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 sm:p-6" onClick={onClose}>
       <div role="dialog" aria-modal="true" aria-label="Ajustes" onClick={(e) => e.stopPropagation()}
         className="flex h-full max-h-[56rem] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-border dark:bg-surface md:flex-row">
-        <nav aria-label="Secciones de ajustes" className="flex shrink-0 gap-1 overflow-x-auto border-b border-slate-200 p-2 dark:border-border md:w-60 md:flex-col md:border-b-0 md:border-r md:p-3">
-          {SECTIONS.map(({ id, label, icon: Icon }) => (
-            <button key={id} type="button" onClick={() => setActive(id)} aria-current={id === active ? "page" : undefined}
-              className={`flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm ${id === active ? "bg-slate-100 font-semibold dark:bg-raised" : "text-slate-600 hover:bg-slate-50 dark:text-muted dark:hover:bg-raised"}`}>
-              <Icon className="size-4" aria-hidden="true" />{label}
-            </button>
+        <nav aria-label="Secciones de ajustes" className="flex shrink-0 gap-1 overflow-x-auto border-b border-slate-200 p-2 dark:border-border md:w-60 md:flex-col md:overflow-y-auto md:border-b-0 md:border-r md:p-3">
+          {GROUPS.map((g) => (
+            <div key={g.title} className="flex gap-1 md:flex-col">
+              <span className="hidden px-3 pb-1 pt-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-muted md:block">{g.title}</span>
+              {g.sections.map(({ id, label, icon: Icon }) => (
+                <button key={id} type="button" onClick={() => setActive(id)} aria-current={id === active ? "page" : undefined}
+                  className={`flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm ${id === active ? "bg-slate-100 font-semibold dark:bg-raised" : "text-slate-600 hover:bg-slate-50 dark:text-muted dark:hover:bg-raised"}`}>
+                  <Icon className="size-4" aria-hidden="true" />{label}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -53,12 +94,13 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             <span className="text-slate-500 dark:text-muted">Ajustes</span>
             <span className="text-slate-400">/</span>
             <span className="font-semibold">{section.label}</span>
-            <button type="button" aria-label="Cerrar" onClick={onClose} className="ml-auto grid size-8 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
+            {section.perNode !== false && <Select className="ml-auto w-52" value={node} onChange={setNode} options={[{ value: ALL_NODES, label: "Todos los nodos" }, ...nodes]} />}
+            <button type="button" aria-label="Cerrar" onClick={onClose} className={`${section.perNode === false ? "ml-auto " : ""}grid size-8 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white`}>
               <X weight="regular" className="size-4" aria-hidden="true" />
             </button>
           </header>
           <div className="min-h-0 flex-1 overflow-auto p-5 sm:p-8">
-            <div className="mx-auto max-w-4xl"><Body /></div>
+            <div className="mx-auto max-w-4xl"><Body node={node} /></div>
           </div>
         </div>
       </div>

@@ -2,7 +2,7 @@ import { Threads, ThreadsHome } from "./pages/threads";
 import { WindowClose, hasWindowClose } from "./lib/window-close";
 import { UsageQuick } from "./components/usage-quick";
 import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Brain, ChartBar, ChatsCircle, FolderSimple, Gear, GithubLogo, HardDrives, House, IconContext, Kanban, Lightning, List, Moon, SidebarSimple, SignOut, Sun, X } from "@phosphor-icons/react";
+import { ChartBar, ChatsCircle, Gear, GithubLogo, House, IconContext, Kanban, List, Moon, SidebarSimple, SignOut, Sun, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, useNavigate, RouterProvider, createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect } from "@tanstack/react-router";
@@ -242,12 +242,8 @@ function Layout() {
       <Link to="/" activeOptions={{ exact: true }} className={link} title={small ? "Inicio" : undefined}><House weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Inicio</span></Link>
       <Link to="/tasks" className={link} title={small ? "Tareas" : undefined}><Kanban weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Tareas</span></Link>
       <Link to="/threads" className={`${link} relative`} title={small ? "Hilos" : undefined}><ChatsCircle weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Hilos</span>{attention > 0 && (small ? <span className="absolute right-1.5 top-1 size-2 rounded-full bg-orange-500" /> : <span className="ml-1.5 rounded-full bg-orange-500 px-1.5 text-xs font-semibold text-white" title="Te necesitan">{attention}</span>)}</Link>
-      <Link to="/projects" className={link} title={small ? "Proyectos" : undefined}><FolderSimple weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Proyectos</span></Link>
       <Link to="/github" className={link} title={small ? "GitHub" : undefined}><GithubLogo weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>GitHub</span></Link>
       {group("Sistema", small)}
-      <Link to="/memories" className={link} title={small ? "Memorias" : undefined}><Brain weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Memorias</span></Link>
-      <Link to="/skills" className={link} title={small ? "Skills" : undefined}><Lightning weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Skills</span></Link>
-      <Link to="/environments" className={link} title={small ? "Entornos" : undefined}><HardDrives weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Entornos</span></Link>
       <Link to="/usage" className={link} title={small ? "Uso" : undefined}><ChartBar weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Uso</span></Link>
     </>
   );
