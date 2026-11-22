@@ -15,6 +15,8 @@ export type InputChord = { code: string; ctrl: boolean; alt: boolean; shift: boo
 export type InputSettings = { shortcuts: Record<string, InputChord>; dictation: { model: string } };
 export type ModelChoice = { provider: string; model: string; effort: string };
 export type ThreadDefaults = { default_model: ModelChoice; fallback_model: ModelChoice; default_workspace: "checkout" | "worktree" | "" };
+// NodeDefaults are the folders a node uses when a setting is empty.
+export type NodeDefaults = { worktrees: string; accounts: string; claude_home: string; codex_home: string; home: string };
 export type ThreadService = { pid: number; address: string; port: number; command: string; kind: string };
 export type KeptWorktree = { thread_id: string; path: string; dirty: boolean };
 export type Task = {
@@ -170,6 +172,7 @@ export const api = {
   resolveSkill: (node: string, id: string, action: "restore" | "adopt", harness = "") => req<{ backup: string }>("POST", `/nodes/${node}/skills/${id}/resolve`, { action, harness }),
   forkSkill: (id: string, name?: string) => req<Skill>("POST", `/skills/${id}/fork`, { name: name ?? "" }),
   node: () => req<NodeStatus>("GET", "/node"),
+  nodeDefaults: (node: string) => req<NodeDefaults>("GET", `/nodes/${node}/defaults`),
   nodeSettings: (node = "local") => req<NodeSettings>("GET", `/nodes/${node}/settings`),
   setNodeSettings: (settings: NodeSettings, node = "local") => req<NodeSettings>("PUT", `/nodes/${node}/settings`, settings),
   keptWorktrees: (node = "local") => req<KeptWorktree[]>("GET", `/nodes/${node}/kept-worktrees`),

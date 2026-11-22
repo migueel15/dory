@@ -344,3 +344,25 @@ func (m *Manager) RemoveAccount(id string) error {
 	m.invalidate()
 	return nil
 }
+
+// Defaults are the folders this node uses when a setting is left empty, so the
+// settings can show the real path as a placeholder.
+type Defaults struct {
+	Worktrees  string `json:"worktrees"`
+	Accounts   string `json:"accounts"`
+	ClaudeHome string `json:"claude_home"`
+	CodexHome  string `json:"codex_home"`
+	Home       string `json:"home"`
+}
+
+// Defaults returns the default folders of this node.
+func (m *Manager) Defaults() Defaults {
+	home, _ := os.UserHomeDir()
+	return Defaults{
+		Worktrees:  filepath.Join(m.dataDir, "worktrees"),
+		Accounts:   filepath.Join(m.dataDir, "accounts"),
+		ClaudeHome: defaultHome("claude"),
+		CodexHome:  defaultHome("codex"),
+		Home:       home,
+	}
+}

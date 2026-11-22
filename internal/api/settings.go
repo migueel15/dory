@@ -151,6 +151,9 @@ func (s *Server) mountSettings(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/nodes/{node}/settings", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, s.Settings.Get())
 	}))
+	mux.HandleFunc("GET /api/nodes/{node}/defaults", s.onNode(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, s.Runtime.Defaults())
+	}))
 	mux.HandleFunc("PUT /api/nodes/{node}/settings", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		v := s.Settings.Get()
 		prev := v.Input
