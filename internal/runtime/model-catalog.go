@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,7 +15,7 @@ import (
 // readModelCatalog keeps stdin open until the harness replies to the metadata
 // request. Discovery does not submit a prompt or start an agent turn.
 func readModelCatalog(ctx context.Context, bin string, env []string, args []string, requests string, read func([]byte) []Model) []Model {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	cmd := cmdexec.CommandContext(ctx, bin, args...)
 	if env != nil {
@@ -116,3 +118,31 @@ func codexModels(ctx context.Context, bin string, env []string) []Model {
 		return models
 	})
 }
+
+// rememberCatalog returns the models to show for a harness: the catalog it just
+// reported, saved for later, or the last saved one when this read failed.
+func (m *Manager) rememberCatalog(id string, st Status) []Model {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.catalogs == nil {
+		m.catalogs = map[string][]Model{}
+		if raw, err := os.ReadFile(m.catalogFile()); err == nil {
+			_ = json.Unmarshal(raw, &m.catalogs)
+		}
+	}
+	if st.Catalog {
+		m.catalogs[id] = st.Models
+		if m.dataDir != "" {
+			if raw, err := json.Marshal(m.catalogs); err == nil {
+				_ = os.WriteFile(m.catalogFile(), raw, 0o600)
+			}
+		}
+		return st.Models
+	}
+	if saved := m.catalogs[id]; len(saved) > 0 {
+		return saved
+	}
+	return st.Models
+}
+
+func (m *Manager) catalogFile() string { return filepath.Join(m.dataDir, "model-catalog.json") }

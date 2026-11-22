@@ -5,14 +5,17 @@ import { useEffect, useState } from "react";
 // window (CSS zoom would break vh, dvh and window measurements).
 const KEY = "ui-scale";
 const EVENT = "ui-scale";
-export const SCALES = [0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+export const MIN_SCALE = 0.5;
+export const MAX_SCALE = 2;
+const clamp = (s: number) => Math.round(Math.min(MAX_SCALE, Math.max(MIN_SCALE, s)) * 100) / 100;
 
 const stored = () => {
   const s = Number(localStorage.getItem(KEY));
-  return SCALES.includes(s) ? s : 1;
+  return s >= MIN_SCALE && s <= MAX_SCALE ? s : 1;
 };
 
 export function setScale(s: number) {
+  s = clamp(s);
   if (s === 1) localStorage.removeItem(KEY);
   else localStorage.setItem(KEY, String(s));
   applyScale(s);
@@ -27,11 +30,10 @@ export function applyScale(s = stored()) {
   document.documentElement.style.fontSize = s === 1 ? "" : `${s * 100}%`;
 }
 
-// step moves one scale up or down, or back to 100% with 0.
+// step moves the scale 5% up or down, or back to 100% with 0.
 function step(dir: -1 | 0 | 1) {
   if (dir === 0) return setScale(1);
-  const i = SCALES.indexOf(stored());
-  setScale(SCALES[Math.max(0, Math.min(SCALES.length - 1, i + dir))]);
+  setScale(stored() + dir * 0.05);
 }
 
 // listenZoomKeys binds Ctrl (Cmd on macOS) with +, - and 0 to the scale,

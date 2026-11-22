@@ -87,7 +87,10 @@ type Manager struct {
 	// another node; set by the mesh.
 	PeerComplete func(ctx context.Context, node string, outcome Outcome) error
 	// detected caches what Providers found.
-	detected   []Status
+	detected []Status
+	// catalogs keeps the last model list each harness reported, so a slow or
+	// failed catalog read never falls back to the short built-in list.
+	catalogs   map[string][]Model
 	detectedAt time.Time
 }
 
@@ -237,6 +240,7 @@ func (m *Manager) Providers(ctx context.Context) []Status {
 			continue
 		}
 		st := p.Detect(ctx)
+		st.Models = m.rememberCatalog(id, st)
 		st.Enabled = m.Enabled(id)
 		if a, ok := p.(Admin); ok && st.Installed {
 			st.LoggedIn, st.Account = a.Session(ctx)

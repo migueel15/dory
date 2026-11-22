@@ -58,7 +58,7 @@ type threadConfigureInput struct {
 
 func addThreadTools(srv *sdkServer, s *api.Server) {
 	m := s.Runtime
-	add(srv, "list_models", "List providers, models and efforts of this node. Use it to turn \"haiku\", \"opus\" or \"codex\" into provider and model.", func(ctx context.Context, in struct {
+	add(srv, "list_models", "List providers, models and efforts of this node. Use it to turn \"haiku\", \"opus\" or \"codex\" into provider and model. A model is accepted by slug, display name (\"Sonnet 5.5\") or resolved id (\"claude-sonnet-5-5\").", func(ctx context.Context, in struct {
 		Provider string `json:"provider,omitempty"`
 	}) (any, error) {
 		out := []map[string]any{}

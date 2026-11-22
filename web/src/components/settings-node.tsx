@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { Warning } from "@phosphor-icons/react";
-import { api, type NodeSettings } from "../api/client";
+import { api, type NodeDefaults, type NodeSettings } from "../api/client";
 import { useNodes } from "./launch-picker";
 
 // Per-node settings helper.
@@ -115,4 +115,23 @@ export function SettingRow<K extends SettingField>({ settings, field, title, hel
       <NodeDiff settings={settings} field={field} />
     </div>
   );
+}
+
+// useNodeDefault is the placeholder of a text setting: the value the selected
+// node uses when the field is empty. With "all" it is the shared value when
+// every node agrees, and `fallback` (a machine-independent text) otherwise.
+export function useNodeDefault(node: string, pick: (d: NodeDefaults) => string, fallback: string): string {
+  const nodes = useNodes();
+  const ids = node === ALL_NODES ? nodes.map((n) => n.value) : [node];
+  const results = useQueries({ queries: ids.map((id) => ({ queryKey: ["node-defaults", id], queryFn: () => api.nodeDefaults(id), staleTime: 300_000 })) });
+  const exact = results.map((r) => (r.data ? pick(r.data) : undefined)).filter((v): v is string => !!v);
+  if (!exact.length) return fallback;
+  if (exact.every((v) => v === exact[0])) return exact[0];
+  // Nodes with different users or homes may still agree relative to their home.
+  const tilde = results.map((r) => r.data && tildeOf(pick(r.data), r.data.home));
+  return tilde.every((v) => v && v === tilde[0]) ? tilde[0]! : fallback;
+}
+
+function tildeOf(path: string, home: string): string {
+  return home && (path === home || path.startsWith(home + "/")) ? "~" + path.slice(home.length) : path;
 }

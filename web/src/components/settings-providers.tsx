@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
 import { api, type Job, type Provider } from "../api/client";
 import { ProviderIcon, useNodes } from "./launch-picker";
-import { ALL_NODES, type SectionProps } from "./settings-node";
+import { ALL_NODES, useNodeDefault, type SectionProps } from "./settings-node";
 import { Button, ErrorText, Input, Select } from "./ui";
 
 // Providers are unique per node: they need a login there. With "all" this
@@ -237,6 +237,8 @@ function AddAccount({ node, onAdded }: { node: string; onAdded: (id: string) => 
       onAdded(a.id);
     },
   });
+  const accounts = useNodeDefault(node, (d) => d.accounts, "");
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "cuenta";
   if (!open) return <Button variant="ghost" onClick={() => setOpen(true)}>Añadir cuenta</Button>;
   return (
     <form className="space-y-2 rounded-xl border border-slate-200 p-4 dark:border-border" onSubmit={(e) => { e.preventDefault(); if (name.trim()) add.mutate(); }}>
@@ -244,7 +246,7 @@ function AddAccount({ node, onAdded }: { node: string; onAdded: (id: string) => 
         <Select className="w-44" value={drv} onChange={setDrv} options={[{ value: "claude", label: "Claude Code" }, { value: "codex", label: "Codex" }]} />
         <Input className="min-w-40 flex-1" placeholder="Nombre visible (p. ej. Trabajo)" value={name} onChange={(e) => setName(e.target.value)} required />
       </div>
-      <Input placeholder={`Carpeta (${defaultDirs[drv]}); vacío = una propia de Dory`} value={home} onChange={(e) => setHome(e.target.value)} />
+      <Input placeholder={accounts ? `${accounts}/${drv}-${slug}` : defaultDirs[drv]} aria-label={`Carpeta de configuración (${defaultDirs[drv]})`} value={home} onChange={(e) => setHome(e.target.value)} />
       <div className="flex gap-2">
         <Button type="submit" disabled={add.isPending}>Añadir</Button>
         <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
@@ -261,6 +263,7 @@ function AccountForm({ node, provider: p }: { node: string; provider: Provider }
   const extra = p.id !== driver(p);
   const [name, setName] = useState(p.name === (driver(p) === "claude" ? "Claude Code" : "Codex") && !extra ? "" : p.name);
   const [home, setHome] = useState(p.home ?? "");
+  const harnessHome = useNodeDefault(node, (d) => (driver(p) === "claude" ? d.claude_home : d.codex_home), "");
   const done = () => { qc.invalidateQueries({ queryKey: ["node-providers"] }); qc.invalidateQueries({ queryKey: ["node"] }); };
   const save = useMutation({ mutationFn: () => api.updateAccount(node, p.id, { name, home }), onSuccess: done });
   const remove = useMutation({ mutationFn: () => api.removeAccount(node, p.id), onSuccess: done });
@@ -268,11 +271,11 @@ function AccountForm({ node, provider: p }: { node: string; provider: Provider }
     <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
       <label className="block space-y-1 text-sm">
         <span>Nombre visible</span>
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={extra ? "" : "Por defecto"} required={extra} />
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={extra ? "" : driver(p) === "claude" ? "Claude Code" : "Codex"} required={extra} />
       </label>
       <label className="block space-y-1 text-sm">
         <span>Carpeta de configuración ({defaultDirs[driver(p)]})</span>
-        <Input value={home} onChange={(e) => setHome(e.target.value)} placeholder={extra ? "" : "Por defecto del arnés"} required={extra} />
+        <Input value={home} onChange={(e) => setHome(e.target.value)} placeholder={extra ? "" : harnessHome} required={extra} />
         {!extra && <span className="block text-xs text-slate-500 dark:text-muted">Skills, comandos, sesiones externas y uso se leen de esta carpeta.</span>}
       </label>
       <div className="flex gap-2">

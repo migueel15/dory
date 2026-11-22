@@ -37,7 +37,7 @@ func (c Codex) Detect(ctx context.Context) Status {
 	}
 	if ok {
 		if models := codexModels(ctx, c.bin(), c.Environ()); len(models) > 0 {
-			status.Models = models
+			status.Models, status.Catalog = models, true
 		}
 	}
 	return status

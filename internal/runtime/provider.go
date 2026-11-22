@@ -145,6 +145,8 @@ type Status struct {
 	Enabled bool    `json:"enabled"`
 	Version string  `json:"version"`
 	Models  []Model `json:"models"`
+	// Catalog says Models came from the harness itself, not the built-in fallback.
+	Catalog bool `json:"-"`
 	// Capabilities lists what the interface may offer for this provider.
 	Capabilities []string `json:"capabilities"`
 	LoggedIn     bool     `json:"logged_in"`

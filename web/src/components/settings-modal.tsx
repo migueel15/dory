@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import { useRouterState } from "@tanstack/react-router";
-import { Bell, Brain, Cpu, ChatsCircle, FolderSimple, GitBranch, GitFork, GithubLogo, HardDrives, Keyboard, Lightbulb, Lightning, Microphone, PaintBrush, SquaresFour, X, type IconProps } from "@phosphor-icons/react";
+import { MagnifyingGlass, Bell, Brain, Cpu, ChatsCircle, FolderSimple, GitBranch, GitFork, GithubLogo, HardDrives, Keyboard, Lightbulb, Lightning, Microphone, PaintBrush, SquaresFour, X, type IconProps } from "@phosphor-icons/react";
 import { ProvidersSettings } from "./settings-providers";
 import { DictationSettings } from "./settings-dictation";
 import { ShortcutsSettings } from "./settings-shortcuts";
@@ -17,6 +17,7 @@ import { WorktreesSettings } from "./settings-worktrees";
 import { ALL_NODES, type SectionProps } from "./settings-node";
 import { useNodes } from "./launch-picker";
 import { Select } from "./ui";
+import { commands } from "./shortcuts";
 import { Projects } from "../pages/projects";
 import { Memories } from "../pages/crud";
 import { Skills } from "../pages/skills";
@@ -54,6 +55,61 @@ const GROUPS: { title: string; sections: Section[] }[] = [
 ];
 const SECTIONS = GROUPS.flatMap((g) => g.sections);
 
+// OPTIONS are the searchable titles inside each section, as they read on
+// screen, so the search box can open the section and point at the option.
+// Keep them in sync when a section adds or renames an option.
+const OPTIONS: Record<string, string[]> = {
+  appearance: ["Tema", "Claro", "Oscuro", "Sistema", "Escala de la interfaz", "Zoom"],
+  shortcuts: commands.map((c) => c.label),
+  dictation: ["Dictado local", "Modelos de dictado", "Vista previa en directo", "Transcribe al terminar", "Descargar modelo"],
+  notices: ["Avisos", "Notificaciones push", "Siempre push", "Solo en la app", "Automático", "Desactivado"],
+  connections: ["Conexiones", "Entornos", "Añadir conexión", "En tu red", "Mostrar código", "Conectar por dirección", "Actualizar todo", "Buscar actualizaciones", "Desactivar", "Eliminar", "Móviles"],
+  providers: ["Cuentas", "Añadir cuenta", "Nombre visible", "Carpeta de configuración", "Iniciar sesión", "Claude Code", "Codex", "OpenCode"],
+  threads: ["Modelo por defecto", "Modelo de respaldo", "Workspace por defecto", "Rama actual (checkout)", "Nuevo worktree", "Archivar hilos al mergear su rama"],
+  skills: ["Skills del sistema", "Conflictos de skills"],
+  memories: ["Memorias", "Decisiones", "Lecciones"],
+  projects: ["Proyectos", "Repositorios"],
+  "source-control": ["Actualizar la rama del hilo automáticamente", "Auto-pull", "Sincronizar rama"],
+  worktrees: ["Ubicación por defecto", "Convención de nombres de rama", "Eliminar el worktree al borrar o archivar el hilo", "Eliminar el worktree al mergear su rama"],
+  github: ["Conectar GitHub", "Cerrar sesión"],
+  tasks: ["Bloquear el túnel del navegador", "Cerrar los servicios de los hilos al reiniciar Dory", "Dispositivos", "Los agentes pueden usar dispositivos"],
+  ideas: ["Títulos de las ideas", "Sin títulos automáticos"],
+};
+
+const fold = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+type Hit = { section: Section; group: string; option?: string };
+
+// search matches the query against group titles, section labels and options.
+function search(q: string): Hit[] {
+  const words = fold(q).split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const has = (t: string) => { const f = fold(t); return words.every((w) => f.includes(w)); };
+  const hits: Hit[] = [];
+  for (const g of GROUPS) for (const s of g.sections) {
+    if (has(`${g.title} ${s.label}`)) hits.push({ section: s, group: g.title });
+    for (const o of OPTIONS[s.id] ?? []) if (has(o)) hits.push({ section: s, group: g.title, option: o });
+  }
+  return hits;
+}
+
+// highlight scrolls to the first element of the section body whose own text
+// contains the option and flashes it.
+function highlight(root: HTMLElement | null, option: string) {
+  if (!root) return;
+  const want = fold(option);
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (!fold(n.textContent ?? "").includes(want)) continue;
+    const el = (n.parentElement?.closest("label, li, section > div, div.flex") ?? n.parentElement) as HTMLElement | null;
+    if (!el) return;
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.classList.add("settings-hit");
+    setTimeout(() => el.classList.remove("settings-hit"), 1600);
+    return;
+  }
+}
+
 // SettingsModal covers most of the screen over a dimmed background. A click
 // outside it or Escape closes it. It renders on the body, so no ancestor of
 // the button that opens it can clip or position it.
@@ -61,6 +117,21 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [active, setActive] = useState(SECTIONS[0].id);
   const [node, setNode] = useState(ALL_NODES);
   const nodes = useNodes();
+  const [query, setQuery] = useState("");
+  const hits = search(query);
+  const body = useRef<HTMLDivElement>(null);
+  const [target, setTarget] = useState<string | null>(null);
+  // After opening a hit, wait for the section to render (some load data) and point at the option.
+  useEffect(() => {
+    if (!target) return;
+    let tries = 0;
+    const id = setInterval(() => {
+      const found = body.current && fold(body.current.textContent ?? "").includes(fold(target));
+      if (found || ++tries > 20) { clearInterval(id); if (found) highlight(body.current, target); setTarget(null); }
+    }, 100);
+    return () => clearInterval(id);
+  }, [target, active]);
+  const open = (h: Hit) => { setActive(h.section.id); setQuery(""); if (h.option) setTarget(h.option); };
   // Following a link inside a section (a project, say) leaves the modal.
   const path = useRouterState({ select: (r) => r.location.pathname });
   const first = useRef(path);
@@ -77,7 +148,24 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       <div role="dialog" aria-modal="true" aria-label="Ajustes" onClick={(e) => e.stopPropagation()}
         className="flex h-full max-h-[56rem] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-border dark:bg-surface md:flex-row">
         <nav aria-label="Secciones de ajustes" className="flex shrink-0 gap-1 overflow-x-auto border-b border-slate-200 p-2 dark:border-border md:w-60 md:flex-col md:overflow-y-auto md:border-b-0 md:border-r md:p-3">
-          {GROUPS.map((g) => (
+          <label className="relative mb-1 flex shrink-0 items-center md:mx-0">
+            <MagnifyingGlass className="pointer-events-none absolute left-2.5 size-4 text-slate-400 dark:text-muted" aria-hidden="true" />
+            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar ajustes" aria-label="Buscar ajustes"
+              onKeyDown={(e) => { if (e.key === "Enter" && hits[0]) open(hits[0]); if (e.key === "Escape" && query) { e.stopPropagation(); setQuery(""); } }}
+              className="w-44 rounded-md border-0 bg-slate-100 py-1.5 pl-8 pr-2 text-sm outline-none ring-0 focus:outline-none focus-visible:outline-none dark:bg-raised md:w-full" />
+          </label>
+          {query.trim() ? (
+            <div className="flex gap-1 md:flex-col" role="list" aria-label="Resultados">
+              {hits.length === 0 && <span className="px-3 py-2 text-sm text-slate-500 dark:text-muted">Sin resultados</span>}
+              {hits.map((h, i) => (
+                <button key={`${h.section.id}-${h.option ?? ""}-${i}`} type="button" role="listitem" onClick={() => open(h)}
+                  className="flex min-w-0 shrink-0 flex-col items-start rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-raised max-md:max-w-56">
+                  <span className="whitespace-normal break-words font-medium">{h.option ?? h.section.label}</span>
+                  <span className="whitespace-normal break-words text-xs text-slate-500 dark:text-muted">{h.group} · {h.section.label}</span>
+                </button>
+              ))}
+            </div>
+          ) : GROUPS.map((g) => (
             <div key={g.title} className="flex gap-1 md:flex-col">
               <span className="hidden px-3 pb-1 pt-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-muted md:block">{g.title}</span>
               {g.sections.map(({ id, label, icon: Icon }) => (
@@ -100,7 +188,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             </button>
           </header>
           <div className="min-h-0 flex-1 overflow-auto p-5 sm:p-8">
-            <div className="mx-auto max-w-4xl"><Body node={node} /></div>
+            <div ref={body} className="mx-auto max-w-4xl"><Body node={node} /></div>
           </div>
         </div>
       </div>

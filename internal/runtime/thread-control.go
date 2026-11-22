@@ -108,13 +108,34 @@ func findModel(models []Model, name string) (Model, bool) {
 			return md, true
 		}
 	}
+	// The latest models are often offered only through an alias ("sonnet")
+	// whose display name and resolved id carry the version ("Sonnet 5.5",
+	// "claude-sonnet-5-5"); accept those and loose spellings of them.
+	want := modelKey(name)
+	for _, md := range models {
+		if want != "" && (modelKey(md.Name) == want || modelKey(md.ResolvedModel) == want) {
+			return md, true
+		}
+	}
 	return Model{}, false
+}
+
+// modelKey folds a model name or id: "Sonnet 5.5", "sonnet-5.5" and
+// "claude-sonnet-5-5" all become "sonnet-5-5".
+func modelKey(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.TrimPrefix(s, "claude-")
+	s = strings.NewReplacer(" ", "-", ".", "-", "_", "-").Replace(s)
+	return strings.Trim(s, "-")
 }
 
 func modelSlugs(models []Model) string {
 	out := make([]string, len(models))
 	for i, md := range models {
 		out[i] = md.Slug
+		if md.Name != "" && !strings.EqualFold(md.Name, md.Slug) {
+			out[i] += " (" + md.Name + ")"
+		}
 	}
 	return strings.Join(out, ", ")
 }
