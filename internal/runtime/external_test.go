@@ -60,7 +60,7 @@ func TestExternalSessions(t *testing.T) {
 {"timestamp":"2026-11-16T01:00:04Z","type":"response_item","payload":{"type":"function_call_output","call_id":"k1","output":"b.go"}}
 {"timestamp":"2026-11-16T01:00:05Z","type":"response_item","payload":{"type":"message","id":"m2","role":"assistant","content":[{"type":"output_text","text":"hola\n\n<oai-mem-citation>\n<citation_entries>referencia</citation_entries>\n</oai-mem-citation>"}]}}
 `), 0o644)
-	list := ExternalSessions(home)
+	list := ExternalSessions(Paths{Home: home})
 	if len(list) != 2 {
 		t.Fatalf("sessions %+v", list)
 	}
@@ -95,7 +95,7 @@ func TestFollowPicksUpTerminalTurns(t *testing.T) {
 	file := filepath.Join(dir, "s9.jsonl")
 	os.WriteFile(file, []byte(`{"type":"user","uuid":"u1","sessionId":"s9","cwd":"/repo","timestamp":"2026-11-16T00:00:00Z","message":{"content":"Primera"}}
 `+"\n"), 0o644)
-	e, err := ExternalSession(home, "claude", "s9")
+	e, err := ExternalSession(Paths{Home: home}, "claude", "s9")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestFollowPicksUpTerminalTurns(t *testing.T) {
 	}
 	updates, stop := m.Subscribe(th.ID)
 	defer stop()
-	go m.Follow(ctx, home)
+	go m.Follow(ctx, Paths{Home: home})
 	time.Sleep(2500 * time.Millisecond) // first pass records the file
 	f, _ := os.OpenFile(file, os.O_APPEND|os.O_WRONLY, 0)
 	f.WriteString(`{"type":"user","uuid":"u2","sessionId":"s9","timestamp":"2026-11-16T00:01:00Z","message":{"content":"Desde la terminal"}}` + "\n")

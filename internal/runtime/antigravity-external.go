@@ -50,8 +50,8 @@ func (a Antigravity) list(ctx context.Context, limit int) ([]External, error) {
 }
 
 // ListExternal includes the ACP sessions of the local Antigravity CLI.
-func (m *Manager) ListExternal(ctx context.Context, home string) []External {
-	out := ExternalSessions(home)
+func (m *Manager) ListExternal(ctx context.Context, p Paths) []External {
+	out := ExternalSessions(p)
 	if a, ok := m.provider(antigravityID); ok {
 		if a, ok := a.(Antigravity); ok {
 			probe, cancel := context.WithTimeout(ctx, 8*time.Second)
@@ -64,11 +64,11 @@ func (m *Manager) ListExternal(ctx context.Context, home string) []External {
 	return out
 }
 
-func (m *Manager) FindExternal(ctx context.Context, home, provider, id string) (External, error) {
+func (m *Manager) FindExternal(ctx context.Context, p Paths, provider, id string) (External, error) {
 	if provider != antigravityID {
-		return ExternalSession(home, provider, id)
+		return ExternalSession(p, provider, id)
 	}
-	for _, session := range m.ListExternal(ctx, home) {
+	for _, session := range m.ListExternal(ctx, p) {
 		if session.Provider == provider && session.ID == id {
 			if out, err := gitCmd(ctx, session.Dir, "branch", "--show-current"); err == nil {
 				session.Branch = strings.TrimSpace(string(out))

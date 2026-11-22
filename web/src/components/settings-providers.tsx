@@ -273,6 +273,7 @@ function AccountForm({ node, provider: p }: { node: string; provider: Provider }
       <label className="block space-y-1 text-sm">
         <span>Carpeta de configuración ({defaultDirs[driver(p)]})</span>
         <Input value={home} onChange={(e) => setHome(e.target.value)} placeholder={extra ? "" : "Por defecto del arnés"} required={extra} />
+        {!extra && <span className="block text-xs text-slate-500 dark:text-muted">Skills, comandos, sesiones externas y uso se leen de esta carpeta.</span>}
       </label>
       <div className="flex gap-2">
         <Button type="submit" disabled={save.isPending}>Guardar</Button>

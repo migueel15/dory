@@ -43,11 +43,11 @@ var summaries = summaryCache{seen: map[string]cachedSummary{}}
 
 // ExternalSessions lists the recent conversations of Claude Code and Codex on
 // this machine, newest first.
-func ExternalSessions(home string) []External {
+func ExternalSessions(p Paths) []External {
 	var out []External
 	for provider, pattern := range map[string]string{
-		"claude": filepath.Join(home, ".claude", "projects", "*", "*.jsonl"),
-		"codex":  filepath.Join(home, ".codex", "sessions", "*", "*", "*", "rollout-*.jsonl"),
+		"claude": filepath.Join(p.Dir("claude"), "projects", "*", "*.jsonl"),
+		"codex":  filepath.Join(p.Dir("codex"), "sessions", "*", "*", "*", "rollout-*.jsonl"),
 	} {
 		files, _ := filepath.Glob(pattern)
 		type file struct {
@@ -193,8 +193,8 @@ func doryMessage(text string) bool {
 }
 
 // ExternalSession finds one session by id.
-func ExternalSession(home, provider, id string) (External, error) {
-	for _, e := range ExternalSessions(home) {
+func ExternalSession(p Paths, provider, id string) (External, error) {
+	for _, e := range ExternalSessions(p) {
 		if e.Provider == provider && e.ID == id {
 			return e, nil
 		}
@@ -379,13 +379,13 @@ func codexRecord(line []byte, emit func(Message), out []Message, index map[strin
 }
 
 // sessionFile finds the file where a harness keeps a session.
-func sessionFile(home, provider, id string) string {
+func sessionFile(p Paths, provider, id string) string {
 	var pattern string
 	switch provider {
 	case "claude":
-		pattern = filepath.Join(home, ".claude", "projects", "*", id+".jsonl")
+		pattern = filepath.Join(p.Dir("claude"), "projects", "*", id+".jsonl")
 	case "codex":
-		pattern = filepath.Join(home, ".codex", "sessions", "*", "*", "*", "rollout-*"+id+".jsonl")
+		pattern = filepath.Join(p.Dir("codex"), "sessions", "*", "*", "*", "rollout-*"+id+".jsonl")
 	default:
 		return ""
 	}
