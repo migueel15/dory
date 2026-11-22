@@ -17,18 +17,24 @@ export async function playDictationSound(action: "start" | "stop") {
     if (context.state !== "running") await context.resume();
 
     const oscillator = context.createOscillator();
+    const filter = context.createBiquadFilter();
     const gain = context.createGain();
     const now = context.currentTime;
-    const end = now + 0.16;
-    oscillator.frequency.setValueAtTime(action === "start" ? 520 : 740, now);
-    oscillator.frequency.exponentialRampToValueAtTime(action === "start" ? 740 : 520, end);
+    const duration = 0.2;
+    const end = now + duration;
+    const [from, to] = action === "start" ? [300, 480] : [480, 300];
+    filter.type = "lowpass";
+    filter.frequency.value = 900;
+    oscillator.frequency.setValueAtTime(from, now);
+    oscillator.frequency.exponentialRampToValueAtTime(to, now + duration * 0.7);
     gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.16, now + 0.015);
-    gain.gain.exponentialRampToValueAtTime(0.001, end);
-    oscillator.connect(gain).connect(context.destination);
+    gain.gain.linearRampToValueAtTime(0.13, now + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0004, end);
+    oscillator.connect(filter).connect(gain).connect(context.destination);
     currentTone = oscillator;
     oscillator.onended = () => {
       oscillator.disconnect();
+      filter.disconnect();
       gain.disconnect();
       if (currentTone !== oscillator) return;
       currentTone = undefined;
