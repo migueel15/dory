@@ -42,45 +42,27 @@ const Output = ({ text }: { text: string }) => text.trim()
   ? <pre className={`${mono} max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-slate-100 p-2.5 text-slate-700 dark:bg-raised dark:text-text-secondary`}>{text}</pre>
   : null;
 
-// DiffLines draws the +/- lines a harness reported for a file.
-function DiffLines({ diff }: { diff: string }) {
-  return (
-    <pre className={`${mono} max-h-80 overflow-auto rounded-lg border border-slate-200 bg-white py-1 dark:border-border dark:bg-surface`}>
-      {diff.split("\n").map((l, i) => (
-        <div key={i} className={`px-2.5 ${l.startsWith("+") ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300" : l.startsWith("-") ? "bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-300" : "text-slate-500"}`}>{l || " "}</div>
-      ))}
-    </pre>
-  );
-}
-
 const Count = ({ added, removed }: { added: number; removed: number }) => (added || removed)
   ? <span className={`${mono} shrink-0 tabular-nums`}><span className="text-emerald-600 dark:text-emerald-400">+{added}</span> <span className="text-red-600 dark:text-red-400">-{removed}</span></span>
   : null;
 
+// EditCard is one compact line per edit; the turn's box at its end shows the changes.
 function EditCard({ m, t }: { m: Message; t: ToolCall }) {
   const files = t.files ?? [];
   if (files.length !== 1) {
     return (
-      <Row m={m} icon={<PencilSimple className="size-4" />} body={files.length ? <div className="space-y-2">{files.map((f) => <FileBlock key={f.path} f={f} />)}</div> : undefined}>
+      <Row m={m} icon={<PencilSimple className="size-4" />}>
         <span className="truncate">{isLive(m) ? "Editando" : "Editó"} {files.length} ficheros</span>
+        <Count added={files.reduce((n, f) => n + f.added, 0)} removed={files.reduce((n, f) => n + f.removed, 0)} />
       </Row>
     );
   }
   const f = files[0];
   const verb = f.change === "add" ? (isLive(m) ? "Creando" : "Creó") : f.change === "delete" ? "Borró" : isLive(m) ? "Editando" : "Editó";
   return (
-    <Row m={m} icon={<PencilSimple className="size-4" />} body={f.diff ? <DiffLines diff={f.diff} /> : undefined}>
+    <Row m={m} icon={<PencilSimple className="size-4" />}>
       <span className="shrink-0">{verb}</span><span title={f.path} className={`${mono} truncate text-slate-700 dark:text-text-secondary`}>{base(f.path)}</span><Count added={f.added} removed={f.removed} />
     </Row>
-  );
-}
-
-function FileBlock({ f }: { f: NonNullable<ToolCall["files"]>[number] }) {
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-2"><span title={f.path} className={`${mono} truncate`}>{f.path}</span><Count added={f.added} removed={f.removed} /></div>
-      {f.diff && <DiffLines diff={f.diff} />}
-    </div>
   );
 }
 

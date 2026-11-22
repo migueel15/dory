@@ -9,6 +9,7 @@ import { ModelLogo } from "../components/model-logo";
 import { rehypeFade, useSmoothText } from "../components/stream";
 import { CodeRefChip } from "../components/code-ref";
 import { askQuestions, GroupCard, isAsk, TodoCard, ToolCard } from "../components/tool-card";
+import { TurnChanges, turnFiles, type Turn } from "../components/turn-changes";
 import { NativeQuestionCard, QuestionCard } from "../components/question-card";
 import { Link } from "@tanstack/react-router";
 import { parseAutoMessage, type AutoMessage } from "../lib/auto-message";
@@ -76,7 +77,7 @@ export function Messages({ threadId, messages: all, running }: { threadId: strin
   let openQuestion: string | undefined;
   for (const m of messages) openQuestion = m.role === "user" ? undefined : isAsk(m) ? (m.status === "running" ? m.id : undefined) : m.role === "question" ? m.id : openQuestion;
   const prepaint = usePrepaint();
-  return <>{layout(messages, running).map((m) => <div key={m.id} ref={prepaint} style={offscreen}>{"worked" in m ? <WorkedBlock items={m.items} secs={m.secs} live={m.live} since={m.since} />
+  return <>{layout(messages, running).map((m) => <div key={m.id} ref={prepaint} style={offscreen}>{"changes" in m ? <TurnChanges threadId={threadId} turn={m.turn} /> : "worked" in m ? <WorkedBlock items={m.items} secs={m.secs} live={m.live} since={m.since} />
     : <Entry m={m} threadId={threadId} fresh={!initial.current?.has(m.id)} openQuestion={m.id === openQuestion} />}</div>)}</>;
 }
 
@@ -491,8 +492,13 @@ type Worked = { worked: true; id: string; items: Message[]; secs: number; live?:
 // layout lays a conversation out turn by turn. In a finished turn, everything
 // between the user's message and the final answer folds into one "Worked
 // for…" entry; the turn still running shows its steps as they come.
-function layout(ms: Message[], live: boolean): (Message | Worked)[] {
-  const out: (Message | Worked)[] = [];
+type Changes = { changes: true; id: string; turn: Turn };
+
+// changeTurns lists the turns that edited files, oldest first.
+export const changeTurns = (ms: Message[]): Turn[] => layout(ms, false).flatMap((x) => ("changes" in x ? [x.turn] : []));
+
+function layout(ms: Message[], live: boolean): (Message | Worked | Changes)[] {
+  const out: (Message | Worked | Changes)[] = [];
   // A question is one more step: the composer is where it is answered.
   const isWork = (m: Message) => m.role === "reasoning" || m.role === "tool" || m.role === "question" || m.role === "assistant";
   let start = 0;
@@ -508,14 +514,18 @@ function layout(ms: Message[], live: boolean): (Message | Worked)[] {
       out.push(...seg.filter((m) => !isWork(m) || m === tail));
       return;
     }
+    // A finished turn that edited files ends with the box of its changes.
+    const files = turnFiles(seg);
+    const box = () => { if (files.length) { const id = head?.id ?? seg[0].id; out.push({ changes: true, id: `changes:${id}`, turn: { id, files } }); } };
     let answer = -1;
     for (let i = seg.length - 1; i >= 0; i--) if (seg[i].role === "assistant") { answer = i; break; }
     const work = seg.filter((m, i) => isWork(m) && i !== answer);
-    if (!work.length) { out.push(...seg); return; }
+    if (!work.length) { out.push(...seg); box(); return; }
     const from = Date.parse(head?.created_at || work[0].created_at);
     const to = Date.parse((answer >= 0 ? seg[answer] : work[work.length - 1]).created_at);
     out.push({ worked: true, id: `worked:${work[0].id}`, items: work, secs: Number.isFinite(from) && Number.isFinite(to) ? (to - from) / 1000 : 0 });
     out.push(...seg.filter((m, i) => !(isWork(m) && i !== answer)));
+    box();
   };
   let run = "";
   ms.forEach((m, i) => {
