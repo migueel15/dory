@@ -324,6 +324,13 @@ func (s *openCodeSession) run(ctx context.Context, events chan<- Event) {
 	s.session, s.forms = session, map[string]openCodeForm{}
 	s.mu.Unlock()
 	events <- Event{Session: session}
+	if t.Instructions != "" {
+		// Session instructions join OpenCode's system prompt, not the history.
+		if err := s.api.do(ctx, "PUT", "/api/experimental/session/"+session+"/instructions/entries/dory", map[string]any{"value": t.Instructions}, nil); err != nil {
+			fail(err)
+			return
+		}
+	}
 	if provider, model, ok := strings.Cut(t.Model, "/"); ok {
 		if err := s.api.do(ctx, "POST", "/api/session/"+session+"/model", map[string]any{"model": map[string]string{"providerID": provider, "id": model}}, nil); err != nil {
 			fail(err)

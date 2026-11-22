@@ -29,8 +29,8 @@ func TestPrepareMCP(t *testing.T) {
 	if err := m.prepareMCP(t.Context(), "codex", &turn); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(turn.Text, turn.MCPToken) || strings.Contains(turn.Text, secret) || !strings.HasSuffix(turn.Text, "continúa") {
-		t.Fatal("unexpected turn prompt")
+	if turn.Text != "continúa" || turn.Instructions != doryInstructions {
+		t.Fatalf("instructions must travel apart from the prompt: %q", turn.Text)
 	}
 	if err := checkMCP(t.Context(), server.URL+"/mcp?thread=two", turn.MCPToken); err == nil || !strings.Contains(err.Error(), "HTTP 401") {
 		t.Fatalf("credential accepted for the wrong thread: %v", err)
@@ -70,5 +70,16 @@ func TestOpenCodeRegisterDory(t *testing.T) {
 	api := openCodeAPI{base: server.URL}
 	if err := api.registerDory(t.Context(), Turn{MCPURL: "http://localhost/mcp?thread=one", MCPToken: "thread-token"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPromptWithInstructions(t *testing.T) {
+	turn := Turn{Text: "hola", Instructions: "guía"}
+	if got := promptWithInstructions(turn); got != "<dory_instructions>\nguía\n</dory_instructions>\n\nhola" {
+		t.Fatalf("new session: %q", got)
+	}
+	turn.Session = "s1"
+	if got := promptWithInstructions(turn); got != "hola" {
+		t.Fatalf("resumed session repeats instructions: %q", got)
 	}
 }

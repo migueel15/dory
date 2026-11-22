@@ -167,6 +167,9 @@ func (s *codexSession) response(r codexRPC, emit func(Event)) {
 		if t.Model != "" {
 			params["model"] = t.Model
 		}
+		if t.Instructions != "" {
+			params["developerInstructions"] = t.Instructions
+		}
 		if t.Session != "" {
 			params["threadId"] = t.Session
 			s.call("thread/resume", params)

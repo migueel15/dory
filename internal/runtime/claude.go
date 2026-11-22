@@ -69,7 +69,10 @@ func (c Claude) Start(ctx context.Context, t Turn) (Session, error) {
 		}}})
 		args = append(args, "--mcp-config", string(cfg))
 	}
-	key := strings.Join([]string{t.Model, t.Effort, fmt.Sprint(t.FullAccess), t.Dir, t.MCPURL}, "\x00")
+	if t.Instructions != "" {
+		args = append(args, "--append-system-prompt", t.Instructions)
+	}
+	key := strings.Join([]string{t.Model, t.Effort, fmt.Sprint(t.FullAccess), t.Dir, t.MCPURL, t.Instructions}, "\x00")
 	p := reuseStdio(t.ThreadID, "claude", key)
 	if p == nil {
 		cmd := providerCommand(context.Background(), t.ThreadID, c.bin(), args...)
