@@ -125,7 +125,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	if err != nil {
 		return err
 	}
-	reconciler := &skills.Reconciler{Store: store, Node: log_.Node(), Home: home, Manifest: filepath.Join(cfg.DataDir, "skills-manifest.json"),
+	reconciler := &skills.Reconciler{Store: store, Node: log_.Node(), Home: home, Config: rt.ConfigDir, Manifest: filepath.Join(cfg.DataDir, "skills-manifest.json"),
 		Installed: func(ctx context.Context) []string {
 			var ids []string
 			for _, p := range rt.Providers(ctx) {
@@ -146,7 +146,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		notices.Changed(entity, id)
 	}
 	go reconciler.Run(ctx)
-	go rt.Follow(ctx, home)
+	go rt.Follow(ctx, rt.Paths(home))
 	gh := github.New(func(ctx context.Context) (map[string]string, error) { return followed(ctx, store) }, github.NewAuth(filepath.Join(cfg.DataDir, "github.token"), ghToken))
 	// A pull request change is not a stored write: tell clients directly.
 	srv := &api.Server{

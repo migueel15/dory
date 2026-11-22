@@ -63,7 +63,7 @@ func (s *Server) mountUsageHistory(mux *http.ServeMux) {
 			writeJSON(w, http.StatusOK, rows)
 			return
 		}
-		writeJSON(w, http.StatusOK, runtime.UsageHistory(home, from, name == "24h", loc))
+		writeJSON(w, http.StatusOK, runtime.UsageHistory(s.Runtime.Paths(home), from, name == "24h", loc))
 	}
 	mux.HandleFunc("GET /api/nodes/{node}/usage/history", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		serve(w, r, false)

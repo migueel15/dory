@@ -44,7 +44,7 @@ func (m *Manager) Enabled(id string) bool {
 
 // SetEnabled turns a provider on or off on this node and saves the choice.
 func (m *Manager) SetEnabled(ctx context.Context, id string, enabled bool) error {
-	if _, ok := m.providers[id]; !ok {
+	if m.provider0(id) == nil {
 		return fmt.Errorf("%w: %s", ErrProvider, id)
 	}
 	m.disabledMu.Lock()
@@ -81,8 +81,8 @@ func (m *Manager) SetEnabled(ctx context.Context, id string, enabled bool) error
 
 // provider returns a registered provider that is turned on.
 func (m *Manager) provider(id string) (Provider, bool) {
-	p, ok := m.providers[id]
-	if !ok || !m.Enabled(id) {
+	p := m.provider0(id)
+	if p == nil || !m.Enabled(id) {
 		return nil, false
 	}
 	return p, true
