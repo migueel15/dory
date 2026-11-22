@@ -19,6 +19,7 @@ import (
 	"github.com/migueel15/dory/internal/dictation"
 	"github.com/migueel15/dory/internal/github"
 	"github.com/migueel15/dory/internal/runtime"
+	"github.com/migueel15/dory/internal/skills"
 	"github.com/migueel15/dory/internal/version"
 )
 
@@ -64,6 +65,8 @@ type Server struct {
 	Browser *browser.Manager
 	// MeshPort is the mesh port, which the browser tunnel never reaches.
 	MeshPort int
+	// Skills installs the catalog on this node; nil disables conflict resolution.
+	Skills *skills.Reconciler
 }
 
 // Register mounts every /api route; auth owns /api/auth/* on the same mux.

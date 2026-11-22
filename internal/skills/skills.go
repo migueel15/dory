@@ -100,6 +100,8 @@ type Reconciler struct {
 
 	mu   sync.Mutex
 	wake chan struct{}
+	// run keeps one reconcile, or one conflict resolution, at a time.
+	run sync.Mutex
 }
 
 // manifest maps each file the reconciler wrote to the hash it wrote.
@@ -159,6 +161,12 @@ func (r *Reconciler) Run(ctx context.Context) {
 // Reconcile writes, updates and removes skill files, then publishes the
 // state of each skill on this node.
 func (r *Reconciler) Reconcile(ctx context.Context) error {
+	r.run.Lock()
+	defer r.run.Unlock()
+	return r.reconcile(ctx)
+}
+
+func (r *Reconciler) reconcile(ctx context.Context) error {
 	// Seeding writes only when this binary ships something newer, so the
 	// catalog change it causes ends in a reconcile that seeds nothing.
 	if err := SeedSystem(ctx, r.Store); err != nil {
