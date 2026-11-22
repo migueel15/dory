@@ -1,16 +1,46 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
 import { api, type Job, type Provider } from "../api/client";
 import { ProviderIcon, useNodes } from "./launch-picker";
+import { ALL_NODES, type SectionProps } from "./settings-node";
 import { Button, ErrorText, Input, Select } from "./ui";
 
-// ProvidersSettings lists the harnesses one node detects. Each can be turned
+// Providers are unique per node: they need a login there. With "all" this
+// shows what every node has and asks to pick one to manage.
+export function ProvidersSettings({ node }: SectionProps) {
+  const [picked, setPicked] = useState<string>();
+  if (node !== ALL_NODES) return <NodeProviders node={node} />;
+  if (picked) return <NodeProviders node={picked} onBack={() => setPicked(undefined)} />;
+  return <ProvidersOverview onPick={setPicked} />;
+}
+
+function ProvidersOverview({ onPick }: { onPick: (node: string) => void }) {
+  const nodes = useNodes();
+  const lists = useQueries({ queries: nodes.map((n) => ({ queryKey: ["node-providers", n.value], queryFn: () => api.nodeProviders(n.value) })) });
+  return (
+    <div className="space-y-5">
+      <h2 className="text-lg font-semibold">Proveedores</h2>
+      <p className="text-sm text-slate-600 dark:text-muted">Los proveedores necesitan iniciar sesión en cada nodo. Elige un nodo arriba, o pulsa Gestionar, para cambiarlos.</p>
+      <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 dark:divide-border dark:border-border">
+        {nodes.map((n, i) => (
+          <li key={n.value} className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <span className="min-w-32 font-semibold">{n.label}</span>
+            <span className="min-w-0 flex-1 text-sm text-slate-600 dark:text-muted">
+              {lists[i].isPending ? "Buscando…" : lists[i].error ? "No disponible" : (lists[i].data ?? []).filter((p) => p.installed).map((p) => p.name).join(", ") || "Sin proveedores instalados"}
+            </span>
+            <Button variant="ghost" onClick={() => onPick(n.value)}>Gestionar</Button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// NodeProviders lists the harnesses one node detects. Each can be turned
 // on or off on that node, and signed in or updated there. Calls for another
 // node go through Dory to it, so it has to be connected.
-export function ProvidersSettings() {
+function NodeProviders({ node, onBack }: { node: string; onBack?: () => void }) {
   const qc = useQueryClient();
-  const nodes = useNodes();
-  const [node, setNode] = useState("local");
   const [selected, setSelected] = useState<string>();
   const list = useQuery({ queryKey: ["node-providers", node], queryFn: () => api.nodeProviders(node) });
   const toggle = useMutation({
@@ -24,11 +54,11 @@ export function ProvidersSettings() {
   const current = providers.find((p) => p.id === selected) ?? providers.find((p) => p.installed) ?? providers[0];
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-muted">
-        <span>Proveedores de</span>
-        <Select className="min-w-40" value={node} onChange={(v) => { setNode(v); setSelected(undefined); }} options={nodes} />
+      <div className="flex items-center gap-3">
+        <h2 className="text-lg font-semibold">Proveedores</h2>
+        {onBack && <Button variant="ghost" onClick={onBack}>Todos los nodos</Button>}
       </div>
-      <h2 className="text-lg font-semibold">Proveedores</h2>
+      <AddAccount node={node} onAdded={(id) => setSelected(id)} />
       {list.isPending && <p className="text-sm text-slate-500 dark:text-muted">Buscando proveedores…</p>}
       <ErrorText error={list.error ?? toggle.error} />
       {providers.length > 0 && (
@@ -59,6 +89,9 @@ export function ProvidersSettings() {
     </div>
   );
 }
+
+const driver = (p: Provider) => p.driver ?? p.id;
+const multi = (p: Provider) => driver(p) === "claude" || driver(p) === "codex";
 
 const version = (p: Provider) => p.version.split(" ")[0] || "instalado";
 
@@ -105,6 +138,7 @@ function ProviderDetail({ node, provider: p }: { node: string; provider: Provide
         <h3 className="text-lg font-semibold">{p.name}</h3>
         {p.installed && <span className="ml-auto font-mono text-xs text-slate-500 dark:text-muted">{version(p)}</span>}
       </div>
+      {multi(p) && <AccountForm key={p.id + (p.home ?? "")} node={node} provider={p} />}
       <dl className="divide-y divide-slate-200 text-sm dark:divide-border">
         <Row label="Estado" value={summary(p)} />
         <Row label="Modelos" value={p.models.length ? p.models.map((m) => m.name).join(", ") : "—"} />
@@ -126,8 +160,8 @@ function ProviderDetail({ node, provider: p }: { node: string; provider: Provide
         <div className="rounded-md bg-slate-100 p-2 dark:bg-raised">
           <p className="mb-1 flex items-center gap-2 text-xs font-medium">{{ login: "Inicio de sesión", update: "Actualización", install: "Instalación" }[state.data.kind]} · {state.data.done ? (state.data.error ? `terminó con error (${state.data.error})` : "terminado") : "en curso…"}
             <button type="button" className="ml-auto text-slate-500" onClick={() => setJob(undefined)}>cerrar</button></p>
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-xs"><Linkify text={state.data.output || "Esperando salida…"} linkLabel={(p.id === "claude" || p.id === "antigravity") && state.data.kind === "login" && !state.data.done ? `Abrir ${p.name} en el navegador` : undefined} /></pre>
-          {!state.data.done && (p.id === "claude" || p.id === "antigravity") && state.data.kind === "login" && state.data.accepts_code !== undefined && (
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-xs"><Linkify text={state.data.output || "Esperando salida…"} linkLabel={(driver(p) === "claude" || driver(p) === "antigravity") && state.data.kind === "login" && !state.data.done ? `Abrir ${p.name} en el navegador` : undefined} /></pre>
+          {!state.data.done && (driver(p) === "claude" || driver(p) === "antigravity") && state.data.kind === "login" && state.data.accepts_code !== undefined && (
             <LoginCodeForm key={job} node={node} id={job} acceptsCode={state.data.accepts_code} />
           )}
         </div>
@@ -183,4 +217,68 @@ function LoginCodeForm({ node, id, acceptsCode }: { node: string; id: string; ac
 // Linkify makes the URLs a login prints clickable.
 function Linkify({ text, linkLabel }: { text: string; linkLabel?: string }) {
   return <>{text.split(/(https?:\/\/\S+)/g).map((part, i) => (/^https?:\/\//.test(part) ? <a key={i} href={part} target="_blank" rel="noreferrer" className="text-blue-600 underline dark:text-accent-text">{linkLabel ?? part}</a> : part))}</>;
+}
+
+const defaultDirs: Record<string, string> = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME" };
+
+// AddAccount signs a harness in a second time with its own configuration directory.
+function AddAccount({ node, onAdded }: { node: string; onAdded: (id: string) => void }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [drv, setDrv] = useState("claude");
+  const [name, setName] = useState("");
+  const [home, setHome] = useState("");
+  const add = useMutation({
+    mutationFn: () => api.addAccount(node, { driver: drv, name, home }),
+    onSuccess: (a) => {
+      qc.invalidateQueries({ queryKey: ["node-providers"] });
+      qc.invalidateQueries({ queryKey: ["node"] });
+      setOpen(false); setName(""); setHome("");
+      onAdded(a.id);
+    },
+  });
+  if (!open) return <Button variant="ghost" onClick={() => setOpen(true)}>Añadir cuenta</Button>;
+  return (
+    <form className="space-y-2 rounded-xl border border-slate-200 p-4 dark:border-border" onSubmit={(e) => { e.preventDefault(); if (name.trim()) add.mutate(); }}>
+      <div className="flex flex-wrap gap-2">
+        <Select className="w-44" value={drv} onChange={setDrv} options={[{ value: "claude", label: "Claude Code" }, { value: "codex", label: "Codex" }]} />
+        <Input className="min-w-40 flex-1" placeholder="Nombre visible (p. ej. Trabajo)" value={name} onChange={(e) => setName(e.target.value)} required />
+      </div>
+      <Input placeholder={`Carpeta (${defaultDirs[drv]}); vacío = una propia de Dory`} value={home} onChange={(e) => setHome(e.target.value)} />
+      <div className="flex gap-2">
+        <Button type="submit" disabled={add.isPending}>Añadir</Button>
+        <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
+      </div>
+      <ErrorText error={add.error} />
+    </form>
+  );
+}
+
+// AccountForm edits the display name and configuration directory of one
+// account and removes it when it is not the default one.
+function AccountForm({ node, provider: p }: { node: string; provider: Provider }) {
+  const qc = useQueryClient();
+  const extra = p.id !== driver(p);
+  const [name, setName] = useState(p.name === (driver(p) === "claude" ? "Claude Code" : "Codex") && !extra ? "" : p.name);
+  const [home, setHome] = useState(p.home ?? "");
+  const done = () => { qc.invalidateQueries({ queryKey: ["node-providers"] }); qc.invalidateQueries({ queryKey: ["node"] }); };
+  const save = useMutation({ mutationFn: () => api.updateAccount(node, p.id, { name, home }), onSuccess: done });
+  const remove = useMutation({ mutationFn: () => api.removeAccount(node, p.id), onSuccess: done });
+  return (
+    <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+      <label className="block space-y-1 text-sm">
+        <span>Nombre visible</span>
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={extra ? "" : "Por defecto"} required={extra} />
+      </label>
+      <label className="block space-y-1 text-sm">
+        <span>Carpeta de configuración ({defaultDirs[driver(p)]})</span>
+        <Input value={home} onChange={(e) => setHome(e.target.value)} placeholder={extra ? "" : "Por defecto del arnés"} required={extra} />
+      </label>
+      <div className="flex gap-2">
+        <Button type="submit" disabled={save.isPending}>Guardar</Button>
+        {extra && <Button type="button" variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate()}>Eliminar cuenta</Button>}
+      </div>
+      <ErrorText error={save.error ?? remove.error} />
+    </form>
+  );
 }

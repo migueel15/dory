@@ -53,7 +53,7 @@ func buildInstructions(provider, model string, tools []string) string {
 		head += ", as " + strings.Join(strings.Fields(model), " ")
 	}
 	head += `. The MCP server "dory" lets you manage this thread, its tasks and the user's other threads. When a Dory tool covers what you need, use it instead of your own equivalent: the user follows Dory's tools in its interface.`
-	if provider == "claude" {
+	if driverOf(provider) == "claude" {
 		head += " Dory tools are deferred: load them with ToolSearch (select:mcp__dory__<name>) before you call them."
 	} else {
 		head += " If a Dory tool seems missing, look it up in your MCP catalog before you assume it is absent."

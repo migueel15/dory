@@ -9,9 +9,17 @@ import (
 // Codex runs turns over "codex app-server" (codex_app.go); a later turn
 // resumes the same thread. codexParser maps the items of "codex exec --json",
 // which app-server items are converted to.
-type Codex struct{ Bin string }
+type Codex struct {
+	Bin string
+	// Account tells one extra account of this harness from the default one;
+	// Home is its CODEX_HOME and Label its display name.
+	Account, Home, Label string
+}
 
-func (Codex) ID() string { return "codex" }
+func (c Codex) ID() string { return accountID("codex", c.Account) }
+
+// Environ is the environment of every process run for this account.
+func (c Codex) Environ() []string { return accountEnv("CODEX_HOME", c.Home) }
 
 func (c Codex) bin() string {
 	if c.Bin != "" {
@@ -23,12 +31,12 @@ func (c Codex) bin() string {
 func (c Codex) Detect(ctx context.Context) Status {
 	version, ok := detect(ctx, c.bin())
 	efforts := []string{"low", "medium", "high", "xhigh"}
-	status := Status{ID: "codex", Name: "Codex", Installed: ok, Version: version,
+	status := Status{ID: c.ID(), Driver: "codex", Name: accountName("Codex", c.Label), Home: c.Home, Installed: ok, Version: version,
 		Models:       []Model{{Slug: "gpt-5.5", Name: "GPT-5.5", Efforts: efforts}},
 		Capabilities: []string{"interrupt", "resume", "effort", "usage"},
 	}
 	if ok {
-		if models := codexModels(ctx, c.bin()); len(models) > 0 {
+		if models := codexModels(ctx, c.bin(), c.Environ()); len(models) > 0 {
 			status.Models = models
 		}
 	}
