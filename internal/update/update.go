@@ -393,11 +393,11 @@ func fetch(ctx context.Context, target, path string) error {
 func desktopAssets() []string {
 	switch runtime.GOOS {
 	case "windows":
-		return []string{"*Setup*.exe", "*Setup*.exe.blockmap", "*.yml"}
+		return []string{"*Setup*.exe", "*Setup*.exe.blockmap", "latest.yml"}
 	case "darwin":
-		return []string{"*-mac.zip", "*-mac.zip.blockmap", "*.yml"}
+		return []string{"*-mac.zip", "*-mac.zip.blockmap", "latest-mac.yml"}
 	}
-	return []string{"*.AppImage", "*.yml"}
+	return []string{"*.AppImage", "latest-linux.yml"}
 }
 
 // desktopInstalled reports whether the desktop app has run on this machine:

@@ -3,7 +3,8 @@ set -euo pipefail
 channel=nightly
 [ "$GITHUB_REF_TYPE" = tag ] && channel=stable
 branch="updates-$channel-$PLATFORM"
-tag="build-$channel-$PLATFORM-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT"
+# Every platform of a run shares one release, created by scripts/create-release.sh.
+tag=$(bash "$(dirname "$0")/release-tag.sh")
 api="repos/$GITHUB_REPOSITORY"
 # A completed release is immutable. Advancing the single manifest is the
 # commit point; a failed build or upload leaves the previous manifest intact.
@@ -19,9 +20,9 @@ else
   fi
   old_sha=""
 fi
-# The branch without a manifest is harmless: no client can select this build.
-gh release create "$tag" out/* --target "$GITHUB_SHA" --draft --prerelease --title "$channel $PLATFORM $GITHUB_RUN_NUMBER" --notes "Commit $GITHUB_SHA"
-gh release edit "$tag" --draft=false
+# Assets without a manifest are harmless: no client selects them until the
+# manifest below points to this release.
+gh release upload "$tag" out/* --clobber
 content=$(node -e 'process.stdout.write(Buffer.from(JSON.stringify({tag:process.argv[1],sha:process.argv[2],run:Number(process.argv[3]),attempt:Number(process.argv[4]),version:process.argv[5]})).toString("base64"))' "$tag" "$GITHUB_SHA" "$GITHUB_RUN_NUMBER" "$GITHUB_RUN_ATTEMPT" "${GITHUB_REF_NAME#v}")
 args=(-f "message=Actualiza $channel $PLATFORM" -f "content=$content" -f "branch=$branch")
 [ -n "$old_sha" ] && args+=(-f "sha=$old_sha")
