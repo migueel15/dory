@@ -29,3 +29,4 @@
 | [ADR-025](adr-025-credenciales-mcp-por-hilo.md) | Credenciales MCP por hilo gestionado | accepted |
 | [ADR-026](adr-026-release-compartida-por-ejecucion.md) | Release compartida por ejecución | accepted |
 | [ADR-027](adr-027-registro-local-de-consumo.md) | Registro local de consumo por turno | accepted |
+| [ADR-028](adr-028-skills-del-sistema.md) | Skills del sistema empaquetadas en el binario | accepted |

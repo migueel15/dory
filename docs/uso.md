@@ -68,6 +68,8 @@ Muestra las issues y PRs de los repositorios de tus proyectos.
 
 Un único catálogo editable para todos los nodos. Cada skill indica en qué nodos y para qué agentes se instala. Cada nodo la escribe en `~/.claude/skills`, `~/.codex/skills`, `~/.config/opencode/skills` o `~/.gemini/config/skills` y publica su estado: sincronizada, pendiente, conflicto o error.
 
+Dory trae sus propias **skills del sistema** (`dory-workflow` y `single-test-run`), que explican a los agentes cómo usar Dory. Llevan la etiqueta Sistema, se instalan en todos los nodos sin configurar nada y se actualizan con cada versión de Dory. No se pueden editar: se pueden desactivar para toda la malla o hacer un fork, que es una copia editable y desactiva la original. La original solo se puede volver a activar con el fork desactivado.
+
 Dory nunca pisa una carpeta o un fichero que no escribió (por ejemplo, enlaces simbólicos a otro repositorio). Tampoco pisa una copia editada a mano: lo marca como conflicto.
 
 ## Entornos y uso
