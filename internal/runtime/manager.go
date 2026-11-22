@@ -532,7 +532,7 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
 	turn := Turn{ThreadID: t.ID, RunID: run, Dir: dir, Text: prompt, Model: t.Model, Effort: t.Effort, Session: session, Attachments: files,
 		FullAccess: t.RuntimeMode != "approval-required"}
 	historyChars := len(turn.Text) - len(userPrompt)
-	if err := m.prepareMCP(ctx, t.Provider, &turn); err != nil {
+	if err := m.prepareMCP(ctx, t, &turn); err != nil {
 		return err
 	}
 	if sessionProvider != t.Provider {

@@ -6,7 +6,7 @@ Los agentes leen todo lo que necesitan del trabajo en curso y escriben lo suyo. 
 
 ## Sesiones gestionadas
 
-Al enviar un turno, Dory comprueba el catálogo MCP con la credencial de ese hilo y añade instrucciones sobre las herramientas al mensaje que recibe el arnés. Si falla la comprobación, el envío devuelve un error con el proveedor y el motivo. El catálogo del nodo refleja sus ajustes, por ejemplo la disponibilidad de las herramientas de dispositivos.
+Al enviar un turno, Dory comprueba el catálogo MCP con la credencial de ese hilo y envía por el canal de sistema del arnés las instrucciones sobre las herramientas y la ficha del hilo: hilo, carpeta, rama, proyecto, repositorio y tarea vinculada con su issue y PR. La ficha se rehace en cada turno, así que un cambio de tarea aparece en el siguiente. Con ella el agente no necesita `session_start` para empezar. Si falla la comprobación, el envío devuelve un error con el proveedor y el motivo. El catálogo del nodo refleja sus ajustes, por ejemplo la disponibilidad de las herramientas de dispositivos.
 
 | Arnés | Registro de `dory` | Sesión |
 |---|---|---|
@@ -25,10 +25,10 @@ La comprobación de transporte con perfiles limpios y un MCP local de prueba alc
 
 | Herramienta | Qué hace |
 |---|---|
-| `session_start` | Memorias globales, proyectos y, si encuentra el proyecto (por id, slug, remoto o ruta), sus repositorios, tareas abiertas y memorias |
+| `session_start` | Índice para clientes sin ficha de hilo: proyectos, títulos de memorias globales y, si encuentra el proyecto (por id, slug, remoto o ruta), sus repositorios, tareas abiertas resumidas y títulos de memorias |
 | `list_projects` | Proyectos |
-| `list_tasks` | Tareas con su columna, rama, PR, hilos y bloqueos; filtra por proyecto, issue o abiertas |
-| `get_task` | Una tarea con sus planes y dependencias |
+| `list_tasks` | Índice de tareas con id, título, columna, rama, issue, PR y bloqueos; filtra por proyecto, issue o abiertas |
+| `get_task` | Una tarea con descripción, columna, rama, estado de la PR, hilos, plan vigente y dependencias |
 | `save_task` | Crea una tarea o cambia su título, descripción, issue, PR o `stage` (`inbox`, `ready`, `done`, `cancelled`); `depends_on` añade dependencias. `done` solo se acepta sin PR o con la PR fusionada; con una PR sin fusionar devuelve error. `list_tasks` con `open` excluye las tareas hechas |
 | `set_task_project` | Vincula una tarea a un proyecto o la desvincula (sin `project_id`); acepta id o slug y reajusta el repositorio |
 | `ensure_thread_task` | En un hilo, reutiliza su tarea o crea y vincula una en una transacción; con `task_id` vincula el hilo a esa tarea existente; admite reintentos |
@@ -40,8 +40,8 @@ La comprobación de transporte con perfiles limpios y un MCP local de prueba alc
 | `plan_read` | Lee el plan de una tarea: un documento Markdown con su número de revisión |
 | `plan_write` | Escribe el plan entero para empezarlo; reescribir uno existente exige la `revision` leída y falla si el plan cambió desde entonces |
 | `plan_edit` | Sustituye un fragmento exacto del plan, que debe aparecer una sola vez |
-| `remember` | Guarda o actualiza una memoria global, de proyecto o de nodo, con tipo, título y labels |
-| `recall` | Busca memorias por texto, proyecto, labels o tipo |
+| `remember` | Guarda o actualiza una memoria global, de proyecto o de nodo, con tipo, título y labels. Sin alcance, usa el proyecto del hilo; el mismo título en el mismo alcance actualiza la memoria existente |
+| `recall` | Busca memorias por texto, proyecto, labels o tipo; filtra antes de limitar y devuelve 8 por defecto (`limit`). Con `id` lee una memoria completa |
 | `search` | Busca en tareas y memorias |
 | `ask_user` | Pregunta al usuario; el hilo queda esperando su respuesta |
 
