@@ -30,7 +30,8 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
   const showingDictation = !!dictation.preview;
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const form = useLaunchForm({ section: "home" , project });
-  const [mode, setMode] = useState<"checkout" | "worktree" | "existing">("checkout");
+  const [pickedMode, setMode] = useState<"checkout" | "worktree" | "existing">();
+  const mode = pickedMode ?? form.defaultWorkspace;
   const worktree = mode === "worktree";
   const [existing, setExisting] = useState("");
   const worktreeList = useQuery({
