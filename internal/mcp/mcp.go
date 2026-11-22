@@ -200,10 +200,14 @@ func build(s *api.Server, devices bool) *sdk.Server {
 	add(srv, "list_projects", "List projects with id, slug and name.", func(ctx context.Context, _ struct{}) (any, error) {
 		return store.Projects().List(ctx, data.Filter{Limit: 1000})
 	})
-	add(srv, "list_tasks", "List tasks with column, branch, pull request, threads and blockers. Filter by project, issue or open.", func(ctx context.Context, in taskListInput) (any, error) {
-		return listTasks(ctx, s, in)
+	add(srv, "list_tasks", "Index of tasks: id, title, column, branch, issue, pull request and blockers. Filter by project, issue or open. Read one with get_task.", func(ctx context.Context, in taskListInput) (any, error) {
+		cards, err := listTasks(ctx, s, in)
+		if err != nil {
+			return nil, err
+		}
+		return taskIndex(cards), nil
 	})
-	add(srv, "get_task", "Read one task with its column, threads, pull request, plans and dependencies.", func(ctx context.Context, in idInput) (any, error) {
+	add(srv, "get_task", "Read one task: description, column, branch, pull request state, threads, current plan and dependencies.", func(ctx context.Context, in idInput) (any, error) {
 		t, err := store.Tasks().Get(ctx, in.ID)
 		if err != nil {
 			return nil, err
@@ -212,9 +216,14 @@ func build(s *api.Server, devices bool) *sdk.Server {
 		if err != nil {
 			return nil, err
 		}
-		plans, _ := store.Plans().List(ctx, data.Filter{Fields: map[string]any{"task_id": t.ID}})
-		deps, _ := store.Dependencies().List(ctx, data.Filter{Fields: map[string]any{"task_id": t.ID}})
-		return map[string]any{"task": cards[0], "plans": plans, "dependencies": deps}, nil
+		out := map[string]any{"task": taskDetail(cards[0])}
+		if plan, err := s.PlanDocument(ctx, t.ID); err == nil && plan.ID != "" {
+			out["plan"] = map[string]any{"body_md": plan.BodyMD, "revision": plan.Revision, "accepted": plan.AcceptedAt != nil}
+		}
+		if deps, _ := store.Dependencies().List(ctx, data.Filter{Fields: map[string]any{"task_id": t.ID}}); len(deps) > 0 {
+			out["dependencies"] = deps
+		}
+		return out, nil
 	})
 	add(srv, "save_task", "Create a task, or change its title, description, issue, pull request or stage. stage done only without an unmerged pull request.", func(ctx context.Context, in taskInput) (any, error) {
 		return saveTask(ctx, s, in)
@@ -424,6 +433,7 @@ type taskEntry struct {
 	ID          string   `json:"id"`
 	Title       string   `json:"title"`
 	Column      string   `json:"column"`
+	Branch      string   `json:"branch,omitempty"`
 	IssueNumber *int64   `json:"issue_number,omitempty"`
 	PRNumber    *int64   `json:"pr_number,omitempty"`
 	Blockers    []string `json:"blockers,omitempty"`
@@ -440,7 +450,22 @@ func memoryIndex(memories []data.Memory) []memoryEntry {
 func taskIndex(cards []api.Card) []taskEntry {
 	out := make([]taskEntry, 0, len(cards))
 	for _, c := range cards {
-		out = append(out, taskEntry{ID: c.ID, Title: c.Title, Column: c.Column, IssueNumber: c.IssueNumber, PRNumber: c.PRNumber, Blockers: c.Blockers})
+		out = append(out, taskEntry{ID: c.ID, Title: c.Title, Column: c.Column, Branch: c.Branch, IssueNumber: c.IssueNumber, PRNumber: c.PRNumber, Blockers: c.Blockers})
+	}
+	return out
+}
+
+// taskDetail is what an agent needs of one task; the board keeps the full card.
+func taskDetail(c api.Card) map[string]any {
+	threads := make([]map[string]string, len(c.Threads))
+	for i, t := range c.Threads {
+		threads[i] = map[string]string{"id": t.ID, "title": t.Title, "status": t.Status, "node_id": t.NodeID}
+	}
+	out := map[string]any{"id": c.ID, "title": c.Title, "description": c.Description, "stage": c.Stage, "column": c.Column,
+		"branch": c.Branch, "repo": c.Repo, "issue_number": c.IssueNumber, "pr_number": c.PRNumber, "pr_state": c.PRState,
+		"project_id": c.ProjectID, "blockers": c.Blockers, "threads": threads}
+	if c.Pull != nil {
+		out["ci"], out["review_decision"] = c.Pull.CI, c.Pull.ReviewDecision
 	}
 	return out
 }
