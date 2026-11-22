@@ -78,9 +78,9 @@ type Manager struct {
 	// pending holds the settings an agent chose for a running thread; they
 	// apply when its turn ends, before the next one starts.
 	pending map[string]ThreadSettings
-	// PeerSend delivers a message to a thread of another node; set by the
-	// mesh, so a subagent there can hand its result to its parent.
-	PeerSend func(ctx context.Context, node, thread, sender, text string) error
+	// PeerComplete hands the outcome of a subagent turn to its parent on
+	// another node; set by the mesh.
+	PeerComplete func(ctx context.Context, node string, outcome Outcome) error
 	// detected caches what Providers found.
 	detected   []Status
 	detectedAt time.Time
@@ -279,8 +279,9 @@ func (m *Manager) Usage() map[string][]Window {
 // NewThread describes a thread to create.
 type NewThread struct {
 	ProjectID, TaskID *string
-	// ParentID makes the thread a subagent of another thread.
-	ParentID            *string
+	// ParentID makes the thread a subagent of another thread; OriginID only
+	// records the thread whose agent created it.
+	ParentID, OriginID  *string
 	Provider, Model     string
 	Effort, RuntimeMode string
 	Title               string
@@ -298,7 +299,7 @@ func (m *Manager) Create(ctx context.Context, n NewThread) (data.Thread, error) 
 	if _, ok := m.provider(n.Provider); !ok {
 		return data.Thread{}, fmt.Errorf("%w: %s", ErrProvider, n.Provider)
 	}
-	t := data.Thread{NodeID: m.node, ProjectID: n.ProjectID, TaskID: n.TaskID, ParentID: n.ParentID, Provider: n.Provider, Model: n.Model,
+	t := data.Thread{NodeID: m.node, ProjectID: n.ProjectID, TaskID: n.TaskID, ParentID: n.ParentID, OriginID: n.OriginID, Provider: n.Provider, Model: n.Model,
 		Effort: n.Effort, RuntimeMode: n.RuntimeMode, Title: n.Title, Branch: n.Branch}
 	if n.TaskID != nil {
 		linked := now()

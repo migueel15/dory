@@ -3,7 +3,6 @@ package runtime
 import (
 	"context"
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 
@@ -80,6 +79,9 @@ func (m *Manager) Spawn(ctx context.Context, parentID string, sub Subagent) (dat
 	if err != nil {
 		return child, err
 	}
+	if _, err = m.RecordDelegation(ctx, parent.ID, child.ID, m.node, child.Title); err != nil {
+		return child, err
+	}
 	if err = m.Send(ctx, child.ID, sub.Prompt); err != nil {
 		return child, err
 	}
@@ -102,18 +104,18 @@ func (m *Manager) CanSpawn(ctx context.Context, parent data.Thread) error {
 	return nil
 }
 
-// notifyParent hands the result of a finished subagent turn to its parent,
-// starting a parent turn or queueing behind the running one.
+// notifyParent hands the outcome of a finished subagent turn to the node of
+// its parent, which records it and wakes the parent.
 func (m *Manager) notifyParent(ctx context.Context, child data.Thread, status string, stopped bool) {
 	parent, err := m.store.Threads().Get(ctx, *child.ParentID)
-	if err != nil || parent.ArchivedAt != nil || (parent.NodeID != m.node && m.PeerSend == nil) {
+	if err != nil || parent.ArchivedAt != nil {
 		return
 	}
-	state := map[string]string{"idle": "terminó", "error": "falló", "waiting": "espera una respuesta"}[status]
+	outcome := map[string]string{"idle": "completed", "error": "failed", "waiting": "waiting"}[status]
 	if stopped {
-		state = "se detuvo"
+		outcome = "interrupted"
 	}
-	if state == "" {
+	if outcome == "" {
 		return
 	}
 	var result string
@@ -128,22 +130,10 @@ func (m *Manager) notifyParent(ctx context.Context, child data.Thread, status st
 	if r := []rune(result); len(r) > resultChars {
 		result = string(r[:resultChars]) + "…"
 	}
-	text := fmt.Sprintf("[Subagente «%s» (%s) %s]", child.Title, child.ID, state)
-	if status == "waiting" {
-		text += "\nTiene una pregunta pendiente: respóndela con thread_send o déjala al usuario."
+	if fresh, err := m.store.Threads().Get(ctx, child.ID); err == nil {
+		child = fresh
 	}
-	if result != "" {
-		text += "\n\n" + result
-	}
-	send := m.SendFrom
-	if parent.NodeID != m.node {
-		send = func(ctx context.Context, id, sender, text string, _ ...Attachment) error {
-			return m.PeerSend(ctx, parent.NodeID, id, sender, text)
-		}
-	}
-	if err := send(ctx, parent.ID, child.ID, text); err != nil {
-		log.Printf("runtime: notify parent %s: %v", parent.ID, err)
-	}
+	m.deliver(ctx, parent.NodeID, Outcome{ParentThreadID: parent.ID, ChildThreadID: child.ID, ChildNodeID: m.node, Title: child.Title, Status: outcome, Result: result})
 }
 
 func firstLine(text string, limit int) string {

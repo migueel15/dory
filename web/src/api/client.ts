@@ -24,7 +24,7 @@ export type Memory = { id: string; scope: "global" | "project" | "node"; scope_i
 export type MemoryInput = Partial<Memory> & { content: string };
 export type ThreadStatus = "idle" | "working" | "waiting" | "error";
 export type Thread = {
-  id: string; node_id: string; project_id: string | null; task_id: string | null; parent_id: string | null;
+  id: string; node_id: string; project_id: string | null; task_id: string | null; parent_id: string | null; origin_id?: string | null;
   provider: string; model: string; effort: string; runtime_mode: "full-access" | "approval-required";
   title: string; branch: string; status: ThreadStatus;
   // task_linked_at is when the thread was linked to its task; older threads do not have it, so created_at stands in.

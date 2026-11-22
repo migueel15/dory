@@ -66,13 +66,34 @@ export function Subagents({ threadId, shown }: { threadId: string; shown: boolea
   );
 }
 
-// ParentLink shows in a subagent's header the thread that launched it.
-export function ParentLink({ parentId }: { parentId: string }) {
+// Related lists the threads this thread's agent created with thread_create:
+// ordinary threads of the list, linked here only by where they came from.
+export function Related({ threadId, shown }: { threadId: string; shown: boolean }) {
+  const related = useQuery({ queryKey: ["threads", "related", threadId], queryFn: () => api.threads({ origin_id: threadId }), enabled: shown, refetchInterval: shown ? 5000 : false });
+  const list = (related.data ?? []).filter((t) => !t.archived_at);
+  if (!list.length) return null;
+  return (
+    <div className="px-2.5 py-2">
+      <div className="px-1.5 pb-1 text-xs text-slate-500">Hilos creados desde aquí</div>
+      {list.map((t) => (
+        <Link key={t.id} to="/threads/$threadId" params={{ threadId: t.id }} title={t.title} className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 hover:bg-slate-100 dark:hover:bg-raised">
+          <ProviderIcon driver={t.provider} model={t.model} compact />
+          <span className="min-w-0 flex-1 truncate text-sm">{t.title || "Hilo"}</span>
+          {t.status === "working" && <span className="size-2.5 shrink-0 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+// ParentLink shows in a thread's header the thread it came from: the parent
+// that launched a subagent, or the thread whose agent created it.
+export function ParentLink({ parentId, origin = false }: { parentId: string; origin?: boolean }) {
   const parent = useQuery({ queryKey: ["thread-title", parentId], queryFn: () => api.threads({ id: parentId }, true).then((l) => l[0] ?? null), staleTime: 60_000 });
   return (
-    <Link to="/threads/$threadId" params={{ threadId: parentId }} title="Hilo que lanzó este subagente"
+    <Link to="/threads/$threadId" params={{ threadId: parentId }} title={origin ? "Hilo desde el que se creó" : "Hilo que lanzó este subagente"}
       className="flex min-w-0 max-w-[40%] shrink items-center gap-1 truncate rounded px-1.5 py-0.5 text-xs text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">
-      <ArrowBendLeftUp className="size-3.5 shrink-0" /><span className="truncate">{parent.data?.title || "Hilo padre"}</span>
+      <ArrowBendLeftUp className="size-3.5 shrink-0" /><span className="truncate">{origin && "Creado desde "}{parent.data?.title || "Hilo padre"}</span>
     </Link>
   );
 }

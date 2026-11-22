@@ -157,7 +157,7 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
       ) : (
         <h1 className="min-w-0 flex-1 cursor-text truncate font-semibold" title={`${t.title} · doble clic para renombrar`} onDoubleClick={() => { setTitle(t.title); setEditing(true); }} onContextMenu={menu.open}>{t.title || "Hilo"}</h1>
       )}
-      {t.parent_id && <ParentLink parentId={t.parent_id} />}
+      {t.parent_id ? <ParentLink parentId={t.parent_id} /> : t.origin_id && <ParentLink parentId={t.origin_id} origin />}
       {t.task_id && <TaskCard taskId={t.task_id} open={taskOpen} setOpen={setTaskOpen} popup={panel.open} />}
       <ThreadInfo t={t} popup={panel.open} hidden={!!t.task_id && taskOpen} onOpen={() => setTaskOpen(false)} diff={panel.open && panel.active === "diff"} toggleDiff={() => (panel.open && panel.active === "diff" ? panel.toggle() : panel.show("diff"))} />
       <ErrorText error={act.error ?? menu.error} />

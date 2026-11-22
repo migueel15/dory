@@ -210,10 +210,12 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 	})
 	add(srv, "thread_create", "Create a new, independent thread (a new chat in the user's list), e.g. when the user asks \"créame un hilo nuevo\" or \"abre un chat en el proyecto X en el entorno Y que…\". It is not a subagent: it does not report back here; for that use thread_spawn. project and environment take an id or a name (list_projects, list_environments). By default it takes this thread's project, provider, model and permission mode and runs on this node; prompt, if given, starts its first turn.", func(ctx context.Context, in newThreadInput) (any, error) {
 		var base data.Thread
+		var origin *string
 		if id := caller(ctx); id != "" {
 			base, _ = s.Store.Threads().Get(ctx, id)
+			origin = &id
 		}
-		return createThread(ctx, s, base, in, nil)
+		return createThread(ctx, s, base, in, nil, origin)
 	})
 	add(srv, "list_environments", "List the environments a thread can run on: this node and its paired peers, with whether they are connected.", func(ctx context.Context, _ struct{}) (any, error) {
 		out := []map[string]any{{"id": s.Node.ID, "name": s.Node.Name, "connected": true, "this_node": true}}
@@ -259,7 +261,12 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 			if err != nil {
 				return nil, err
 			}
-			return map[string]any{"thread_id": child.ID, "title": child.Title, "provider": child.Provider, "model": child.Model, "effort": child.Effort,
+			// Spawn recorded the delegation; it may have ended already.
+			task, err := m.LatestDelegation(ctx, id, child.ID)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"task_id": task.ID, "thread_id": child.ID, "title": child.Title, "provider": child.Provider, "model": child.Model, "effort": child.Effort,
 				"environment": child.NodeID, "status": child.Status, "next": next}, nil
 		}
 		if err = m.CanSpawn(ctx, parent); err != nil {
@@ -268,12 +275,52 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		if in.TaskID == "" && parent.TaskID != nil {
 			in.TaskID = *parent.TaskID
 		}
-		out, err := createThread(ctx, s, parent, in, &parent.ID)
+		out, err := createThread(ctx, s, parent, in, &parent.ID, nil)
 		if err != nil {
 			return nil, err
 		}
-		out["next"] = next
+		task, err := m.RecordDelegation(ctx, id, out["thread_id"].(string), out["environment"].(string), out["title"].(string))
+		if err != nil {
+			return nil, err
+		}
+		out["task_id"], out["next"] = task.ID, next
 		return out, nil
+	})
+	add(srv, "subagent_status", "Read a task you delegated with thread_spawn by task_id: status (running, completed, failed, waiting, interrupted, cancelled), result and child thread. Without task_id, list every task this thread delegated. Do not call it on a running task to wait for it: its end wakes you. Reading a finished task marks its result delivered.", func(ctx context.Context, in struct {
+		TaskID string `json:"task_id,omitempty"`
+	}) (any, error) {
+		id := caller(ctx)
+		if in.TaskID == "" {
+			if id == "" {
+				return nil, errors.New("subagent_status needs task_id outside a Dory thread")
+			}
+			return m.Delegations(ctx, id)
+		}
+		d, err := m.Delegation(ctx, in.TaskID, true)
+		if err != nil {
+			return nil, err
+		}
+		out := map[string]any{"task": d}
+		if child, err := s.Store.Threads().Get(ctx, d.ChildThreadID); err == nil {
+			out["child"] = threadSummary(ctx, m, child)
+		}
+		return out, nil
+	})
+	add(srv, "subagent_cancel", "Cancel a running task you delegated with thread_spawn: its child thread stops, on this node or another, and its end does not wake you. A finished task keeps its result.", func(ctx context.Context, in struct {
+		TaskID string `json:"task_id"`
+	}) (any, error) {
+		d, err := m.CancelDelegation(ctx, in.TaskID)
+		if err != nil {
+			return nil, err
+		}
+		if d.Status == "cancelled" {
+			if d.ChildNodeID == s.Node.ID {
+				err = m.Interrupt(ctx, d.ChildThreadID)
+			} else {
+				err = s.PeerCall(ctx, d.ChildNodeID, http.MethodPost, "/api/threads/"+d.ChildThreadID+"/interrupt", struct{}{}, nil)
+			}
+		}
+		return map[string]any{"task_id": d.ID, "status": d.Status}, err
 	})
 	add(srv, "thread_stop", "Stop the running turn of a thread and drop its queued messages.", func(ctx context.Context, in struct {
 		ThreadID string `json:"thread_id"`
@@ -359,7 +406,7 @@ type newThreadInput struct {
 
 // createThread creates a thread from base's selection with the changes in
 // in, on this node or on a peer through the mesh. parent makes it a subagent.
-func createThread(ctx context.Context, s *api.Server, base data.Thread, in newThreadInput, parent *string) (map[string]any, error) {
+func createThread(ctx context.Context, s *api.Server, base data.Thread, in newThreadInput, parent, origin *string) (map[string]any, error) {
 	m := s.Runtime
 	env := in.Environment
 	if env == "" && base.NodeID != "" {
@@ -369,7 +416,7 @@ func createThread(ctx context.Context, s *api.Server, base data.Thread, in newTh
 	if err != nil {
 		return nil, err
 	}
-	n := runtime.NewThread{Provider: base.Provider, Model: base.Model, Effort: base.Effort, RuntimeMode: base.RuntimeMode, ProjectID: base.ProjectID, ParentID: parent, Title: in.Title}
+	n := runtime.NewThread{Provider: base.Provider, Model: base.Model, Effort: base.Effort, RuntimeMode: base.RuntimeMode, ProjectID: base.ProjectID, ParentID: parent, OriginID: origin, Title: in.Title}
 	if in.Project != "" {
 		p, err := findProjectByName(ctx, s.Store, in.Project)
 		if err != nil {
@@ -407,7 +454,7 @@ func createThread(ctx context.Context, s *api.Server, base data.Thread, in newTh
 		var created struct {
 			ThreadID string `json:"thread_id"`
 		}
-		err := s.PeerCall(ctx, node, http.MethodPost, "/api/threads", map[string]any{"project_id": n.ProjectID, "task_id": n.TaskID, "parent_id": n.ParentID,
+		err := s.PeerCall(ctx, node, http.MethodPost, "/api/threads", map[string]any{"project_id": n.ProjectID, "task_id": n.TaskID, "parent_id": n.ParentID, "origin_id": n.OriginID,
 			"provider": n.Provider, "model": n.Model, "effort": n.Effort, "runtime_mode": n.RuntimeMode, "title": n.Title, "text": in.Prompt}, &created)
 		if err != nil {
 			return nil, err

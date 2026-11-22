@@ -82,9 +82,12 @@ func TestChildOnAnotherNodeNotifiesItsParentThroughThePeer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sent := make(chan [4]string, 1)
-	m.PeerSend = func(_ context.Context, node, thread, sender, text string) error {
-		sent <- [4]string{node, thread, sender, text}
+	sent := make(chan Outcome, 1)
+	m.PeerComplete = func(_ context.Context, node string, o Outcome) error {
+		if node != "other-node" {
+			t.Errorf("sent to %s", node)
+		}
+		sent <- o
 		return nil
 	}
 	child, err := m.Create(ctx, NewThread{Provider: codex.id, ParentID: &parent.ID, Title: "Prueba el binario"})
@@ -100,7 +103,62 @@ func TestChildOnAnotherNodeNotifiesItsParentThroughThePeer(t *testing.T) {
 	events <- Event{Done: true}
 	close(events)
 	got := <-sent
-	if got[0] != "other-node" || got[1] != parent.ID || got[2] != child.ID || !strings.Contains(got[3], "Funciona") {
-		t.Fatalf("peer send %+v", got)
+	if got.ParentThreadID != parent.ID || got.ChildThreadID != child.ID || got.Status != "completed" || got.Result != "Funciona" {
+		t.Fatalf("peer outcome %+v", got)
+	}
+}
+
+func TestDelegationRecordsOutcomeAndFollowUps(t *testing.T) {
+	ctx := context.Background()
+	m, store := manager(t, 0)
+	claude := capturedProvider{"claude", make(chan Turn, 2), make(chan chan Event, 2)}
+	m.providers[claude.id] = claude
+	parent, _ := m.Create(ctx, NewThread{Provider: claude.id})
+	child, _ := m.Create(ctx, NewThread{Provider: "replay", ParentID: &parent.ID, Title: "Hijo"})
+	d, err := m.RecordDelegation(ctx, parent.ID, child.ID, m.node, "Hijo")
+	if err != nil || d.Status != "running" {
+		t.Fatalf("record %+v %v", d, err)
+	}
+	if again, _ := m.RecordDelegation(ctx, parent.ID, child.ID, m.node, "Hijo"); again.ID != d.ID {
+		t.Fatal("a running delegation was not reused")
+	}
+	if err = m.Complete(ctx, Outcome{ParentThreadID: parent.ID, ChildThreadID: child.ID, ChildNodeID: m.node, Title: "Hijo", Status: "completed", Result: "hecho"}); err != nil {
+		t.Fatal(err)
+	}
+	wake := <-claude.turns
+	if !strings.Contains(wake.Text, d.ID) || !strings.Contains(wake.Text, "hecho") {
+		t.Fatalf("wake %q", wake.Text)
+	}
+	close(<-claude.ends)
+	wait(t, store, parent.ID, "idle")
+	got, _ := m.Delegation(ctx, d.ID, true)
+	if got.Status != "completed" || got.Result != "hecho" || got.Delivered {
+		t.Fatalf("delegation %+v", got)
+	}
+	if got, _ = m.Delegation(ctx, d.ID, false); !got.Delivered {
+		t.Fatal("reading the result did not mark it delivered")
+	}
+	// The child ran again: a follow-up delegation, and a cancelled one stays quiet.
+	if err = m.Complete(ctx, Outcome{ParentThreadID: parent.ID, ChildThreadID: child.ID, Title: "Hijo", Status: "failed"}); err != nil {
+		t.Fatal(err)
+	}
+	<-claude.turns
+	close(<-claude.ends)
+	wait(t, store, parent.ID, "idle")
+	list, _ := m.Delegations(ctx, parent.ID)
+	if len(list) != 2 || list[0].Status != "failed" {
+		t.Fatalf("follow-up %+v", list)
+	}
+	running, _ := m.RecordDelegation(ctx, parent.ID, child.ID, m.node, "Hijo")
+	if c, err := m.CancelDelegation(ctx, running.ID); err != nil || c.Status != "cancelled" {
+		t.Fatalf("cancel %+v %v", c, err)
+	}
+	if err = m.Complete(ctx, Outcome{ParentThreadID: parent.ID, ChildThreadID: child.ID, Title: "Hijo", Status: "interrupted"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case turn := <-claude.turns:
+		t.Fatalf("a cancelled task woke the parent: %q", turn.Text)
+	default:
 	}
 }

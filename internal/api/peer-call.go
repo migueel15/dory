@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+
+	"github.com/migueel15/dory/internal/runtime"
 )
 
 // ErrUnreachable is returned when the mesh cannot reach a node.
@@ -36,7 +38,7 @@ func (s *Server) PeerCall(ctx context.Context, node, method, path string, body, 
 	return nil
 }
 
-// SendFromPeer delivers a message an agent wrote to a thread of another node.
-func (s *Server) SendFromPeer(ctx context.Context, node, thread, sender, text string) error {
-	return s.PeerCall(ctx, node, http.MethodPost, "/api/threads/"+thread+"/messages", map[string]string{"text": text, "sender_thread_id": sender}, nil)
+// CompleteOnPeer hands the outcome of a subagent turn to its parent's node.
+func (s *Server) CompleteOnPeer(ctx context.Context, node string, o runtime.Outcome) error {
+	return s.PeerCall(ctx, node, http.MethodPost, "/api/threads/"+o.ParentThreadID+"/delegations/complete", o, nil)
 }
