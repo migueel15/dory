@@ -2,7 +2,11 @@ package skills
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"os"
+	"sort"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -38,7 +42,7 @@ func TestSeedInstallsAndNeverDowngrades(t *testing.T) {
 	}
 	// A newer binary already wrote version 99: this one must not go back.
 	s, _ := r.Store.Skills().Get(ctx, SystemPrefix+"dory-workflow")
-	s.Version, s.BodyMD = 99, "nueva"
+	s.SystemVersion, s.BodyMD = 99, "nueva"
 	if _, err := r.Store.Skills().Put(ctx, s); err != nil {
 		t.Fatal(err)
 	}
@@ -49,11 +53,11 @@ func TestSeedInstallsAndNeverDowngrades(t *testing.T) {
 		t.Fatal("an older binary downgraded the system skill")
 	}
 	// An older version in the catalog is upgraded, keeping it disabled.
-	s.Version = 0
+	s.SystemVersion = 0
 	r.Store.Skills().Put(ctx, s)
 	SetEnabled(ctx, r.Store, s.ID, false)
 	SeedSystem(ctx, r.Store)
-	if s, _ = r.Store.Skills().Get(ctx, s.ID); s.Version < 1 || s.BodyMD == "nueva" || s.DisabledAt == nil {
+	if s, _ = r.Store.Skills().Get(ctx, s.ID); s.SystemVersion < 1 || s.BodyMD == "nueva" || s.DisabledAt == nil {
 		t.Fatalf("upgrade lost content or state: %+v", s)
 	}
 }
@@ -97,5 +101,82 @@ func TestSystemSkillsAreReadOnlyAndForkable(t *testing.T) {
 	SetEnabled(ctx, r.Store, fork.ID, true)
 	if sys, _ = r.Store.Skills().Get(ctx, id); sys.DisabledAt == nil {
 		t.Fatal("fork and original enabled together")
+	}
+}
+
+// TestSystemSkillVersionsLocked fails when a system skill changes without a
+// new version: nodes that already have that version would never update it.
+// After changing a skill, bump its version and update system.lock.json.
+func TestSystemSkillVersionsLocked(t *testing.T) {
+	shipped, _ := System()
+	raw, err := os.ReadFile("system.lock.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	type entry struct {
+		Version int64  `json:"version"`
+		SHA256  string `json:"sha256"`
+	}
+	lock := map[string]entry{}
+	if err = json.Unmarshal(raw, &lock); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range shipped {
+		h := sha256.New()
+		h.Write([]byte(s.Description + "\x00" + s.BodyMD))
+		paths := make([]string, 0, len(s.Files))
+		for p := range s.Files {
+			paths = append(paths, p)
+		}
+		sort.Strings(paths)
+		for _, p := range paths {
+			h.Write([]byte("\x00" + p + "\x00" + s.Files[p]))
+		}
+		sum := hex.EncodeToString(h.Sum(nil))
+		got, ok := lock[s.Name]
+		switch {
+		case !ok || got.Version > s.Version:
+			t.Errorf("%s: add it to system.lock.json as {\"version\": %d, \"sha256\": %q}", s.Name, s.Version, sum)
+		case got.Version == s.Version && got.SHA256 != sum:
+			t.Errorf("%s changed without a new version: bump its version to %d and set sha256 %q in system.lock.json", s.Name, s.Version+1, sum)
+		case got.Version < s.Version:
+			t.Errorf("%s: update system.lock.json to {\"version\": %d, \"sha256\": %q}", s.Name, s.Version, sum)
+		}
+	}
+}
+
+func TestSeedRestoresEditsOfOldBinaries(t *testing.T) {
+	ctx := context.Background()
+	r, _ := setup(t)
+	SeedSystem(ctx, r.Store)
+	// A binary without system skills edits it: its Save bumps version but
+	// knows nothing of system_version.
+	s, _ := r.Store.Skills().Get(ctx, SystemPrefix+"dory-workflow")
+	s.BodyMD, s.Version = "pisada", s.Version+1
+	r.Store.Skills().Put(ctx, s)
+	SeedSystem(ctx, r.Store)
+	if s, _ = r.Store.Skills().Get(ctx, s.ID); s.BodyMD == "pisada" || s.Version <= 2 {
+		t.Fatalf("old edit kept: %+v", s)
+	}
+}
+
+func TestSeedTakesItsNameFromAUserSkill(t *testing.T) {
+	ctx := context.Background()
+	r, _ := setup(t)
+	// A user skill with the same name, added before system skills existed.
+	user, err := r.Store.Skills().Put(ctx, data.Skill{Name: "dory-workflow", Description: "mía", BodyMD: "propia"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = SeedSystem(ctx, r.Store); err != nil {
+		t.Fatal(err)
+	}
+	sys, _ := r.Store.Skills().Get(ctx, SystemPrefix+"dory-workflow")
+	user, _ = r.Store.Skills().Get(ctx, user.ID)
+	if sys.Name != "dory-workflow" || user.Name != "dory-workflow-custom" || user.ForkedFrom == nil || *user.ForkedFrom != sys.ID {
+		t.Fatalf("names: system %q, user %q", sys.Name, user.Name)
+	}
+	if sys.DisabledAt == nil || user.DisabledAt != nil {
+		t.Fatal("the user's skill must stay on and the system one off")
 	}
 }

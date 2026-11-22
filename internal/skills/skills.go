@@ -54,7 +54,7 @@ func Save(ctx context.Context, store *data.Store, s data.Skill) (data.Skill, err
 			return s, fmt.Errorf("%w: %s es una skill del sistema; haz un fork con otro nombre", data.ErrInvalid, s.Name)
 		}
 	}
-	s.Version, s.Source = 1, ""
+	s.Version, s.Source, s.SystemVersion = 1, "", 0
 	if s.ID != "" {
 		if old, err := store.Skills().Get(ctx, s.ID); err == nil {
 			if old.Source == "system" {

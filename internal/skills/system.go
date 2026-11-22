@@ -75,7 +75,7 @@ func readSystem(dir string) (data.Skill, error) {
 	if s.Name != path.Base(dir) || s.Version < 1 || s.Description == "" {
 		return s, errors.New("frontmatter needs name (the folder), description and version")
 	}
-	s.ID = SystemPrefix + s.Name
+	s.ID, s.SystemVersion = SystemPrefix+s.Name, s.Version
 	err = fs.WalkDir(systemFS, dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || path.Base(p) == "SKILL.md" && path.Dir(p) == dir {
 			return err
@@ -87,9 +87,12 @@ func readSystem(dir string) (data.Skill, error) {
 	return s, err
 }
 
-// SeedSystem writes the system skills of this binary into the catalog when
-// they are missing or older there. It keeps what the mesh decided about them:
-// whether they are on, their targets and their forks.
+// SeedSystem writes the system skills of this binary into the catalog. It
+// keeps what the mesh decided about them: whether they are on, their targets
+// and their forks. It writes a skill when it is missing, when the catalog has
+// an older shipped version, or when the catalog has this same version with
+// other content or name: a binary that predates system skills edited it, or
+// a user skill took its name.
 func SeedSystem(ctx context.Context, store *data.Store) error {
 	shipped, err := System()
 	if err != nil {
@@ -97,24 +100,55 @@ func SeedSystem(ctx context.Context, store *data.Store) error {
 	}
 	for _, s := range shipped {
 		cur, err := store.Skills().Get(ctx, s.ID)
-		if errors.Is(err, data.ErrNotFound) {
-			if _, err = store.Skills().Put(ctx, s); err != nil {
-				return err
-			}
-			continue
+		missing := errors.Is(err, data.ErrNotFound)
+		if err != nil && !missing {
+			return err
 		}
+		if !missing && cur.Source == "system" && (cur.SystemVersion > s.Version ||
+			cur.SystemVersion == s.Version && cur.Name == s.Name && cur.Description == s.Description && cur.BodyMD == s.BodyMD && maps(cur.Files, s.Files)) {
+			continue // Up to date, or a newer binary owns it.
+		}
+		forkOn, err := adoptName(ctx, store, s)
 		if err != nil {
 			return err
 		}
-		if cur.Version >= s.Version && cur.Source == "system" {
-			continue
+		next := s
+		if !missing {
+			next = cur
+			next.Name, next.Description, next.BodyMD, next.Files, next.Source, next.SystemVersion = s.Name, s.Description, s.BodyMD, s.Files, "system", s.Version
+			next.Version = max(cur.Version+1, s.Version)
 		}
-		cur.Name, cur.Description, cur.BodyMD, cur.Files, cur.Version, cur.Source = s.Name, s.Description, s.BodyMD, s.Files, s.Version, "system"
-		if _, err = store.Skills().Put(ctx, cur); err != nil {
+		if forkOn && next.DisabledAt == nil {
+			now := time.Now().UTC().Format(time.RFC3339Nano)
+			next.DisabledAt = &now
+		}
+		if _, err = store.Skills().Put(ctx, next); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// adoptName turns a user skill that holds the name of a system skill into a
+// fork of it, so the system skill gets its name on every node. It says
+// whether that fork is on, in which case the system skill must stay off.
+func adoptName(ctx context.Context, store *data.Store, s data.Skill) (bool, error) {
+	holders, err := store.Skills().List(ctx, data.Filter{Fields: map[string]any{"name": s.Name}, Limit: 10, IncludeArchived: true})
+	if err != nil {
+		return false, err
+	}
+	on := false
+	for _, h := range holders {
+		if h.ID == s.ID {
+			continue
+		}
+		h.Name, h.ForkedFrom = s.Name+"-custom", &s.ID
+		if _, err = store.Skills().Put(ctx, h); err != nil {
+			return false, err
+		}
+		on = on || h.ArchivedAt == nil && h.DisabledAt == nil
+	}
+	return on, nil
 }
 
 // SetEnabled turns a skill on or off on every node. A system skill and its

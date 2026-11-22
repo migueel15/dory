@@ -121,8 +121,10 @@ type Skill struct {
 	Version     int64             `json:"version"`
 	Targets     SkillTargets      `json:"targets"`
 	// Source is "system" for the skills Dory ships; they are read-only.
-	Source     string  `json:"source"`
-	ForkedFrom *string `json:"forked_from"`
+	Source string `json:"source"`
+	// SystemVersion is the shipped version of a system skill's content.
+	SystemVersion int64   `json:"system_version"`
+	ForkedFrom    *string `json:"forked_from"`
 	// DisabledAt turns the skill off on every node without archiving it.
 	DisabledAt *string `json:"disabled_at"`
 	CreatedAt  string  `json:"created_at"`
