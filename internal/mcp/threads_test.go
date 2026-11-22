@@ -15,10 +15,13 @@ import (
 
 func TestThreadControlTools(t *testing.T) {
 	tools := toolsOf(t, build(&api.Server{Devices: devices.NewManager()}, false))
-	for _, n := range []string{"list_models", "list_threads", "get_thread", "thread_configure", "thread_send", "thread_stop", "thread_spawn", "thread_create", "list_environments", "subagent_status", "subagent_cancel"} {
+	for _, n := range []string{"list_models", "list_threads", "get_thread", "thread_configure", "thread_send", "thread_stop", "subagent_spawn", "thread_create", "list_environments", "subagent_status", "subagent_cancel"} {
 		if tools[n] == nil {
 			t.Errorf("missing %s", n)
 		}
+	}
+	if !strings.Contains(tools["thread_create"].Description, "Never use it for a subagent") || !strings.Contains(tools["subagent_spawn"].Description, "subagente") {
+		t.Error("thread_create and subagent_spawn do not say which one to use")
 	}
 	if !strings.Contains(tools["thread_configure"].Description, "continue_with") {
 		t.Error("thread_configure does not explain continue_with")

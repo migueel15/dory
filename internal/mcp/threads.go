@@ -208,7 +208,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		}
 		return map[string]any{"thread_id": in.ThreadID, "sent": true, "queued": len(m.Queue(in.ThreadID)) > 0}, nil
 	})
-	add(srv, "thread_create", "Create a new, independent thread (a new chat in the user's list), e.g. when the user asks \"créame un hilo nuevo\" or \"abre un chat en el proyecto X en el entorno Y que…\". It is not a subagent: it does not report back here; for that use thread_spawn. project and environment take an id or a name (list_projects, list_environments). By default it takes this thread's project, provider, model and permission mode and runs on this node; prompt, if given, starts its first turn.", func(ctx context.Context, in newThreadInput) (any, error) {
+	add(srv, "thread_create", "Create a new, independent chat that shows in the user's thread list, e.g. \"créame un hilo nuevo que…\" or \"abre un chat en el entorno Y\". Never use it for a subagent: when the user says subagente, subagent, spawnea, delega or wants the result back in this conversation, use subagent_spawn. It does not report back here. project and environment take an id or a name (list_projects, list_environments); by default it takes this thread's project, provider, model and permission mode and runs on this node. prompt, if given, starts its first turn.", func(ctx context.Context, in newThreadInput) (any, error) {
 		var base data.Thread
 		var origin *string
 		if id := caller(ctx); id != "" {
@@ -232,13 +232,13 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		}
 		return out, nil
 	})
-	add(srv, "thread_spawn", "Launch a subagent: a child thread of this conversation, hidden from the thread list, whose result comes back here as a message when its turn ends, e.g. \"lanza un subagente con haiku que revise X\" or \"lanza un subagente en el entorno Y que pruebe el binario y me traiga los datos\". By default it works in this thread's folder, task, project and environment, with this thread's provider and model; project and environment (list_projects, list_environments) move it elsewhere. The child does not see this conversation, so put every detail it needs in prompt. Do not poll it; continue with other work or end your turn. Subagents cannot launch subagents, and at most 5 work at once. For a new chat the user will see in the list, use thread_create.", func(ctx context.Context, in newThreadInput) (any, error) {
+	add(srv, "subagent_spawn", "Launch a subagent of this conversation: use it whenever the user says subagente, subagent, spawnea or delega, or wants work done elsewhere with its result back here, e.g. \"lanza un subagente con haiku que revise X\" or \"spawnea un subagente en el entorno Y que pruebe el binario\". The child is hidden from the thread list and shows in this thread's details; its result comes back here as a message when its turn ends, with a task_id for subagent_status and subagent_cancel. By default it works in this thread's folder, task, project and environment, with this thread's provider and model; project and environment (list_projects, list_environments) move it elsewhere. The child does not see this conversation, so put every detail it needs in prompt. Do not poll it; continue with other work or end your turn. Subagents cannot launch subagents, and at most 5 work at once. For a new chat the user will see in the list, use thread_create.", func(ctx context.Context, in newThreadInput) (any, error) {
 		id := caller(ctx)
 		if id == "" {
-			return nil, errors.New("thread_spawn only works inside a Dory thread")
+			return nil, errors.New("subagent_spawn only works inside a Dory thread")
 		}
 		if strings.TrimSpace(in.Prompt) == "" {
-			return nil, errors.New("thread_spawn needs a prompt")
+			return nil, errors.New("subagent_spawn needs a prompt")
 		}
 		parent, err := s.Store.Threads().Get(ctx, id)
 		if err != nil {
@@ -286,7 +286,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		out["task_id"], out["next"] = task.ID, next
 		return out, nil
 	})
-	add(srv, "subagent_status", "Read a task you delegated with thread_spawn by task_id: status (running, completed, failed, waiting, interrupted, cancelled), result and child thread. Without task_id, list every task this thread delegated. Do not call it on a running task to wait for it: its end wakes you. Reading a finished task marks its result delivered.", func(ctx context.Context, in struct {
+	add(srv, "subagent_status", "Read a task you delegated with subagent_spawn by task_id: status (running, completed, failed, waiting, interrupted, cancelled), result and child thread. Without task_id, list every task this thread delegated. Do not call it on a running task to wait for it: its end wakes you. Reading a finished task marks its result delivered.", func(ctx context.Context, in struct {
 		TaskID string `json:"task_id,omitempty"`
 	}) (any, error) {
 		id := caller(ctx)
@@ -306,7 +306,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		}
 		return out, nil
 	})
-	add(srv, "subagent_cancel", "Cancel a running task you delegated with thread_spawn: its child thread stops, on this node or another, and its end does not wake you. A finished task keeps its result.", func(ctx context.Context, in struct {
+	add(srv, "subagent_cancel", "Cancel a running task you delegated with subagent_spawn: its child thread stops, on this node or another, and its end does not wake you. A finished task keeps its result.", func(ctx context.Context, in struct {
 		TaskID string `json:"task_id"`
 	}) (any, error) {
 		d, err := m.CancelDelegation(ctx, in.TaskID)
