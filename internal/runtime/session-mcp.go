@@ -13,10 +13,12 @@ import (
 	"github.com/migueel15/dory/internal/auth"
 )
 
-const doryInstructions = `Estás en un hilo gestionado por Dory. Usa el servidor MCP dory para consultar el contexto del proyecto (session_start), gestionar tareas y operar sobre este hilo. Descubre las herramientas disponibles en el catálogo MCP del arnés y sigue sus esquemas. Para mostrar un mockup web en el panel del hilo, abre su URL con browser_open y comprueba la pestaña activa con browser_tabs. Para confirmar cambios de tareas o planes, consulta get_task o plan_read.`
+// legacyDoryInstructions was prepended to user messages before the guidance
+// moved to the system prompt; history recovery still strips it.
+const legacyDoryInstructions = `Estás en un hilo gestionado por Dory. Usa el servidor MCP dory para consultar el contexto del proyecto (session_start), gestionar tareas y operar sobre este hilo. Descubre las herramientas disponibles en el catálogo MCP del arnés y sigue sus esquemas. Para mostrar un mockup web en el panel del hilo, abre su URL con browser_open y comprueba la pestaña activa con browser_tabs. Para confirmar cambios de tareas o planes, consulta get_task o plan_read.`
 
 // prepareMCP uses the same connection and guidance for new and resumed turns.
-// The guidance travels in Turn.Instructions; each provider delivers it once per
+// The guidance, built from the tools the catalog offers, travels in Turn.Instructions; each provider delivers it once per
 // session through its system channel, so user messages stay clean.
 func (m *Manager) prepareMCP(ctx context.Context, provider string, turn *Turn) error {
 	if m.MCPURL == "" {
@@ -31,20 +33,21 @@ func (m *Manager) prepareMCP(ctx context.Context, provider string, turn *Turn) e
 	endpoint.RawQuery = query.Encode()
 	turn.MCPURL = endpoint.String()
 	turn.MCPToken = auth.AgentMCPToken(m.MCPToken, turn.ThreadID)
-	if err := checkMCP(ctx, turn.MCPURL, turn.MCPToken); err != nil {
+	tools, err := checkMCP(ctx, turn.MCPURL, turn.MCPToken)
+	if err != nil {
 		return fmt.Errorf("%s: MCP de Dory: %w", provider, err)
 	}
-	turn.Instructions = doryInstructions
+	turn.Instructions = buildInstructions(provider, turn.Model, tools)
 	return nil
 }
 
-func checkMCP(ctx context.Context, endpoint, token string) error {
+func checkMCP(ctx context.Context, endpoint, token string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	// Dory's stateless JSON transport accepts tools/list without a session.
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
 	if err != nil {
-		return fmt.Errorf("URL no válida")
+		return nil, fmt.Errorf("URL no válida")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
@@ -52,11 +55,11 @@ func checkMCP(ctx context.Context, endpoint, token string) error {
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	res, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("el servidor no responde")
+		return nil, fmt.Errorf("el servidor no responde")
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("el catálogo devolvió HTTP %d", res.StatusCode)
+		return nil, fmt.Errorf("el catálogo devolvió HTTP %d", res.StatusCode)
 	}
 	var catalog struct {
 		Result struct {
@@ -64,7 +67,11 @@ func checkMCP(ctx context.Context, endpoint, token string) error {
 		}
 	}
 	if err := json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&catalog); err != nil || len(catalog.Result.Tools) == 0 {
-		return fmt.Errorf("el catálogo de herramientas no está disponible")
+		return nil, fmt.Errorf("el catálogo de herramientas no está disponible")
 	}
-	return nil
+	names := make([]string, 0, len(catalog.Result.Tools))
+	for _, tool := range catalog.Result.Tools {
+		names = append(names, tool.Name)
+	}
+	return names, nil
 }

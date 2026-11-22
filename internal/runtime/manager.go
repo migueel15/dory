@@ -1166,7 +1166,7 @@ func (m *Manager) resync(ctx context.Context, thread string, e External) error {
 			id = thread + ":" + id
 		}
 		if msg.Role == "user" {
-			msg.Text = strings.TrimPrefix(msg.Text, doryInstructions+"\n\n")
+			msg.Text = strings.TrimPrefix(msg.Text, legacyDoryInstructions+"\n\n")
 		}
 		m.restoreAttachments(thread, &msg)
 		if _, err = tx.ExecContext(ctx, `INSERT INTO thread_messages(id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, updated_at, tool)

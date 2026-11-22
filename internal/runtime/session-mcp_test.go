@@ -29,10 +29,10 @@ func TestPrepareMCP(t *testing.T) {
 	if err := m.prepareMCP(t.Context(), "codex", &turn); err != nil {
 		t.Fatal(err)
 	}
-	if turn.Text != "continúa" || turn.Instructions != doryInstructions {
+	if turn.Text != "continúa" || !strings.HasPrefix(turn.Instructions, "# Dory") || strings.Contains(turn.Instructions, "## Browser") {
 		t.Fatalf("instructions must travel apart from the prompt: %q", turn.Text)
 	}
-	if err := checkMCP(t.Context(), server.URL+"/mcp?thread=two", turn.MCPToken); err == nil || !strings.Contains(err.Error(), "HTTP 401") {
+	if _, err := checkMCP(t.Context(), server.URL+"/mcp?thread=two", turn.MCPToken); err == nil || !strings.Contains(err.Error(), "HTTP 401") {
 		t.Fatalf("credential accepted for the wrong thread: %v", err)
 	}
 	server.Close()
@@ -81,5 +81,21 @@ func TestPromptWithInstructions(t *testing.T) {
 	turn.Session = "s1"
 	if got := promptWithInstructions(turn); got != "hola" {
 		t.Fatalf("resumed session repeats instructions: %q", got)
+	}
+}
+
+func TestBuildInstructions(t *testing.T) {
+	got := buildInstructions("claude", "opus", []string{"subagent_spawn", "subagent_status", "subagent_cancel", "device_list"})
+	if !strings.Contains(got, "through claude, as opus") || !strings.Contains(got, "ToolSearch") {
+		t.Fatalf("missing runtime header: %q", got)
+	}
+	if !strings.Contains(got, "## Subagents") {
+		t.Fatal("offered tools lack their guidance")
+	}
+	if strings.Contains(got, "## Devices") || strings.Contains(got, "## Threads") {
+		t.Fatal("guidance sent for tools the catalog does not offer")
+	}
+	if strings.Contains(buildInstructions("codex", "", nil), "ToolSearch") {
+		t.Fatal("ToolSearch hint is only for Claude Code")
 	}
 }
