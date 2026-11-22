@@ -393,6 +393,13 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	defaults := s.Settings.Get().Threads
+	if body.Provider == "" && defaults.DefaultModel.Provider != "" {
+		body.Provider, body.Model, body.Effort = defaults.DefaultModel.Provider, defaults.DefaultModel.Model, defaults.DefaultModel.Effort
+	}
+	if body.WorktreePath == "" && body.Branch == "" && body.BaseBranch == "" && path != "" && defaults.DefaultWorkspace == "worktree" {
+		body.Worktree = true
+	}
 	if body.Worktree && body.Branch == "" {
 		// A new worktree gets its own branch; the agent may rename it later.
 		if name := s.worktreeBranch(ctx, body.Title, body.Text); name != "" && !branchExists(ctx, path, name) {
@@ -401,8 +408,14 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 			body.Branch = "dory/" + strings.ToLower(rand.Text()[:8])
 		}
 	}
-	t, err := s.Runtime.Create(ctx, runtime.NewThread{ProjectID: body.ProjectID, TaskID: body.TaskID, ParentID: body.ParentID, OriginID: body.OriginID, Provider: body.Provider, Model: body.Model,
-		Effort: body.Effort, RuntimeMode: body.RuntimeMode, Title: body.Title, Worktree: body.Worktree, RepoPath: path, Branch: body.Branch, BaseBranch: body.BaseBranch, ExistingDir: body.WorktreePath})
+	nt := runtime.NewThread{ProjectID: body.ProjectID, TaskID: body.TaskID, ParentID: body.ParentID, OriginID: body.OriginID, Provider: body.Provider, Model: body.Model,
+		Effort: body.Effort, RuntimeMode: body.RuntimeMode, Title: body.Title, Worktree: body.Worktree, RepoPath: path, Branch: body.Branch, BaseBranch: body.BaseBranch, ExistingDir: body.WorktreePath}
+	t, err := s.Runtime.Create(ctx, nt)
+	if fb := defaults.FallbackModel; err != nil && fb.Provider != "" && fb.Provider != nt.Provider {
+		// The chosen model could not start: retry once with the node's fallback.
+		nt.Provider, nt.Model, nt.Effort = fb.Provider, fb.Model, fb.Effort
+		t, err = s.Runtime.Create(ctx, nt)
+	}
 	if err != nil {
 		writeDataError(w, err)
 		return

@@ -9,10 +9,12 @@ export type Project = { id: string; slug: string; name: string; description: str
 export type RepositoryLocation = { repository_id: string; node_id: string; path: string };
 export type Repository = { id: string; project_id: string; remote_url: string; default_branch: string; created_at: string; updated_at: string; archived_at: string | null };
 export type Stage = "inbox" | "ready" | "done" | "cancelled";
-export type NodeSettings = { archive_threads_on_finish: boolean; remove_worktree_on_archive: boolean; stop_services_on_shutdown: boolean; agents_use_devices: boolean; browser_tunnel_disabled?: boolean; input?: InputSettings; source_control?: { auto_pull: boolean }; worktrees?: { location: string; branch_naming: string; remove_on_merge: boolean } };
+export type NodeSettings = { archive_threads_on_finish: boolean; remove_worktree_on_archive: boolean; stop_services_on_shutdown: boolean; agents_use_devices: boolean; browser_tunnel_disabled?: boolean; input?: InputSettings; source_control?: { auto_pull: boolean }; worktrees?: { location: string; branch_naming: string; remove_on_merge: boolean }; threads?: ThreadDefaults };
 export type InputChord = { code: string; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean };
 // InputSettings are the shortcuts and the dictation model of a node; absent until saved.
 export type InputSettings = { shortcuts: Record<string, InputChord>; dictation: { model: string } };
+export type ModelChoice = { provider: string; model: string; effort: string };
+export type ThreadDefaults = { default_model: ModelChoice; fallback_model: ModelChoice; default_workspace: "checkout" | "worktree" | "" };
 export type ThreadService = { pid: number; address: string; port: number; command: string; kind: string };
 export type KeptWorktree = { thread_id: string; path: string; dirty: boolean };
 export type Task = {

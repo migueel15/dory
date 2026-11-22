@@ -31,6 +31,25 @@ type Settings struct {
 	// nil until someone saves it: every node starts with the same defaults,
 	// and the web app uses it to move the choices it kept in the browser.
 	Input *InputSettings `json:"input,omitempty"`
+	// Threads holds the defaults for new threads of this node.
+	Threads ThreadDefaults `json:"threads"`
+}
+
+// ModelChoice is a provider, model and reasoning effort; empty means unset.
+type ModelChoice struct {
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+	Effort   string `json:"effort"`
+}
+
+// ThreadDefaults are what a new thread gets when the request does not say.
+type ThreadDefaults struct {
+	// DefaultModel is used for new threads; FallbackModel replaces it when the
+	// default cannot start (provider missing, not logged in, error at start).
+	DefaultModel  ModelChoice `json:"default_model"`
+	FallbackModel ModelChoice `json:"fallback_model"`
+	// DefaultWorkspace is "checkout" (current branch, the default) or "worktree".
+	DefaultWorkspace string `json:"default_workspace"`
 }
 
 // SourceControlSettings are the version control choices of a node.
