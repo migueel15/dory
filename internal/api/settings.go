@@ -28,6 +28,9 @@ type Settings struct {
 	// nil until someone saves it: every node starts with the same defaults,
 	// and the web app uses it to move the choices it kept in the browser.
 	Input *InputSettings `json:"input,omitempty"`
+	// SourceControl and Worktrees group the version control settings.
+	SourceControl SourceControlSettings `json:"source_control"`
+	Worktrees     WorktreeSettings      `json:"worktrees"`
 }
 
 // InputSettings are the shortcuts and the dictation choices of a node.
@@ -61,6 +64,26 @@ func (in *InputSettings) validate() error {
 		}
 	}
 	return nil
+}
+
+// SourceControlSettings are the version control choices of a node.
+type SourceControlSettings struct {
+	// AutoPull fast-forwards the branch of a thread from its remote while the
+	// checkout has no uncommitted changes.
+	AutoPull bool `json:"auto_pull"`
+}
+
+// WorktreeSettings are the worktree choices of a node.
+type WorktreeSettings struct {
+	// Location is the absolute folder where new worktrees are created; empty
+	// means the data directory of the node.
+	Location string `json:"location"`
+	// BranchNaming is a free-text instruction a small model follows to name
+	// the branch of a new worktree; empty keeps the generated name.
+	BranchNaming string `json:"branch_naming"`
+	// RemoveOnMerge deletes the clean worktree of a thread whose task pull
+	// request was merged.
+	RemoveOnMerge bool `json:"remove_on_merge"`
 }
 
 // SettingsStore reads and saves the Settings of a node.
@@ -133,6 +156,10 @@ func (s *Server) mountSettings(mux *http.ServeMux) {
 				writeError(w, http.StatusBadRequest, "invalid", err.Error())
 				return
 			}
+		}
+		if loc := v.Worktrees.Location; loc != "" && !filepath.IsAbs(loc) {
+			writeError(w, http.StatusBadRequest, "invalid", "la ubicación de los worktrees debe ser una ruta absoluta")
+			return
 		}
 		if err := s.Settings.Set(v); err != nil {
 			writeDataError(w, err)
