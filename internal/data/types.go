@@ -120,9 +120,14 @@ type Skill struct {
 	Files       map[string]string `json:"files"`
 	Version     int64             `json:"version"`
 	Targets     SkillTargets      `json:"targets"`
-	CreatedAt   string            `json:"created_at"`
-	UpdatedAt   string            `json:"updated_at"`
-	ArchivedAt  *string           `json:"archived_at"`
+	// Source is "system" for the skills Dory ships; they are read-only.
+	Source     string  `json:"source"`
+	ForkedFrom *string `json:"forked_from"`
+	// DisabledAt turns the skill off on every node without archiving it.
+	DisabledAt *string `json:"disabled_at"`
+	CreatedAt  string  `json:"created_at"`
+	UpdatedAt  string  `json:"updated_at"`
+	ArchivedAt *string `json:"archived_at"`
 }
 
 type SkillTargets struct {

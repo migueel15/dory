@@ -45,9 +45,23 @@ func Save(ctx context.Context, store *data.Store, s data.Skill) (data.Skill, err
 			return s, fmt.Errorf("%w: bad file path %q", data.ErrInvalid, path)
 		}
 	}
-	s.Version = 1
+	shipped, err := System()
+	if err != nil {
+		return s, err
+	}
+	for _, sys := range shipped {
+		if sys.Name == s.Name && s.ID != sys.ID {
+			return s, fmt.Errorf("%w: %s es una skill del sistema; haz un fork con otro nombre", data.ErrInvalid, s.Name)
+		}
+	}
+	s.Version, s.Source = 1, ""
 	if s.ID != "" {
 		if old, err := store.Skills().Get(ctx, s.ID); err == nil {
+			if old.Source == "system" {
+				return old, fmt.Errorf("%w: las skills del sistema no se pueden editar; haz un fork", data.ErrInvalid)
+			}
+			// Activation and the fork link change only through SetEnabled and Fork.
+			s.ForkedFrom, s.DisabledAt = old.ForkedFrom, old.DisabledAt
 			s.Version = old.Version
 			if old.BodyMD != s.BodyMD || old.Description != s.Description || !maps(old.Files, s.Files) || old.Name != s.Name {
 				s.Version++
@@ -145,6 +159,11 @@ func (r *Reconciler) Run(ctx context.Context) {
 // Reconcile writes, updates and removes skill files, then publishes the
 // state of each skill on this node.
 func (r *Reconciler) Reconcile(ctx context.Context) error {
+	// Seeding writes only when this binary ships something newer, so the
+	// catalog change it causes ends in a reconcile that seeds nothing.
+	if err := SeedSystem(ctx, r.Store); err != nil {
+		log.Printf("skills: system skills: %v", err)
+	}
 	all, err := r.Store.Skills().List(ctx, data.Filter{Limit: 1000, IncludeArchived: true})
 	if err != nil {
 		return err
@@ -156,7 +175,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 	states := map[string]data.SkillState{}
 	for _, s := range all {
 		st := data.SkillState{SkillID: s.ID, NodeID: r.Node, Status: "synced", Version: s.Version}
-		targeted := s.ArchivedAt == nil && (len(s.Targets.Nodes) == 0 || slices.Contains(s.Targets.Nodes, r.Node))
+		targeted := s.ArchivedAt == nil && s.DisabledAt == nil && (len(s.Targets.Nodes) == 0 || slices.Contains(s.Targets.Nodes, r.Node))
 		if !targeted {
 			st.Status, st.Version = "removed", 0
 			states[s.ID] = st

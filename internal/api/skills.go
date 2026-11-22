@@ -41,7 +41,39 @@ func (s *Server) mountSkills(mux *http.ServeMux) {
 	}
 	mux.HandleFunc("POST /api/skills", func(w http.ResponseWriter, r *http.Request) { save(w, r, "") })
 	mux.HandleFunc("PUT /api/skills/{id}", func(w http.ResponseWriter, r *http.Request) { save(w, r, r.PathValue("id")) })
+	mux.HandleFunc("PUT /api/skills/{id}/enabled", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Enabled bool `json:"enabled"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		out, err := skills.SetEnabled(r.Context(), s.Store, r.PathValue("id"), body.Enabled)
+		if err != nil {
+			writeDataError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	mux.HandleFunc("POST /api/skills/{id}/fork", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Name string `json:"name"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		out, err := skills.Fork(r.Context(), s.Store, r.PathValue("id"), body.Name)
+		if err != nil {
+			writeDataError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	mux.HandleFunc("DELETE /api/skills/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if sk, err := s.Store.Skills().Get(r.Context(), r.PathValue("id")); err == nil && sk.Source == "system" {
+			writeError(w, http.StatusBadRequest, "invalid_argument", "las skills del sistema no se pueden archivar; desactívala")
+			return
+		}
 		if err := s.Store.Skills().Archive(r.Context(), r.PathValue("id")); err != nil {
 			writeDataError(w, err)
 			return

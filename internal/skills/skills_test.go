@@ -61,7 +61,7 @@ func TestReconcileWritesUpdatesAndRemoves(t *testing.T) {
 	if !strings.Contains(read(t, filepath.Join(claude, "SKILL.md")), "Usa fix:") {
 		t.Fatal("update not written")
 	}
-	states, _ := r.Store.SkillStates().List(ctx, data.Filter{})
+	states, _ := r.Store.SkillStates().List(ctx, data.Filter{Fields: map[string]any{"skill_id": s.ID}})
 	if len(states) != 1 || states[0].Status != "synced" || states[0].Version != 2 {
 		t.Fatalf("states %+v", states)
 	}
