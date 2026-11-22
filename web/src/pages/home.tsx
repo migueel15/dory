@@ -11,6 +11,7 @@ import { useProject } from "../project";
 import { Chip, ModelPicker, composerArea, composerFrame, useSuggest } from "./composer";
 import { useCommand, useShortcuts } from "../components/shortcuts";
 import { formatChord } from "../components/dictation-shortcut";
+import { useComposerFiles } from "../components/composer-files";
 import { planMessage } from "../lib/auto-message";
 
 
@@ -24,6 +25,10 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
   const [project, setProject] = useState(current);
   const [text, setText] = useState("");
   const [plan, setPlan] = useState(false);
+  // Files wait in the box until the thread exists: then they are uploaded to
+  // it and go out with the first message.
+  const attach = useComposerFiles();
+  const files = attach.files;
   const box = useRef<HTMLTextAreaElement>(null);
   useCommand("plan", () => { if (!box.current?.getClientRects().length) return false; setPlan((value) => !value); });
   const dictation = useLocalDictation(text, setText, box, { panelShortcut: true, onEnter: (draft) => latestSendDraft.current(draft) });
@@ -54,16 +59,23 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
     mutationFn: async (draft: string) => {
       form.remember();
       const body = draft.trim();
+      const title = body ? undefined : files.length > 1 ? `${files.length} adjuntos` : files[0]?.name;
+      let thread: Parameters<typeof api.createThread>[0] = { ...form.value, ...workspace, project_id: project || null, title, text: body };
       if (plan) {
-        const task = await api.tasks.create({ project_id: project || null, title: body.split("\n")[0].slice(0, 80), description: body });
-        return api.createThread({ ...form.value, ...workspace, project_id: project || null, task_id: task.id, title: `Definir: ${task.title}`, text: planMessage({ id: task.id, title: task.title }, body) });
+        const task = await api.tasks.create({ project_id: project || null, title: body.split("\n")[0].slice(0, 80) || title || "Nueva tarea", description: body });
+        thread = { ...thread, task_id: task.id, title: `Definir: ${task.title}`, text: planMessage({ id: task.id, title: task.title }, body) };
       }
-      return api.createThread({ ...form.value, ...workspace, project_id: project || null, text: body });
+      if (!files.length) return api.createThread(thread);
+      // With files the thread starts empty, takes the uploads and then the message.
+      const r = await api.createThread({ ...thread, text: "", title: thread.title ?? body.split("\n")[0].slice(0, 80) });
+      const uploaded = await Promise.all(files.map((f) => api.upload(r.thread_id, f.file)));
+      await api.send(r.thread_id, thread.text ?? "", uploaded.map((u) => u.id));
+      return r;
     },
-    onSuccess: (r) => { setText(""); onCreated(r.thread_id); },
+    onSuccess: (r) => { setText(""); attach.clear(); onCreated(r.thread_id); },
   });
   const sendDraft = (draft: string) => {
-    if (draft.trim() && form.ready && !start.isPending) start.mutate(draft);
+    if ((draft.trim() || files.length) && form.ready && !start.isPending) start.mutate(draft);
   };
   const latestSendDraft = useRef(sendDraft);
   useLayoutEffect(() => { latestSendDraft.current = sendDraft; });
@@ -93,8 +105,10 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
           </button>
         )}
       </div>
-      <form data-dictation-panel data-unsaved-draft={!!text.trim() || dictation.active} className={composerFrame} onSubmit={(e) => { e.preventDefault(); submit(); }}>
+      <form data-dictation-panel data-unsaved-draft={!!text.trim() || files.length > 0 || dictation.active} className={composerFrame} onSubmit={(e) => { e.preventDefault(); submit(); }}
+        {...attach.formProps}>
         {!dictation.active && suggest.menu}
+        {attach.tray}
         {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} className="min-h-16" />}
         <textarea ref={box} data-dictation-disabled={start.isPending || undefined} rows={2} autoFocus value={dictation.value} readOnly={dictation.active} onChange={(e) => setText(e.target.value)} onSelect={() => { if (!dictation.active) suggest.track(); }} aria-label="Mensaje"
           placeholder={plan ? "Describe la tarea que quieres definir…" : "¿En qué trabajamos?"}
@@ -112,6 +126,7 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
           className={showingDictation ? "sr-only" : `${composerArea} min-h-16`} />
         <div className="flex items-end gap-0.5 px-2 pb-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
+            {attach.attachButton}
             <ModelPicker models={models} providers={form.providers} modelId={form.value.model} selected={form.value.provider ? JSON.stringify([form.value.provider, form.value.model]) : ""} effort={form.value.effort}
               effortsOf={(value) => {
                 const option = models.find((m) => m.value === value);
@@ -128,7 +143,7 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
             </button>
           </div>
           <DictationMic dictation={dictation} disabled={start.isPending} />
-          <button type="submit" className={iconButton} title="Enviar" aria-label="Enviar" disabled={!text.trim() || !form.ready || start.isPending || dictation.active}>
+          <button type="submit" className={iconButton} title="Enviar" aria-label="Enviar" disabled={(!text.trim() && !files.length) || !form.ready || start.isPending || dictation.active}>
             {start.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <ArrowUp className="size-4" weight="regular" />}
           </button>
         </div>
