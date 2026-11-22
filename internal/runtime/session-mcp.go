@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/auth"
+	"github.com/migueel15/dory/internal/data"
 )
 
 // legacyDoryInstructions was prepended to user messages before the guidance
@@ -20,7 +21,8 @@ const legacyDoryInstructions = `Estás en un hilo gestionado por Dory. Usa el se
 // prepareMCP uses the same connection and guidance for new and resumed turns.
 // The guidance, built from the tools the catalog offers, travels in Turn.Instructions; each provider delivers it once per
 // session through its system channel, so user messages stay clean.
-func (m *Manager) prepareMCP(ctx context.Context, provider string, turn *Turn) error {
+func (m *Manager) prepareMCP(ctx context.Context, thread data.Thread, turn *Turn) error {
+	provider := thread.Provider
 	if m.MCPURL == "" {
 		return nil
 	}
@@ -38,6 +40,9 @@ func (m *Manager) prepareMCP(ctx context.Context, provider string, turn *Turn) e
 		return fmt.Errorf("%s: MCP de Dory: %w", provider, err)
 	}
 	turn.Instructions = buildInstructions(provider, turn.Model, tools)
+	if card := m.threadContext(ctx, thread, turn.Dir); card != "" {
+		turn.Instructions += "\n\n" + card
+	}
 	return nil
 }
 

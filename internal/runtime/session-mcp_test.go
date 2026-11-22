@@ -11,6 +11,7 @@ import (
 
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/config"
+	"github.com/migueel15/dory/internal/data"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -26,7 +27,7 @@ func TestPrepareMCP(t *testing.T) {
 
 	m := Manager{MCPURL: server.URL + "/mcp", MCPToken: secret}
 	turn := Turn{ThreadID: "one", Text: "continúa"}
-	if err := m.prepareMCP(t.Context(), "codex", &turn); err != nil {
+	if err := m.prepareMCP(t.Context(), data.Thread{ID: "one", Provider: "codex"}, &turn); err != nil {
 		t.Fatal(err)
 	}
 	if turn.Text != "continúa" || !strings.HasPrefix(turn.Instructions, "# Dory") || strings.Contains(turn.Instructions, "## Browser") {
@@ -36,7 +37,7 @@ func TestPrepareMCP(t *testing.T) {
 		t.Fatalf("credential accepted for the wrong thread: %v", err)
 	}
 	server.Close()
-	if err := m.prepareMCP(t.Context(), "claude", &turn); err == nil || !strings.Contains(err.Error(), "claude: MCP de Dory") {
+	if err := m.prepareMCP(t.Context(), data.Thread{ID: "one", Provider: "claude"}, &turn); err == nil || !strings.Contains(err.Error(), "claude: MCP de Dory") {
 		t.Fatalf("unexpected connection error: %v", err)
 	}
 }
