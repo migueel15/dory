@@ -48,17 +48,24 @@ export function useLaunchForm({ section, project, borderless }: { section: strin
   const node = nodes.some((n) => n.value === picked) ? picked : nodes[0]?.value ?? "local";
   const providers = useProviders(node);
   const [draft, setDraft] = useState<Partial<LaunchChoice>>({});
+  const defaults = useQuery({ queryKey: ["node-settings", node], queryFn: () => api.nodeSettings(node), staleTime: 60_000 }).data?.threads;
   const last = lastModel() ?? stored(section);
   const list = (providers.data ?? []).map((p) => ({ ...p, models: explicitModels(p.models) })).filter((p) => p.models.length > 0);
-  const provider = list.find((p) => p.id === (draft.provider ?? last.provider)) ?? list[0];
-  const model = provider && (findModel(provider.models, draft.model ?? last.model ?? "") ?? provider.models[0]);
-  const draftEffort = draft.effort ?? "";
+  // Precedence: what the user picked in this form, the node's default model,
+  // its fallback when the default is not available, the last one used.
+  const available = (c?: { provider: string; model: string }) => !!c?.provider && !!findModel(list.find((p) => p.id === c.provider)?.models ?? [], c.model);
+  const preset = !draft.provider && available(defaults?.default_model) ? defaults!.default_model
+    : !draft.provider && defaults?.default_model?.provider && available(defaults.fallback_model) ? defaults.fallback_model : undefined;
+  const wanted = draft.provider ? draft : preset ?? last;
+  const provider = list.find((p) => p.id === wanted.provider) ?? list[0];
+  const model = provider && (findModel(provider.models, wanted.model ?? "") ?? provider.models[0]);
+  const draftEffort = draft.effort ?? (preset && preset.model === (model && modelId(model)) ? preset.effort : "");
   const value: LaunchChoice = {
     node,
     provider: provider?.id ?? "",
     model: model ? modelId(model) : "",
     effort: model && provider
-      ? (draft.model === modelId(model) && model.efforts?.includes(draftEffort) ? draftEffort : modelEffort(provider.id, model))
+      ? ((draft.model ?? preset?.model) === modelId(model) && model.efforts?.includes(draftEffort) ? draftEffort : modelEffort(provider.id, model))
       : "",
     runtime_mode: "full-access",
   };
@@ -89,7 +96,7 @@ export function useLaunchForm({ section, project, borderless }: { section: strin
     </div>
   );
   return {
-    fields, value, nodes, setNode, selectModel, providers: list, ready: !!model, error: providers.error,
+    fields, value, nodes, defaultWorkspace: defaults?.default_workspace === "worktree" ? "worktree" as const : "checkout" as const, setNode, selectModel, providers: list, ready: !!model, error: providers.error,
     remember: () => { try { localStorage.setItem(`${KEY}.${section}`, JSON.stringify({ ...stored(section), runtime_mode: value.runtime_mode })); } catch { /* per browser only */ } },
   };
 }

@@ -31,6 +31,8 @@ type Settings struct {
 	// SourceControl and Worktrees group the version control settings.
 	SourceControl SourceControlSettings `json:"source_control"`
 	Worktrees     WorktreeSettings      `json:"worktrees"`
+	// Threads holds the defaults for new threads of this node.
+	Threads ThreadDefaults `json:"threads"`
 }
 
 // InputSettings are the shortcuts and the dictation choices of a node.
@@ -84,6 +86,23 @@ type WorktreeSettings struct {
 	// RemoveOnMerge deletes the clean worktree of a thread whose task pull
 	// request was merged.
 	RemoveOnMerge bool `json:"remove_on_merge"`
+}
+
+// ModelChoice is a provider, model and reasoning effort; empty means unset.
+type ModelChoice struct {
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+	Effort   string `json:"effort"`
+}
+
+// ThreadDefaults are what a new thread gets when the request does not say.
+type ThreadDefaults struct {
+	// DefaultModel is used for new threads; FallbackModel replaces it when the
+	// default cannot start (provider missing, not logged in, error at start).
+	DefaultModel  ModelChoice `json:"default_model"`
+	FallbackModel ModelChoice `json:"fallback_model"`
+	// DefaultWorkspace is "checkout" (current branch, the default) or "worktree".
+	DefaultWorkspace string `json:"default_workspace"`
 }
 
 // SettingsStore reads and saves the Settings of a node.
