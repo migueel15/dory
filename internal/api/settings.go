@@ -19,7 +19,7 @@ type Settings struct {
 	RemoveWorktreeOnArchive bool `json:"remove_worktree_on_archive"`
 	StopServicesOnShutdown  bool `json:"stop_services_on_shutdown"`
 	// AgentsUseDevices lets the agents of this node drive Android devices
-	// through the device_* tools; off by default.
+	// through the device_* tools; on by default.
 	AgentsUseDevices bool `json:"agents_use_devices"`
 	// BrowserTunnelDisabled keeps the desktop app from reaching the loopback
 	// ports of this node through the browser of a thread.

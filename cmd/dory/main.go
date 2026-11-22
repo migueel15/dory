@@ -157,7 +157,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	}
 	srv.Devices = devices.NewManager()
 	srv.Skills = reconciler
-	srv.Settings = api.NewSettingsStore(cfg.DataDir, api.Settings{ArchiveThreadsOnFinish: cfg.Tasks.ArchiveThreadsOnFinish, RemoveWorktreeOnArchive: cfg.Threads.RemoveWorktreeOnArchive})
+	srv.Settings = api.NewSettingsStore(cfg.DataDir, api.Settings{ArchiveThreadsOnFinish: cfg.Tasks.ArchiveThreadsOnFinish, RemoveWorktreeOnArchive: cfg.Threads.RemoveWorktreeOnArchive, AgentsUseDevices: true, SourceControl: api.SourceControlSettings{AutoPull: true}})
 	go gh.Watch(ctx, func() {
 		events.Changed("github", "")
 		notices.Github()

@@ -135,3 +135,16 @@ body { @apply bg-slate-50 text-slate-900 dark:bg-canvas dark:text-text; }
 .plan-editor ul[data-type="taskList"] li > label { flex-shrink: 0; margin-top: 0.1rem; user-select: none; }
 .plan-editor ul[data-type="taskList"] li > div { flex: 1; min-width: 0; }
 .plan-editor ul[data-type="taskList"] li[data-checked="true"] > div { color: var(--color-muted); text-decoration: line-through; }
+
+/* Range slider of the settings: a thin track filled with the accent up to the thumb. */
+.ui-range { -webkit-appearance: none; appearance: none; height: 1.25rem; background: transparent; cursor: pointer; }
+.ui-range::-webkit-slider-runnable-track { height: 4px; border-radius: 9999px; background: linear-gradient(to right, var(--color-accent) var(--fill, 0%), #e2e8f0 var(--fill, 0%)); }
+.dark .ui-range::-webkit-slider-runnable-track { background: linear-gradient(to right, var(--color-accent) var(--fill, 0%), var(--color-border-strong) var(--fill, 0%)); }
+.ui-range::-webkit-slider-thumb { -webkit-appearance: none; margin-top: -6px; width: 16px; height: 16px; border-radius: 9999px; background: #fff; border: 2px solid var(--color-accent); box-shadow: 0 1px 3px rgb(0 0 0 / 0.3); transition: transform 120ms; }
+.ui-range:active::-webkit-slider-thumb, .ui-range:focus-visible::-webkit-slider-thumb { transform: scale(1.15); }
+.ui-range::-moz-range-track { height: 4px; border-radius: 9999px; background: #e2e8f0; }
+.dark .ui-range::-moz-range-track { background: var(--color-border-strong); }
+.ui-range::-moz-range-progress { height: 4px; border-radius: 9999px; background: var(--color-accent); }
+.ui-range::-moz-range-thumb { width: 12px; height: 12px; border-radius: 9999px; background: #fff; border: 2px solid var(--color-accent); box-shadow: 0 1px 3px rgb(0 0 0 / 0.3); }
+.ui-range:focus-visible { outline: none; }
+.ui-range:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--color-accent-text); outline-offset: 2px; }
