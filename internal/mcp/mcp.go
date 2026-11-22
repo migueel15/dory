@@ -29,8 +29,8 @@ type sdkServer = sdk.Server
 // add registers a tool. Tools whose name starts with a read verb need the
 // read scope; the rest need write. Results are JSON text.
 // receiptDrops are the long or empty fields a write echoes back: the agent
-// just sent that text, so repeating it only spends tokens. get_task, plan_read
-// and recall return it in full.
+// just sent that text, so repeating it only spends tokens. Read tools such as
+// get_task, plan_read and recall return it in full.
 var receiptDrops = map[string]bool{"description": true, "content": true, "body_md": true, "created_at": true, "archived_at": true, "position": true}
 
 // receipt shortens a write tool's JSON result to what identifies the change.
@@ -67,7 +67,7 @@ func receipt(raw []byte) []byte {
 func add[I any](server *sdk.Server, name, description string, fn func(context.Context, I) (any, error)) {
 	sdk.AddTool(server, &sdk.Tool{Name: name, Description: description}, func(ctx context.Context, _ *sdk.CallToolRequest, in I) (*sdk.CallToolResult, any, error) {
 		scope := "write"
-		for _, prefix := range []string{"list_", "get_", "search", "recall", "session_start", "browser_tabs", "browser_read", "browser_screenshot", "browser_console"} {
+		for _, prefix := range []string{"list_", "get_", "search", "recall", "session_start", "plan_read", "browser_tabs", "browser_read", "browser_screenshot", "browser_console"} {
 			if strings.HasPrefix(name, prefix) {
 				scope = "read"
 			}
@@ -154,11 +154,17 @@ type memoryInput struct {
 }
 
 type recallInput struct {
+	ID        string   `json:"id,omitempty" jsonschema:"Read one memory by id; the other fields are ignored"`
 	Query     string   `json:"query,omitempty" jsonschema:"Words to search; empty lists by filters"`
-	ProjectID string   `json:"project_id,omitempty"`
+	ProjectID string   `json:"project_id,omitempty" jsonschema:"Only the memories of this project"`
 	Labels    []string `json:"labels,omitempty" jsonschema:"Memories that carry all these labels"`
 	Kind      string   `json:"kind,omitempty"`
+	Limit     int      `json:"limit,omitempty" jsonschema:"Most memories to return; default 8, best match first"`
 }
+
+// recallLimit keeps recall answers short: a few relevant memories, not the
+// whole store.
+const recallLimit = 8
 
 type askInput struct {
 	Question  string             `json:"question,omitempty" jsonschema:"A single free question; prefer questions"`
@@ -188,7 +194,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 	srv := sdk.NewServer(&sdk.Implementation{Name: "dory", Version: "2.0.0"}, nil)
 	store := s.Store
 
-	add(srv, "session_start", "Load the context to work on a project: memories, projects and, if found, its repositories, open tasks and memories. Call it first in any task.", func(ctx context.Context, in sessionInput) (any, error) {
+	add(srv, "session_start", "Index of projects and, if found, the project's repositories, open tasks and memory titles. Only when you lack the project or need its backlog; read details with get_task and recall.", func(ctx context.Context, in sessionInput) (any, error) {
 		return sessionStart(ctx, s, in)
 	})
 	add(srv, "list_projects", "List projects with id, slug and name.", func(ctx context.Context, _ struct{}) (any, error) {
@@ -294,10 +300,13 @@ func build(s *api.Server, devices bool) *sdk.Server {
 	add(srv, "plan_edit", "Replace one exact piece of a task's plan; the user sees it change in place. old_text must appear once.", func(ctx context.Context, in planEditInput) (any, error) {
 		return s.EditPlan(ctx, in.TaskID, in.OldText, in.NewText, revision(in.Revision), "agent")
 	})
-	add(srv, "remember", "Save or update a durable finding as a memory: scope global, project or node.", func(ctx context.Context, in memoryInput) (any, error) {
+	add(srv, "remember", "Save a decision the user agreed or a verified lesson the code does not tell. Scope defaults to this thread's project; a memory with the same title in that scope is updated instead of duplicated.", func(ctx context.Context, in memoryInput) (any, error) {
+		if in.ID == "" && in.Scope == "" {
+			in.Scope, in.ScopeID = threadProjectScope(ctx, store)
+		}
 		return remember(ctx, store, in)
 	})
-	add(srv, "recall", "Find memories by text, project, labels or kind.", func(ctx context.Context, in recallInput) (any, error) {
+	add(srv, "recall", "Find a few memories by text, project, labels or kind, best match first, or read one by id.", func(ctx context.Context, in recallInput) (any, error) {
 		return recall(ctx, store, in)
 	})
 	add(srv, "search", "Search tasks and memories by text.", func(ctx context.Context, in struct {
@@ -384,7 +393,8 @@ func sessionStart(ctx context.Context, s *api.Server, in sessionInput) (any, err
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]any{"node_id": s.Node.ID, "projects": projects, "memories": global}
+	out := map[string]any{"node_id": s.Node.ID, "projects": projects, "memories": memoryIndex(global),
+		"detail": "Memories and tasks are summaries: read a memory's content with recall and a task with get_task."}
 	project, err := findProject(ctx, store, projects, in)
 	if err != nil || project == nil {
 		out["project_match"] = "none"
@@ -396,8 +406,43 @@ func sessionStart(ctx context.Context, s *api.Server, in sessionInput) (any, err
 	if err != nil {
 		return nil, err
 	}
-	out["project"] = map[string]any{"project": project, "repositories": repos, "memories": memories, "open_tasks": tasks}
+	out["project"] = map[string]any{"project": project, "repositories": repos, "memories": memoryIndex(memories), "open_tasks": taskIndex(tasks)}
 	return out, nil
+}
+
+// memoryEntry and taskEntry keep session_start small: it runs at the start of
+// every task, so it lists what exists and leaves the content to recall and
+// get_task.
+type memoryEntry struct {
+	ID     string   `json:"id"`
+	Kind   string   `json:"kind"`
+	Title  string   `json:"title"`
+	Labels []string `json:"labels,omitempty"`
+}
+
+type taskEntry struct {
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Column      string   `json:"column"`
+	IssueNumber *int64   `json:"issue_number,omitempty"`
+	PRNumber    *int64   `json:"pr_number,omitempty"`
+	Blockers    []string `json:"blockers,omitempty"`
+}
+
+func memoryIndex(memories []data.Memory) []memoryEntry {
+	out := make([]memoryEntry, 0, len(memories))
+	for _, m := range memories {
+		out = append(out, memoryEntry{ID: m.ID, Kind: m.Kind, Title: m.Title, Labels: m.Labels})
+	}
+	return out
+}
+
+func taskIndex(cards []api.Card) []taskEntry {
+	out := make([]taskEntry, 0, len(cards))
+	for _, c := range cards {
+		out = append(out, taskEntry{ID: c.ID, Title: c.Title, Column: c.Column, IssueNumber: c.IssueNumber, PRNumber: c.PRNumber, Blockers: c.Blockers})
+	}
+	return out
 }
 
 func findProject(ctx context.Context, store *data.Store, projects []data.Project, in sessionInput) (*data.Project, error) {
@@ -563,6 +608,16 @@ func remember(ctx context.Context, store *data.Store, in memoryInput) (data.Memo
 	if in.Scope != "" {
 		m.Scope, m.ScopeID = in.Scope, in.ScopeID
 	}
+	if in.ID == "" && in.Title != "" {
+		// The same title in the same scope is the same memory: update it.
+		same, err := store.Memories().List(ctx, data.Filter{Fields: map[string]any{"scope": m.Scope, "scope_id": m.ScopeID, "title": in.Title}, Limit: 1})
+		if err != nil {
+			return m, err
+		}
+		if len(same) > 0 {
+			m = same[0]
+		}
+	}
 	if in.Kind != "" {
 		m.Kind = in.Kind
 	}
@@ -582,41 +637,73 @@ func remember(ctx context.Context, store *data.Store, in memoryInput) (data.Memo
 }
 
 func recall(ctx context.Context, store *data.Store, in recallInput) ([]data.Memory, error) {
+	if in.ID != "" {
+		m, err := store.Memories().Get(ctx, in.ID)
+		if err != nil {
+			return nil, err
+		}
+		return []data.Memory{m}, nil
+	}
+	limit := in.Limit
+	if limit <= 0 || limit > 100 {
+		limit = recallLimit
+	}
+	scope := data.MemoryScope{Kind: in.Kind}
+	if in.ProjectID != "" {
+		scope.Scope, scope.ScopeID = "project", in.ProjectID
+	}
 	var memories []data.Memory
 	if in.Query != "" {
-		hits, err := store.Search(ctx, in.Query, 100)
+		// Labels are filtered here, so ask for more than the limit.
+		hits, err := store.SearchMemories(ctx, in.Query, scope, 200)
 		if err != nil {
 			return nil, err
 		}
 		for _, h := range hits {
-			if h.Entity != "memory" {
-				continue
-			}
 			var m data.Memory
 			if json.Unmarshal(h.Record, &m) == nil {
 				memories = append(memories, m)
 			}
 		}
 	} else {
+		fields := map[string]any{}
+		for k, v := range map[string]string{"scope": scope.Scope, "scope_id": scope.ScopeID, "kind": scope.Kind} {
+			if v != "" {
+				fields[k] = v
+			}
+		}
 		var err error
-		if memories, err = store.Memories().List(ctx, data.Filter{Limit: 1000}); err != nil {
+		if memories, err = store.Memories().List(ctx, data.Filter{Fields: fields, Limit: 1000}); err != nil {
 			return nil, err
 		}
+		slices.Reverse(memories) // newest first
 	}
-	return slices.DeleteFunc(memories, func(m data.Memory) bool {
-		if in.ProjectID != "" && (m.Scope != "project" || m.ScopeID != in.ProjectID) {
-			return true
-		}
-		if in.Kind != "" && m.Kind != in.Kind {
-			return true
-		}
+	memories = slices.DeleteFunc(memories, func(m data.Memory) bool {
 		for _, l := range in.Labels {
 			if !slices.Contains(m.Labels, l) {
 				return true
 			}
 		}
 		return false
-	}), nil
+	})
+	if len(memories) > limit {
+		memories = memories[:limit]
+	}
+	return memories, nil
+}
+
+// threadProjectScope is the project scope of this conversation's thread, or
+// global outside a thread or without project.
+func threadProjectScope(ctx context.Context, store *data.Store) (string, string) {
+	id, _ := ctx.Value(threadKey{}).(string)
+	if id == "" {
+		return "global", ""
+	}
+	t, err := store.Threads().Get(ctx, id)
+	if err != nil || t.ProjectID == nil || *t.ProjectID == "" {
+		return "global", ""
+	}
+	return "project", *t.ProjectID
 }
 
 // threadID returns the given thread or the one of this conversation.
