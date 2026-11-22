@@ -97,7 +97,7 @@ export function Threads() {
       .sort((a, b) => (b.pinned_at ? 1 : 0) - (a.pinned_at ? 1 : 0) || (b.last_activity_at ?? b.created_at).localeCompare(a.last_activity_at ?? a.created_at));
   }, [threads.data, repos.data, filter, query, project]);
   return (
-    <div className="relative flex h-[calc(100dvh-4rem-1px-var(--tabbar))] min-h-0 sm:h-[calc(100dvh-3rem-2px)]" style={{ "--list-w": `${listWidth}px` } as CSSProperties}>
+    <div className="relative flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] min-h-0 sm:h-[calc(100dvh-3rem-2px)]" style={{ "--list-w": `${listWidth}px` } as CSSProperties}>
       {/* The list toggle is pinned to the page corner: the list slides in under it and pushes the thread aside. */}
       {threadId && <button type="button" onClick={() => foldList(!folded)} title={folded ? "Mostrar los hilos" : "Ocultar los hilos"} aria-label={folded ? "Mostrar los hilos" : "Ocultar los hilos"}
         className="absolute -left-2 -top-2 z-30 hidden size-8 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 sm:grid dark:text-text-secondary dark:hover:bg-raised"><SidebarSimple weight="regular" className="size-4" /></button>}

@@ -341,7 +341,7 @@ function Layout() {
           <VersionBadge />
         </div>
       </dialog>
-      <main className={`mx-auto p-2 pb-[calc(0.5rem+var(--tabbar))] sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"} ${hasWindowClose && !path.startsWith("/threads") ? "sm:px-14" : ""}`}><Outlet /></main><WindowClose /></div>
+      <main className={`mx-auto p-2 pb-[calc(0.5rem_+_var(--tabbar))] sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"} ${hasWindowClose && !path.startsWith("/threads") ? "sm:px-14" : ""}`}><Outlet /></main><WindowClose /></div>
       <nav aria-label="Navegación móvil" className="mobile-tabbar fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] dark:border-border dark:bg-surface sm:hidden">
         <Link to="/" activeOptions={{ exact: true }} className={tab}><House className="size-6" aria-hidden="true" />Inicio</Link>
         <Link to="/tasks" className={tab}><Kanban className="size-6" aria-hidden="true" />Tareas</Link>

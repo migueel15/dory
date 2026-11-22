@@ -436,7 +436,7 @@ export function GithubView() {
   // The chat panel stays mounted and slides its width like the thread's changes
   // panel; its content is pinned right so it enters from the right edge.
   return (
-    <div ref={frame} className="flex h-[calc(100dvh-4rem-1px-var(--tabbar))] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
+    <div ref={frame} className="flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
       <div ref={setColumn} className="relative min-h-0 min-w-0 flex-1">
         {!chat && (
           // Pinned to the top right while the PR scrolls, so the agent opens from anywhere.
