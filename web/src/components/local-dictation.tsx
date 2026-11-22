@@ -7,6 +7,7 @@ import { wav } from "./audio-wav";
 import { playDictationSound, prepareDictationSound } from "./dictation-sound";
 import { openDictationMicrophone } from "./dictation-microphone";
 import { iconButton } from "./ui";
+import { modelEvent, modelKey, useInputSettingsSync } from "./input-settings";
 
 export type SpeechModel = {
   id: string; name: string; bytes: number; streaming: boolean;
@@ -16,8 +17,7 @@ export type SpeechCatalog = { runtime: boolean; models: SpeechModel[] };
 
 const modelsPath = "/dictation/models";
 export const speechKey = ["speech-models"];
-const preferenceKey = "dory.dictation-model";
-const modelEvent = "dory:dictation-model";
+const preferenceKey = modelKey;
 
 export function useSpeechModels() {
   return useQuery({
@@ -35,18 +35,21 @@ function subscribe(notify: () => void) {
   };
 }
 
-export function selectSpeechModel(id: string) {
-  try { localStorage.setItem(preferenceKey, id); } catch { return; }
-  window.dispatchEvent(new Event(modelEvent));
-}
-
-export function useSpeechModel(catalog?: SpeechCatalog) {
-  const id = useSyncExternalStore(subscribe, () => {
-    try { return localStorage.getItem(preferenceKey); } catch { return null; }
-  });
+// pickSpeechModel is the model a node uses: the chosen one if it is installed,
+// otherwise the best installed one.
+export function pickSpeechModel(catalog: SpeechCatalog | undefined, id: string | null | undefined) {
   if (!catalog?.runtime) return undefined;
   const models = catalog.models.filter((model) => model.status === "installed");
   return models.find((model) => model.id === id) ?? models.find((model) => model.streaming) ?? models[0];
+}
+
+// useSpeechModel is the model of this node, kept in sync with its settings.
+export function useSpeechModel(catalog?: SpeechCatalog) {
+  useInputSettingsSync();
+  const id = useSyncExternalStore(subscribe, () => {
+    try { return localStorage.getItem(preferenceKey); } catch { return null; }
+  });
+  return pickSpeechModel(catalog, id);
 }
 
 export const downloadSpeechModel = (id: string) => req<SpeechCatalog>("POST", `${modelsPath}/${encodeURIComponent(id)}/download`);
