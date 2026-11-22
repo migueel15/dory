@@ -72,7 +72,7 @@ export type SkillConflict = { harness: string; path: string; kind: "link" | "for
 export type SkillState = { skill_id: string; node_id: string; status: "synced" | "pending" | "error" | "conflict" | "removed"; version: number; message: string; updated_at: string };
 export type UsageWindow = { kind: string; utilization: number; resets_at: string; label?: string; window_minutes?: number };
 export type NodeInfo = { id: string; name: string; os: string; version: string; data_dir: string; listen: string; platform: string; icon?: string };
-export type Peer = { id: string; name: string; address: string; fingerprint: string; connected: boolean; last_seen: string; revoked: boolean; info: { node?: NodeInfo; providers?: Provider[] } };
+export type Peer = { id: string; name: string; address: string; fingerprint: string; connected: boolean; last_seen: string; revoked: boolean; disabled?: boolean; info: { node?: NodeInfo; providers?: Provider[] } };
 export type Mesh = { node_id: string; fingerprint: string; port: number; peers: Peer[]; discovered: { id: string; name: string; address: string }[] };
 export type UsageTokens = { input: number; output: number; cache_write: number; cache_read: number };
 export type UsageCost = UsageTokens & { cache_saving: number };
@@ -141,6 +141,7 @@ export const api = {
   pairCode: () => req<{ code: string; expires_at: string; fingerprint: string; port: number }>("POST", "/mesh/pair/code"),
   pair: (address: string, code: string) => req<Peer>("POST", "/mesh/pair", { address, code }),
   revokePeer: (id: string) => req<void>("DELETE", `/mesh/peers/${id}`),
+  setPeerEnabled: (id: string, enabled: boolean) => req<void>("PUT", `/mesh/peers/${id}/enabled`, { enabled }),
   devices: () => req<{ id: string; name: string; created_at: string }[]>("GET", "/devices"),
   revokeDevice: (id: string) => req<void>("DELETE", `/devices/${id}`),
   folders: (node: string, path = "", hidden = false) => req<{ path: string; parent: string; home: string; folders: { name: string; path: string; git: boolean }[] }>("GET", `/nodes/${node}/folders?${new URLSearchParams({ path, ...(hidden && { hidden: "true" }) })}`),
