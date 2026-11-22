@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -37,5 +38,13 @@ func TestAccounts(t *testing.T) {
 	}
 	if err = m2.RemoveAccount("claude@trabajo"); err != nil || m2.provider0("claude@trabajo") != nil {
 		t.Fatal("remove failed", err)
+	}
+}
+
+func TestThreadEnvKeepsDefaultEnvironment(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin")
+	env := threadEnv(nil, "t1")
+	if !slices.Contains(env, "PATH=/usr/bin") || !slices.Contains(env, "DORY_THREAD_ID=t1") {
+		t.Fatalf("env = %v", env)
 	}
 }

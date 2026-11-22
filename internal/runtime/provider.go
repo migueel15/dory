@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -102,7 +103,11 @@ func promptWithInstructions(t Turn) string {
 }
 
 // threadEnv marks a provider and its inherited descendants for the owning thread.
+// A nil env is the default account's: it inherits Dory's own environment.
 func threadEnv(env []string, id string) []string {
+	if env == nil {
+		env = os.Environ()
+	}
 	out := make([]string, 0, len(env)+1)
 	for _, entry := range env {
 		if !strings.HasPrefix(entry, "DORY_THREAD_ID=") {
