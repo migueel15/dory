@@ -161,6 +161,8 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
     (modelId === (current?.modelId ?? selected) ? current?.label : undefined) ||
     (modelId && modelId !== "default" ? modelId : "Seleccionar modelo");
   const effortLabel = reportedEffort || effort;
+  // On touch screens the search waits for a tap, so the keyboard does not cover the list.
+  const touch = window.matchMedia("(pointer: coarse)").matches;
   const settingsLabel = effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel;
   const efforts = visibleModels.some((model) => model.value === focus) ? effortsOf(focus) : undefined;
   const pickModel = (value: string, closeAfterSelection = false) => {
@@ -187,7 +189,7 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
           className="absolute left-0 z-20 w-[min(36rem,calc(100vw-4.5rem))] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-border dark:bg-surface">
           <div className="flex items-center gap-2 border-b border-slate-200 px-3 dark:border-border">
             <MagnifyingGlass weight="regular" className="size-4 shrink-0 text-slate-500 dark:text-muted" />
-            <input autoFocus type="search" role="combobox" aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
+            <input autoFocus={!touch} type="search" role="combobox" aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
               aria-activedescendant={highlightedModel ? `${listId}-${highlightedIndex}` : undefined}
               value={search} placeholder="Buscar modelos…" aria-label="Buscar modelos"
               onChange={(e) => {
@@ -215,21 +217,19 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
               }}
               className="min-w-0 flex-1 appearance-none border-0 bg-transparent py-2.5 text-sm outline-none! focus-visible:outline-none!" />
           </div>
-          <div className="grid grid-cols-[minmax(4.75rem,0.7fr)_minmax(0,2fr)] sm:grid-cols-[8.5rem_minmax(0,1fr)_7rem]">
+          <div className="grid grid-cols-[3rem_minmax(0,1fr)] sm:grid-cols-[3rem_minmax(0,1fr)_7rem]">
             <ul aria-label="Proveedores" className="row-span-2 max-h-64 overflow-y-auto border-r border-slate-200 p-1 dark:border-border sm:row-span-1">
               {providers.map((item) => (
                 <li key={item.id}>
-                  <button type="button" disabled={item.disabled} aria-pressed={activeProvider?.id === item.id}
+                  <button type="button" disabled={item.disabled} aria-pressed={activeProvider?.id === item.id} aria-label={item.name}
                     title={item.disabled ? "Espera a que termine el turno para cambiar de proveedor" : item.name}
                     onClick={() => {
                       setProvider(item.id);
                       setNavigationIndex(undefined);
                       if (modelList.current) modelList.current.scrollTop = 0;
                     }}
-                    className={`${row} disabled:opacity-50`}>
+                    className="grid size-10 place-items-center rounded-lg text-base hover:bg-slate-100 disabled:opacity-50 aria-pressed:bg-slate-200 dark:hover:bg-raised dark:aria-pressed:bg-raised">
                     <ProviderIcon driver={item.id} />
-                    <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                    {activeProvider?.id === item.id && <Check weight="thin" className="size-3.5 shrink-0" />}
                   </button>
                 </li>
               ))}
