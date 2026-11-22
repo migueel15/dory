@@ -73,7 +73,7 @@ func (s *Server) mountNewThreadCommands(mux *http.ServeMux) {
 		if dir == "" {
 			dir = home // only the user's configuration, never the server's folder
 		}
-		commands, skills := runtime.Commands(home, dir, r.URL.Query().Get("provider"))
+		commands, skills := runtime.Commands(s.Runtime.Paths(home), dir, r.URL.Query().Get("provider"))
 		writeJSON(w, http.StatusOK, map[string]any{"commands": commands, "skills": skills})
 	}))
 }

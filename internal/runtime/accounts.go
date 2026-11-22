@@ -143,6 +143,47 @@ func defaultHome(driver string) string {
 	return filepath.Join(home, ".codex")
 }
 
+// Paths says where a node's harnesses keep their files. Config resolves the
+// configuration directory of a harness through its default account; nil means
+// the harness default.
+type Paths struct {
+	Home   string
+	Config func(driver string) string
+}
+
+// Dir is the configuration directory of a harness ("claude", "codex").
+func (p Paths) Dir(driver string) string {
+	if p.Config != nil {
+		if d := p.Config(driver); d != "" {
+			return d
+		}
+	}
+	if driver == "claude" {
+		return filepath.Join(p.Home, ".claude")
+	}
+	return filepath.Join(p.Home, ".codex")
+}
+
+// ConfigDir is the configuration directory of the default account of a
+// harness: what skills, commands, instruction files, external sessions and
+// usage history are read from.
+func (m *Manager) ConfigDir(driver string) string {
+	switch a := m.provider0(driver).(type) {
+	case Claude:
+		if a.Home != "" {
+			return a.Home
+		}
+	case Codex:
+		if a.Home != "" {
+			return a.Home
+		}
+	}
+	return defaultHome(driver)
+}
+
+// Paths resolves the harness directories of this node through ConfigDir.
+func (m *Manager) Paths(home string) Paths { return Paths{Home: home, Config: m.ConfigDir} }
+
 func cleanHome(home string) (string, error) {
 	home = strings.TrimSpace(home)
 	if strings.HasPrefix(home, "~/") {

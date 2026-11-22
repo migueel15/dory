@@ -16,7 +16,7 @@ func TestCommandsClaude(t *testing.T) {
 	write(filepath.Join(dir, ".claude", "commands", "clear.md"), "harness clear")
 	write(filepath.Join(home, ".claude", "skills", "s", "SKILL.md"), "---\nname: s\ndescription: Skill s\n---\n")
 	write(filepath.Join(home, ".claude", "commands", "s.md"), "dup of skill")
-	commands, skills := Commands(home, dir, "claude")
+	commands, skills := Commands(Paths{Home: home}, dir, "claude")
 	got := map[string]Entry{}
 	for _, c := range commands {
 		got[c.Name] = c
@@ -36,7 +36,20 @@ func TestCommandsClaude(t *testing.T) {
 	if len(skills) != 1 || skills[0].Insert != "/s" {
 		t.Fatalf("skills = %+v", skills)
 	}
-	if c, _ := Commands(home, dir, "codex"); len(c) != 1 || c[0].Name != "clear" {
+	if c, _ := Commands(Paths{Home: home}, dir, "codex"); len(c) != 1 || c[0].Name != "clear" {
 		t.Fatalf("codex = %+v", c)
+	}
+}
+
+func TestPathsFollowDefaultAccount(t *testing.T) {
+	custom := t.TempDir()
+	p := Paths{Home: "/h", Config: func(d string) string {
+		if d == "claude" {
+			return custom
+		}
+		return ""
+	}}
+	if p.Dir("claude") != custom || p.Dir("codex") != filepath.Join("/h", ".codex") {
+		t.Fatalf("dirs = %s, %s", p.Dir("claude"), p.Dir("codex"))
 	}
 }

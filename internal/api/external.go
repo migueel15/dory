@@ -27,13 +27,13 @@ func (s *Server) mountExternal(mux *http.ServeMux) {
 			return
 		}
 		out := []ExternalView{}
-		for _, e := range s.Runtime.ListExternal(r.Context(), home) {
+		for _, e := range s.Runtime.ListExternal(r.Context(), s.Runtime.Paths(home)) {
 			out = append(out, ExternalView{External: e, ProjectID: s.projectOf(r.Context(), e.Dir), ThreadID: adopted[e.ID]})
 		}
 		writeJSON(w, http.StatusOK, out)
 	}))
 	mux.HandleFunc("GET /api/nodes/{node}/external/{provider}/{id}", s.onNode(func(w http.ResponseWriter, r *http.Request) {
-		e, err := s.Runtime.FindExternal(r.Context(), home, r.PathValue("provider"), r.PathValue("id"))
+		e, err := s.Runtime.FindExternal(r.Context(), s.Runtime.Paths(home), r.PathValue("provider"), r.PathValue("id"))
 		if err != nil {
 			writeDataError(w, err)
 			return
@@ -46,7 +46,7 @@ func (s *Server) mountExternal(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, map[string]any{"session": e, "messages": msgs})
 	}))
 	mux.HandleFunc("POST /api/nodes/{node}/external/{provider}/{id}/adopt", s.onNode(func(w http.ResponseWriter, r *http.Request) {
-		e, err := s.Runtime.FindExternal(r.Context(), home, r.PathValue("provider"), r.PathValue("id"))
+		e, err := s.Runtime.FindExternal(r.Context(), s.Runtime.Paths(home), r.PathValue("provider"), r.PathValue("id"))
 		if err != nil {
 			writeDataError(w, err)
 			return

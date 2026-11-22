@@ -78,10 +78,10 @@ type UsageReport struct {
 
 // UsageHistory reads the Claude Code and Codex logs under home and sums the
 // usage since from, by hour or by day in loc.
-func UsageHistory(home string, from time.Time, hourly bool, loc *time.Location) UsageReport {
-	events := usageEvents(filepath.Join(home, ".claude", "projects"), "claude", readClaudeUsage)
-	events = append(events, usageEvents(filepath.Join(home, ".codex", "sessions"), "codex", readCodexUsage)...)
-	events = append(events, antigravityUsageEvents(home, from)...)
+func UsageHistory(p Paths, from time.Time, hourly bool, loc *time.Location) UsageReport {
+	events := usageEvents(filepath.Join(p.Dir("claude"), "projects"), "claude", readClaudeUsage)
+	events = append(events, usageEvents(filepath.Join(p.Dir("codex"), "sessions"), "codex", readCodexUsage)...)
+	events = append(events, antigravityUsageEvents(p.Home, from)...)
 	return aggregateUsage(events, from, hourly, loc)
 }
 

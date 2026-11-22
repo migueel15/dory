@@ -1077,7 +1077,7 @@ func (m *Manager) Adopt(ctx context.Context, e External, projectID *string) (dat
 // Follow keeps the threads of this node in step with the session files of
 // their harness: what is written from the harness's own terminal shows up in
 // Dory, and after each turn the history is the one the harness saved.
-func (m *Manager) Follow(ctx context.Context, home string) {
+func (m *Manager) Follow(ctx context.Context, p Paths) {
 	seen := map[string]time.Time{}
 	tick := time.NewTicker(2 * time.Second)
 	defer tick.Stop()
@@ -1106,7 +1106,7 @@ func (m *Manager) Follow(ctx context.Context, home string) {
 			if m.Running(l.thread) {
 				continue
 			}
-			path := sessionFile(home, l.provider, l.session)
+			path := sessionFile(p, l.provider, l.session)
 			st, err := os.Stat(path)
 			if path == "" || err != nil {
 				continue
