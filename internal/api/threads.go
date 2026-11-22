@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -394,13 +395,25 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Worktree && body.Branch == "" {
 		// A new worktree gets its own branch; the agent may rename it later.
-		body.Branch = "dory/" + strings.ToLower(rand.Text()[:8])
+		if name := s.worktreeBranch(ctx, body.Title, body.Text); name != "" && !branchExists(ctx, path, name) {
+			body.Branch = name
+		} else {
+			body.Branch = "dory/" + strings.ToLower(rand.Text()[:8])
+		}
 	}
 	t, err := s.Runtime.Create(ctx, runtime.NewThread{ProjectID: body.ProjectID, TaskID: body.TaskID, ParentID: body.ParentID, OriginID: body.OriginID, Provider: body.Provider, Model: body.Model,
 		Effort: body.Effort, RuntimeMode: body.RuntimeMode, Title: body.Title, Worktree: body.Worktree, RepoPath: path, Branch: body.Branch, BaseBranch: body.BaseBranch, ExistingDir: body.WorktreePath})
 	if err != nil {
 		writeDataError(w, err)
 		return
+	}
+	if body.Branch != "" && s.Settings.Get().SourceControl.AutoPull {
+		// Start the thread on the latest commits of its branch.
+		if dir, derr := s.Runtime.Dir(ctx, t.ID); derr == nil {
+			if perr := pullBranch(ctx, dir, body.Branch); perr != nil {
+				log.Printf("api: auto-pull %s: %v", body.Branch, perr)
+			}
+		}
 	}
 	if body.Text != "" {
 		if err = s.Runtime.Send(ctx, t.ID, body.Text); err != nil {
