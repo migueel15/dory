@@ -260,7 +260,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 			return
 		}
 		home, _ := os.UserHomeDir()
-		commands, skills := runtime.Commands(home, dir, t.Provider)
+		commands, skills := runtime.Commands(s.Runtime.Paths(home), dir, t.Provider)
 		writeJSON(w, http.StatusOK, map[string]any{"commands": commands, "skills": skills})
 	}))
 	// Files of the thread's folder, for @ mentions in the composer.

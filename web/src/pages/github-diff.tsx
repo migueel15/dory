@@ -72,11 +72,11 @@ function splitRows(lines: Line[]): Row[] {
   return rows;
 }
 
-type Dir = { name: string; dirs: Dir[]; files: File[] };
+export type Dir<F = File> = { name: string; dirs: Dir<F>[]; files: F[] };
 
 // tree groups files by folder and joins folders that hold a single folder.
-function tree(files: File[]): Dir {
-  const root: Dir = { name: "", dirs: [], files: [] };
+export function tree<F extends { path: string } = File>(files: F[]): Dir<F> {
+  const root: Dir<F> = { name: "", dirs: [], files: [] };
   for (const f of files) {
     let d = root;
     for (const part of f.path.split("/").slice(0, -1)) {
@@ -86,7 +86,7 @@ function tree(files: File[]): Dir {
     }
     d.files.push(f);
   }
-  const squash = (d: Dir): Dir => {
+  const squash = (d: Dir<F>): Dir<F> => {
     d.dirs = d.dirs.map(squash);
     if (d.name && d.dirs.length === 1 && !d.files.length) return { ...d.dirs[0], name: `${d.name}/${d.dirs[0].name}` };
     return d;

@@ -56,6 +56,9 @@ type Manager struct {
 	node      string
 	dataDir   string
 	providers map[string]Provider
+	// provMu guards providers and accounts, which change with the accounts of a harness.
+	provMu   sync.RWMutex
+	accounts []Account
 	// MCPURL is the local endpoint. MCPToken is the node secret used to derive thread credentials.
 	MCPURL, MCPToken string
 	// WorktreeRoot returns the folder for new worktrees; empty means the data directory.
@@ -97,6 +100,7 @@ func NewManager(db *sql.DB, store *data.Store, node, dataDir string, providers .
 	m.waiters = map[string]chan [][]string{}
 	m.loadUsage()
 	m.loadDisabled()
+	m.loadAccounts()
 	return m
 }
 
@@ -133,7 +137,7 @@ func (m *Manager) WatchUsage(ctx context.Context, every time.Duration) {
 // RefreshUsage asks every provider for its usage at once.
 func (m *Manager) RefreshUsage(ctx context.Context) {
 	var wg sync.WaitGroup
-	for id, p := range m.providers {
+	for id, p := range m.registered() {
 		if !m.Enabled(id) {
 			continue
 		}
@@ -160,13 +164,14 @@ func (m *Manager) RefreshUsage(ctx context.Context) {
 // fixed order, then any other by id.
 func (m *Manager) providerOrder() []string {
 	rank := map[string]int{"claude": 0, "codex": 1, "opencode": 2, antigravityID: 3}
-	ids := make([]string, 0, len(m.providers))
-	for id := range m.providers {
+	all := m.registered()
+	ids := make([]string, 0, len(all))
+	for id := range all {
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool {
-		ri, iok := rank[ids[i]]
-		rj, jok := rank[ids[j]]
+		ri, iok := rank[driverOf(ids[i])]
+		rj, jok := rank[driverOf(ids[j])]
 		if iok != jok {
 			return iok
 		}
@@ -225,9 +230,12 @@ func (m *Manager) Providers(ctx context.Context) []Status {
 		return out
 	}
 	m.mu.Unlock()
-	out := make([]Status, 0, len(m.providers))
+	out := make([]Status, 0)
 	for _, id := range m.providerOrder() {
-		p := m.providers[id]
+		p := m.provider0(id)
+		if p == nil {
+			continue
+		}
 		st := p.Detect(ctx)
 		st.Enabled = m.Enabled(id)
 		if a, ok := p.(Admin); ok && st.Installed {
@@ -1094,7 +1102,7 @@ func (m *Manager) Adopt(ctx context.Context, e External, projectID *string) (dat
 // Follow keeps the threads of this node in step with the session files of
 // their harness: what is written from the harness's own terminal shows up in
 // Dory, and after each turn the history is the one the harness saved.
-func (m *Manager) Follow(ctx context.Context, home string) {
+func (m *Manager) Follow(ctx context.Context, p Paths) {
 	seen := map[string]time.Time{}
 	tick := time.NewTicker(2 * time.Second)
 	defer tick.Stop()
@@ -1123,7 +1131,7 @@ func (m *Manager) Follow(ctx context.Context, home string) {
 			if m.Running(l.thread) {
 				continue
 			}
-			path := sessionFile(home, l.provider, l.session)
+			path := sessionFile(p, l.provider, l.session)
 			st, err := os.Stat(path)
 			if path == "" || err != nil {
 				continue

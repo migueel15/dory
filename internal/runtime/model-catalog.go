@@ -12,10 +12,13 @@ import (
 
 // readModelCatalog keeps stdin open until the harness replies to the metadata
 // request. Discovery does not submit a prompt or start an agent turn.
-func readModelCatalog(ctx context.Context, bin string, args []string, requests string, read func([]byte) []Model) []Model {
+func readModelCatalog(ctx context.Context, bin string, env []string, args []string, requests string, read func([]byte) []Model) []Model {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	cmd := cmdexec.CommandContext(ctx, bin, args...)
+	if env != nil {
+		cmd.Env = env
+	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil
@@ -43,8 +46,8 @@ func readModelCatalog(ctx context.Context, bin string, args []string, requests s
 	return nil
 }
 
-func claudeModels(ctx context.Context, bin string) []Model {
-	return readModelCatalog(ctx, bin, []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"},
+func claudeModels(ctx context.Context, bin string, env []string) []Model {
+	return readModelCatalog(ctx, bin, env, []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"},
 		"{\"type\":\"control_request\",\"request_id\":\"models\",\"request\":{\"subtype\":\"initialize\"}}\n",
 		func(line []byte) []Model {
 			var reply struct {
@@ -74,12 +77,12 @@ func claudeModels(ctx context.Context, bin string) []Model {
 		})
 }
 
-func codexModels(ctx context.Context, bin string) []Model {
+func codexModels(ctx context.Context, bin string, env []string) []Model {
 	const requests = `{"id":0,"method":"initialize","params":{"clientInfo":{"name":"dory","version":"0.1.0"}}}
 {"method":"initialized"}
 {"id":1,"method":"model/list","params":{"limit":1000}}
 `
-	return readModelCatalog(ctx, bin, []string{"app-server"}, requests, func(line []byte) []Model {
+	return readModelCatalog(ctx, bin, env, []string{"app-server"}, requests, func(line []byte) []Model {
 		var reply struct {
 			ID     int
 			Result struct {

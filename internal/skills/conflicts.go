@@ -47,7 +47,7 @@ func (r *Reconciler) Conflicts(ctx context.Context, id string) ([]Conflict, erro
 		if len(s.Targets.Harnesses) > 0 && !slices.Contains(s.Targets.Harnesses, harness) {
 			continue
 		}
-		dir := filepath.Join(Dirs(r.Home)[harness], s.Name)
+		dir := filepath.Join(Dirs(r.Home, r.Config)[harness], s.Name)
 		if c, ok := r.conflict(harness, dir, s, m); ok {
 			out = append(out, c)
 		}
@@ -64,7 +64,7 @@ func (r *Reconciler) wanted(s data.Skill) bool {
 // this node should no longer have.
 func (r *Reconciler) orphans(name string, m manifest) []Conflict {
 	harnessOf := map[string]string{filepath.Join(filepath.Dir(r.Manifest), "antigravity-skills"): "antigravity"}
-	for h, dir := range Dirs(r.Home) {
+	for h, dir := range Dirs(r.Home, r.Config) {
 		harnessOf[dir] = h
 	}
 	seen := map[string]bool{}

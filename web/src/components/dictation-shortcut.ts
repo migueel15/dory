@@ -2,8 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react"
 
 export type Chord = { code: string; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean };
 const defaultChord: Chord = { code: "KeyD", ctrl: true, alt: false, shift: false, meta: false };
-const key = "dory.dictation-shortcut";
-const changeEvent = "dory:dictation-shortcut";
+export const dictationShortcutKey = "dory.dictation-shortcut";
+export const dictationShortcutEvent = "dory:dictation-shortcut";
+const key = dictationShortcutKey;
+const changeEvent = dictationShortcutEvent;
 const validCode = /^(Key[A-Z]|Digit[0-9])$/;
 const priorities = ["active", "selection", "editor", "panel"] as const;
 type Context = typeof priorities[number];
@@ -34,14 +36,6 @@ export function chordFromEvent(event: Pick<KeyboardEvent, "code" | "ctrlKey" | "
 
 export function formatChord(chord: Chord) {
   return [chord.ctrl && "Ctrl", chord.alt && "Alt", chord.shift && "Mayús", chord.meta && "⌘", chord.code.replace(/^(Key|Digit)/, "")].filter(Boolean).join("+");
-}
-
-export function saveDictationShortcut(chord?: Chord) {
-  try {
-    if (chord) localStorage.setItem(key, JSON.stringify(chord));
-    else localStorage.removeItem(key);
-  } catch { return; }
-  window.dispatchEvent(new Event(changeEvent));
 }
 
 const subscribe = (notify: () => void) => {

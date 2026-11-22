@@ -19,19 +19,20 @@ type Entry struct {
 
 // Commands lists the slash commands and skills of a provider for a thread
 // working in dir, from the user's and the project's configuration.
-func Commands(home, dir, provider string) (commands, skills []Entry) {
-	switch provider {
+func Commands(p Paths, dir, provider string) (commands, skills []Entry) {
+	home := p.Home
+	switch driverOf(provider) {
 	case "claude":
-		for _, root := range []string{filepath.Join(home, ".claude", "commands"), filepath.Join(dir, ".claude", "commands")} {
+		for _, root := range []string{filepath.Join(p.Dir("claude"), "commands"), filepath.Join(dir, ".claude", "commands")} {
 			commands = append(commands, markdownEntries(root, "/")...)
 		}
-		for _, root := range []string{filepath.Join(home, ".claude", "skills"), filepath.Join(dir, ".claude", "skills")} {
+		for _, root := range []string{filepath.Join(p.Dir("claude"), "skills"), filepath.Join(dir, ".claude", "skills")} {
 			// Claude Code runs a skill as a slash command.
 			skills = append(skills, skillEntries(root, "/")...)
 		}
 	case "codex":
-		commands = markdownEntries(filepath.Join(home, ".codex", "prompts"), "/prompts:")
-		for _, root := range []string{filepath.Join(home, ".codex", "skills"), filepath.Join(home, ".agents", "skills"), filepath.Join(dir, ".codex", "skills"), filepath.Join(dir, ".agents", "skills")} {
+		commands = markdownEntries(filepath.Join(p.Dir("codex"), "prompts"), "/prompts:")
+		for _, root := range []string{filepath.Join(p.Dir("codex"), "skills"), filepath.Join(home, ".agents", "skills"), filepath.Join(dir, ".codex", "skills"), filepath.Join(dir, ".agents", "skills")} {
 			skills = append(skills, skillEntries(root, "$")...)
 		}
 	case antigravityID:
@@ -42,7 +43,7 @@ func Commands(home, dir, provider string) (commands, skills []Entry) {
 		for _, root := range []string{filepath.Join(home, ".config", "opencode", "command"), filepath.Join(dir, ".opencode", "command")} {
 			commands = append(commands, markdownEntries(root, "/")...)
 		}
-		for _, root := range []string{filepath.Join(home, ".config", "opencode", "skills"), filepath.Join(home, ".claude", "skills"), filepath.Join(dir, ".opencode", "skills")} {
+		for _, root := range []string{filepath.Join(home, ".config", "opencode", "skills"), filepath.Join(p.Dir("claude"), "skills"), filepath.Join(dir, ".opencode", "skills")} {
 			skills = append(skills, skillEntries(root, "$")...)
 		}
 	}

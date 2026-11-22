@@ -26,10 +26,18 @@ import (
 var namePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 // Dirs maps each harness to the folder where it reads skills.
-func Dirs(home string) map[string]string {
+func Dirs(home string, config func(driver string) string) map[string]string {
+	dir := func(driver, def string) string {
+		if config != nil {
+			if d := config(driver); d != "" {
+				return d
+			}
+		}
+		return filepath.Join(home, def)
+	}
 	return map[string]string{
-		"claude":      filepath.Join(home, ".claude", "skills"),
-		"codex":       filepath.Join(home, ".codex", "skills"),
+		"claude":      filepath.Join(dir("claude", ".claude"), "skills"),
+		"codex":       filepath.Join(dir("codex", ".codex"), "skills"),
 		"opencode":    filepath.Join(home, ".config", "opencode", "skills"),
 		"antigravity": antigravitySkillDir(home),
 	}
@@ -93,6 +101,9 @@ type Reconciler struct {
 	Store *data.Store
 	Node  string
 	Home  string
+	// Config resolves the configuration directory of a harness through its
+	// default account; nil uses ~/.claude and ~/.codex.
+	Config func(driver string) string
 	// Manifest is the file where the reconciler remembers what it wrote.
 	Manifest string
 	// Installed reports which harnesses this machine has.
@@ -177,7 +188,7 @@ func (r *Reconciler) reconcile(ctx context.Context) error {
 		return err
 	}
 	installed := r.Installed(ctx)
-	dirs := Dirs(r.Home)
+	dirs := Dirs(r.Home, r.Config)
 	m := r.load()
 	want := map[string]bool{}
 	states := map[string]data.SkillState{}
@@ -275,7 +286,7 @@ func (r *Reconciler) reconcile(ctx context.Context) error {
 // roots are the folders that hold one folder per skill on this node.
 func (r *Reconciler) roots() []string {
 	out := []string{filepath.Join(filepath.Dir(r.Manifest), "antigravity-skills")}
-	for _, dir := range Dirs(r.Home) {
+	for _, dir := range Dirs(r.Home, r.Config) {
 		out = append(out, dir)
 	}
 	return out

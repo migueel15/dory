@@ -58,7 +58,7 @@ export type Pull = { repo: string; number: number; title: string; url: string; d
 export type Card = Task & { column: Column; repo?: string; threads: Thread[]; pull?: Pull; pr_state?: "open" | "draft" | "merged" | "closed"; blockers: string[]; has_plan: boolean };
 export type Model = { slug: string; name: string; efforts?: string[]; resolved_model?: string };
 export type TitleModel = { provider: string; model: string };
-export type Provider = { id: string; name: string; installed: boolean; enabled?: boolean; version: string; models: Model[]; capabilities: string[]; logged_in?: boolean; account?: string };
+export type Provider = { id: string; driver?: string; home?: string; name: string; installed: boolean; enabled?: boolean; version: string; models: Model[]; capabilities: string[]; logged_in?: boolean; account?: string };
 // External is a conversation started in a harness, outside Dory.
 // usable says whether a provider can run threads: installed and not turned off.
 export const usable = (p: Provider) => p.installed && p.enabled !== false;
@@ -147,6 +147,9 @@ export const api = {
   externalSession: (node: string, provider: string, id: string) => req<{ session: External; messages: Message[] }>("GET", `/nodes/${node}/external/${provider}/${id}`),
   adoptSession: (node: string, provider: string, id: string) => req<{ thread_id: string }>("POST", `/nodes/${node}/external/${provider}/${id}/adopt`),
   nodeProviders: (node: string) => req<Provider[]>("GET", `/nodes/${node}/providers`),
+  addAccount: (node: string, a: { driver: string; name: string; home: string }) => req<{ id: string }>("POST", `/nodes/${node}/accounts`, a),
+  updateAccount: (node: string, id: string, a: { name: string; home: string }) => req<void>("PUT", `/nodes/${node}/accounts/${id}`, a),
+  removeAccount: (node: string, id: string) => req<void>("DELETE", `/nodes/${node}/accounts/${id}`),
   setNodeIcon: (node: string, icon: string) => req<void>("PUT", `/nodes/${node}/icon`, { icon }),
   setProviderEnabled: (node: string, provider: string, enabled: boolean) => req<void>("PUT", `/nodes/${node}/providers/${provider}`, { enabled }),
   providerJob: (node: string, provider: string, kind: Job["kind"]) => req<Job>("POST", `/nodes/${node}/providers/${provider}/${kind}`),

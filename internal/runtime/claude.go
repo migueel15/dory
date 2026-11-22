@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -13,9 +12,17 @@ import (
 )
 
 // Claude runs Claude Code headless with its stream-json output.
-type Claude struct{ Bin string }
+type Claude struct {
+	Bin string
+	// Account tells one extra account of this harness from the default one;
+	// Home is its CLAUDE_CONFIG_DIR and Label its display name.
+	Account, Home, Label string
+}
 
-func (Claude) ID() string { return "claude" }
+func (c Claude) ID() string { return accountID("claude", c.Account) }
+
+// Environ is the environment of every process run for this account.
+func (c Claude) Environ() []string { return accountEnv("CLAUDE_CONFIG_DIR", c.Home) }
 
 func (c Claude) bin() string {
 	if c.Bin != "" {
@@ -26,7 +33,7 @@ func (c Claude) bin() string {
 
 func (c Claude) Detect(ctx context.Context) Status {
 	version, ok := detect(ctx, c.bin())
-	status := Status{ID: "claude", Name: "Claude Code", Installed: ok, Version: version,
+	status := Status{ID: c.ID(), Driver: "claude", Name: accountName("Claude Code", c.Label), Home: c.Home, Installed: ok, Version: version,
 		Models: []Model{
 			{Slug: "opus", Name: "Opus", Efforts: []string{"low", "medium", "high", "xhigh", "max"}},
 			{Slug: "sonnet", Name: "Sonnet", Efforts: []string{"low", "medium", "high", "xhigh", "max"}},
@@ -35,7 +42,7 @@ func (c Claude) Detect(ctx context.Context) Status {
 		Capabilities: []string{"interrupt", "resume", "effort", "usage"},
 	}
 	if ok {
-		if models := claudeModels(ctx, c.bin()); len(models) > 0 {
+		if models := claudeModels(ctx, c.bin(), c.Environ()); len(models) > 0 {
 			status.Models = models
 		}
 	}
@@ -78,7 +85,7 @@ func (c Claude) Start(ctx context.Context, t Turn) (Session, error) {
 		cmd := providerCommand(context.Background(), t.ThreadID, c.bin(), args...)
 		cmd.Dir = t.Dir
 		// ask_user waits for the user, so an MCP call may take long (ms).
-		cmd.Env = append(os.Environ(), "MCP_TOOL_TIMEOUT=86400000")
+		cmd.Env = append(c.Environ(), "MCP_TOOL_TIMEOUT=86400000")
 		if t.MCPURL != "" {
 			cmd.Env = append(cmd.Env, "DORY_MCP_TOKEN="+t.MCPToken)
 		}

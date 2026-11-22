@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"sync"
 )
@@ -22,7 +21,7 @@ func (c Codex) Start(ctx context.Context, t Turn) (Session, error) {
 		args := []string{"app-server", "--enable", "default_mode_request_user_input"}
 		cmd := providerCommand(context.Background(), t.ThreadID, c.bin(), args...)
 		cmd.Dir = t.Dir
-		cmd.Env = threadEnv(os.Environ(), t.ThreadID)
+		cmd.Env = threadEnv(c.Environ(), t.ThreadID)
 		if t.MCPURL != "" {
 			cmd.Args = append(cmd.Args,
 				"-c", fmt.Sprintf("mcp_servers.dory.url=%q", t.MCPURL),
