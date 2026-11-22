@@ -43,7 +43,7 @@ func (c Claude) Detect(ctx context.Context) Status {
 	}
 	if ok {
 		if models := claudeModels(ctx, c.bin(), c.Environ()); len(models) > 0 {
-			status.Models = models
+			status.Models, status.Catalog = models, true
 		}
 	}
 	return status
