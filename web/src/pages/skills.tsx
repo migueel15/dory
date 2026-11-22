@@ -22,22 +22,33 @@ export function Skills() {
   const [editing, setEditing] = useState<Skill | "new">();
   const nodes = [...(node.data ? [{ id: node.data.node.id, name: node.data.node.name }] : []), ...(mesh.data?.peers ?? []).filter((p) => !p.revoked).map((p) => ({ id: p.id, name: p.name }))];
   const name = (id: string) => nodes.find((n) => n.id === id)?.name ?? id.slice(0, 6);
+  const qc = useQueryClient();
+  const enable = useMutation({ mutationFn: ({ id, on }: { id: string; on: boolean }) => api.setSkillEnabled(id, on), onSuccess: () => qc.invalidateQueries({ queryKey: ["skills"] }) });
+  const skillName = (id: string) => skills.data?.find((s) => s.id === id)?.name ?? id;
+  // System skills first; each group keeps the catalog order.
+  const list = [...(skills.data ?? [])].sort((a, b) => Number(b.source === "system") - Number(a.source === "system"));
   return (
     <div className="space-y-3">
       <PageHeader title="Skills" subtitle="Un catálogo para todos los nodos. Cada nodo instala las suyas en las carpetas de sus agentes."><Button onClick={() => setEditing("new")}><Plus weight="regular" className="size-4" />Nueva skill</Button></PageHeader>
-      <ErrorText error={skills.error} />
-      {(skills.data ?? []).map((s) => (
-        <Card key={s.id}>
-          <button type="button" className="block w-full text-left" onClick={() => setEditing(s)}>
+      <ErrorText error={skills.error ?? enable.error} />
+      {list.map((s) => (
+        <Card key={s.id} className={s.disabled_at ? "opacity-60" : undefined}>
+          <div className="flex items-start gap-2">
+          <button type="button" className="block min-w-0 flex-1 text-left" onClick={() => setEditing(s)}>
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono font-medium">{s.name}</span>
+              {s.source === "system" && <StatusPill tone="slate">Sistema</StatusPill>}
+              {s.forked_from && <span className="text-xs text-slate-500">fork de {skillName(s.forked_from)}</span>}
+              {s.disabled_at && <StatusPill tone="amber">Desactivada</StatusPill>}
               <span className="text-xs text-slate-500">v{s.version}</span>
               <span className="text-xs text-slate-500">{s.targets.harnesses?.length ? s.targets.harnesses.join(", ") : "todos los agentes"} · {s.targets.nodes?.length ? s.targets.nodes.map(name).join(", ") : "todos los nodos"}</span>
             </div>
             {s.description && <p className="mt-1 text-sm text-slate-600 dark:text-muted">{s.description}</p>}
           </button>
+          <Button type="button" variant="ghost" disabled={enable.isPending} onClick={() => enable.mutate({ id: s.id, on: !!s.disabled_at })}>{s.disabled_at ? "Activar" : "Desactivar"}</Button>
+          </div>
           <div className="mt-2 flex flex-wrap gap-2">
-            {(states.data ?? []).filter((st) => st.skill_id === s.id).map((st) => (
+            {!s.disabled_at && (states.data ?? []).filter((st) => st.skill_id === s.id).map((st) => (
               <span key={st.node_id} title={st.message || undefined} className="flex items-center gap-1 text-xs">
                 {name(st.node_id)}: <StatusPill tone={st.status === "synced" && st.version < s.version ? "amber" : STATE[st.status][1]}>{st.status === "synced" && st.version < s.version ? "pendiente" : STATE[st.status][0]}</StatusPill>
               </span>
@@ -46,7 +57,9 @@ export function Skills() {
         </Card>
       ))}
       {skills.isSuccess && skills.data.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">El catálogo está vacío.</p>}
-      {editing && <SkillForm skill={editing === "new" ? undefined : editing} nodes={nodes} onClose={() => setEditing(undefined)} />}
+      {editing && (editing !== "new" && editing.source === "system"
+        ? <SystemSkill skill={editing} onClose={() => setEditing(undefined)} />
+        : <SkillForm skill={editing === "new" ? undefined : editing} nodes={nodes} onClose={() => setEditing(undefined)} />)}
     </div>
   );
 }
@@ -83,6 +96,28 @@ function SkillForm({ skill, nodes, onClose }: { skill?: Skill; nodes: { id: stri
           {skill && <Button type="button" variant="ghost" className="ml-auto" onClick={() => askConfirm("¿Archivar la skill? Se desinstala de todos los nodos.", "Archivar").then((ok) => ok && archive.mutate())}>Archivar</Button>}
         </div>
       </form>
+    </Modal>
+  );
+}
+
+// SystemSkill shows a skill Dory ships. It cannot be edited: a fork makes an
+// editable copy and turns the original off on every node.
+function SystemSkill({ skill, onClose }: { skill: Skill; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [name, setName] = useState(`${skill.name}-custom`);
+  const fork = useMutation({ mutationFn: () => api.forkSkill(skill.id, name), onSuccess: () => { qc.invalidateQueries({ queryKey: ["skills"] }); onClose(); } });
+  return (
+    <Modal title={`Skill ${skill.name}`} onClose={onClose} wide>
+      <div className="space-y-3">
+        <p className="text-sm text-slate-600 dark:text-muted">Skill del sistema, v{skill.version}. Dory la instala en todos los nodos y la actualiza con cada versión. No se puede editar: haz un fork para cambiarla; la original se desactiva y solo se puede reactivar con el fork desactivado.</p>
+        {skill.description && <p className="text-sm">{skill.description}</p>}
+        <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded border border-slate-200 p-3 font-mono text-xs dark:border-line">{skill.body_md}</pre>
+        <ErrorText error={fork.error} />
+        <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); fork.mutate(); }}>
+          <Label text="Nombre del fork"><Input value={name} onChange={(e) => setName(e.target.value)} className="font-mono" /></Label>
+          <Button disabled={!name || fork.isPending}>Hacer fork</Button>
+        </form>
+      </div>
     </Modal>
   );
 }
