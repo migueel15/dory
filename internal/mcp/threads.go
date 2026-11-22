@@ -1,15 +1,20 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 
 	"github.com/migueel15/dory/internal/api"
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/mesh"
 	"github.com/migueel15/dory/internal/runtime"
 )
 
@@ -206,45 +211,73 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		}
 		return map[string]any{"thread_id": in.ThreadID, "sent": true, "queued": len(m.Queue(in.ThreadID)) > 0}, nil
 	})
-	add(srv, "thread_create", "Create a new, independent thread (a new chat in the user's list), e.g. when the user asks \"créame un hilo nuevo\" or \"abre un chat que…\". It is not a subagent: it does not report back here. By default it takes this thread's project, provider, model and permission mode; prompt, if given, starts its first turn. For work whose result should come back here, use thread_spawn instead.", func(ctx context.Context, in struct {
-		Prompt    string `json:"prompt,omitempty" jsonschema:"First message of the new thread; empty leaves it waiting for the user"`
-		Title     string `json:"title,omitempty"`
-		Provider  string `json:"provider,omitempty" jsonschema:"Harness id from list_models; another one than this thread's needs model"`
-		Model     string `json:"model,omitempty"`
-		Effort    string `json:"effort,omitempty"`
-		ProjectID string `json:"project_id,omitempty" jsonschema:"Project id; this thread's by default"`
-		TaskID    string `json:"task_id,omitempty" jsonschema:"Task to link the new thread to"`
+	add(srv, "thread_create", "Create a new, independent thread (a new chat in the user's list), e.g. when the user asks \"créame un hilo nuevo\" or \"abre un chat en el proyecto X en el entorno Y que…\". It is not a subagent: it does not report back here. project and environment take an id or a name (list_projects; environments are this node and its peers, see list_environments). By default it takes this thread's project, provider, model and permission mode and runs on this node; prompt, if given, starts its first turn. For work whose result should come back here, use thread_spawn instead.", func(ctx context.Context, in struct {
+		Prompt      string `json:"prompt,omitempty" jsonschema:"First message of the new thread; empty leaves it waiting for the user"`
+		Title       string `json:"title,omitempty"`
+		Provider    string `json:"provider,omitempty" jsonschema:"Harness id from list_models; another one than this thread's needs model"`
+		Model       string `json:"model,omitempty"`
+		Effort      string `json:"effort,omitempty"`
+		Project     string `json:"project,omitempty" jsonschema:"Project id, slug or name; this thread's by default; none for a scratch thread"`
+		Environment string `json:"environment,omitempty" jsonschema:"Node id or name to run on; this node by default"`
+		TaskID      string `json:"task_id,omitempty" jsonschema:"Task to link the new thread to"`
 	}) (any, error) {
 		var base data.Thread
 		if id := caller(ctx); id != "" {
 			base, _ = s.Store.Threads().Get(ctx, id)
 		}
-		if in.Provider == "" && base.Provider == "" {
-			return nil, errors.New("thread_create needs a provider outside a Dory thread; use list_models")
+		node, err := findEnvironment(ctx, s, in.Environment)
+		if err != nil {
+			return nil, err
 		}
-		var settings runtime.ThreadSettings
-		if in.Provider != "" && !strings.EqualFold(in.Provider, base.Provider) {
+		n := runtime.NewThread{Provider: base.Provider, Model: base.Model, Effort: base.Effort, RuntimeMode: base.RuntimeMode, ProjectID: base.ProjectID, Title: in.Title}
+		if in.Project != "" {
+			p, err := findProjectByName(ctx, s.Store, in.Project)
+			if err != nil {
+				return nil, err
+			}
+			n.ProjectID = &p.ID
+		}
+		if in.TaskID != "" {
+			n.TaskID = &in.TaskID
+		}
+		if in.Provider != "" && !strings.EqualFold(in.Provider, n.Provider) {
 			if in.Model == "" {
 				return nil, fmt.Errorf("choose a model for provider %s; use list_models", in.Provider)
 			}
-			settings.Provider = &in.Provider
+			n.Provider, n.Model, n.Effort = strings.ToLower(in.Provider), "", ""
+		}
+		if n.Provider == "" {
+			return nil, errors.New("thread_create needs a provider outside a Dory thread; use list_models")
 		}
 		if in.Model != "" {
-			settings.Model = &in.Model
+			n.Model = in.Model
 		}
 		if in.Effort != "" {
-			settings.Effort = &in.Effort
+			n.Effort = in.Effort
 		}
-		ref := data.Thread{Provider: base.Provider, Model: base.Model}
-		if settings.Provider != nil {
-			ref.Provider = *settings.Provider
+		if n.Title == "" {
+			n.Title = firstLine(in.Prompt, 60)
 		}
-		if err := m.ResolveSettings(ctx, ref, &settings); err != nil {
+		if n.Title == "" {
+			n.Title = "Hilo nuevo"
+		}
+		if node != s.Node.ID {
+			// The peer checks the selection against its own harnesses.
+			id, err := createOnPeer(ctx, s, node, n, in.Prompt)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"thread_id": id, "title": n.Title, "provider": n.Provider, "model": n.Model, "project_id": n.ProjectID, "environment": node, "started": in.Prompt != ""}, nil
+		}
+		settings := runtime.ThreadSettings{Model: &n.Model}
+		if n.Effort != "" {
+			settings.Effort = &n.Effort
+		}
+		if n.Model == "" {
+			settings.Model = nil
+		}
+		if err := m.ResolveSettings(ctx, data.Thread{Provider: n.Provider, Model: n.Model}, &settings); err != nil {
 			return nil, err
-		}
-		n := runtime.NewThread{Provider: ref.Provider, Model: base.Model, Effort: base.Effort, RuntimeMode: base.RuntimeMode, ProjectID: base.ProjectID, Title: in.Title}
-		if settings.Provider != nil {
-			n.Model, n.Effort = "", ""
 		}
 		if settings.Model != nil {
 			n.Model = *settings.Model
@@ -252,24 +285,10 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		if settings.Effort != nil {
 			n.Effort = *settings.Effort
 		}
-		if in.ProjectID != "" {
-			n.ProjectID = &in.ProjectID
-		}
-		if in.TaskID != "" {
-			n.TaskID = &in.TaskID
-		}
 		if n.ProjectID != nil {
-			dir, err := s.ProjectDir(ctx, *n.ProjectID)
-			if err != nil {
+			if n.RepoPath, err = s.ProjectDir(ctx, *n.ProjectID); err != nil {
 				return nil, err
 			}
-			n.RepoPath = dir
-		}
-		if n.Title == "" {
-			n.Title = firstLine(in.Prompt, 60)
-		}
-		if n.Title == "" {
-			n.Title = "Hilo nuevo"
 		}
 		t, err := m.Create(ctx, n)
 		if err != nil {
@@ -280,7 +299,22 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 				return nil, err
 			}
 		}
-		return map[string]any{"thread_id": t.ID, "title": t.Title, "provider": t.Provider, "model": t.Model, "project_id": t.ProjectID, "started": in.Prompt != ""}, nil
+		return map[string]any{"thread_id": t.ID, "title": t.Title, "provider": t.Provider, "model": t.Model, "project_id": t.ProjectID, "environment": s.Node.ID, "started": in.Prompt != ""}, nil
+	})
+	add(srv, "list_environments", "List the environments a thread can run on: this node and its paired peers, with whether they are connected.", func(ctx context.Context, _ struct{}) (any, error) {
+		out := []map[string]any{{"id": s.Node.ID, "name": s.Node.Name, "connected": true, "this_node": true}}
+		if peers, ok := s.Remote.(peerLister); ok {
+			list, err := peers.Peers(ctx)
+			if err != nil {
+				return nil, err
+			}
+			for _, p := range list {
+				if !p.Revoked {
+					out = append(out, map[string]any{"id": p.ID, "name": p.Name, "connected": p.Connected})
+				}
+			}
+		}
+		return out, nil
 	})
 	add(srv, "thread_spawn", "Launch a subagent: a hidden child thread of this conversation that works on prompt in the same folder and task, with its own provider and model (list_models), e.g. when the user asks for a subagent (\"lanza un subagente con haiku que revise X\") or to split work in parallel. It does not show in the thread list; for a new chat the user will see there, use thread_create. The child does not see this conversation, so put every detail it needs in prompt. Its result arrives here as a message when its turn ends: do not poll it; continue with other work or end your turn. Subagents cannot launch subagents, and at most 5 work at once.", func(ctx context.Context, in struct {
 		Prompt   string `json:"prompt" jsonschema:"Self-contained task for the subagent"`
@@ -328,6 +362,69 @@ func activity(t data.Thread) string {
 		return *t.LastActivityAt
 	}
 	return t.CreatedAt
+}
+
+type peerLister interface {
+	Peers(context.Context) ([]mesh.Peer, error)
+}
+
+// findEnvironment resolves a node id or name; empty is this node.
+func findEnvironment(ctx context.Context, s *api.Server, name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || name == "local" || name == s.Node.ID || strings.EqualFold(name, s.Node.Name) {
+		return s.Node.ID, nil
+	}
+	if peers, ok := s.Remote.(peerLister); ok {
+		list, err := peers.Peers(ctx)
+		if err != nil {
+			return "", err
+		}
+		for _, p := range list {
+			if !p.Revoked && (p.ID == name || strings.EqualFold(p.Name, name)) {
+				if !p.Connected {
+					return "", fmt.Errorf("the environment %s is not connected", p.Name)
+				}
+				return p.ID, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("unknown environment %q; use list_environments", name)
+}
+
+// findProjectByName resolves a project id, slug or name.
+func findProjectByName(ctx context.Context, store *data.Store, name string) (data.Project, error) {
+	projects, err := store.Projects().List(ctx, data.Filter{Limit: 1000})
+	if err != nil {
+		return data.Project{}, err
+	}
+	for _, p := range projects {
+		if p.ID == name || strings.EqualFold(p.Slug, name) || strings.EqualFold(p.Name, name) {
+			return p, nil
+		}
+	}
+	return data.Project{}, fmt.Errorf("unknown project %q; use list_projects", name)
+}
+
+// createOnPeer asks a peer to create and start a thread, through the mesh.
+func createOnPeer(ctx context.Context, s *api.Server, node string, n runtime.NewThread, prompt string) (string, error) {
+	body, _ := json.Marshal(map[string]any{"project_id": n.ProjectID, "task_id": n.TaskID, "provider": n.Provider, "model": n.Model,
+		"effort": n.Effort, "runtime_mode": n.RuntimeMode, "title": n.Title, "text": prompt})
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/threads", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	if s.Remote == nil || !s.Remote.Forward(rec, req, node) {
+		return "", errors.New("the environment is not reachable")
+	}
+	var out struct {
+		ThreadID string `json:"thread_id"`
+		Message  string `json:"message"`
+		Error    any    `json:"error"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if rec.Code >= 300 || out.ThreadID == "" {
+		return "", fmt.Errorf("the environment refused the thread (%d): %s", rec.Code, strings.TrimSpace(rec.Body.String()))
+	}
+	return out.ThreadID, nil
 }
 
 func firstLine(text string, limit int) string {
