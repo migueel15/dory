@@ -232,6 +232,11 @@ type acpInitialize struct {
 		LoadSession        bool
 		MCPCapabilities    struct{ HTTP bool }
 		PromptCapabilities struct{ Image, EmbeddedContext bool }
+		Meta               struct {
+			Antigravity struct {
+				SystemPrompt struct{ Append bool }
+			}
+		} `json:"_meta"`
 	}
 	AuthMethods []struct{ ID string }
 }

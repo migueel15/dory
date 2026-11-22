@@ -78,6 +78,20 @@ type Turn struct {
 	FullAccess bool
 	// MCPURL and MCPToken point the agent at the Dory MCP of this node.
 	MCPURL, MCPToken string
+	// Instructions is session guidance for the model's system prompt. It is
+	// never part of Text; see promptWithInstructions for harnesses without a
+	// system channel.
+	Instructions string
+}
+
+// promptWithInstructions is the fallback for a harness that cannot take
+// session instructions: they precede only the first prompt of a new session,
+// which the harness then keeps in its own history.
+func promptWithInstructions(t Turn) string {
+	if t.Instructions == "" || t.Session != "" {
+		return t.Text
+	}
+	return "<dory_instructions>\n" + t.Instructions + "\n</dory_instructions>\n\n" + t.Text
 }
 
 // threadEnv marks a provider and its inherited descendants for the owning thread.

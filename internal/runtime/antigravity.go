@@ -194,6 +194,9 @@ func (s *antigravitySession) run() error {
 			return err
 		}
 		params := acpParams{"cwd": s.turn.Dir, "mcpServers": servers}
+		if s.turn.Instructions != "" && info.AgentCapabilities.Meta.Antigravity.SystemPrompt.Append {
+			params["_meta"] = acpParams{"antigravity": acpParams{"systemPrompt": acpParams{"append": s.turn.Instructions}}}
+		}
 		method := "session/new"
 		if s.turn.Session != "" {
 			method = "session/load"
@@ -223,7 +226,11 @@ func (s *antigravitySession) run() error {
 		return err
 	}
 	s.live = true
-	blocks := []acpParams{{"type": "text", "text": s.turn.Text}}
+	text := s.turn.Text
+	if !info.AgentCapabilities.Meta.Antigravity.SystemPrompt.Append {
+		text = promptWithInstructions(s.turn)
+	}
+	blocks := []acpParams{{"type": "text", "text": text}}
 	// Keep inline media bounded. The prompt also contains the attachment paths.
 	remaining := int64(8 << 20)
 	for _, file := range s.turn.Attachments {
