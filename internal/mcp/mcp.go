@@ -345,7 +345,8 @@ func sessionStart(ctx context.Context, s *api.Server, in sessionInput) (any, err
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]any{"node_id": s.Node.ID, "projects": projects, "memories": global}
+	out := map[string]any{"node_id": s.Node.ID, "projects": projects, "memories": memoryIndex(global),
+		"detail": "Memories and tasks are summaries: read a memory's content with recall and a task with get_task."}
 	project, err := findProject(ctx, store, projects, in)
 	if err != nil || project == nil {
 		out["project_match"] = "none"
@@ -357,8 +358,43 @@ func sessionStart(ctx context.Context, s *api.Server, in sessionInput) (any, err
 	if err != nil {
 		return nil, err
 	}
-	out["project"] = map[string]any{"project": project, "repositories": repos, "memories": memories, "open_tasks": tasks}
+	out["project"] = map[string]any{"project": project, "repositories": repos, "memories": memoryIndex(memories), "open_tasks": taskIndex(tasks)}
 	return out, nil
+}
+
+// memoryEntry and taskEntry keep session_start small: it runs at the start of
+// every task, so it lists what exists and leaves the content to recall and
+// get_task.
+type memoryEntry struct {
+	ID     string   `json:"id"`
+	Kind   string   `json:"kind"`
+	Title  string   `json:"title"`
+	Labels []string `json:"labels,omitempty"`
+}
+
+type taskEntry struct {
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Column      string   `json:"column"`
+	IssueNumber *int64   `json:"issue_number,omitempty"`
+	PRNumber    *int64   `json:"pr_number,omitempty"`
+	Blockers    []string `json:"blockers,omitempty"`
+}
+
+func memoryIndex(memories []data.Memory) []memoryEntry {
+	out := make([]memoryEntry, 0, len(memories))
+	for _, m := range memories {
+		out = append(out, memoryEntry{ID: m.ID, Kind: m.Kind, Title: m.Title, Labels: m.Labels})
+	}
+	return out
+}
+
+func taskIndex(cards []api.Card) []taskEntry {
+	out := make([]taskEntry, 0, len(cards))
+	for _, c := range cards {
+		out = append(out, taskEntry{ID: c.ID, Title: c.Title, Column: c.Column, IssueNumber: c.IssueNumber, PRNumber: c.PRNumber, Blockers: c.Blockers})
+	}
+	return out
 }
 
 func findProject(ctx context.Context, store *data.Store, projects []data.Project, in sessionInput) (*data.Project, error) {
