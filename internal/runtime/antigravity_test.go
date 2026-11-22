@@ -196,7 +196,7 @@ func TestAntigravityUsageStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	at := time.Now()
-	want := []usageEvent{{Time: at, Provider: antigravityID, Session: "session", Model: "gemini-test", Key: "antigravity:11:key", Tokens: UsageTokens{Input: 100, Output: 14, CacheRead: 13}}}
+	want := []usageEvent{{Time: at, Provider: antigravityID, Session: "session", Model: "gemini-test", Key: "antigravity:11:key", Reasoning: 9, Tokens: UsageTokens{Input: 100, Output: 14, CacheRead: 13}}}
 	if actual := readAntigravityUsage(path, at); !reflect.DeepEqual(actual, want) {
 		t.Fatalf("got %+v, want %+v", actual, want)
 	}

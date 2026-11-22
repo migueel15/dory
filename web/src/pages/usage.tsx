@@ -1,6 +1,7 @@
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
-import { api, usable, type UsageRange, type UsageReport, type UsageRow, type UsageWindow } from "../api/client";
+import { useState } from "react";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { api, usable, type UsageBreakdownRow, type UsageRange, type UsageReport, type UsageRow, type UsageWindow } from "../api/client";
 import { Card, ErrorText, Select, iconButton } from "../components/ui";
 import { AreaChart, StackedBar, compact, percent, providerColor, usd } from "../components/usage-charts";
 import { ProviderIcon, useNodes } from "../components/launch-picker";
@@ -49,11 +50,11 @@ function Limits({ only }: { only: string }) {
   );
 }
 
-type Tab = "cost" | "tokens" | "limits";
+type Tab = "cost" | "tokens" | "breakdown" | "limits";
 type Search = { tab?: Tab; range?: UsageRange; provider?: string; by?: "model" | "day"; envs?: string };
 const RANGES: [UsageRange, string][] = [["24h", "24 h"], ["7d", "7 días"], ["30d", "30 días"], ["90d", "90 días"]];
-const TABS: [Tab, string][] = [["cost", "Coste"], ["tokens", "Tokens"], ["limits", "Límites"]];
-const PROVIDER_NAMES: Record<string, string> = { claude: "Claude Code", codex: "Codex", antigravity: "Antigravity" };
+const TABS: [Tab, string][] = [["cost", "Coste"], ["tokens", "Tokens"], ["breakdown", "Desglose"], ["limits", "Límites"]];
+const PROVIDER_NAMES: Record<string, string> = { claude: "Claude Code", codex: "Codex", opencode: "OpenCode", antigravity: "Antigravity" };
 const TYPE_COLORS = { input: "#6366f1", cache_read: "#14b8a6", cache_write: "#f59e0b", output: "#ec4899" };
 const TYPE_LABELS = { input: "Entrada", cache_read: "Lectura de caché", cache_write: "Escritura de caché", output: "Salida" };
 type Kind = keyof typeof TYPE_COLORS;
@@ -109,13 +110,17 @@ export function Usage() {
     const next = current.includes(id) ? current.filter((v) => v !== id) : [...current, id];
     set({ envs: next.length === nodes.length || !next.length ? undefined : next.join(",") });
   };
-  const results = useQueries({ queries: selected.map((n) => ({ queryKey: ["usage-history", range, n.value], queryFn: () => api.usageHistory(range, n.value), enabled: tab !== "limits" })) });
+  const results = useQueries({ queries: selected.map((n) => ({ queryKey: ["usage-history", range, n.value], queryFn: () => api.usageHistory(range, n.value), enabled: tab === "cost" || tab === "tokens" })) });
   const loaded = results.filter((r) => r.data).map((r) => r.data!);
   const history = {
     isFetching: results.some((r) => r.isFetching),
     error: results.find((r) => r.error)?.error ?? null,
     data: results.length && results.every((r) => !r.isPending) && loaded.length ? merge(loaded) : undefined,
   };
+  const breakdown = useQueries({ queries: selected.map((n) => ({
+    queryKey: ["usage-breakdown", range, n.value], queryFn: () => api.usageBreakdown(range, n.value), enabled: tab === "breakdown",
+  })) });
+  const breakdownError = breakdown.find((r) => r.error)?.error;
   const qc = useQueryClient();
   const providers = Object.keys(PROVIDER_NAMES);
   return (
@@ -130,8 +135,8 @@ export function Usage() {
           {tab !== "limits" && <Segmented value={range} options={RANGES} onChange={(v) => set({ range: v })} />}
           <Segmented value={tab} options={TABS} onChange={(v) => set({ tab: v })} />
           <button type="button" className={iconButton} title="Recargar" aria-label="Recargar"
-            onClick={() => qc.invalidateQueries({ queryKey: tab === "limits" ? ["node"] : ["usage-history"] })}>
-            <svg viewBox="0 0 24 24" className={cx("size-4", history.isFetching && "animate-spin")} fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5" /></svg>
+            onClick={() => qc.invalidateQueries({ queryKey: tab === "limits" ? ["node"] : tab === "breakdown" ? ["usage-breakdown"] : ["usage-history"] })}>
+            <svg viewBox="0 0 24 24" className={cx("size-4", (history.isFetching || breakdown.some((r) => r.isFetching)) && "animate-spin")} fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5" /></svg>
           </button>
         </div>
       </div>
@@ -145,12 +150,113 @@ export function Usage() {
           })}
         </div>
       )}
-      {tab === "limits" ? <Limits only={provider} /> : (
+      {tab === "limits" ? <Limits only={provider} /> : tab === "breakdown" ? (
+        <>
+          <ErrorText error={breakdownError} />
+          {breakdown.some((r) => r.isPending && !r.isError)
+            ? <p className="text-sm text-slate-500 dark:text-muted">Leyendo los registros…</p>
+            : <Breakdown rows={breakdown.flatMap((r) => r.data ?? []).filter((row) => !provider || row.provider === provider)} />}
+        </>
+      ) : (
         <>
           <ErrorText error={history.error} />
           {history.data ? <History report={history.data} provider={provider} money={tab === "cost"} by={by} setBy={(v) => set({ by: v })} /> : !history.error && <p className="text-sm text-slate-500 dark:text-muted">Leyendo los registros…</p>}
         </>
       )}
+    </div>
+  );
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  base: "Contexto sin atribuir", system: "Instrucciones de Dory", user: "Mensajes del usuario", history: "Conversación",
+  response: "Respuestas del agente", reasoning: "Razonamiento", tool: "Otras herramientas", subagent: "Subagentes",
+  mcp: "Llamadas MCP", skill: "Skills", command: "Comandos", read: "Lectura de archivos",
+  unattributed_output: "Salida sin atribuir",
+};
+
+function Breakdown({ rows }: { rows: UsageBreakdownRow[] }) {
+  const [thread, setThread] = useState("");
+  const threads = new Map(rows.map((r) => [r.thread, r.title || r.thread.slice(0, 8)]));
+  const selected = threads.has(thread) ? thread : "";
+  const visible = rows.filter((r) => !selected || r.thread === selected);
+  const totalOf = (r: Pick<UsageBreakdownRow, Kind>) => KINDS.reduce((sum, kind) => sum + r[kind], 0);
+  const sumOf = (group: UsageBreakdownRow[], kind: Kind) => group.reduce((sum, r) => sum + r[kind], 0);
+  const total = visible.reduce((sum, row) => sum + totalOf(row), 0);
+  const costOfGroup = (group: UsageBreakdownRow[]) => group.reduce((sum, row) => sum + row.cost, 0);
+  const priced = visible.reduce((sum, row) => sum + row.priced_tokens, 0);
+  const cost = costOfGroup(visible);
+  const groups = new Map<string, UsageBreakdownRow[]>();
+  for (const row of visible) {
+    const key = row.category === "tool" ? row.label.split(":", 1)[0] : row.category;
+    const category = CATEGORY_LABELS[key] ? key : "tool";
+    const group = groups.get(category) ?? [];
+    group.push(row);
+    groups.set(category, group);
+  }
+  const summary = [...groups].map(([key, group]) => ({ key, group, tokens: group.reduce((sum, row) => sum + totalOf(row), 0) }))
+    .sort((a, b) => b.tokens - a.tokens);
+  if (!rows.length) return <Card><p className="text-sm">Sin turnos registrados en este periodo.</p></Card>;
+  return (
+    <div className="space-y-3">
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-lg font-semibold tabular-nums">{compact(total)} tokens registrados</p>
+            <p className="text-sm text-slate-500 dark:text-muted">Reparto estimado de los turnos que Dory ha registrado.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Select value={selected} onChange={setThread} options={[{ value: "", label: "Todos los hilos" },
+              ...[...threads].sort((a, b) => a[1].localeCompare(b[1])).map(([value, label]) => ({ value, label }))]} />
+            {selected && <Link className="text-sm underline" to="/threads/$threadId" params={{ threadId: selected }}>Abrir hilo</Link>}
+          </div>
+        </div>
+        <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+          {KINDS.map((kind) => <div key={kind}><dt className="text-slate-500 dark:text-muted">{TYPE_LABELS[kind]}</dt>
+            <dd className="tabular-nums">{compact(sumOf(visible, kind))} <span className="text-xs text-slate-500 dark:text-muted">{total > 0 && percent(sumOf(visible, kind) / total)}</span></dd>
+          </div>)}
+        </dl>
+        {priced > 0 && <p className="mt-3 text-sm tabular-nums">{usd(cost)} a tarifa API · Cobertura {percent(Math.min(1, priced / total))} de los tokens</p>}
+      </Card>
+      <Card>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs text-slate-500 dark:text-muted">
+              <tr><th scope="col" className="py-2 pr-4">Categoría</th><th scope="col" className="px-2 text-right">Entrada</th>
+                <th scope="col" className="px-2 text-right">Caché leída</th><th scope="col" className="px-2 text-right">Caché escrita</th>
+                <th scope="col" className="px-2 text-right">Salida</th><th scope="col" className="pl-2 text-right">% de tokens</th>
+                {priced > 0 && <th scope="col" className="px-2 text-right">Coste API</th>}</tr>
+            </thead>
+            <tbody>
+              {summary.map(({ key, group, tokens }) => {
+                const labels = new Map<string, number>();
+                for (const row of group) {
+                  if (row.label && key !== "subagent") {
+                    const name = row.label.replace(/^(mcp|skill):/, "");
+                    if (name !== key) labels.set(name, (labels.get(name) ?? 0) + totalOf(row));
+                  }
+                }
+                return <tr key={key} className="border-t border-slate-200 align-top dark:border-border">
+                  <th scope="row" className="py-2 pr-4 font-medium">
+                    {labels.size ? <details><summary className="cursor-pointer whitespace-nowrap">{CATEGORY_LABELS[key]}</summary>
+                      <ul className="mt-2 space-y-1 pl-3 text-xs font-normal text-slate-500 dark:text-muted">
+                        {[...labels].sort((a, b) => b[1] - a[1]).map(([name, value]) =>
+                          <li key={name} className="break-all">{name} · {compact(value)} · {percent(total > 0 ? value / total : 0)}</li>)}
+                      </ul>
+                    </details> : CATEGORY_LABELS[key]}
+                  </th>
+                  {KINDS.map((kind) => <td key={kind} className="px-2 py-2 text-right tabular-nums">{compact(sumOf(group, kind))}</td>)}
+                  <td className="whitespace-nowrap py-2 pl-2 text-right tabular-nums">{percent(total > 0 ? tokens / total : 0)}</td>
+                  {priced > 0 && <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">
+                    {group.some((row) => row.priced_tokens > 0) ? usd(costOfGroup(group)) : "—"}
+                    {cost > 0 && costOfGroup(group) > 0 && <span className="ml-1 text-xs text-slate-500 dark:text-muted">{percent(costOfGroup(group) / cost)}</span>}
+                  </td>}
+                </tr>;
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-3 text-xs text-slate-500 dark:text-muted">El contexto sin atribuir puede incluir historial previo, instrucciones del proveedor y esquemas de herramientas. El coste usa tarifas API de referencia y escrituras de caché de corta duración.</p>
+      </Card>
     </div>
   );
 }

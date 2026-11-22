@@ -64,11 +64,12 @@ func (c Codex) Start(ctx context.Context, t Turn) (Session, error) {
 // codexSession drives one turn of codex app-server. Responses to its own
 // calls move the handshake on; server requests ask for the user.
 type codexSession struct {
-	turn   Turn
-	parser *codexParser
-	events <-chan Event
-	proc   *stdioProc
-	turnID string
+	turn      Turn
+	parser    *codexParser
+	events    <-chan Event
+	proc      *stdioProc
+	turnID    string
+	lastUsage *codexTokenUsage
 
 	mu      sync.Mutex
 	in      io.WriteCloser
@@ -239,6 +240,8 @@ type codexAppItem struct {
 	Status           string          `json:"status"`
 	Server           string          `json:"server"`
 	Tool             string          `json:"tool"`
+	Result           json.RawMessage `json:"result"`
+	Error            json.RawMessage `json:"error"`
 	Arguments        json.RawMessage `json:"arguments"`
 	Query            string          `json:"query"`
 	Changes          []struct {
@@ -267,8 +270,22 @@ func (it codexAppItem) exec() codexItem {
 	return out
 }
 
+type codexTokenUsage struct {
+	Input     int64 `json:"inputTokens"`
+	Read      int64 `json:"cachedInputTokens"`
+	Write     int64 `json:"cacheWriteInputTokens"`
+	Output    int64 `json:"outputTokens"`
+	Reasoning int64 `json:"reasoningOutputTokens"`
+	Total     int64 `json:"totalTokens"`
+}
+
 func (s *codexSession) notification(r codexRPC, emit func(Event)) {
 	var p struct {
+		TurnID     string `json:"turnId"`
+		TokenUsage *struct {
+			Total codexTokenUsage `json:"total"`
+			Last  codexTokenUsage `json:"last"`
+		} `json:"tokenUsage"`
 		Item      codexAppItem `json:"item"`
 		ItemID    string       `json:"itemId"`
 		Delta     string       `json:"delta"`
@@ -290,6 +307,16 @@ func (s *codexSession) notification(r codexRPC, emit func(Event)) {
 	}
 	_ = json.Unmarshal(r.Params, &p)
 	switch r.Method {
+	case "thread/tokenUsage/updated":
+		if p.TokenUsage == nil || (s.turnID != "" && p.TurnID != s.turnID) {
+			return
+		}
+		if s.lastUsage != nil && *s.lastUsage == p.TokenUsage.Total {
+			return
+		}
+		s.lastUsage = &p.TokenUsage.Total
+		u := p.TokenUsage.Last
+		emit(Event{Step: &StepUsage{Model: s.turn.Model, Input: max(0, u.Input-u.Read-u.Write), CacheRead: u.Read, CacheWrite: u.Write, Output: u.Output, Reasoning: u.Reasoning}})
 	case "item/started", "item/completed":
 		done := r.Method == "item/completed"
 		if m := s.parser.message(p.Item.exec(), done); m != nil {
@@ -303,6 +330,19 @@ func (s *codexSession) notification(r codexRPC, emit func(Event)) {
 				}
 				if m.Text == "" && !done {
 					return
+				}
+			}
+			m.InputChars = len(p.Item.Arguments)
+			if done {
+				m.ResultChars = len(p.Item.AggregatedOutput)
+				if p.Item.Type == "mcpToolCall" {
+					raw := p.Item.Result
+					if len(raw) == 0 || string(raw) == "null" {
+						raw = p.Item.Error
+					}
+					if string(raw) != "null" {
+						m.ResultChars = len(raw)
+					}
 				}
 			}
 			if p.Item.Type == "fileChange" && m.Tool != nil {

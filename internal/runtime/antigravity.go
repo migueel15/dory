@@ -237,6 +237,7 @@ func (s *antigravitySession) run() error {
 			}
 		}
 	}
+	started := time.Now()
 	prompt := s.conn.next + 1
 	err := s.conn.call(s.ctx, "session/prompt", acpParams{"sessionId": s.id, "prompt": blocks}, nil, s.handle)
 	if s.ctx.Err() != nil {
@@ -247,6 +248,11 @@ func (s *antigravitySession) run() error {
 		}
 	}
 	s.finishChunk()
+	if home, homeErr := os.UserHomeDir(); homeErr == nil {
+		if steps := antigravityTurnUsage(home, s.id, started, time.Now()); len(steps) > 0 {
+			s.events <- Event{Steps: steps}
+		}
+	}
 	return err
 }
 

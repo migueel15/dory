@@ -400,13 +400,15 @@ func (s *openCodeSession) run(ctx context.Context, events chan<- Event) {
 // openCodeEvents turns the events of one session of opencode serve into
 // Dory's messages.
 type openCodeEvents struct {
-	run     string
-	names   map[string]string // tool call id → tool name
-	tools   map[string]*Message
-	texts   map[string]*Message
-	fields  map[string][]openCodeField // form id → fields
-	mu      sync.Mutex
-	failure string
+	run      string
+	model    string
+	lastStep string
+	names    map[string]string // tool call id → tool name
+	tools    map[string]*Message
+	texts    map[string]*Message
+	fields   map[string][]openCodeField // form id → fields
+	mu       sync.Mutex
+	failure  string
 }
 
 type openCodeField struct {
@@ -431,6 +433,7 @@ func (p *openCodeEvents) failed(msg string) {
 }
 
 type openCodeEvent struct {
+	ID   string `json:"id"`
 	Type string `json:"type"`
 	Data struct {
 		SessionID          string          `json:"sessionID"`
@@ -450,6 +453,15 @@ type openCodeEvent struct {
 		Error *struct {
 			Message string `json:"message"`
 		} `json:"error"`
+		Tokens *struct {
+			Input     int64 `json:"input"`
+			Output    int64 `json:"output"`
+			Reasoning int64 `json:"reasoning"`
+			Cache     struct {
+				Read  int64 `json:"read"`
+				Write int64 `json:"write"`
+			} `json:"cache"`
+		} `json:"tokens"`
 		Model *struct {
 			ID         string `json:"id"`
 			ProviderID string `json:"providerID"`
@@ -480,7 +492,13 @@ func (p *openCodeEvents) handle(session string, line []byte, emit func(Event)) {
 	switch e.Type {
 	case "session.step.started":
 		if d.Model != nil && d.Model.ID != "" {
-			emit(Event{Settings: &ReportedSettings{Model: d.Model.ProviderID + "/" + d.Model.ID}})
+			p.model = d.Model.ProviderID + "/" + d.Model.ID
+			emit(Event{Settings: &ReportedSettings{Model: p.model}})
+		}
+	case "session.step.ended", "session.step.failed":
+		if u := d.Tokens; u != nil && (e.ID == "" || e.ID != p.lastStep) {
+			p.lastStep = e.ID
+			emit(Event{Step: &StepUsage{Model: p.model, Input: u.Input, Output: u.Output + u.Reasoning, Reasoning: u.Reasoning, CacheRead: u.Cache.Read, CacheWrite: u.Cache.Write}})
 		}
 	case "session.text.started", "session.reasoning.started":
 		m := &Message{ID: textID, RunID: p.run, Role: "assistant", Streaming: true, CreatedAt: now()}
@@ -514,6 +532,10 @@ func (p *openCodeEvents) handle(session string, line []byte, emit func(Event)) {
 		if m.Tool.Kind == "todo" {
 			m.Role = "plan"
 		}
+		if name, ok := strings.CutPrefix(name, "dory_"); ok && name != "" {
+			m.Tool.Kind, m.Tool.Server, m.Tool.Tool = "mcp", "dory", name
+		}
+		m.InputChars = len(d.Input)
 		p.tools[d.ID] = m
 		emit(Event{Message: copyOf(m)})
 	case "session.tool.success", "session.tool.failed":
@@ -525,11 +547,14 @@ func (p *openCodeEvents) handle(session string, line []byte, emit func(Event)) {
 		for _, c := range d.Content {
 			parts = append(parts, c.Text)
 		}
-		m.Status, m.Text = "completed", clip(strings.Join(parts, "\n"), 4000)
+		output := strings.Join(parts, "\n")
+		m.ResultChars = len(output)
+		m.Status, m.Text = "completed", clip(output, 4000)
 		if e.Type == "session.tool.failed" {
 			m.Status = "failed"
 			if d.Error != nil && m.Text == "" {
 				m.Text = d.Error.Message
+				m.ResultChars = len(d.Error.Message)
 			}
 		}
 		if m.Tool.Kind == "question" && len(d.Metadata.Answers) > 0 {

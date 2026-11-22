@@ -225,7 +225,10 @@ type claudeParser struct {
 	// writes each block of a message on its own line, so a block's place in
 	// its line is always 0; its place in the message is this count, the same
 	// index the streamed partial blocks use.
-	blocks map[string]int
+	blocks    map[string]int
+	usageID   string
+	usage     StepUsage
+	usageSeen map[string]bool
 }
 
 type claudeBlock struct {
@@ -238,6 +241,13 @@ type claudeBlock struct {
 	ToolUseID string          `json:"tool_use_id"`
 	Content   json.RawMessage `json:"content"`
 	IsError   bool            `json:"is_error"`
+}
+
+type claudeTokens struct {
+	Input      int64 `json:"input_tokens"`
+	Output     int64 `json:"output_tokens"`
+	CacheRead  int64 `json:"cache_read_input_tokens"`
+	CacheWrite int64 `json:"cache_creation_input_tokens"`
 }
 
 type claudeLine struct {
@@ -259,9 +269,12 @@ type claudeLine struct {
 		Type    string `json:"type"`
 		Index   int    `json:"index"`
 		Message struct {
-			ID string `json:"id"`
+			ID    string       `json:"id"`
+			Model string       `json:"model"`
+			Usage claudeTokens `json:"usage"`
 		} `json:"message"`
-		ContentBlock claudeBlock `json:"content_block"`
+		Usage        claudeTokens `json:"usage"`
+		ContentBlock claudeBlock  `json:"content_block"`
 		Delta        struct {
 			Type     string `json:"type"`
 			Text     string `json:"text"`
@@ -271,6 +284,7 @@ type claudeLine struct {
 	Message struct {
 		ID      string        `json:"id"`
 		Model   string        `json:"model"`
+		Usage   claudeTokens  `json:"usage"`
 		Content []claudeBlock `json:"content"`
 	} `json:"message"`
 	// ToolUseResult carries the answers of an AskUserQuestion result.
@@ -303,6 +317,12 @@ func (p *claudeParser) parse(line []byte, emit func(Event)) {
 		}
 	case "stream_event":
 		if l.ParentToolUseID == nil {
+			switch l.Event.Type {
+			case "message_start":
+				p.recordUsage(l.Event.Message.ID, l.Event.Message.Model, l.Event.Message.Usage, emit)
+			case "message_delta":
+				p.usage.Output = max(p.usage.Output, l.Event.Usage.Output)
+			}
 			p.partial(l, emit)
 		}
 	case "assistant":
@@ -311,6 +331,14 @@ func (p *claudeParser) parse(line []byte, emit func(Event)) {
 		}
 		// A subagent's own work stays inside its card: it only counts its calls.
 		if l.ParentToolUseID != nil {
+			id, u := l.Message.ID, l.Message.Usage
+			if p.usageSeen == nil {
+				p.usageSeen = map[string]bool{}
+			}
+			if id != "" && !p.usageSeen[id] && l.Message.Model != "<synthetic>" && u != (claudeTokens{}) {
+				p.usageSeen[id] = true
+				emit(Event{Step: &StepUsage{Model: l.Message.Model, Input: u.Input, Output: u.Output, CacheRead: u.CacheRead, CacheWrite: u.CacheWrite, Subagent: *l.ParentToolUseID}})
+			}
 			if parent := p.tools[*l.ParentToolUseID]; parent != nil && parent.Tool != nil {
 				for _, b := range l.Message.Content {
 					if b.Type == "tool_use" {
@@ -320,6 +348,9 @@ func (p *claudeParser) parse(line []byte, emit func(Event)) {
 				emit(Event{Message: copyOf(parent)})
 			}
 			return
+		}
+		if l.Message.Model != "<synthetic>" && l.Message.ID != "" {
+			p.recordUsage(l.Message.ID, l.Message.Model, l.Message.Usage, emit)
 		}
 		if p.blocks == nil {
 			p.blocks = map[string]int{}
@@ -334,7 +365,11 @@ func (p *claudeParser) parse(line []byte, emit func(Event)) {
 			if b.Type != "tool_result" {
 				continue
 			}
+			if l.ParentToolUseID == nil {
+				p.flushUsage(emit)
+			}
 			if m := p.tools[b.ToolUseID]; m != nil {
+				m.ResultChars = len(resultText(b.Content))
 				m.Status = "completed"
 				if b.IsError {
 					m.Status = "failed"
@@ -360,6 +395,7 @@ func (p *claudeParser) parse(line []byte, emit func(Event)) {
 			emit(Event{Usage: windows})
 		}
 	case "result":
+		p.flushUsage(emit)
 		for _, m := range p.texts {
 			if m.Streaming {
 				m.Streaming = false
@@ -375,6 +411,38 @@ func (p *claudeParser) parse(line []byte, emit func(Event)) {
 		}
 		emit(e)
 	}
+}
+
+func (p *claudeParser) recordUsage(id, model string, u claudeTokens, emit func(Event)) {
+	if id == "" || p.usageSeen[id] {
+		return
+	}
+	if id != p.usageID {
+		p.flushUsage(emit)
+		p.usageID = id
+	}
+	if model != "" {
+		p.usage.Model = model
+	}
+	p.usage.Input = max(p.usage.Input, u.Input)
+	p.usage.Output = max(p.usage.Output, u.Output)
+	p.usage.CacheRead = max(p.usage.CacheRead, u.CacheRead)
+	p.usage.CacheWrite = max(p.usage.CacheWrite, u.CacheWrite)
+}
+
+func (p *claudeParser) flushUsage(emit func(Event)) {
+	if p.usageID == "" {
+		return
+	}
+	if p.usageSeen == nil {
+		p.usageSeen = map[string]bool{}
+	}
+	p.usageSeen[p.usageID] = true
+	if p.usage.Input+p.usage.Output+p.usage.CacheRead+p.usage.CacheWrite > 0 {
+		u := p.usage
+		emit(Event{Step: &u})
+	}
+	p.usageID, p.usage = "", StepUsage{}
 }
 
 func (p *claudeParser) partial(l claudeLine, emit func(Event)) {
@@ -427,6 +495,7 @@ func (p *claudeParser) block(id string, b claudeBlock, emit func(Event)) {
 		case "plan":
 			m.Role, m.Text, m.Status = "plan", m.Tool.Summary, ""
 		}
+		m.InputChars = len(b.Input)
 		p.tools[b.ID] = m
 		emit(Event{Message: copyOf(m)})
 	}

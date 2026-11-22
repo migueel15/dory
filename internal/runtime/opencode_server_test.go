@@ -13,10 +13,18 @@ func TestOpenCodeEventsAsk(t *testing.T) {
 		p.handle("ses_e11afe441ffeZFhNs6jAXPCuXv", line, emit)
 	})
 	var req *Request
+	var steps []StepUsage
 	for _, e := range events {
 		if e.Request != nil {
 			req = e.Request
 		}
+		if e.Step != nil {
+			steps = append(steps, *e.Step)
+		}
+	}
+	wantSteps := []StepUsage{{Model: "openai/gpt-6.2-astra", Input: 10463, Output: 57}, {Model: "openai/gpt-6.2-astra", Input: 10557, Output: 5}}
+	if !reflect.DeepEqual(steps, wantSteps) {
+		t.Fatalf("usage steps = %+v", steps)
 	}
 	if req == nil || req.ID != "frm_1ee50396b001pmpd6IsSWgo56S" || req.MessageID != "r1:call_92b74c10d9bf45839a397a67bf26805f" {
 		t.Fatalf("request: %+v", req)
