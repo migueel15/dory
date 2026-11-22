@@ -7,29 +7,28 @@ import { useNodeSettings, type SectionProps } from "./settings-node";
 import type { InputChord } from "../api/client";
 
 // Shortcuts are a setting of each node; with "Todos los nodos" a change is
-// written to all of them, starting from the first node's list.
+// written to each node on top of its own list.
 export function ShortcutsSettings({ node }: SectionProps) {
   const settings = useNodeSettings(node);
   const input = settings.get("input") ?? emptyInput;
   const get = (id: CommandId) => chordIn(input.shortcuts, id);
   const conflict = (id: CommandId, value: InputChord) => conflictIn(input.shortcuts, id, value);
   const save = (id: CommandId, value?: InputChord) => {
-    const shortcuts = { ...input.shortcuts };
-    if (value) shortcuts[id] = value; else delete shortcuts[id];
-    settings.set({ input: { ...input, shortcuts } });
+    // undefined drops the key when serialized, so each node loses only this command.
+    settings.setPath(["input", "shortcuts", id], value);
   };
   const [editing, setEditing] = useState<CommandId | null>(null);
   const [error, setError] = useState("");
   return <section className="space-y-4" aria-labelledby="shortcuts-title">
     <h2 id="shortcuts-title" className="text-lg font-semibold">Atajos</h2>
     <p className="text-sm text-slate-600 dark:text-muted">Funcionan con Dory enfocado. El navegador o el sistema pueden reservar algunas combinaciones, como Ctrl+N. Algunas combinaciones con Mayús también pueden pertenecer al navegador. Puedes reasignarlas.</p>
-    <Button type="button" variant="ghost" disabled={!settings.loaded || settings.pending} onClick={() => { settings.set({ input: { ...input, shortcuts: {} } }); setError(""); }}>Restaurar todos</Button>
+    <Button type="button" variant="ghost" disabled={!settings.loaded || settings.pending} onClick={() => { settings.setPath(["input", "shortcuts"], {}); setError(""); }}>Restaurar todos</Button>
     {settings.error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{String(settings.error)}</p>}
     {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
     <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 dark:divide-border dark:border-border">
       {commands.map((command) => <li key={command.id} className="flex flex-wrap items-center gap-2 px-4 py-3">
         <div className="min-w-0 flex-1"><p className="text-sm font-medium">{command.label}</p><p className="text-xs text-slate-500 dark:text-muted">{conflict(command.id, get(command.id)) ? `Conflicto con ${conflict(command.id, get(command.id))!.label}` : command.id === "dictation" ? "Según el editor y la selección" : available(command.id) ? "Disponible ahora" : "Disponible según el contexto"}</p></div>
-        <ValueDiff items={settings.values("input").map((v) => ({ label: v.label, text: formatChord(chordIn(v.value?.shortcuts, command.id)) }))} />
+        <ValueDiff items={settings.values(["input", "shortcuts"]).map((v) => ({ label: v.label, text: formatChord(chordIn(v.value, command.id)) }))} />
         <Button type="button" variant="ghost" disabled={!settings.loaded || settings.pending} data-dictation-shortcut-capture aria-pressed={editing === command.id}
           onClick={(e) => { e.currentTarget.focus(); setEditing(command.id); setError(""); }} onBlur={() => setEditing(null)}
           onKeyDown={(e) => {

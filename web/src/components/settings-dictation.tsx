@@ -18,7 +18,7 @@ export function DictationSettings({ node }: SectionProps) {
   return (
     <div className="space-y-6">
       <section aria-labelledby="dictation-title" className="space-y-3">
-        <div className="flex items-center gap-2"><h2 id="dictation-title" className="text-lg font-semibold">Dictado local</h2><ValueDiff items={settings.values("input").map((v) => ({ label: v.label, text: nameOf(v.value?.dictation.model) }))} /></div>
+        <div className="flex items-center gap-2"><h2 id="dictation-title" className="text-lg font-semibold">Dictado local</h2><ValueDiff items={settings.values(["input", "dictation", "model"]).map((v) => ({ label: v.label, text: nameOf(v.value) }))} /></div>
         <p className="text-sm text-slate-600 dark:text-muted">El audio se procesa en este nodo. Descarga un modelo y elige cuál usar en el cuadro de mensaje.</p>
         <p className="text-sm text-slate-500 dark:text-muted">Configura el atajo de dictado en Ajustes → Atajos.</p>
         {catalog.data && !catalog.data.runtime && <p role="status" className="text-sm text-amber-700 dark:text-amber-400">NeMo-Speech no está disponible en este nodo.</p>}
@@ -36,7 +36,7 @@ export function DictationSettings({ node }: SectionProps) {
               </div>
               {model.status === "installed" ? (
                 active?.id === model.id ? <span className="inline-flex items-center gap-1.5 text-sm"><Check weight="thin" className="size-4" />En uso</span> :
-                  <Button type="button" variant="ghost" disabled={!catalog.data?.runtime || !settings.loaded || settings.pending} onClick={() => settings.set({ input: { ...input, dictation: { model: model.id } } })}>Usar modelo</Button>
+                  <Button type="button" variant="ghost" disabled={!catalog.data?.runtime || !settings.loaded || settings.pending} onClick={() => settings.setPath(["input", "dictation", "model"], model.id)}>Usar modelo</Button>
               ) : (
                 <Button type="button" variant="ghost" disabled={model.status === "downloading" || (download.isPending && download.variables === model.id)}
                   onClick={() => download.mutate(model.id)}>
