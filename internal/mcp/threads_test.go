@@ -20,7 +20,7 @@ func TestThreadControlTools(t *testing.T) {
 			t.Errorf("missing %s", n)
 		}
 	}
-	if !strings.Contains(tools["thread_create"].Description, "Never use it for a subagent") || !strings.Contains(tools["subagent_spawn"].Description, "subagente") {
+	if !strings.Contains(tools["thread_create"].Description, "Not for subagents") || !strings.Contains(tools["subagent_spawn"].Description, "Not for a new chat") {
 		t.Error("thread_create and subagent_spawn do not say which one to use")
 	}
 	if !strings.Contains(tools["thread_configure"].Description, "continue_with") {

@@ -58,7 +58,7 @@ type threadConfigureInput struct {
 
 func addThreadTools(srv *sdkServer, s *api.Server) {
 	m := s.Runtime
-	add(srv, "list_models", "List the harnesses (providers) of this node with their models and efforts. Use it to turn what the user says, like haiku, opus, sonnet or codex, into a provider and a model slug for thread_configure.", func(ctx context.Context, in struct {
+	add(srv, "list_models", "List providers, models and efforts of this node. Use it to turn \"haiku\", \"opus\" or \"codex\" into provider and model.", func(ctx context.Context, in struct {
 		Provider string `json:"provider,omitempty"`
 	}) (any, error) {
 		out := []map[string]any{}
@@ -70,7 +70,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		}
 		return out, nil
 	})
-	add(srv, "list_threads", "Find threads by project, task, parent, status or words of their title, newest activity first. Use it when the user names another thread.", func(ctx context.Context, in threadListInput) (any, error) {
+	add(srv, "list_threads", "Find threads by project, task, parent, status or title words. Use it when the user names another thread.", func(ctx context.Context, in threadListInput) (any, error) {
 		fields := map[string]any{}
 		for k, v := range map[string]string{"project_id": in.ProjectID, "task_id": in.TaskID, "parent_id": in.ParentID, "status": in.Status} {
 			if v != "" {
@@ -102,7 +102,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		}
 		return out, nil
 	})
-	add(srv, "get_thread", "Read a thread (this conversation by default): its selection, status, queue, pending model change, children and last messages. last_result is its last answer.", func(ctx context.Context, in struct {
+	add(srv, "get_thread", "Read a thread (this one by default): model, status, queue, children and last messages.", func(ctx context.Context, in struct {
 		ThreadID string `json:"thread_id,omitempty"`
 		Messages int    `json:"messages,omitempty" jsonschema:"Last visible messages to return; default 5"`
 	}) (any, error) {
@@ -147,7 +147,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		out["messages"] = visible[max(0, len(visible)-n):]
 		return out, nil
 	})
-	add(srv, "thread_configure", "Read or change the provider, model and effort of a thread (this conversation by default). Use it when the user asks to switch model or harness, e.g. \"cámbiate a haiku\" or \"pasa el hilo X a codex\". Names are resolved against list_models; a provider switch needs a model and hands the history over. On a running thread, such as your own, the change applies when the turn ends; set continue_with to start the next turn with the new selection, e.g. to execute a plan after designing it. Permission modes never change.", func(ctx context.Context, in threadConfigureInput) (any, error) {
+	add(srv, "thread_configure", "Read or change a thread's provider, model or effort (this one by default), e.g. \"cámbiate a haiku\". Your own change applies after this turn; continue_with starts the next one.", func(ctx context.Context, in threadConfigureInput) (any, error) {
 		id, err := target(ctx, in.ThreadID)
 		if err != nil {
 			return nil, err
@@ -184,7 +184,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		}
 		return out, nil
 	})
-	add(srv, "thread_send", "Send a message to another thread, as the user would. It starts a turn there, or waits in its queue while the thread works. The message says which thread sent it.", func(ctx context.Context, in struct {
+	add(srv, "thread_send", "Send a message to another thread, as the user would; it queues while that thread works.", func(ctx context.Context, in struct {
 		ThreadID string `json:"thread_id"`
 		Text     string `json:"text"`
 	}) (any, error) {
@@ -208,7 +208,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		}
 		return map[string]any{"thread_id": in.ThreadID, "sent": true, "queued": len(m.Queue(in.ThreadID)) > 0}, nil
 	})
-	add(srv, "thread_create", "Create a new, independent chat that shows in the user's thread list, e.g. \"créame un hilo nuevo que…\" or \"abre un chat en el entorno Y\". Never use it for a subagent: when the user says subagente, subagent, spawnea, delega or wants the result back in this conversation, use subagent_spawn. It does not report back here. project and environment take an id or a name (list_projects, list_environments); by default it takes this thread's project, provider, model and permission mode and runs on this node. prompt, if given, starts its first turn.", func(ctx context.Context, in newThreadInput) (any, error) {
+	add(srv, "thread_create", "Create a new chat in the user's thread list (\"créame un hilo nuevo\"), here or in another project or environment. Not for subagents: use subagent_spawn.", func(ctx context.Context, in newThreadInput) (any, error) {
 		var base data.Thread
 		var origin *string
 		if id := caller(ctx); id != "" {
@@ -217,7 +217,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		}
 		return createThread(ctx, s, base, in, nil, origin)
 	})
-	add(srv, "list_environments", "List the environments a thread can run on: this node and its paired peers, with whether they are connected.", func(ctx context.Context, _ struct{}) (any, error) {
+	add(srv, "list_environments", "List environments (this node and its peers) and whether they are connected.", func(ctx context.Context, _ struct{}) (any, error) {
 		out := []map[string]any{{"id": s.Node.ID, "name": s.Node.Name, "connected": true, "this_node": true}}
 		if peers, ok := s.Remote.(peerLister); ok {
 			list, err := peers.Peers(ctx)
@@ -232,7 +232,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		}
 		return out, nil
 	})
-	add(srv, "subagent_spawn", "Launch a subagent of this conversation: use it whenever the user says subagente, subagent, spawnea or delega, or wants work done elsewhere with its result back here, e.g. \"lanza un subagente con haiku que revise X\" or \"spawnea un subagente en el entorno Y que pruebe el binario\". The child is hidden from the thread list and shows in this thread's details; its result comes back here as a message when its turn ends, with a task_id for subagent_status and subagent_cancel. By default it works in this thread's folder, task, project and environment, with this thread's provider and model; project and environment (list_projects, list_environments) move it elsewhere. The child does not see this conversation, so put every detail it needs in prompt. Do not poll it; continue with other work or end your turn. Subagents cannot launch subagents, and at most 5 work at once. For a new chat the user will see in the list, use thread_create.", func(ctx context.Context, in newThreadInput) (any, error) {
+	add(srv, "subagent_spawn", "Launch a subagent (\"lanza un subagente…\", \"delega…\"): a hidden child thread whose result comes back here. Same folder, project, environment and model by default. Not for a new chat: use thread_create.", func(ctx context.Context, in newThreadInput) (any, error) {
 		id := caller(ctx)
 		if id == "" {
 			return nil, errors.New("subagent_spawn only works inside a Dory thread")
@@ -286,7 +286,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		out["task_id"], out["next"] = task.ID, next
 		return out, nil
 	})
-	add(srv, "subagent_status", "Read a task you delegated with subagent_spawn by task_id: status (running, completed, failed, waiting, interrupted, cancelled), result and child thread. Without task_id, list every task this thread delegated. Do not call it on a running task to wait for it: its end wakes you. Reading a finished task marks its result delivered.", func(ctx context.Context, in struct {
+	add(srv, "subagent_status", "Read a delegated task by task_id (status and result), or list this thread's tasks. Not to wait: the end wakes you.", func(ctx context.Context, in struct {
 		TaskID string `json:"task_id,omitempty"`
 	}) (any, error) {
 		id := caller(ctx)
@@ -306,7 +306,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		}
 		return out, nil
 	})
-	add(srv, "subagent_cancel", "Cancel a running task you delegated with subagent_spawn: its child thread stops, on this node or another, and its end does not wake you. A finished task keeps its result.", func(ctx context.Context, in struct {
+	add(srv, "subagent_cancel", "Cancel a running delegated task and stop its child.", func(ctx context.Context, in struct {
 		TaskID string `json:"task_id"`
 	}) (any, error) {
 		d, err := m.CancelDelegation(ctx, in.TaskID)
@@ -322,7 +322,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		}
 		return map[string]any{"task_id": d.ID, "status": d.Status}, err
 	})
-	add(srv, "thread_stop", "Stop the running turn of a thread and drop its queued messages.", func(ctx context.Context, in struct {
+	add(srv, "thread_stop", "Stop a thread's running turn and drop its queue.", func(ctx context.Context, in struct {
 		ThreadID string `json:"thread_id"`
 	}) (any, error) {
 		if in.ThreadID == "" {

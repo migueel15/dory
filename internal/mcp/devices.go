@@ -62,7 +62,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		fmt.Printf("devices: thread=%s action=%s device=%s %s\n", thread, action, serial, detail)
 	}
 	act := func(name, desc string, fn func(ctx context.Context, serial string, in tapInput) (string, error)) {
-		add(srv, name, desc+deviceFlow, func(ctx context.Context, in tapInput) (any, error) {
+		add(srv, name, desc, func(ctx context.Context, in tapInput) (any, error) {
 			serial, err := pick(ctx, in.Serial)
 			if err != nil {
 				return nil, err
@@ -76,7 +76,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		})
 	}
 
-	add(srv, "device_list", "List the Android devices (phones by USB or Wi-Fi, running emulators) and the emulators (AVD) this node can start."+deviceFlow, func(ctx context.Context, _ struct{}) (any, error) {
+	add(srv, "device_list", "List Android devices and emulators (AVD) this node can use."+deviceFlow, func(ctx context.Context, _ struct{}) (any, error) {
 		if m.Tools.ADB == "" {
 			return nil, devices.ErrNoADB
 		}
@@ -91,7 +91,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		}
 		return map[string]any{"devices": list, "avds": devices.ListAVDs(ctx, m.Tools), "avd_states": m.AVDStates()}, nil
 	})
-	add(srv, "device_open", "Show a device in this thread's side panel so the user watches what the agent does. Give a serial, or an avd name to start that emulator (it waits until Android booted, up to two minutes). With floating the device opens over the chat."+deviceFlow, func(ctx context.Context, in struct {
+	add(srv, "device_open", "Show a device in this thread's panel; with avd, start that emulator first.", func(ctx context.Context, in struct {
 		deviceRef
 		AVD      string `json:"avd,omitempty" jsonschema:"Name of an emulator to start and open"`
 		Floating bool   `json:"floating,omitempty"`
@@ -136,7 +136,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		note(ctx, "device_open", serial, "")
 		return map[string]any{"device": serial, "opened_in_thread": thread != ""}, nil
 	})
-	add(srv, "device_close", "Close the device tab of this thread, or turn off an emulator with stop."+deviceFlow, func(ctx context.Context, in struct {
+	add(srv, "device_close", "Close this thread's device tab, or turn off an emulator with stop.", func(ctx context.Context, in struct {
 		deviceRef
 		Stop bool `json:"stop,omitempty" jsonschema:"Also shut the emulator down (physical phones are never powered off by agents)"`
 	}) (any, error) {
@@ -161,7 +161,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 	})
 
 	// The screenshot comes back as an image, so it does not go through add.
-	sdk.AddTool(srv, &sdk.Tool{Name: "device_screenshot", Description: "Take a screenshot of a device, scaled down to at most 900 px. Secure screens (banking, passwords) come out black; then rely on coordinates." + deviceFlow},
+	sdk.AddTool(srv, &sdk.Tool{Name: "device_screenshot", Description: "Capture a device screen (up to 900 px). Use it when device_ui fails; secure screens come out black."},
 		func(ctx context.Context, _ *sdk.CallToolRequest, in deviceRef) (*sdk.CallToolResult, any, error) {
 			if !auth.Allowed(ctx, "write") {
 				return nil, nil, errors.New(`permiso "write" requerido`)
@@ -181,7 +181,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 			}}, nil, nil
 		})
 
-	add(srv, "device_ui", "Read the screen as a compact list of elements (index, text, id, desc, bounds and center x,y). Takes 1-3 s and fails on secure screens; then use device_screenshot."+deviceFlow, func(ctx context.Context, in deviceRef) (any, error) {
+	add(srv, "device_ui", "Read the screen as a list of elements with index, text and x, y. Fails on secure screens: use device_screenshot.", func(ctx context.Context, in deviceRef) (any, error) {
 		serial, err := pick(ctx, in.Serial)
 		if err != nil {
 			return nil, err
@@ -193,7 +193,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		note(ctx, "device_ui", serial, fmt.Sprintf("%d elements", len(els)))
 		return map[string]any{"device": serial, "elements": els}, nil
 	})
-	act("device_tap", "Tap the center of an element from the last device_ui (index, text or id) or a point (x, y).", func(ctx context.Context, serial string, in tapInput) (string, error) {
+	act("device_tap", "Tap an element of the last device_ui (index, text or id) or a point x, y.", func(ctx context.Context, serial string, in tapInput) (string, error) {
 		x, y, what, err := m.Resolve(serial, devices.Target{X: in.X, Y: in.Y, Index: in.Index, Text: in.Text, ID: in.ID})
 		if err != nil {
 			return "", err
@@ -203,7 +203,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		}
 		return fmt.Sprintf("tapped %d,%d %s", x, y, what), nil
 	})
-	add(srv, "device_swipe", "Swipe between two points, e.g. to scroll (swipe up to move down the list)."+deviceFlow, func(ctx context.Context, in struct {
+	add(srv, "device_swipe", "Swipe between two points.", func(ctx context.Context, in struct {
 		deviceRef
 		X1         int `json:"x1"`
 		Y1         int `json:"y1"`
@@ -221,7 +221,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		note(ctx, "device_swipe", serial, "")
 		return map[string]any{"device": serial, "result": "swiped"}, nil
 	})
-	add(srv, "device_type", "Type text into the focused field. Tap the field first. Non-ASCII text needs the device open in the panel (device_open)."+deviceFlow, func(ctx context.Context, in struct {
+	add(srv, "device_type", "Type into the focused field; tap it first.", func(ctx context.Context, in struct {
 		deviceRef
 		Text string `json:"text"`
 	}) (any, error) {
@@ -235,7 +235,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		note(ctx, "device_type", serial, fmt.Sprintf("%d chars", len([]rune(in.Text))))
 		return map[string]any{"device": serial, "result": "typed"}, nil
 	})
-	add(srv, "device_key", "Press a key: "+strings.Join(sortedKeys(), ", ")+"."+deviceFlow, func(ctx context.Context, in struct {
+	add(srv, "device_key", "Press a key: "+strings.Join(sortedKeys(), ", ")+".", func(ctx context.Context, in struct {
 		deviceRef
 		Key string `json:"key"`
 	}) (any, error) {
@@ -249,7 +249,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		note(ctx, "device_key", serial, in.Key)
 		return map[string]any{"device": serial, "result": "pressed " + in.Key}, nil
 	})
-	add(srv, "device_launch", "Open an app by its name (\"WhatsApp\", \"Ajustes\") or exact package. Names are matched against the apps with a launcher icon; several matches return the candidates."+deviceFlow, func(ctx context.Context, in struct {
+	add(srv, "device_launch", "Open an app by name (\"WhatsApp\") or package.", func(ctx context.Context, in struct {
 		deviceRef
 		Name    string `json:"name,omitempty" jsonschema:"App name as people call it"`
 		Package string `json:"package,omitempty" jsonschema:"Exact package name, instead of name"`
@@ -269,7 +269,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		note(ctx, "device_launch", serial, app.Package)
 		return map[string]any{"device": serial, "result": "launched " + app.Name, "package": app.Package}, nil
 	})
-	add(srv, "device_open_url", "Open a link or deep link (https://..., whatsapp://send?phone=..., geo:...) with the app that handles it."+deviceFlow, func(ctx context.Context, in struct {
+	add(srv, "device_open_url", "Open a link or deep link with the app that handles it.", func(ctx context.Context, in struct {
 		deviceRef
 		URL string `json:"url"`
 	}) (any, error) {
@@ -283,7 +283,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		note(ctx, "device_open_url", serial, in.URL)
 		return map[string]any{"device": serial, "result": "opened " + in.URL}, nil
 	})
-	add(srv, "device_apps", "List installed apps. By default the apps with a launcher icon, each with package, main activity and a readable name; with all, every package (user apps unless system is true). filter narrows by name or package."+deviceFlow, func(ctx context.Context, in struct {
+	add(srv, "device_apps", "List installed apps; filter by name or package.", func(ctx context.Context, in struct {
 		deviceRef
 		All    bool   `json:"all,omitempty" jsonschema:"List raw packages instead of launcher apps"`
 		System bool   `json:"system,omitempty" jsonschema:"With all, include system packages"`
@@ -309,7 +309,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		}
 		return map[string]any{"device": serial, "apps": apps}, nil
 	})
-	add(srv, "device_scroll", "Scroll the content: down shows what is below, up what is above, left/right for carousels. No coordinates needed."+deviceFlow, func(ctx context.Context, in struct {
+	add(srv, "device_scroll", "Scroll the content up, down, left or right.", func(ctx context.Context, in struct {
 		deviceRef
 		Direction string `json:"direction" jsonschema:"up, down, left or right"`
 		Times     int    `json:"times,omitempty" jsonschema:"Repeat, default 1, at most 10"`
@@ -327,7 +327,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		note(ctx, "device_scroll", serial, in.Direction)
 		return map[string]any{"device": serial, "result": "scrolled " + in.Direction}, nil
 	})
-	act("device_long_press", "Press and hold an element of the last device_ui (index, text or id) or a point (x, y), e.g. to select a message or open a context menu.", func(ctx context.Context, serial string, in tapInput) (string, error) {
+	act("device_long_press", "Press and hold an element or a point, e.g. to open a context menu.", func(ctx context.Context, serial string, in tapInput) (string, error) {
 		x, y, what, err := m.Resolve(serial, devices.Target{X: in.X, Y: in.Y, Index: in.Index, Text: in.Text, ID: in.ID})
 		if err != nil {
 			return "", err
@@ -337,7 +337,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		}
 		return fmt.Sprintf("long pressed %d,%d %s", x, y, what), nil
 	})
-	add(srv, "device_tap_text", "Read the screen and tap the first element whose text or description matches, in one call. Prefer it over device_ui + device_tap for a known label."+deviceFlow, func(ctx context.Context, in struct {
+	add(srv, "device_tap_text", "Tap the first element whose text matches, in one call. Prefer it for a known label.", func(ctx context.Context, in struct {
 		deviceRef
 		Text string `json:"text"`
 	}) (any, error) {
@@ -358,7 +358,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		note(ctx, "device_tap_text", serial, in.Text)
 		return map[string]any{"device": serial, "result": fmt.Sprintf("tapped %q at %d,%d", what, x, y)}, nil
 	})
-	add(srv, "device_find", "Check whether a text is on screen and where, without an image."+deviceFlow, func(ctx context.Context, in struct {
+	add(srv, "device_find", "Check whether a text is on screen and where.", func(ctx context.Context, in struct {
 		deviceRef
 		Text string `json:"text"`
 	}) (any, error) {
@@ -372,7 +372,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		}
 		return map[string]any{"device": serial, "found": len(els) > 0, "elements": els}, nil
 	})
-	add(srv, "device_wait_for", "Wait until a text appears on screen (polls every second, default 10 s, at most 30 s)."+deviceFlow, func(ctx context.Context, in struct {
+	add(srv, "device_wait_for", "Wait until a text appears on screen (up to 30 s).", func(ctx context.Context, in struct {
 		deviceRef
 		Text    string `json:"text"`
 		Seconds int    `json:"seconds,omitempty"`
@@ -392,14 +392,14 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		note(ctx, "device_wait_for", serial, in.Text)
 		return map[string]any{"device": serial, "found": ok, "elements": els}, nil
 	})
-	add(srv, "device_state", "Read the device state as text: app in front, screen on/off, battery, charging, dark mode, text size, orientation, Wi-Fi and data."+deviceFlow, func(ctx context.Context, in deviceRef) (any, error) {
+	add(srv, "device_state", "Read the device state: app in front, screen, battery, dark mode, network.", func(ctx context.Context, in deviceRef) (any, error) {
 		serial, err := pick(ctx, in.Serial)
 		if err != nil {
 			return nil, err
 		}
 		return map[string]any{"device": serial, "state": m.Overview(ctx, serial)}, nil
 	})
-	add(srv, "device_notifications", "List the active notifications (app, title, text)."+deviceFlow, func(ctx context.Context, in deviceRef) (any, error) {
+	add(srv, "device_notifications", "List active notifications.", func(ctx context.Context, in deviceRef) (any, error) {
 		serial, err := pick(ctx, in.Serial)
 		if err != nil {
 			return nil, err
@@ -410,7 +410,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		}
 		return map[string]any{"device": serial, "notifications": list}, nil
 	})
-	add(srv, "device_screen", "Turn the screen on or off, or unlock a lock screen that has no PIN (state: on, off, unlock)."+deviceFlow, func(ctx context.Context, in struct {
+	add(srv, "device_screen", "Turn the screen on or off, or unlock one without PIN.", func(ctx context.Context, in struct {
 		deviceRef
 		State string `json:"state"`
 	}) (any, error) {
@@ -424,7 +424,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		note(ctx, "device_screen", serial, in.State)
 		return map[string]any{"device": serial, "result": "screen " + in.State}, nil
 	})
-	add(srv, "device_setting", "Change a device setting and read the value back. action: dark_mode (yes|no|auto), font_scale (0.5-2.0), orientation (auto|portrait|landscape|reverse_portrait|reverse_landscape), wifi and data (on|off), stay_awake (on|off: screen stays on while the phone charges by cable), permission (package, permission, value grant|revoke), location (lat, lon; emulators only)."+deviceFlow, func(ctx context.Context, in struct {
+	add(srv, "device_setting", "Change and read back a device setting: dark_mode, font_scale, orientation, wifi, data, stay_awake, permission, location.", func(ctx context.Context, in struct {
 		deviceRef
 		devices.Action
 	}) (any, error) {
