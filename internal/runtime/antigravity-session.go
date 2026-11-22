@@ -153,6 +153,7 @@ func (s *antigravitySession) update(raw json.RawMessage) {
 				AbsolutePath                                         string `json:"absolute_path"`
 			}
 			_ = json.Unmarshal(u.RawInput, &in)
+			msg.InputChars = len(u.RawInput)
 			tool.Input = clip(string(u.RawInput), 4000)
 			tool.Command, tool.Path, tool.Query, tool.Pattern, tool.URL = in.Command, in.Path, in.Query, in.Pattern, in.URL
 			if tool.Command == "" {
@@ -185,8 +186,11 @@ func (s *antigravitySession) update(raw json.RawMessage) {
 			}
 		}
 		if len(detail) > 0 {
-			msg.Detail = clip(strings.Join(detail, "\n"), 12000)
+			output := strings.Join(detail, "\n")
+			msg.ResultChars = len(output)
+			msg.Detail = clip(output, 12000)
 		} else if len(u.RawOutput) > 0 && string(u.RawOutput) != "null" {
+			msg.ResultChars = len(u.RawOutput)
 			var output string
 			if json.Unmarshal(u.RawOutput, &output) != nil {
 				var result struct {

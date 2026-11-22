@@ -15,12 +15,13 @@ import (
 // usageEvent is the token usage of one model response read from the local
 // logs of a harness.
 type usageEvent struct {
-	Time     time.Time
-	Provider string
-	Session  string
-	Model    string
-	Key      string // dedup key; empty when the format needs none
-	Tokens   UsageTokens
+	Time      time.Time
+	Provider  string
+	Session   string
+	Model     string
+	Key       string // dedup key; empty when the format needs none
+	Tokens    UsageTokens
+	Reasoning int64
 }
 
 // UsageTokens splits the tokens of a response by how they are billed. Input
@@ -295,7 +296,7 @@ func readCodexUsage(path string) []usageEvent {
 				m = "codex"
 			}
 			out = append(out, usageEvent{Time: l.Timestamp, Provider: "codex", Session: session, Model: m,
-				Tokens: UsageTokens{Input: max(u.Input-u.Cached, 0), Output: u.Output, CacheWrite: u.CacheWrite, CacheRead: u.Cached}})
+				Tokens: UsageTokens{Input: max(u.Input-u.Cached-u.CacheWrite, 0), Output: u.Output, CacheWrite: u.CacheWrite, CacheRead: u.Cached}})
 		}
 	})
 	return out

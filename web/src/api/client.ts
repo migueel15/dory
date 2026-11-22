@@ -74,6 +74,9 @@ export type UsageTokens = { input: number; output: number; cache_write: number; 
 export type UsageCost = UsageTokens & { cache_saving: number };
 export type UsageRow = { bucket: string; provider: string; model: string; sessions: number; tokens: UsageTokens; cost: UsageCost; priced: boolean };
 export type UsageRange = "24h" | "7d" | "30d" | "90d";
+export type UsageBreakdownRow = UsageTokens & { thread: string; title: string; provider: string; category: string; label: string; cost: number; priced_tokens: number };
+export type UsageTurnCall = UsageTokens & { ordinal: number; model: string; reasoning: number; subagent: boolean };
+export type UsageTurn = { id: string; provider: string; created_at: string; preview: string; calls: UsageTurnCall[] };
 export type UsageReport = { from: string; bucket: "hour" | "day"; rows: UsageRow[]; sessions: Record<string, number> };
 export type NodeStatus = { node: NodeInfo; providers: Provider[]; usage: Record<string, UsageWindow[]>; peers?: Peer[] };
 export type Hit = { entity: "task" | "memory"; id: string; title: string; rank: number; record: Task | Memory };
@@ -157,6 +160,8 @@ export const api = {
   setNodeSettings: (settings: NodeSettings, node = "local") => req<NodeSettings>("PUT", `/nodes/${node}/settings`, settings),
   keptWorktrees: (node = "local") => req<KeptWorktree[]>("GET", `/nodes/${node}/kept-worktrees`),
   removeThreadWorktree: (id: string) => req<void>("DELETE", `/threads/${id}/worktree`),
+  usageBreakdown: (range: UsageRange, node = "local") => req<UsageBreakdownRow[]>("GET", `/nodes/${node}/usage/breakdown?${new URLSearchParams({ range, tz: Intl.DateTimeFormat().resolvedOptions().timeZone })}`),
+  threadUsageTurns: (thread: string, range: UsageRange, node: string) => req<UsageTurn[]>("GET", `/nodes/${node}/usage/threads/${encodeURIComponent(thread)}/turns?${new URLSearchParams({ range, tz: Intl.DateTimeFormat().resolvedOptions().timeZone })}`),
   usageHistory: (range: UsageRange, node = "local") => req<UsageReport>("GET", `/nodes/${node}/usage/history?${new URLSearchParams({ range, tz: Intl.DateTimeFormat().resolvedOptions().timeZone })}`),
   searchTasks: (text: string, signal?: AbortSignal) => req<Hit[]>("GET", `/search?type=task&q=${encodeURIComponent(text)}`, undefined, signal),
   searchGithub: (text: string, signal?: AbortSignal) => req<{ items: { repo: string; number: number; title: string; kind: "pulls" | "issues"; state: string }[]; incomplete: boolean }>("GET", `/github/search?q=${encodeURIComponent(text)}`, undefined, signal),

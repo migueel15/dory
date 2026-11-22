@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 )
@@ -68,6 +69,37 @@ func antigravityUsageEvents(home string, from time.Time) []usageEvent {
 		})
 	}
 	return events
+}
+
+// antigravityTurnUsage reads only the current conversation. The ACP stream
+// supplies the content, while the CLI log supplies the model counters.
+func antigravityTurnUsage(home, session string, start, end time.Time) []StepUsage {
+	if session == "" || filepath.Base(session) != session {
+		return nil
+	}
+	roots := antigravityDataRoots(runtime.GOOS, home, os.Getenv("APPDATA"), os.Getenv("LOCALAPPDATA"), os.Getenv("XDG_CONFIG_HOME"))
+	for _, root := range roots {
+		filename := filepath.Join(root, "conversations", session+".db")
+		if _, err := os.Stat(filename); err != nil {
+			continue
+		}
+		events := readAntigravityUsage(filename, time.Time{})
+		sort.SliceStable(events, func(i, j int) bool { return events[i].Time.Before(events[j].Time) })
+		seen := map[string]bool{}
+		var out []StepUsage
+		for _, e := range events {
+			if e.Time.Before(start) || e.Time.After(end) || (e.Key != "" && seen[e.Key]) {
+				continue
+			}
+			seen[e.Key] = true
+			u := e.Tokens
+			out = append(out, StepUsage{Model: e.Model, Input: u.Input, Output: u.Output, CacheRead: u.CacheRead, CacheWrite: u.CacheWrite, Reasoning: e.Reasoning})
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+	return nil
 }
 
 func readAntigravityUsage(path string, mod time.Time) []usageEvent {
@@ -222,7 +254,7 @@ func agyUsageMetadata(raw []byte, step bool, session string, fallback time.Time)
 				break
 			}
 		}
-		events = append(events, usageEvent{Time: at, Provider: antigravityID, Session: session, Model: modelName, Tokens: tokens, Key: key})
+		events = append(events, usageEvent{Time: at, Provider: antigravityID, Session: session, Model: modelName, Tokens: tokens, Key: key, Reasoning: min(tokens.Output, n(10))})
 	}
 	return events
 }

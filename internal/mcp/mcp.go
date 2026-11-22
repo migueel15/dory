@@ -28,6 +28,42 @@ type sdkServer = sdk.Server
 
 // add registers a tool. Tools whose name starts with a read verb need the
 // read scope; the rest need write. Results are JSON text.
+// receiptDrops are the long or empty fields a write echoes back: the agent
+// just sent that text, so repeating it only spends tokens. get_task, plan_read
+// and recall return it in full.
+var receiptDrops = map[string]bool{"description": true, "content": true, "body_md": true, "created_at": true, "archived_at": true, "position": true}
+
+// receipt shortens a write tool's JSON result to what identifies the change.
+func receipt(raw []byte) []byte {
+	var value any
+	if json.Unmarshal(raw, &value) != nil {
+		return raw
+	}
+	var trim func(any) any
+	trim = func(v any) any {
+		switch v := v.(type) {
+		case map[string]any:
+			for k, field := range v {
+				if receiptDrops[k] || field == nil || field == "" {
+					delete(v, k)
+					continue
+				}
+				v[k] = trim(field)
+			}
+		case []any:
+			for i := range v {
+				v[i] = trim(v[i])
+			}
+		}
+		return v
+	}
+	out, err := json.Marshal(trim(value))
+	if err != nil {
+		return raw
+	}
+	return out
+}
+
 func add[I any](server *sdk.Server, name, description string, fn func(context.Context, I) (any, error)) {
 	sdk.AddTool(server, &sdk.Tool{Name: name, Description: description}, func(ctx context.Context, _ *sdk.CallToolRequest, in I) (*sdk.CallToolResult, any, error) {
 		scope := "write"
@@ -49,6 +85,9 @@ func add[I any](server *sdk.Server, name, description string, fn func(context.Co
 		raw, err := json.Marshal(value)
 		if err != nil {
 			return nil, nil, err
+		}
+		if scope == "write" && !strings.HasPrefix(name, "browser_") && !strings.HasPrefix(name, "device_") {
+			raw = receipt(raw)
 		}
 		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(raw)}}}, nil, nil
 	})

@@ -15,7 +15,7 @@ var usageRanges = map[string]time.Duration{"24h": 24 * time.Hour, "7d": 7 * 24 *
 // the harness logs of a node.
 func (s *Server) mountUsageHistory(mux *http.ServeMux) {
 	home, _ := os.UserHomeDir()
-	mux.HandleFunc("GET /api/nodes/{node}/usage/history", s.onNode(func(w http.ResponseWriter, r *http.Request) {
+	serve := func(w http.ResponseWriter, r *http.Request, breakdown bool) {
 		name := r.URL.Query().Get("range")
 		if name == "" {
 			name = "30d"
@@ -37,6 +37,41 @@ func (s *Server) mountUsageHistory(mux *http.ServeMux) {
 			// Whole days, today included.
 			from = time.Date(now.Year(), now.Month(), now.Day()-int(span/(24*time.Hour))+1, 0, 0, 0, 0, loc)
 		}
+		if thread := r.PathValue("thread"); thread != "" {
+			if s.Runtime == nil {
+				writeJSON(w, http.StatusOK, []runtime.UsageTurn{})
+				return
+			}
+			turns, err := s.Runtime.ThreadUsageTurns(r.Context(), thread, from)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "usage_turns_failed", "No se pudo leer el consumo del hilo")
+				return
+			}
+			writeJSON(w, http.StatusOK, turns)
+			return
+		}
+		if breakdown {
+			if s.Runtime == nil {
+				writeJSON(w, http.StatusOK, []runtime.UsageBreakdownRow{})
+				return
+			}
+			rows, err := s.Runtime.UsageBreakdown(r.Context(), from)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "usage_breakdown_failed", "No se pudo leer el desglose de uso")
+				return
+			}
+			writeJSON(w, http.StatusOK, rows)
+			return
+		}
 		writeJSON(w, http.StatusOK, runtime.UsageHistory(home, from, name == "24h", loc))
+	}
+	mux.HandleFunc("GET /api/nodes/{node}/usage/history", s.onNode(func(w http.ResponseWriter, r *http.Request) {
+		serve(w, r, false)
+	}))
+	mux.HandleFunc("GET /api/nodes/{node}/usage/breakdown", s.onNode(func(w http.ResponseWriter, r *http.Request) {
+		serve(w, r, true)
+	}))
+	mux.HandleFunc("GET /api/nodes/{node}/usage/threads/{thread}/turns", s.onNode(func(w http.ResponseWriter, r *http.Request) {
+		serve(w, r, true)
 	}))
 }

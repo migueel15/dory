@@ -512,6 +512,7 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
 		return err
 	}
 	prompt := withAttachments(text, files)
+	userPrompt := prompt
 	var transferred bool
 	if sessionProvider != t.Provider {
 		session = ""
@@ -530,6 +531,7 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
 	startedAt := now()
 	turn := Turn{ThreadID: t.ID, RunID: run, Dir: dir, Text: prompt, Model: t.Model, Effort: t.Effort, Session: session, Attachments: files,
 		FullAccess: t.RuntimeMode != "approval-required"}
+	historyChars := len(turn.Text) - len(userPrompt)
 	if err := m.prepareMCP(ctx, t.Provider, &turn); err != nil {
 		return err
 	}
@@ -576,7 +578,7 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
 	}
 	m.save(ctx, Message{ID: run + ":user", ThreadID: t.ID, RunID: run, Role: "user", Text: text, Detail: attachmentsDetail(files), CreatedAt: startedAt, SenderThreadID: q.Sender})
 	m.setStatus(ctx, t.ID, "working", "")
-	go m.follow(ctx, t, events, marker, change)
+	go m.follow(ctx, t, events, marker, change, newLedger(userPrompt, len(turn.Text)-len(prompt), historyChars), run)
 	return nil
 }
 
@@ -600,7 +602,7 @@ func (m *Manager) ReportedSettings(ctx context.Context, t data.Thread) ReportedS
 
 // follow stores what a turn emits until it ends, then starts the next
 // queued message, if any.
-func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event, marker Message, change modelChange) {
+func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event, marker Message, change modelChange, usage *ledger, run string) {
 	bg := context.WithoutCancel(ctx)
 	status, failure := "idle", ""
 	settings := turnSettings{Provider: t.Provider, Configured: ReportedSettings{Model: t.Model, Effort: t.Effort}}
@@ -609,7 +611,12 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 		case e.Message != nil:
 			msg := *e.Message
 			msg.ThreadID = t.ID
+			usage.message(msg)
 			m.save(bg, msg)
+		case e.Step != nil:
+			usage.step(*e.Step)
+		case len(e.Steps) > 0:
+			usage.batch(e.Steps)
 		case e.Session != "":
 			if _, err := m.db.ExecContext(bg, `UPDATE thread_runtime SET session_id = ?, session_provider = ? WHERE thread_id = ?`, e.Session, t.Provider, t.ID); err != nil {
 				log.Printf("runtime: save session: %v", err)
@@ -655,6 +662,9 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 				}
 			}
 		}
+	}
+	if err := usage.save(bg, m.db, t.ID, run, t.Provider, time.Now()); err != nil {
+		log.Printf("runtime: save usage: %v", err)
 	}
 	// The process is gone: nothing can answer its requests any more.
 	if _, err := m.db.ExecContext(bg, `DELETE FROM thread_requests WHERE thread_id = ?`, t.ID); err != nil {

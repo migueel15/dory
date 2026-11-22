@@ -28,3 +28,4 @@
 | [ADR-024](adr-024-navegador-del-hilo.md) | Navegador del hilo con dos motores | accepted |
 | [ADR-025](adr-025-credenciales-mcp-por-hilo.md) | Credenciales MCP por hilo gestionado | accepted |
 | [ADR-026](adr-026-release-compartida-por-ejecucion.md) | Release compartida por ejecución | accepted |
+| [ADR-027](adr-027-registro-local-de-consumo.md) | Registro local de consumo por turno | accepted |

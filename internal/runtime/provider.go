@@ -32,6 +32,10 @@ type Message struct {
 	SenderThreadID string `json:"sender_thread_id,omitempty"`
 	// Tool is set on tool, plan and question messages: the call in Dory's terms.
 	Tool *ToolCall `json:"tool,omitempty"`
+	// ResultChars is the size of a tool's whole result, before Text clips it.
+	// Only the usage ledger reads it.
+	InputChars  int `json:"-"`
+	ResultChars int `json:"-"`
 }
 
 // Window is how much of one usage window of a provider is used, 0 to 1.
@@ -57,6 +61,9 @@ type Event struct {
 	// Session is the harness id of the conversation, used to resume it.
 	Session string
 	Usage   []Window
+	// Step is the usage of one model call of the turn.
+	Step  *StepUsage
+	Steps []StepUsage
 	// Request pauses the turn until the user answers it.
 	Request *Request
 	// Done ends the turn; Err is set when it failed.
