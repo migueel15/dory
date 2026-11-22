@@ -91,6 +91,8 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 		var body struct {
 			Text  string   `json:"text"`
 			Files []string `json:"files"`
+			// SenderThreadID marks a message an agent of that thread wrote.
+			SenderThreadID string `json:"sender_thread_id"`
 		}
 		if !decode(w, r, &body) {
 			return
@@ -108,11 +110,33 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 			}
 			files = append(files, a)
 		}
-		if err := s.Runtime.Send(r.Context(), t.ID, body.Text, files...); err != nil {
+		if err := s.Runtime.SendFrom(r.Context(), t.ID, body.SenderThreadID, body.Text, files...); err != nil {
 			writeDataError(w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}))
+	// A subagent's node reports how its turn ended; the parent's node records
+	// it and wakes the parent.
+	mux.HandleFunc("POST /api/threads/{id}/delegations/complete", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
+		var o runtime.Outcome
+		if !decode(w, r, &o) {
+			return
+		}
+		o.ParentThreadID = t.ID
+		if err := s.Runtime.Complete(r.Context(), o); err != nil {
+			writeDataError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	mux.HandleFunc("GET /api/threads/{id}/delegations", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
+		out, err := s.Runtime.Delegations(r.Context(), t.ID)
+		if err != nil {
+			writeDataError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
 	}))
 	mux.HandleFunc("POST /api/threads/{id}/interrupt", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		if err := s.Runtime.Interrupt(r.Context(), t.ID); err != nil {
@@ -299,6 +323,8 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ProjectID    *string `json:"project_id"`
 		TaskID       *string `json:"task_id"`
+		ParentID     *string `json:"parent_id"`
+		OriginID     *string `json:"origin_id"`
 		RepositoryID string  `json:"repository_id"`
 		Provider     string  `json:"provider"`
 		Model        string  `json:"model"`
@@ -370,7 +396,7 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 		// A new worktree gets its own branch; the agent may rename it later.
 		body.Branch = "dory/" + strings.ToLower(rand.Text()[:8])
 	}
-	t, err := s.Runtime.Create(ctx, runtime.NewThread{ProjectID: body.ProjectID, TaskID: body.TaskID, Provider: body.Provider, Model: body.Model,
+	t, err := s.Runtime.Create(ctx, runtime.NewThread{ProjectID: body.ProjectID, TaskID: body.TaskID, ParentID: body.ParentID, OriginID: body.OriginID, Provider: body.Provider, Model: body.Model,
 		Effort: body.Effort, RuntimeMode: body.RuntimeMode, Title: body.Title, Worktree: body.Worktree, RepoPath: path, Branch: body.Branch, BaseBranch: body.BaseBranch, ExistingDir: body.WorktreePath})
 	if err != nil {
 		writeDataError(w, err)

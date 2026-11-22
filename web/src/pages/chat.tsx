@@ -13,6 +13,7 @@ import { NativeQuestionCard, QuestionCard } from "../components/question-card";
 import { Link } from "@tanstack/react-router";
 import { parseAutoMessage, type AutoMessage } from "../lib/auto-message";
 import { RefLink } from "../components/refs";
+import { AgentMessage, agentNote } from "../components/subagents";
 
 // The look of the conversation, kept from Dory v1: user
 // bubbles, answers as plain markdown, and each finished turn's work folded
@@ -91,6 +92,7 @@ function latestTodos(ms: Message[]): Message[] {
 export function Entry({ m, threadId = "", fresh = false, openQuestion = false }: { m: Message; threadId?: string; fresh?: boolean; openQuestion?: boolean }) {
   switch (m.role) {
     case "user":
+      { const note = agentNote(m); if (note) return <AgentMessage note={note} />; }
       return (
         <div data-message className={`group flex flex-col items-end ${fresh ? "msg-in" : ""}`}>
           {threadId && <SentFiles threadId={threadId} detail={m.detail} />}

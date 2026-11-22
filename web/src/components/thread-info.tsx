@@ -8,6 +8,7 @@ import { expectedRemaining, windowLabel, windowMinutes, windowReset } from "../l
 import { HoverCard } from "./tooltip";
 import { EnvIcon } from "./env-icon";
 import { copyText } from "./ui";
+import { Related, Subagents } from "./subagents";
 
 // diffStat counts added and removed lines of a unified diff.
 function diffStat(diff: string) {
@@ -140,6 +141,8 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false, hi
             })}
             {stopService.error && <p className="px-1.5 text-xs text-red-600">{stopService.error.message}</p>}
           </div>}
+          <Subagents threadId={t.id} shown={shown} />
+          <Related threadId={t.id} shown={shown} />
           {usage.length > 0 && <div className="space-y-1 px-2.5 py-2">
             {usage.map((w) => {
               const left = Math.max(0, 100 - Math.round(w.utilization * 100));

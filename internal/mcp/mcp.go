@@ -149,16 +149,16 @@ func build(s *api.Server, devices bool) *sdk.Server {
 	srv := sdk.NewServer(&sdk.Implementation{Name: "dory", Version: "2.0.0"}, nil)
 	store := s.Store
 
-	add(srv, "session_start", "Load the context to work on a project: global memories, projects and, when found, the project with its repositories, open tasks and memories.", func(ctx context.Context, in sessionInput) (any, error) {
+	add(srv, "session_start", "Load the context to work on a project: memories, projects and, if found, its repositories, open tasks and memories. Call it first in any task.", func(ctx context.Context, in sessionInput) (any, error) {
 		return sessionStart(ctx, s, in)
 	})
-	add(srv, "list_projects", "List projects.", func(ctx context.Context, _ struct{}) (any, error) {
+	add(srv, "list_projects", "List projects with id, slug and name.", func(ctx context.Context, _ struct{}) (any, error) {
 		return store.Projects().List(ctx, data.Filter{Limit: 1000})
 	})
-	add(srv, "list_tasks", "List tasks with their kanban column, branch, pull request, threads and blockers.", func(ctx context.Context, in taskListInput) (any, error) {
+	add(srv, "list_tasks", "List tasks with column, branch, pull request, threads and blockers. Filter by project, issue or open.", func(ctx context.Context, in taskListInput) (any, error) {
 		return listTasks(ctx, s, in)
 	})
-	add(srv, "get_task", "Get a task with its column, threads, pull request, plans and dependencies.", func(ctx context.Context, in idInput) (any, error) {
+	add(srv, "get_task", "Read one task with its column, threads, pull request, plans and dependencies.", func(ctx context.Context, in idInput) (any, error) {
 		t, err := store.Tasks().Get(ctx, in.ID)
 		if err != nil {
 			return nil, err
@@ -171,16 +171,16 @@ func build(s *api.Server, devices bool) *sdk.Server {
 		deps, _ := store.Dependencies().List(ctx, data.Filter{Fields: map[string]any{"task_id": t.ID}})
 		return map[string]any{"task": cards[0], "plans": plans, "dependencies": deps}, nil
 	})
-	add(srv, "save_task", "Create a task, or update the title, description, issue, pull request or stage of one. Tasks created from one issue share its number; depends_on marks which must finish first. Use stage done for work integrated straight into the default branch; it is refused while the task has a pull request that is not merged.", func(ctx context.Context, in taskInput) (any, error) {
+	add(srv, "save_task", "Create a task, or change its title, description, issue, pull request or stage. stage done only without an unmerged pull request.", func(ctx context.Context, in taskInput) (any, error) {
 		return saveTask(ctx, s, in)
 	})
-	add(srv, "set_task_project", "Link a task to a project, or unlink it by leaving project_id empty. Use it when the user asks to put a task in a project or take it out. Moving it to another project clears its repository, which is set again when the project has only one.", func(ctx context.Context, in struct {
+	add(srv, "set_task_project", "Move a task to a project, or out of it with an empty project_id.", func(ctx context.Context, in struct {
 		TaskID    string `json:"task_id"`
 		ProjectID string `json:"project_id,omitempty" jsonschema:"Project id or slug; empty to unlink the task from its project"`
 	}) (any, error) {
 		return setTaskProject(ctx, store, in.TaskID, in.ProjectID)
 	})
-	add(srv, "ensure_thread_task", "When planning in this conversation, reuse its linked task or create and link one atomically. Safe to retry. Supply a concise title and description only when a task is needed; use plan_read and plan_write or plan_edit for its plan. Only the user accepts the plan.", func(ctx context.Context, in struct {
+	add(srv, "ensure_thread_task", "Get this conversation's task, creating and linking one if it has none. Use it before writing a plan. Safe to retry.", func(ctx context.Context, in struct {
 		Title       string `json:"title" jsonschema:"Concise title for a new task"`
 		Description string `json:"description,omitempty" jsonschema:"Description for a new task"`
 		TaskID      string `json:"task_id,omitempty" jsonschema:"Link this conversation to this existing task instead of creating one"`
@@ -197,7 +197,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 		}
 		return store.EnsureThreadTask(ctx, id, in.Title, in.Description)
 	})
-	add(srv, "link_thread", "Link a thread (this conversation by default) to an existing task of its project. Linking it to the same task again does nothing; moving it from another task needs replace.", func(ctx context.Context, in struct {
+	add(srv, "link_thread", "Link a thread (this one by default) to an existing task. replace moves it from another task.", func(ctx context.Context, in struct {
 		ThreadID string `json:"thread_id,omitempty" jsonschema:"Thread to link; empty for this conversation"`
 		TaskID   string `json:"task_id"`
 		Replace  bool   `json:"replace,omitempty" jsonschema:"Move the thread when it is linked to another task"`
@@ -208,7 +208,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 		}
 		return store.LinkThread(ctx, id, in.TaskID, in.Replace)
 	})
-	add(srv, "unlink_thread", "Remove the task of a thread (this conversation by default).", func(ctx context.Context, in struct {
+	add(srv, "unlink_thread", "Unlink a thread (this one by default) from its task.", func(ctx context.Context, in struct {
 		ThreadID string `json:"thread_id,omitempty" jsonschema:"Thread to unlink; empty for this conversation"`
 	}) (any, error) {
 		id, err := threadID(ctx, in.ThreadID)
@@ -217,7 +217,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 		}
 		return store.UnlinkThread(ctx, id)
 	})
-	add(srv, "list_task_threads", "List the threads linked to a task with their title, node and status.", func(ctx context.Context, in planReadInput) (any, error) {
+	add(srv, "list_task_threads", "List the threads of a task with title, node and status.", func(ctx context.Context, in planReadInput) (any, error) {
 		threads, err := store.Threads().List(ctx, data.Filter{Fields: map[string]any{"task_id": in.TaskID}, Limit: 1000})
 		if err != nil {
 			return nil, err
@@ -228,19 +228,19 @@ func build(s *api.Server, devices bool) *sdk.Server {
 		}
 		return out, nil
 	})
-	add(srv, "add_task_dependency", "Mark that a task must wait until another finishes. Refuses a task that depends on itself and cycles.", func(ctx context.Context, in dependencyInput) (any, error) {
+	add(srv, "add_task_dependency", "Make a task wait until another finishes.", func(ctx context.Context, in dependencyInput) (any, error) {
 		return store.AddDependency(ctx, in.TaskID, in.DependsOnID)
 	})
-	add(srv, "remove_task_dependency", "Remove a task from the blockers of another.", func(ctx context.Context, in dependencyInput) (any, error) {
+	add(srv, "remove_task_dependency", "Remove a blocker from a task.", func(ctx context.Context, in dependencyInput) (any, error) {
 		if err := store.RemoveDependency(ctx, in.TaskID, in.DependsOnID); err != nil {
 			return nil, err
 		}
 		return map[string]any{"removed": true}, nil
 	})
-	add(srv, "plan_read", "Read the plan of a task: one Markdown document that the user and the agents edit. Returns body_md and its revision.", func(ctx context.Context, in planReadInput) (any, error) {
+	add(srv, "plan_read", "Read a task's plan (Markdown) and its revision.", func(ctx context.Context, in planReadInput) (any, error) {
 		return s.PlanDocument(ctx, in.TaskID)
 	})
-	add(srv, "plan_write", "Write the whole plan of a task as Markdown, to start it. To change an existing plan use plan_edit; rewriting it needs the revision from plan_read. Only the user accepts a plan; changing it waits for a new acceptance.", func(ctx context.Context, in planWriteInput) (any, error) {
+	add(srv, "plan_write", "Write a task's whole plan. For an existing plan use plan_edit, or pass the revision from plan_read. Only the user accepts it.", func(ctx context.Context, in planWriteInput) (any, error) {
 		// Rewriting an existing plan blind would drop what the user is
 		// writing, so it needs the revision the agent read.
 		if in.Revision == nil {
@@ -252,10 +252,10 @@ func build(s *api.Server, devices bool) *sdk.Server {
 		}
 		return s.WritePlan(ctx, in.TaskID, in.BodyMD, revision(in.Revision), "agent")
 	})
-	add(srv, "plan_edit", "Replace one exact piece of the plan of a task, so the user sees it change in place. old_text must appear once; read the plan again if the edit fails.", func(ctx context.Context, in planEditInput) (any, error) {
+	add(srv, "plan_edit", "Replace one exact piece of a task's plan; the user sees it change in place. old_text must appear once.", func(ctx context.Context, in planEditInput) (any, error) {
 		return s.EditPlan(ctx, in.TaskID, in.OldText, in.NewText, revision(in.Revision), "agent")
 	})
-	add(srv, "remember", "Store or update a memory. Scope global, project (scope_id = project id) or node (scope_id = node id).", func(ctx context.Context, in memoryInput) (any, error) {
+	add(srv, "remember", "Save or update a durable finding as a memory: scope global, project or node.", func(ctx context.Context, in memoryInput) (any, error) {
 		return remember(ctx, store, in)
 	})
 	add(srv, "recall", "Find memories by text, project, labels or kind.", func(ctx context.Context, in recallInput) (any, error) {
@@ -266,7 +266,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 	}) (any, error) {
 		return store.Search(ctx, in.Query, 20)
 	})
-	add(srv, "ask_user", "Ask the user one or more questions, each with options to pick (multi_select for several). The call waits until the user answers in the chat and returns each question with its answer.", func(ctx context.Context, in askInput) (any, error) {
+	add(srv, "ask_user", "Ask the user questions with options and wait for the answers in the chat. Use it when a decision is the user's.", func(ctx context.Context, in askInput) (any, error) {
 		id, _ := ctx.Value(threadKey{}).(string)
 		if id == "" {
 			return nil, errors.New("ask_user only works inside a Dory thread")
@@ -293,7 +293,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 		return map[string]any{"answers": out}, nil
 	})
 
-	add(srv, "start_service", "Start a long-running process for this conversation, such as a dev server, a database or a watcher, in its worktree. Dory runs it detached, so it keeps running after your turn ends until the user stops it or the thread is archived, and the user sees its ports in the thread panel. Use it instead of backgrounding the command in your shell. Returns its pid and log file.", func(ctx context.Context, in struct {
+	add(srv, "start_service", "Run a long-lived process for this thread (dev server, database, watcher) detached in its folder; the user sees its ports. Use it instead of backgrounding in your shell.", func(ctx context.Context, in struct {
 		Command string `json:"command" jsonschema:"Shell command to run, e.g. npm run dev -- --port 5173"`
 	}) (any, error) {
 		id, _ := ctx.Value(threadKey{}).(string)
@@ -306,14 +306,14 @@ func build(s *api.Server, devices bool) *sdk.Server {
 		}
 		return map[string]any{"pid": pid, "log": log}, nil
 	})
-	add(srv, "list_services", "List the processes of this conversation listening on a port, with their pid, address, port and command.", func(ctx context.Context, _ struct{}) (any, error) {
+	add(srv, "list_services", "List this thread's processes listening on a port.", func(ctx context.Context, _ struct{}) (any, error) {
 		id, _ := ctx.Value(threadKey{}).(string)
 		if id == "" {
 			return nil, errors.New("list_services only works inside a Dory thread")
 		}
 		return runtime.ThreadServices(id), nil
 	})
-	add(srv, "stop_service", "Stop a listening process of this conversation by pid.", func(ctx context.Context, in struct {
+	add(srv, "stop_service", "Stop one of this thread's listening processes by pid.", func(ctx context.Context, in struct {
 		PID int `json:"pid"`
 	}) (any, error) {
 		id, _ := ctx.Value(threadKey{}).(string)
@@ -326,6 +326,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 		return map[string]any{"stopped": in.PID}, nil
 	})
 
+	addThreadTools(srv, s)
 	addBrowser(srv, s)
 
 	if devices {

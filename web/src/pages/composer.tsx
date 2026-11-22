@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { agentNote } from "../components/subagents";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUp, CaretDown, Check, ClipboardText, Code, File as FileIcon, FileText, Lightning, ListBullets, MagnifyingGlass, Paperclip, PencilSimple, Quotes, Stop, TerminalWindow, Trash, X } from "@phosphor-icons/react";
 import { api, usable, type Attachment, type ThreadView } from "../api/client";
@@ -687,6 +688,8 @@ export function Queue({ t }: { t: ThreadView }) {
 }
 
 function QueuedRow({ text, files, canSteer, onSteer, onCancel, onEdit }: { text: string; files: Attachment[]; canSteer: boolean; onSteer: () => void; onCancel: () => void; onEdit: (text: string) => void }) {
+  // A result from another agent waits as its one-line summary.
+  const note = agentNote({ id: "", role: "user", text, streaming: false, created_at: "" });
   const [draft, setDraft] = useState<string | null>(null);
   const dictating = useDictationInProgress();
   const save = () => {
@@ -697,7 +700,7 @@ function QueuedRow({ text, files, canSteer, onSteer, onCancel, onEdit }: { text:
   return (
     <div className="msg-in flex flex-col items-end gap-1">
       <div className="w-fit max-w-[85%] rounded-2xl rounded-br-md border border-dashed border-slate-400 px-4 py-2.5 text-slate-700 dark:border-border-strong dark:text-text-secondary">
-        {draft === null ? <div className="flex flex-col text-sm"><MessageParts text={text} /></div> : (
+        {draft === null ? <div className="flex flex-col text-sm">{note ? <span className="truncate">{note.state ? `Subagente «${note.title}» ${note.state}` : `Mensaje de «${note.title}»`}</span> : <MessageParts text={text} />}</div> : (
           <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); save(); }}>
             <DictationField autoFocus rows={2} aria-label="Editar mensaje en cola" value={draft} onValue={setDraft} onKeyDown={(e) => {
               if (e.key === "Escape") setDraft(null);

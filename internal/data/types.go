@@ -89,8 +89,10 @@ type Thread struct {
 	ProjectID *string `json:"project_id"`
 	TaskID    *string `json:"task_id"`
 	// TaskLinkedAt is when the thread was linked to its task.
-	TaskLinkedAt   *string `json:"task_linked_at"`
-	ParentID       *string `json:"parent_id"`
+	TaskLinkedAt *string `json:"task_linked_at"`
+	ParentID     *string `json:"parent_id"`
+	// OriginID is the thread whose agent created this one; it is not its parent.
+	OriginID       *string `json:"origin_id"`
 	Provider       string  `json:"provider"`
 	Model          string  `json:"model"`
 	Effort         string  `json:"effort"`

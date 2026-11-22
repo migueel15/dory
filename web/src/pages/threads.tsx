@@ -82,6 +82,8 @@ export function Threads() {
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (threads.data ?? [])
+      // Subagents live in their parent's details, not in the list.
+      .filter((t) => !t.parent_id)
       .filter((t) => !project || t.project_id === project)
       .filter((t) => !q || t.title.toLowerCase().includes(q) || repoOf(t.project_id).toLowerCase().includes(q))
       .filter((t) => {

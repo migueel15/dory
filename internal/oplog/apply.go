@@ -109,7 +109,7 @@ var tables = map[string]table{
 	"skill_state":         {"skill_states", []string{"skill_id", "node_id"}, []string{"status", "version", "message", "created_at", "updated_at", "archived_at"}, "", ""},
 	"notice":              {"notices", []string{"id"}, []string{"kind", "title", "body", "url", "read_at", "created_at", "updated_at", "archived_at"}, "", ""},
 	"setting":             {"settings", []string{"id"}, []string{"value", "created_at", "updated_at", "archived_at"}, "", ""},
-	"thread":              {"threads", []string{"id"}, []string{"node_id", "project_id", "task_id", "task_linked_at", "parent_id", "provider", "model", "effort", "runtime_mode", "title", "branch", "status", "pinned_at", "read_at", "last_activity_at", "snoozed_until", "settled_at", "created_at", "updated_at", "archived_at"}, "", ""},
+	"thread":              {"threads", []string{"id"}, []string{"node_id", "project_id", "task_id", "task_linked_at", "parent_id", "origin_id", "provider", "model", "effort", "runtime_mode", "title", "branch", "status", "pinned_at", "read_at", "last_activity_at", "snoozed_until", "settled_at", "created_at", "updated_at", "archived_at"}, "", ""},
 }
 
 // Write records a local change and applies it to its table in one
