@@ -78,6 +78,9 @@ type Manager struct {
 	// pending holds the settings an agent chose for a running thread; they
 	// apply when its turn ends, before the next one starts.
 	pending map[string]ThreadSettings
+	// PeerSend delivers a message to a thread of another node; set by the
+	// mesh, so a subagent there can hand its result to its parent.
+	PeerSend func(ctx context.Context, node, thread, sender, text string) error
 	// detected caches what Providers found.
 	detected   []Status
 	detectedAt time.Time

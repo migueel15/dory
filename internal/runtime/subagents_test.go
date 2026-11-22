@@ -72,3 +72,35 @@ func TestSpawnLimitsActiveChildren(t *testing.T) {
 		t.Fatalf("limit not enforced: %v", err)
 	}
 }
+
+func TestChildOnAnotherNodeNotifiesItsParentThroughThePeer(t *testing.T) {
+	ctx := context.Background()
+	m, store := manager(t, 0)
+	codex := capturedProvider{"codex", make(chan Turn, 1), make(chan chan Event, 1)}
+	m.providers[codex.id] = codex
+	parent, err := store.Threads().Put(ctx, data.Thread{NodeID: "other-node", Provider: "claude", Title: "Padre"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sent := make(chan [4]string, 1)
+	m.PeerSend = func(_ context.Context, node, thread, sender, text string) error {
+		sent <- [4]string{node, thread, sender, text}
+		return nil
+	}
+	child, err := m.Create(ctx, NewThread{Provider: codex.id, ParentID: &parent.ID, Title: "Prueba el binario"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = m.Send(ctx, child.ID, "prueba"); err != nil {
+		t.Fatal(err)
+	}
+	turn := <-codex.turns
+	events := <-codex.ends
+	events <- Event{Message: &Message{ID: turn.RunID + ":a", Role: "assistant", Text: "Funciona"}}
+	events <- Event{Done: true}
+	close(events)
+	got := <-sent
+	if got[0] != "other-node" || got[1] != parent.ID || got[2] != child.ID || !strings.Contains(got[3], "Funciona") {
+		t.Fatalf("peer send %+v", got)
+	}
+}

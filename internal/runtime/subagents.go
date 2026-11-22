@@ -34,18 +34,11 @@ func (m *Manager) Spawn(ctx context.Context, parentID string, sub Subagent) (dat
 	if err != nil {
 		return parent, err
 	}
-	if parent.ParentID != nil {
-		return data.Thread{}, fmt.Errorf("%w: a subagent cannot launch subagents", data.ErrInvalid)
-	}
 	if strings.TrimSpace(sub.Prompt) == "" {
 		return data.Thread{}, fmt.Errorf("%w: the subagent needs a prompt", data.ErrInvalid)
 	}
-	working, err := m.store.Threads().List(ctx, data.Filter{Fields: map[string]any{"parent_id": parent.ID, "status": "working"}, Limit: MaxActiveChildren + 1})
-	if err != nil {
+	if err = m.CanSpawn(ctx, parent); err != nil {
 		return data.Thread{}, err
-	}
-	if len(working) >= MaxActiveChildren {
-		return data.Thread{}, fmt.Errorf("%w: %d subagents are already working; wait for one or stop it", data.ErrInvalid, MaxActiveChildren)
 	}
 	base := data.Thread{Provider: parent.Provider, Model: parent.Model}
 	var settings ThreadSettings
@@ -93,11 +86,27 @@ func (m *Manager) Spawn(ctx context.Context, parentID string, sub Subagent) (dat
 	return m.store.Threads().Get(ctx, child.ID)
 }
 
+// CanSpawn says whether parent may launch one more subagent: a subagent
+// cannot launch its own, and at most MaxActiveChildren work at once.
+func (m *Manager) CanSpawn(ctx context.Context, parent data.Thread) error {
+	if parent.ParentID != nil {
+		return fmt.Errorf("%w: a subagent cannot launch subagents", data.ErrInvalid)
+	}
+	working, err := m.store.Threads().List(ctx, data.Filter{Fields: map[string]any{"parent_id": parent.ID, "status": "working"}, Limit: MaxActiveChildren + 1})
+	if err != nil {
+		return err
+	}
+	if len(working) >= MaxActiveChildren {
+		return fmt.Errorf("%w: %d subagents are already working; wait for one or stop it", data.ErrInvalid, MaxActiveChildren)
+	}
+	return nil
+}
+
 // notifyParent hands the result of a finished subagent turn to its parent,
 // starting a parent turn or queueing behind the running one.
 func (m *Manager) notifyParent(ctx context.Context, child data.Thread, status string, stopped bool) {
 	parent, err := m.store.Threads().Get(ctx, *child.ParentID)
-	if err != nil || parent.ArchivedAt != nil || parent.NodeID != m.node {
+	if err != nil || parent.ArchivedAt != nil || (parent.NodeID != m.node && m.PeerSend == nil) {
 		return
 	}
 	state := map[string]string{"idle": "terminó", "error": "falló", "waiting": "espera una respuesta"}[status]
@@ -126,7 +135,13 @@ func (m *Manager) notifyParent(ctx context.Context, child data.Thread, status st
 	if result != "" {
 		text += "\n\n" + result
 	}
-	if err := m.SendFrom(ctx, parent.ID, child.ID, text); err != nil {
+	send := m.SendFrom
+	if parent.NodeID != m.node {
+		send = func(ctx context.Context, id, sender, text string, _ ...Attachment) error {
+			return m.PeerSend(ctx, parent.NodeID, id, sender, text)
+		}
+	}
+	if err := send(ctx, parent.ID, child.ID, text); err != nil {
 		log.Printf("runtime: notify parent %s: %v", parent.ID, err)
 	}
 }

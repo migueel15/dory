@@ -163,6 +163,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		srv.FinishTasks(ctx)
 	})
 	srv.Remote = net
+	rt.PeerSend = srv.SendFromPeer
 	srv.MeshPort = cfg.MeshPort
 	srv.Browser = &browser.Manager{DB: store.DB(), Profile: filepath.Join(cfg.DataDir, "browser-profile"), Busy: rt.Running,
 		Changed: func(id string) { events.Changed("browser", id) }}
