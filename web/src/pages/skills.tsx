@@ -21,7 +21,8 @@ export function Skills() {
   const node = useQuery({ queryKey: ["node"], queryFn: api.node });
   const [editing, setEditing] = useState<Skill | "new">();
   const [conflict, setConflict] = useState<{ skill: Skill; node: string }>();
-  const nodes = [...(node.data ? [{ id: node.data.node.id, name: node.data.node.name }] : []), ...(mesh.data?.peers ?? []).filter((p) => !p.revoked).map((p) => ({ id: p.id, name: p.name }))];
+  const nodes = [...(node.data ? [{ id: node.data.node.id, name: node.data.node.name, connected: true }] : []), ...(mesh.data?.peers ?? []).filter((p) => !p.revoked).map((p) => ({ id: p.id, name: p.name, connected: p.connected }))];
+  const online = (id: string) => nodes.find((n) => n.id === id)?.connected ?? false;
   const name = (id: string) => nodes.find((n) => n.id === id)?.name ?? id.slice(0, 6);
   const qc = useQueryClient();
   const enable = useMutation({ mutationFn: ({ id, on }: { id: string; on: boolean }) => api.setSkillEnabled(id, on), onSuccess: () => qc.invalidateQueries({ queryKey: ["skills"] }) });
@@ -49,9 +50,9 @@ export function Skills() {
           <Button type="button" variant="ghost" disabled={enable.isPending} onClick={() => enable.mutate({ id: s.id, on: !!s.disabled_at })}>{s.disabled_at ? "Activar" : "Desactivar"}</Button>
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
-            {!s.disabled_at && (states.data ?? []).filter((st) => st.skill_id === s.id).map((st) => (
-              <span key={st.node_id} title={st.message || undefined} className="flex items-center gap-1 text-xs">
-                {name(st.node_id)}: {st.status === "conflict" ? <button type="button" className="underline decoration-dotted" onClick={() => setConflict({ skill: s, node: st.node_id })}>resolver</button> : null} <StatusPill tone={st.status === "synced" && st.version < s.version ? "amber" : STATE[st.status][1]}>{st.status === "synced" && st.version < s.version ? "pendiente" : STATE[st.status][0]}</StatusPill>
+            {(states.data ?? []).filter((st) => st.skill_id === s.id && (!s.disabled_at || st.status === "conflict")).map((st) => (
+              <span key={st.node_id} title={online(st.node_id) ? st.message || undefined : "Último estado conocido: el nodo no está conectado"} className={`flex items-center gap-1 text-xs${online(st.node_id) ? "" : " opacity-60"}`}>
+                {name(st.node_id)}{online(st.node_id) ? "" : " (desconectado)"}: {st.status === "conflict" && online(st.node_id) ? <button type="button" className="underline decoration-dotted" onClick={() => setConflict({ skill: s, node: st.node_id })}>resolver</button> : null} <StatusPill tone={st.status === "synced" && st.version < s.version ? "amber" : STATE[st.status][1]}>{st.status === "synced" && st.version < s.version ? "pendiente" : STATE[st.status][0]}</StatusPill>
               </span>
             ))}
           </div>
@@ -160,11 +161,12 @@ function ConflictDialog({ skill, node, nodeName, onClose }: { skill: Skill; node
                 <div><span className="font-medium">{label(c.harness)}</span> · {KIND[c.kind]}</div>
                 <div className="break-all font-mono text-xs text-slate-500">{c.path}</div>
                 {c.skill_md && <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-xs">{c.skill_md}</pre>}
-                {c.skill_md && <Button type="button" variant="ghost" disabled={resolve.isPending} onClick={() => askConfirm(system ? "Se crea un fork con esta versión y la skill del sistema se desactiva en toda la malla." : "Esta versión sustituye a la del catálogo en toda la malla.", "Quedarme con esta").then((ok) => ok && resolve.mutate({ action: "adopt", harness: c.harness }))}>{system ? "Hacer fork con esta versión" : "Quedarme con esta versión"}</Button>}
+                {c.orphan && <p className="text-xs text-slate-500">Esta skill ya no debe estar en el nodo (está desactivada o el nodo no es su destino), pero su copia se editó a mano.</p>}
+                {c.skill_md && !c.orphan && <Button type="button" variant="ghost" disabled={resolve.isPending} onClick={() => askConfirm(system ? "Se crea un fork con esta versión y la skill del sistema se desactiva en toda la malla." : "Esta versión sustituye a la del catálogo en toda la malla.", "Quedarme con esta").then((ok) => ok && resolve.mutate({ action: "adopt", harness: c.harness }))}>{system ? "Hacer fork con esta versión" : "Quedarme con esta versión"}</Button>}
               </div>
             ))}
             {conflicts.isSuccess && conflicts.data.length === 0 && <p>Ya no hay conflictos en este nodo.</p>}
-            {!!conflicts.data?.length && <Button type="button" disabled={resolve.isPending} onClick={() => askConfirm("Las copias del nodo se mueven a una copia de seguridad y se instala la versión del catálogo.", "Restaurar").then((ok) => ok && resolve.mutate({ action: "restore" }))}>Restaurar la versión de Dory</Button>}
+            {!!conflicts.data?.length && <Button type="button" disabled={resolve.isPending} onClick={() => askConfirm(conflicts.data.every((c) => c.orphan) ? "Las copias del nodo se mueven a una copia de seguridad y la skill deja de estar en el nodo." : "Las copias del nodo se mueven a una copia de seguridad y se instala la versión del catálogo.", conflicts.data.every((c) => c.orphan) ? "Retirar" : "Restaurar").then((ok) => ok && resolve.mutate({ action: "restore" }))}>{conflicts.data.every((c) => c.orphan) ? "Retirar la copia del nodo" : "Restaurar la versión de Dory"}</Button>}
           </>
         )}
       </div>

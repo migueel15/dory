@@ -107,3 +107,37 @@ func TestAdoptSystemSkillMakesFork(t *testing.T) {
 		t.Fatal("fork not installed")
 	}
 }
+
+func TestEditedCopyOfUnwantedSkillIsAConflict(t *testing.T) {
+	ctx := context.Background()
+	r, home := setup(t)
+	s, _ := Save(ctx, r.Store, data.Skill{Name: "propia", Description: "d", BodyMD: "de Dory"})
+	r.Reconcile(ctx)
+	path := filepath.Join(home, ".claude", "skills", "propia", "SKILL.md")
+	os.WriteFile(path, []byte("tocada"), 0o644)
+	// Disabled while that node ran an older binary: the edit must not vanish
+	// from view.
+	SetEnabled(ctx, r.Store, s.ID, false)
+	r.Reconcile(ctx)
+	if read(t, path) != "tocada" || stateOf(t, r, s.ID) != "conflict" {
+		t.Fatalf("edited copy: %q, state %s", read(t, path), stateOf(t, r, s.ID))
+	}
+	r.Reconcile(ctx) // Still reported on the next pass.
+	conflicts, _ := r.Conflicts(ctx, s.ID)
+	if len(conflicts) != 1 || !conflicts[0].Orphan || conflicts[0].Harness != "claude" {
+		t.Fatalf("conflicts %+v", conflicts)
+	}
+	if _, err := r.Resolve(ctx, s.ID, "adopt", "claude"); err == nil {
+		t.Fatal("adopted the copy of a disabled skill")
+	}
+	backup, err := r.Resolve(ctx, s.ID, "restore", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) || read(t, filepath.Join(backup, "claude", "propia", "SKILL.md")) != "tocada" {
+		t.Fatal("copy not moved to the backup")
+	}
+	if stateOf(t, r, s.ID) != "removed" {
+		t.Fatalf("state %s", stateOf(t, r, s.ID))
+	}
+}

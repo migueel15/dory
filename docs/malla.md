@@ -44,7 +44,7 @@ La malla no compara versiones al sincronizar: un nodo desactualizado sigue recib
 
 Al actualizarse, el nodo se corrige solo: la migración recupera del registro los valores de las columnas nuevas que había recibido, las skills del sistema vuelven a su contenido y el reconciliador reinstala lo que corresponde en las carpetas de los agentes. Para acortar ese periodo, actualiza toda la malla a la vez desde **Entornos**.
 
-Queda un caso sin aviso: si mientras el nodo estaba desactualizado se editó a mano el fichero de una skill que ahora debe quitarse, Dory no lo borra y deja de seguirlo, sin marcarlo como conflicto.
+Si mientras el nodo estaba desactualizado se editó a mano el fichero de una skill que ahora debe quitarse, Dory no lo borra: marca la skill en conflicto en ese nodo y desde **Skills** se retira la copia, que queda en una copia de seguridad.
 
 ### Añadir una columna replicada
 

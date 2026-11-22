@@ -65,7 +65,7 @@ export const usable = (p: Provider) => p.installed && p.enabled !== false;
 export type External = { provider: string; id: string; title: string; dir: string; branch?: string; updated_at: string; project_id: string | null; thread_id?: string };
 export type Job = { id: string; provider: string; kind: "login" | "update" | "install"; output: string; done: boolean; accepts_code?: boolean; error?: string };
 export type Skill = { id: string; name: string; description: string; body_md: string; files: Record<string, string>; version: number; targets: { nodes: string[] | null; harnesses: string[] | null }; source: "" | "system"; system_version: number; forked_from: string | null; disabled_at: string | null; created_at: string; updated_at: string; archived_at: string | null };
-export type SkillConflict = { harness: string; path: string; kind: "link" | "foreign" | "edited"; skill_md: string };
+export type SkillConflict = { harness: string; path: string; kind: "link" | "foreign" | "edited"; skill_md: string; orphan?: boolean };
 export type SkillState = { skill_id: string; node_id: string; status: "synced" | "pending" | "error" | "conflict" | "removed"; version: number; message: string; updated_at: string };
 export type UsageWindow = { kind: string; utilization: number; resets_at: string; label?: string; window_minutes?: number };
 export type NodeInfo = { id: string; name: string; os: string; version: string; data_dir: string; listen: string; platform: string; icon?: string };

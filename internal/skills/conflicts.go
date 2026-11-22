@@ -24,6 +24,9 @@ type Conflict struct {
 	Kind string `json:"kind"`
 	// SkillMD is the node's SKILL.md, so the user can compare before choosing.
 	SkillMD string `json:"skill_md"`
+	// Orphan marks an edited copy of a skill this node should no longer have;
+	// it can only be removed.
+	Orphan bool `json:"orphan,omitempty"`
 }
 
 // maxAdopt bounds what adopting a node copy reads into the catalog.
@@ -37,6 +40,9 @@ func (r *Reconciler) Conflicts(ctx context.Context, id string) ([]Conflict, erro
 	}
 	m := r.load()
 	out := []Conflict{}
+	if !r.wanted(s) {
+		return r.orphans(s.Name, m), nil
+	}
 	for _, harness := range r.Installed(ctx) {
 		if len(s.Targets.Harnesses) > 0 && !slices.Contains(s.Targets.Harnesses, harness) {
 			continue
@@ -47,6 +53,43 @@ func (r *Reconciler) Conflicts(ctx context.Context, id string) ([]Conflict, erro
 		}
 	}
 	return out, nil
+}
+
+// wanted says whether this node should have the skill installed.
+func (r *Reconciler) wanted(s data.Skill) bool {
+	return s.ArchivedAt == nil && s.DisabledAt == nil && (len(s.Targets.Nodes) == 0 || slices.Contains(s.Targets.Nodes, r.Node))
+}
+
+// orphans lists the folders of a skill that Dory wrote, someone edited, and
+// this node should no longer have.
+func (r *Reconciler) orphans(name string, m manifest) []Conflict {
+	harnessOf := map[string]string{filepath.Join(filepath.Dir(r.Manifest), "antigravity-skills"): "antigravity"}
+	for h, dir := range Dirs(r.Home) {
+		harnessOf[dir] = h
+	}
+	seen := map[string]bool{}
+	out := []Conflict{}
+	for path, h := range m {
+		if strings.HasPrefix(h, linkPrefix) || r.ownerName(path) != name {
+			continue
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil || hash(raw) == h {
+			continue
+		}
+		for root, harness := range harnessOf {
+			dir := filepath.Join(root, name)
+			if strings.HasPrefix(path, dir+string(filepath.Separator)) && !seen[dir] {
+				seen[dir] = true
+				c := Conflict{Harness: harness, Path: dir, Kind: "edited", Orphan: true}
+				if md, err := os.ReadFile(filepath.Join(dir, "SKILL.md")); err == nil {
+					c.SkillMD = string(md)
+				}
+				out = append(out, c)
+			}
+		}
+	}
+	return out
 }
 
 // conflict checks one harness folder of a skill.
@@ -102,6 +145,9 @@ func (r *Reconciler) Resolve(ctx context.Context, id, action, harness string) (s
 	switch action {
 	case "restore":
 	case "adopt":
+		if !r.wanted(s) {
+			return "", fmt.Errorf("%w: la skill no debe estar en este nodo; solo se puede retirar su copia", data.ErrInvalid)
+		}
 		i := slices.IndexFunc(conflicts, func(c Conflict) bool { return c.Harness == harness })
 		if i < 0 {
 			return "", fmt.Errorf("%w: no hay conflicto en %s", data.ErrInvalid, harness)
