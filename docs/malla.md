@@ -35,6 +35,27 @@ Un cambio llega al otro nodo en menos de 2 s si están conectados. Sin conexión
 - Gana el último cambio de cada campo.
 - En las memorias, si dos nodos editaron el texto a la vez, se conservan las dos versiones.
 
+## Nodos con versiones distintas
+
+La malla no compara versiones al sincronizar: un nodo desactualizado sigue recibiendo y enviando cambios. Cada nodo interpreta los datos con el código de su binario:
+
+- Guarda en su registro todas las operaciones que recibe, pero al escribir sus tablas solo usa las columnas que conoce su binario. Ignora las demás.
+- Aplica las reglas de su versión. Por ejemplo, un nodo anterior a las skills del sistema (ADR-028) instala también las skills desactivadas y los forks, y deja editar las skills del sistema; los nodos actualizados restauran después su contenido.
+
+Al actualizarse, el nodo se corrige solo: la migración recupera del registro los valores de las columnas nuevas que había recibido, las skills del sistema vuelven a su contenido y el reconciliador reinstala lo que corresponde en las carpetas de los agentes. Para acortar ese periodo, actualiza toda la malla a la vez desde **Entornos**.
+
+Queda un caso sin aviso: si mientras el nodo estaba desactualizado se editó a mano el fichero de una skill que ahora debe quitarse, Dory no lo borra y deja de seguirlo, sin marcarlo como conflicto.
+
+### Añadir una columna replicada
+
+Dory no reconstruye las filas a partir del registro. Al añadir una columna a una entidad replicada (la lista de `internal/oplog/apply.go`):
+
+1. Añade la columna en una migración.
+2. En la misma migración, recupera su valor de las operaciones ya recibidas: para cada fila, el último valor por `hlc` de esa clave en `ops`. Distingue la clave ausente (`json_type(...) IS NULL`) de un `null` explícito. `00022_system_skills.sql` es el ejemplo.
+3. Si la columna cambia qué hace un nodo (instalar, mostrar, permitir), escribe qué hará mientras tanto un nodo antiguo y cómo se corrige al actualizarse.
+
+Sin el paso 2, un nodo que recibió esos cambios antes de actualizarse no los ve hasta que llegue otra operación sobre la misma fila.
+
 ## Revocar
 
 En **Entornos**, **Revocar** deja de sincronizar con ese nodo.
