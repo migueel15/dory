@@ -46,11 +46,18 @@ body { @apply bg-slate-50 text-slate-900 dark:bg-canvas dark:text-text; }
    --sd, used on dark and inside boxes that are always dark (.code-dark). */
 :is(.dark, .code-dark) [style*="--sd"] { color: var(--sd) !important; }
 
+/* Phones keep a bottom tab bar; it hides while typing so the keyboard has room. */
+:root { --tabbar: 0px; }
+@media (max-width: 639.98px) {
+  :root { --tabbar: calc(3.5rem + 1px + env(safe-area-inset-bottom)); }
+  :root.typing { --tabbar: 0px; }
+  :root.typing .mobile-tabbar { display: none; }
+}
 .mobile-drawer::backdrop { background: rgb(0 0 0 / 0.5); }
 .mobile-drawer[open] { animation: drawer-enter 200ms ease-out; }
 @keyframes drawer-enter {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
 }
 @media (prefers-reduced-motion: reduce) {
   .mobile-drawer[open] { animation: none; }

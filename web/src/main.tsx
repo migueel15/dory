@@ -2,7 +2,7 @@ import { Threads, ThreadsHome } from "./pages/threads";
 import { WindowClose, hasWindowClose } from "./lib/window-close";
 import { UsageQuick } from "./components/usage-quick";
 import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ChartBar, ChatsCircle, Gear, GithubLogo, House, IconContext, Kanban, List, Moon, SidebarSimple, SignOut, Sun, X } from "@phosphor-icons/react";
+import { ChartBar, ChatsCircle, Gear, GithubLogo, House, DotsThreeCircle, IconContext, Kanban, Moon, SidebarSimple, SignOut, Sun, X } from "@phosphor-icons/react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, useNavigate, RouterProvider, createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect } from "@tanstack/react-router";
@@ -202,6 +202,21 @@ function Layout() {
     return () => window.removeEventListener("keydown", listenShortcuts);
   }, [!!me.data]);
   useEffect(() => { setMenu(false); }, [path]);
+  // While the phone keyboard is up (the viewport shrinks well below its tallest
+  // height) the tab bar steps aside so the composer keeps the room.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    let tallest = vv.height, width = vv.width;
+    const check = () => {
+      // Rotating changes the width: start measuring again.
+      if (vv.width !== width) { width = vv.width; tallest = vv.height; }
+      tallest = Math.max(tallest, vv.height);
+      document.documentElement.classList.toggle("typing", vv.height < tallest - 150);
+    };
+    vv.addEventListener("resize", check);
+    return () => { vv.removeEventListener("resize", check); document.documentElement.classList.remove("typing"); };
+  }, []);
   useEffect(() => {
     if (!menu || !me.data) return;
     const dialog = drawer.current;
@@ -247,6 +262,15 @@ function Layout() {
       <Link to="/usage" className={link} title={small ? "Uso" : undefined}><ChartBar weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Uso</span></Link>
     </>
   );
+  // Phone tabs: the main sections are one tap away; the rest sits under "Más".
+  const tab = "flex h-14 flex-col items-center justify-center gap-0.5 text-[0.6875rem] font-medium text-slate-500 dark:text-muted [&.active]:text-slate-900 dark:[&.active]:text-white";
+  const moreActive = path.startsWith("/github") || path.startsWith("/usage");
+  const moreLinks = (
+    <>
+      <Link to="/github" className={link}><GithubLogo weight="duotone" className={ico} aria-hidden="true" />GitHub</Link>
+      <Link to="/usage" className={link}><ChartBar weight="duotone" className={ico} aria-hidden="true" />Uso</Link>
+    </>
+  );
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex sm:h-screen sm:bg-white sm:dark:bg-surface">
       <aside className={`sticky top-0 hidden h-screen shrink-0 flex-col overflow-hidden bg-white transition-[width] duration-200 ease-out dark:bg-surface sm:flex ${folded ? "w-14" : "w-56"}`}>
@@ -273,16 +297,13 @@ function Layout() {
           <Link to="/" className="mr-1 flex shrink-0 items-center gap-2 font-bold">Dory<DevBadge /></Link>
           {/* The project is one tap away on phones, without opening the menu. */}
           <div className="min-w-0 flex-1"><ProjectSwitcher compact /></div>
-          <button type="button" aria-label="Menú" aria-controls="mobile-navigation" aria-expanded={menu} onClick={() => setMenu(!menu)} className="grid size-11 place-items-center rounded hover:bg-slate-200 dark:hover:bg-raised sm:hidden">
-            {menu ? <X weight="regular" className="size-5" aria-hidden="true" /> : <List weight="regular" className="size-5" aria-hidden="true" />}
-          </button>
         </div>
       </nav>
       <dialog
         ref={drawer}
         id="mobile-navigation"
         aria-labelledby="mobile-navigation-title"
-        className="mobile-drawer fixed inset-y-0 left-auto right-0 m-0 h-dvh max-h-none w-80 max-w-[calc(100%-2rem)] flex-col border-l border-slate-200 bg-white p-0 text-slate-900 shadow-2xl dark:border-border dark:bg-surface dark:text-text open:flex sm:hidden"
+        className="mobile-drawer fixed inset-x-0 bottom-0 top-auto m-0 max-h-[85dvh] w-full max-w-none flex-col rounded-t-2xl border-t border-slate-200 bg-white p-0 text-slate-900 shadow-2xl dark:border-border dark:bg-surface dark:text-text open:flex sm:hidden"
         onCancel={() => setMenu(false)}
         onClose={() => setMenu(false)}
         onClick={(event) => {
@@ -293,7 +314,7 @@ function Layout() {
       >
         <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-border">
           <div>
-            <h2 id="mobile-navigation-title" className="flex items-center gap-2 font-bold">Dory<DevBadge /></h2>
+            <h2 id="mobile-navigation-title" className="font-bold">Más</h2>
           </div>
           <button type="button" autoFocus aria-label="Cerrar menú" onClick={() => setMenu(false)} className="grid size-11 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
             <X weight="regular" className="size-5" aria-hidden="true" />
@@ -302,7 +323,7 @@ function Layout() {
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4">
           <nav aria-label="Navegación móvil" className="flex flex-col gap-1" onClick={(event) => {
             if ((event.target as HTMLElement).closest("a")) setMenu(false);
-          }}>{navLinks()}</nav>
+          }}>{moreLinks}</nav>
         </div>
         <div className="shrink-0 space-y-3 border-t border-slate-200 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-border">
           {/* Theme, settings and usage live here on phones so the top bar keeps room for the project. */}
@@ -320,7 +341,13 @@ function Layout() {
           <VersionBadge />
         </div>
       </dialog>
-      <main className={`mx-auto p-2 sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"} ${hasWindowClose && !path.startsWith("/threads") ? "sm:px-14" : ""}`}><Outlet /></main><WindowClose /></div><CommandPalette /><TooltipHost /><NoticeAlerts />
+      <main className={`mx-auto p-2 pb-[calc(0.5rem+var(--tabbar))] sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"} ${hasWindowClose && !path.startsWith("/threads") ? "sm:px-14" : ""}`}><Outlet /></main><WindowClose /></div>
+      <nav aria-label="Navegación móvil" className="mobile-tabbar fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] dark:border-border dark:bg-surface sm:hidden">
+        <Link to="/" activeOptions={{ exact: true }} className={tab}><House className="size-6" aria-hidden="true" />Inicio</Link>
+        <Link to="/tasks" className={tab}><Kanban className="size-6" aria-hidden="true" />Tareas</Link>
+        <Link to="/threads" className={`${tab} relative`}><ChatsCircle className="size-6" aria-hidden="true" />Hilos{attention > 0 && <span className="absolute left-1/2 top-1 ml-2 min-w-4 rounded-full bg-orange-500 px-1 text-center text-[0.625rem] font-semibold leading-4 text-white" aria-label={`${attention} te necesitan`}>{attention}</span>}</Link>
+        <button type="button" aria-controls="mobile-navigation" aria-expanded={menu} onClick={() => setMenu(!menu)} className={`${tab} ${menu || moreActive ? "text-slate-900 dark:text-white" : ""}`}><DotsThreeCircle className="size-6" aria-hidden="true" />Más</button>
+      </nav><CommandPalette /><TooltipHost /><NoticeAlerts />
     </div>
   );
 }
