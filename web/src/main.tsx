@@ -272,7 +272,7 @@ function Layout() {
     </>
   );
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex sm:h-screen sm:bg-white sm:dark:bg-surface">
+    <div className="min-h-dvh bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex sm:h-screen sm:bg-white sm:dark:bg-surface">
       <aside className={`sticky top-0 hidden h-screen shrink-0 flex-col overflow-hidden bg-white transition-[width] duration-200 ease-out dark:bg-surface sm:flex ${folded ? "w-14" : "w-56"}`}>
         {/* The toggle sits first, centered on the icon column, so it never moves. */}
         <div className="flex w-56 items-center pl-3 pr-2">
