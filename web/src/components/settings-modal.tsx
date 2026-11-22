@@ -152,16 +152,16 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             <MagnifyingGlass className="pointer-events-none absolute left-2.5 size-4 text-slate-400 dark:text-muted" aria-hidden="true" />
             <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar ajustes" aria-label="Buscar ajustes"
               onKeyDown={(e) => { if (e.key === "Enter" && hits[0]) open(hits[0]); if (e.key === "Escape" && query) { e.stopPropagation(); setQuery(""); } }}
-              className="w-44 rounded-md border border-slate-200 bg-transparent py-1.5 pl-8 pr-2 text-sm outline-none focus:border-accent dark:border-border md:w-full" />
+              className="w-44 rounded-md border-0 bg-slate-100 py-1.5 pl-8 pr-2 text-sm outline-none ring-0 focus:outline-none focus-visible:outline-none dark:bg-raised md:w-full" />
           </label>
           {query.trim() ? (
             <div className="flex gap-1 md:flex-col" role="list" aria-label="Resultados">
               {hits.length === 0 && <span className="px-3 py-2 text-sm text-slate-500 dark:text-muted">Sin resultados</span>}
               {hits.map((h, i) => (
                 <button key={`${h.section.id}-${h.option ?? ""}-${i}`} type="button" role="listitem" onClick={() => open(h)}
-                  className="flex min-w-0 flex-col items-start rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-raised">
-                  <span className="truncate font-medium">{h.option ?? h.section.label}</span>
-                  <span className="truncate text-xs text-slate-500 dark:text-muted">{h.group} · {h.section.label}</span>
+                  className="flex min-w-0 shrink-0 flex-col items-start rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-raised max-md:max-w-56">
+                  <span className="whitespace-normal break-words font-medium">{h.option ?? h.section.label}</span>
+                  <span className="whitespace-normal break-words text-xs text-slate-500 dark:text-muted">{h.group} · {h.section.label}</span>
                 </button>
               ))}
             </div>
