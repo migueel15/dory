@@ -61,7 +61,7 @@ func TestReconcileWritesUpdatesAndRemoves(t *testing.T) {
 	if !strings.Contains(read(t, filepath.Join(claude, "SKILL.md")), "Usa fix:") {
 		t.Fatal("update not written")
 	}
-	states, _ := r.Store.SkillStates().List(ctx, data.Filter{})
+	states, _ := r.Store.SkillStates().List(ctx, data.Filter{Fields: map[string]any{"skill_id": s.ID}})
 	if len(states) != 1 || states[0].Status != "synced" || states[0].Version != 2 {
 		t.Fatalf("states %+v", states)
 	}
@@ -87,12 +87,12 @@ func TestReconcileNeverOverwritesForeignFiles(t *testing.T) {
 	mine := filepath.Join(home, ".claude", "skills", "propia", "SKILL.md")
 	os.MkdirAll(filepath.Dir(mine), 0o755)
 	os.WriteFile(mine, []byte("escrita a mano"), 0o644)
-	Save(ctx, r.Store, data.Skill{Name: "propia", BodyMD: "de Dory"})
+	own, _ := Save(ctx, r.Store, data.Skill{Name: "propia", BodyMD: "de Dory"})
 	r.Reconcile(ctx)
 	if read(t, mine) != "escrita a mano" {
 		t.Fatal("foreign file overwritten")
 	}
-	states, _ := r.Store.SkillStates().List(ctx, data.Filter{})
+	states, _ := r.Store.SkillStates().List(ctx, data.Filter{Fields: map[string]any{"skill_id": own.ID}})
 	if states[0].Status != "conflict" {
 		t.Fatalf("state %+v", states[0])
 	}

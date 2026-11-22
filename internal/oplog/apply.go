@@ -105,7 +105,7 @@ var tables = map[string]table{
 	"task_dependency":     {"task_dependencies", []string{"task_id", "depends_on_id"}, []string{"created_at", "archived_at"}, "", ""},
 	"plan":                {"plans", []string{"id"}, []string{"task_id", "version", "sections", "open_questions", "author", "accepted_at", "body_md", "revision", "created_at", "updated_at", "archived_at"}, "", ""},
 	"memory":              {"memories", []string{"id"}, []string{"scope", "scope_id", "kind", "title", "content", "labels", "created_at", "updated_at", "archived_at"}, "", "content"},
-	"skill":               {"skills", []string{"id"}, []string{"name", "description", "body_md", "files", "version", "targets", "created_at", "updated_at", "archived_at"}, "name", ""},
+	"skill":               {"skills", []string{"id"}, []string{"name", "description", "body_md", "files", "version", "targets", "source", "system_version", "forked_from", "disabled_at", "created_at", "updated_at", "archived_at"}, "name", ""},
 	"skill_state":         {"skill_states", []string{"skill_id", "node_id"}, []string{"status", "version", "message", "created_at", "updated_at", "archived_at"}, "", ""},
 	"notice":              {"notices", []string{"id"}, []string{"kind", "title", "body", "url", "read_at", "created_at", "updated_at", "archived_at"}, "", ""},
 	"setting":             {"settings", []string{"id"}, []string{"value", "created_at", "updated_at", "archived_at"}, "", ""},
