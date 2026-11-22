@@ -134,8 +134,12 @@ type Model struct {
 
 // Status says whether a harness is installed on this machine.
 type Status struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
+	ID string `json:"id"`
+	// Driver is the harness: the ID without its account.
+	Driver string `json:"driver,omitempty"`
+	Name   string `json:"name"`
+	// Home is the configuration directory of the account, when it has its own.
+	Home      string `json:"home,omitempty"`
 	Installed bool   `json:"installed"`
 	// Enabled is false when the provider is turned off on this node.
 	Enabled bool    `json:"enabled"`

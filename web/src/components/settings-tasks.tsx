@@ -2,14 +2,13 @@ import { ErrorText } from "./ui";
 import { SettingRow, useNodeSettings, type SectionProps } from "./settings-node";
 
 // TaskSettings holds what the selected node(s) do when a task is done or
-// cancelled and when a thread is archived.
+// cancelled.
 export function TaskSettings({ node }: SectionProps) {
   const settings = useNodeSettings(node);
   const row = (field: Parameters<typeof SettingRow>[0]["field"], title: string, help: string) => <SettingRow settings={settings} field={field} title={title} help={help} />;
   return (
     <section aria-labelledby="tasks-title" className="space-y-4">
       <h2 id="tasks-title" className="text-lg font-semibold">Tareas e hilos</h2>
-      {row("remove_worktree_on_archive", "Eliminar worktrees al archivar", "Al archivar un hilo se borra su worktree si está limpio y ningún otro hilo lo usa. Con cambios sin commitear se conserva y el hilo archivado lo avisa.")}
       {row("browser_tunnel_disabled", "Bloquear el túnel del navegador", "La app de escritorio no podrá abrir los puertos de localhost de este nodo desde el navegador de un hilo remoto. Los puertos de Dory nunca son accesibles.")}
       {row("stop_services_on_shutdown", "Cerrar los servicios de los hilos al reiniciar Dory", "Detiene los servicios al cerrar o reiniciar el núcleo de este entorno.")}
       <h2 className="pt-2 text-lg font-semibold">Dispositivos</h2>

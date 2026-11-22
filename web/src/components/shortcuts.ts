@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
-import { chordFromEvent, openShortcutPopups, readDictationShortcut, saveDictationShortcut, type Chord } from "./dictation-shortcut";
+import { chordFromEvent, openShortcutPopups, readDictationShortcut, type Chord } from "./dictation-shortcut";
+import { shortcutsEvent, shortcutsKey, useInputSettingsSync } from "./input-settings";
 
 const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const chord = (code: string, shift = false): Chord => ({ code: `Key${code}`, ctrl: !mac, meta: mac, alt: false, shift });
@@ -18,8 +19,8 @@ export const commands = [
   { id: "dictation", label: "Dictado", default: { code: "KeyD", ctrl: true, meta: false, alt: false, shift: false } },
 ] as const;
 export type CommandId = typeof commands[number]["id"];
-const storage = "dory.shortcuts";
-const eventName = "dory:shortcuts";
+const storage = shortcutsKey;
+const eventName = shortcutsEvent;
 const read = () => { try { return localStorage.getItem(storage) ?? "{}"; } catch { return "{}"; } };
 function preferences(): Partial<Record<CommandId, Chord>> {
   try { const value = JSON.parse(read()); return value && typeof value === "object" && !Array.isArray(value) ? value : {}; } catch { return {}; }
@@ -41,23 +42,20 @@ export function reserved(value: Chord) {
   if (!primary || value.alt) return false;
   return value.code === "Digit0" || ["KeyA", "KeyC", "KeyV", "KeyX", "KeyZ", "KeyY"].includes(value.code);
 }
-export function saveShortcut(id: CommandId, value?: Chord) {
-  if (id === "dictation") { saveDictationShortcut(value); window.dispatchEvent(new Event(eventName)); return; }
-  const all = preferences();
-  if (value) all[id] = value; else delete all[id];
-  try { localStorage.setItem(storage, JSON.stringify(all)); } catch { return; }
-  window.dispatchEvent(new Event(eventName));
+// chordIn is the chord of a command in the shortcuts of a node, or its default.
+export function chordIn(map: Record<string, Chord> | undefined, id: CommandId): Chord {
+  const value = map?.[id];
+  return value && /^Key[A-Z]$|^Digit[0-9]$/.test(value.code) && [value.ctrl, value.meta, value.alt, value.shift].every((x) => typeof x === "boolean") && (value.ctrl || value.meta || value.alt) ? value : commands.find((c) => c.id === id)!.default;
 }
-export function resetShortcuts() {
-  try { localStorage.removeItem(storage); } catch { return; }
-  saveDictationShortcut();
-  window.dispatchEvent(new Event(eventName));
+export function conflictIn(map: Record<string, Chord> | undefined, id: CommandId, value: Chord) {
+  return commands.find((c) => c.id !== id && sameChord(chordIn(map, c.id), value));
 }
 const subscribe = (notify: () => void) => {
   for (const event of [eventName, "storage", "dory:dictation-shortcut"]) window.addEventListener(event, notify);
   return () => { for (const event of [eventName, "storage", "dory:dictation-shortcut"]) window.removeEventListener(event, notify); };
 };
 export function useShortcuts() {
+  useInputSettingsSync();
   useSyncExternalStore(subscribe, () => read() + "|" + JSON.stringify(readDictationShortcut()) + "|" + registryVersion);
   return shortcut;
 }

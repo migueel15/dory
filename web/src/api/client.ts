@@ -9,7 +9,10 @@ export type Project = { id: string; slug: string; name: string; description: str
 export type RepositoryLocation = { repository_id: string; node_id: string; path: string };
 export type Repository = { id: string; project_id: string; remote_url: string; default_branch: string; created_at: string; updated_at: string; archived_at: string | null };
 export type Stage = "inbox" | "ready" | "done" | "cancelled";
-export type NodeSettings = { archive_threads_on_finish: boolean; remove_worktree_on_archive: boolean; stop_services_on_shutdown: boolean; agents_use_devices: boolean; browser_tunnel_disabled?: boolean; threads?: ThreadDefaults };
+export type NodeSettings = { archive_threads_on_finish: boolean; remove_worktree_on_archive: boolean; stop_services_on_shutdown: boolean; agents_use_devices: boolean; browser_tunnel_disabled?: boolean; input?: InputSettings; source_control?: { auto_pull: boolean }; worktrees?: { location: string; branch_naming: string; remove_on_merge: boolean }; threads?: ThreadDefaults };
+export type InputChord = { code: string; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean };
+// InputSettings are the shortcuts and the dictation model of a node; absent until saved.
+export type InputSettings = { shortcuts: Record<string, InputChord>; dictation: { model: string } };
 export type ModelChoice = { provider: string; model: string; effort: string };
 export type ThreadDefaults = { default_model: ModelChoice; fallback_model: ModelChoice; default_workspace: "checkout" | "worktree" | "" };
 export type ThreadService = { pid: number; address: string; port: number; command: string; kind: string };
@@ -60,7 +63,7 @@ export type Pull = { repo: string; number: number; title: string; url: string; d
 export type Card = Task & { column: Column; repo?: string; threads: Thread[]; pull?: Pull; pr_state?: "open" | "draft" | "merged" | "closed"; blockers: string[]; has_plan: boolean };
 export type Model = { slug: string; name: string; efforts?: string[]; resolved_model?: string };
 export type TitleModel = { provider: string; model: string };
-export type Provider = { id: string; name: string; installed: boolean; enabled?: boolean; version: string; models: Model[]; capabilities: string[]; logged_in?: boolean; account?: string };
+export type Provider = { id: string; driver?: string; home?: string; name: string; installed: boolean; enabled?: boolean; version: string; models: Model[]; capabilities: string[]; logged_in?: boolean; account?: string };
 // External is a conversation started in a harness, outside Dory.
 // usable says whether a provider can run threads: installed and not turned off.
 export const usable = (p: Provider) => p.installed && p.enabled !== false;
@@ -71,7 +74,7 @@ export type SkillConflict = { harness: string; path: string; kind: "link" | "for
 export type SkillState = { skill_id: string; node_id: string; status: "synced" | "pending" | "error" | "conflict" | "removed"; version: number; message: string; updated_at: string };
 export type UsageWindow = { kind: string; utilization: number; resets_at: string; label?: string; window_minutes?: number };
 export type NodeInfo = { id: string; name: string; os: string; version: string; data_dir: string; listen: string; platform: string; icon?: string };
-export type Peer = { id: string; name: string; address: string; fingerprint: string; connected: boolean; last_seen: string; revoked: boolean; info: { node?: NodeInfo; providers?: Provider[] } };
+export type Peer = { id: string; name: string; address: string; fingerprint: string; connected: boolean; last_seen: string; revoked: boolean; disabled?: boolean; info: { node?: NodeInfo; providers?: Provider[] } };
 export type Mesh = { node_id: string; fingerprint: string; port: number; peers: Peer[]; discovered: { id: string; name: string; address: string }[] };
 export type UsageTokens = { input: number; output: number; cache_write: number; cache_read: number };
 export type UsageCost = UsageTokens & { cache_saving: number };
@@ -140,6 +143,7 @@ export const api = {
   pairCode: () => req<{ code: string; expires_at: string; fingerprint: string; port: number }>("POST", "/mesh/pair/code"),
   pair: (address: string, code: string) => req<Peer>("POST", "/mesh/pair", { address, code }),
   revokePeer: (id: string) => req<void>("DELETE", `/mesh/peers/${id}`),
+  setPeerEnabled: (id: string, enabled: boolean) => req<void>("PUT", `/mesh/peers/${id}/enabled`, { enabled }),
   devices: () => req<{ id: string; name: string; created_at: string }[]>("GET", "/devices"),
   revokeDevice: (id: string) => req<void>("DELETE", `/devices/${id}`),
   folders: (node: string, path = "", hidden = false) => req<{ path: string; parent: string; home: string; folders: { name: string; path: string; git: boolean }[] }>("GET", `/nodes/${node}/folders?${new URLSearchParams({ path, ...(hidden && { hidden: "true" }) })}`),
@@ -149,6 +153,9 @@ export const api = {
   externalSession: (node: string, provider: string, id: string) => req<{ session: External; messages: Message[] }>("GET", `/nodes/${node}/external/${provider}/${id}`),
   adoptSession: (node: string, provider: string, id: string) => req<{ thread_id: string }>("POST", `/nodes/${node}/external/${provider}/${id}/adopt`),
   nodeProviders: (node: string) => req<Provider[]>("GET", `/nodes/${node}/providers`),
+  addAccount: (node: string, a: { driver: string; name: string; home: string }) => req<{ id: string }>("POST", `/nodes/${node}/accounts`, a),
+  updateAccount: (node: string, id: string, a: { name: string; home: string }) => req<void>("PUT", `/nodes/${node}/accounts/${id}`, a),
+  removeAccount: (node: string, id: string) => req<void>("DELETE", `/nodes/${node}/accounts/${id}`),
   setNodeIcon: (node: string, icon: string) => req<void>("PUT", `/nodes/${node}/icon`, { icon }),
   setProviderEnabled: (node: string, provider: string, enabled: boolean) => req<void>("PUT", `/nodes/${node}/providers/${provider}`, { enabled }),
   providerJob: (node: string, provider: string, kind: Job["kind"]) => req<Job>("POST", `/nodes/${node}/providers/${provider}/${kind}`),

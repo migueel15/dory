@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useCommand } from "../components/shortcuts";
 import { hasWindowClose } from "../lib/window-close";
 import { PlanDoc } from "../components/plan-doc";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { Circle, CircleNotch, GitDiff, Kanban, WarningCircle, XCircle } from "@phosphor-icons/react";
-import { api } from "../api/client";
+import { Circle, CircleNotch, ClockCounterClockwise, GitDiff, Kanban, WarningCircle, XCircle } from "@phosphor-icons/react";
+import { api, type Message } from "../api/client";
+import { setTurnFilter, useTurnFilter } from "../components/turn-changes";
+import { turnDiff } from "../lib/turn-changes";
 import { useThreadLive } from "../api/live";
 import { Button, ErrorText, uuid } from "../components/ui";
-import { Messages, ModelChangeDivider, ToEnd, useFollow } from "./chat";
+import { changeTurns, Messages, ModelChangeDivider, ToEnd, useFollow } from "./chat";
 import { Chip, Composer, Queue } from "./composer";
 import { QuoteSelection } from "../components/quote-selection";
 import { ProviderIcon } from "../components/launch-picker";
@@ -68,7 +70,7 @@ export function ThreadView() {
         <ThreadChat threadId={threadId} />
       </div>
       <SidePanel panel={panel} available={[...(local ? ["diff" as const] : []), ...(taskId ? ["plan" as const] : []), "device" as const, ...(window.doryDesktop?.browser ? ["browser" as const] : [])]}
-        render={(k) => (k === "diff" ? <Changes threadId={threadId} /> : k === "browser" ? <BrowserPanel threadId={threadId} remote={local === false} /> : kindOf(k) === "device" ? (panel.open ? (panel.meta[k]?.floating
+        render={(k) => (k === "diff" ? <Changes threadId={threadId} messages={thread?.messages} /> : k === "browser" ? <BrowserPanel threadId={threadId} remote={local === false} /> : kindOf(k) === "device" ? (panel.open ? (panel.meta[k]?.floating
           ? <div className="grid h-full place-items-center p-6 text-center text-sm text-slate-500 dark:text-muted"><div className="space-y-2"><p>El dispositivo flota sobre el chat.</p><Button variant="ghost" onClick={() => panel.setMeta(k, { floating: false })}>Abrir en el panel lateral</Button></div></div>
           : deviceView(k)) : null) : taskId && <PlanDoc taskId={taskId} />)} />
       {panel.tabs.filter((k) => kindOf(k) === "device" && panel.meta[k]?.floating).map((k) => <FloatingWindow key={k} id={`${threadId}:${k}`}>{deviceView(k, true)}</FloatingWindow>)}
@@ -159,7 +161,7 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
       )}
       {t.parent_id ? <ParentLink parentId={t.parent_id} /> : t.origin_id && <ParentLink parentId={t.origin_id} origin />}
       {t.task_id && <TaskCard taskId={t.task_id} open={taskOpen} setOpen={setTaskOpen} popup={panel.open} />}
-      <ThreadInfo t={t} popup={panel.open} hidden={!!t.task_id && taskOpen} onOpen={() => setTaskOpen(false)} diff={panel.open && panel.active === "diff"} toggleDiff={() => (panel.open && panel.active === "diff" ? panel.toggle() : panel.show("diff"))} />
+      <ThreadInfo t={t} popup={panel.open} hidden={!!t.task_id && taskOpen} onOpen={() => setTaskOpen(false)} diff={panel.open && panel.active === "diff"} toggleDiff={() => { if (panel.open && panel.active === "diff") panel.toggle(); else { setTurnFilter(threadId, null); panel.show("diff"); } }} />
       <ErrorText error={act.error ?? menu.error} />
       {menu.menu}
     </div>
@@ -223,8 +225,15 @@ function ThreadConversation({ threadId }: { threadId: string }) {
   );
 }
 
-function Changes({ threadId }: { threadId: string }) {
+function Changes({ threadId, messages }: { threadId: string; messages?: Message[] }) {
   const base = useDiffBase(threadId);
+  // The tab shows the whole thread against its base, or one turn the chat's box chose.
+  const filter = useTurnFilter(threadId);
+  const turns = useMemo(() => changeTurns(messages ?? []), [messages]);
+  const turnIndex = turns.findIndex((x) => x.id === filter.turn);
+  const turn = turnIndex >= 0 ? turns[turnIndex] : undefined;
+  const turnText = useMemo(() => (turn ? turnDiff(turn.files) : ""), [turn]);
+  const focus = useMemo(() => (filter.path ? { path: filter.path, seq: filter.seq } : undefined), [filter]);
   // The diff's buttons (files, view, full screen) go in this header, beside the choice of base.
   const [tools, setTools] = useState<HTMLElement | null>(null);
   // A comment on selected lines is added to the thread's message box as a
@@ -236,13 +245,16 @@ function Changes({ threadId }: { threadId: string }) {
   return (
     <>
       {diff.data?.branch && <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-1.5 text-xs text-slate-500 dark:border-border">
-        {diff.data.base && <Chip below title="Contra qué se comparan los cambios" icon={<GitDiff className="size-4 shrink-0" />} value={diff.data.base} onChange={(v) => setDiffBase(threadId, v)}
+        {turns.length > 0 && <Chip below title="Qué cambios se muestran" icon={<ClockCounterClockwise className="size-4 shrink-0" />} value={turn ? turn.id : ""} onChange={(v) => setTurnFilter(threadId, v || null)}
+          options={[{ value: "", label: "Todo el hilo" }, ...turns.map((x, i) => ({ value: x.id, label: `Turno ${i + 1} · ${x.files.length} ${x.files.length === 1 ? "fichero" : "ficheros"}` }))]} />}
+        {!turn && diff.data.base && <Chip below title="Contra qué se comparan los cambios" icon={<GitDiff className="size-4 shrink-0" />} value={diff.data.base} onChange={(v) => setDiffBase(threadId, v)}
           options={[{ value: "HEAD", label: "Sin commitear" }, ...[...new Set([...(diff.data.branches ?? []), ...(diff.data.base !== "HEAD" ? [diff.data.base] : [])])].map((b) => ({ value: b, label: `Contra ${b}` }))]} />}
         <span ref={setTools} className="flex items-center gap-1.5" />
         <span className="ml-auto min-w-0 truncate font-mono">{diff.data.branch}</span>
       </div>}
       <ErrorText error={diff.error} />
-      {diff.data && (diff.data.diff ? <Diff text={diff.data.diff} fill toolsHost={tools} onSuggest={comment} steerable={false} /> : <p className="p-4 text-sm text-slate-500 dark:text-muted">Sin cambios todavía.</p>)}
+      {turn ? <Diff key={turn.id} text={turnText} focus={focus} fill toolsHost={tools} onSuggest={comment} steerable={false} />
+        : diff.data && (diff.data.diff ? <Diff text={diff.data.diff} fill toolsHost={tools} onSuggest={comment} steerable={false} /> : <p className="p-4 text-sm text-slate-500 dark:text-muted">Sin cambios todavía.</p>)}
     </>
   );
 }

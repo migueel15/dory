@@ -56,8 +56,13 @@ type Manager struct {
 	node      string
 	dataDir   string
 	providers map[string]Provider
+	// provMu guards providers and accounts, which change with the accounts of a harness.
+	provMu   sync.RWMutex
+	accounts []Account
 	// MCPURL is the local endpoint. MCPToken is the node secret used to derive thread credentials.
 	MCPURL, MCPToken string
+	// WorktreeRoot returns the folder for new worktrees; empty means the data directory.
+	WorktreeRoot func() string
 
 	mu      sync.Mutex
 	running map[string]context.CancelFunc
@@ -95,6 +100,7 @@ func NewManager(db *sql.DB, store *data.Store, node, dataDir string, providers .
 	m.waiters = map[string]chan [][]string{}
 	m.loadUsage()
 	m.loadDisabled()
+	m.loadAccounts()
 	return m
 }
 
@@ -131,7 +137,7 @@ func (m *Manager) WatchUsage(ctx context.Context, every time.Duration) {
 // RefreshUsage asks every provider for its usage at once.
 func (m *Manager) RefreshUsage(ctx context.Context) {
 	var wg sync.WaitGroup
-	for id, p := range m.providers {
+	for id, p := range m.registered() {
 		if !m.Enabled(id) {
 			continue
 		}
@@ -158,13 +164,14 @@ func (m *Manager) RefreshUsage(ctx context.Context) {
 // fixed order, then any other by id.
 func (m *Manager) providerOrder() []string {
 	rank := map[string]int{"claude": 0, "codex": 1, "opencode": 2, antigravityID: 3}
-	ids := make([]string, 0, len(m.providers))
-	for id := range m.providers {
+	all := m.registered()
+	ids := make([]string, 0, len(all))
+	for id := range all {
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool {
-		ri, iok := rank[ids[i]]
-		rj, jok := rank[ids[j]]
+		ri, iok := rank[driverOf(ids[i])]
+		rj, jok := rank[driverOf(ids[j])]
 		if iok != jok {
 			return iok
 		}
@@ -223,9 +230,12 @@ func (m *Manager) Providers(ctx context.Context) []Status {
 		return out
 	}
 	m.mu.Unlock()
-	out := make([]Status, 0, len(m.providers))
+	out := make([]Status, 0)
 	for _, id := range m.providerOrder() {
-		p := m.providers[id]
+		p := m.provider0(id)
+		if p == nil {
+			continue
+		}
 		st := p.Detect(ctx)
 		st.Enabled = m.Enabled(id)
 		if a, ok := p.(Admin); ok && st.Installed {
@@ -316,7 +326,10 @@ func (m *Manager) Create(ctx context.Context, n NewThread) (data.Thread, error) 
 		if n.RepoPath == "" || n.Branch == "" {
 			return t, fmt.Errorf("%w: worktree needs a repository path and a branch", data.ErrInvalid)
 		}
-		dir = filepath.Join(m.dataDir, "worktrees", t.ID)
+		dir = m.newWorktreeDir(t.ID)
+		if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+			return t, err
+		}
 		args := []string{"-C", n.RepoPath, "worktree", "add"}
 		if exists(ctx, n.RepoPath, n.Branch) {
 			args = append(args, dir, n.Branch)
@@ -898,10 +911,30 @@ var ErrDirtyWorktree = errors.New("el worktree tiene cambios sin commitear")
 // thread works in a checkout of the user or has no worktree.
 func (m *Manager) worktreeDir(ctx context.Context, id string) (string, error) {
 	dir, err := m.Dir(ctx, id)
-	if err != nil || !strings.HasPrefix(dir, filepath.Join(m.dataDir, "worktrees")) {
+	if err != nil {
 		return "", err
 	}
-	return dir, nil
+	if strings.HasPrefix(dir, filepath.Join(m.dataDir, "worktrees")) {
+		return dir, nil
+	}
+	// A custom location: dory names the folder after the thread, and a linked
+	// worktree has a .git file where a checkout has a folder.
+	if st, serr := os.Stat(filepath.Join(dir, ".git")); filepath.Base(dir) == id && serr == nil && !st.IsDir() {
+		return dir, nil
+	}
+	return "", nil
+}
+
+// newWorktreeDir is where the worktree of a new thread goes.
+func (m *Manager) newWorktreeDir(id string) string {
+	root := ""
+	if m.WorktreeRoot != nil {
+		root = m.WorktreeRoot()
+	}
+	if root == "" {
+		root = filepath.Join(m.dataDir, "worktrees")
+	}
+	return filepath.Join(root, id)
 }
 
 // Dirty says whether dir has changes that are not committed.
@@ -1069,7 +1102,7 @@ func (m *Manager) Adopt(ctx context.Context, e External, projectID *string) (dat
 // Follow keeps the threads of this node in step with the session files of
 // their harness: what is written from the harness's own terminal shows up in
 // Dory, and after each turn the history is the one the harness saved.
-func (m *Manager) Follow(ctx context.Context, home string) {
+func (m *Manager) Follow(ctx context.Context, p Paths) {
 	seen := map[string]time.Time{}
 	tick := time.NewTicker(2 * time.Second)
 	defer tick.Stop()
@@ -1098,7 +1131,7 @@ func (m *Manager) Follow(ctx context.Context, home string) {
 			if m.Running(l.thread) {
 				continue
 			}
-			path := sessionFile(home, l.provider, l.session)
+			path := sessionFile(p, l.provider, l.session)
 			st, err := os.Stat(path)
 			if path == "" || err != nil {
 				continue

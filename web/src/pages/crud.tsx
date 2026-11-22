@@ -1,6 +1,6 @@
 import { DictationField } from "../components/dictation-field";
 import { useDictationInProgress } from "../components/local-dictation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowsClockwise, Desktop, Plus } from "@phosphor-icons/react";
@@ -107,6 +107,8 @@ export function Environments() {
   const open = useMutation({ mutationFn: api.pairCode, onSuccess: setCode });
   const pair = useMutation({ mutationFn: () => api.pair(address.trim(), typed.trim()), onSuccess: () => { setAddress(""); setTyped(""); qc.invalidateQueries({ queryKey: ["mesh"] }); } });
   const revoke = useMutation({ mutationFn: api.revokePeer, onSuccess: () => qc.invalidateQueries({ queryKey: ["mesh"] }) });
+  const toggle = useMutation({ mutationFn: (v: { id: string; enabled: boolean }) => api.setPeerEnabled(v.id, v.enabled), onSuccess: () => qc.invalidateQueries({ queryKey: ["mesh"] }) });
+  const codeInput = useRef<HTMLInputElement>(null);
   const devices = useQuery({ queryKey: ["devices"], queryFn: api.devices, refetchInterval: 15_000 });
   const revokeDevice = useMutation({ mutationFn: api.revokeDevice, onSuccess: () => qc.invalidateQueries({ queryKey: ["devices"] }) });
   const n = node.data;
@@ -119,7 +121,7 @@ export function Environments() {
   return (
     <div className="space-y-3">
       <PageHeader title="Entornos" subtitle="Los nodos de Dory en tus máquinas. Se sincronizan cuando se ven." />
-      <ErrorText error={node.error ?? mesh.error} />
+      <ErrorText error={node.error ?? mesh.error ?? toggle.error ?? revoke.error} />
       <MeshUpdate />
       {n && (
         <div id={`environment-${n.node.id}`} className={highlight(n.node.id)}><Card>
@@ -137,10 +139,11 @@ export function Environments() {
             <div className="flex flex-wrap items-center gap-2">
               <EnvIconPicker node={p.id} icon={p.info.node?.icon} os={p.info.node?.os} name={p.name} />
               <span className="font-semibold">{p.name}</span>
-              <StatusPill tone={p.connected ? "green" : "slate"}>{p.connected ? "conectado" : "desconectado"}</StatusPill>
+              <StatusPill tone={p.disabled ? "amber" : p.connected ? "green" : "slate"}>{p.disabled ? "desactivado" : p.connected ? "conectado" : "desconectado"}</StatusPill>
               <span className="font-mono text-xs text-slate-500">{p.address}{p.info.node?.version ? ` · ${p.info.node.version}` : ""} · huella {p.fingerprint}</span>
               {!p.connected && p.last_seen && <span className="text-xs text-slate-500">visto {new Date(p.last_seen).toLocaleString()}</span>}
-              <Button variant="ghost" className="ml-auto text-xs" onClick={() => askConfirm(`¿Revocar ${p.name}? Dejará de sincronizarse con este nodo.`, "Revocar").then((ok) => ok && revoke.mutate(p.id))}>Revocar</Button>
+              <Button variant="ghost" className="ml-auto text-xs" disabled={toggle.isPending} onClick={() => toggle.mutate({ id: p.id, enabled: !!p.disabled })}>{p.disabled ? "Activar" : "Desactivar"}</Button>
+              <Button variant="ghost" className="text-xs" onClick={() => askConfirm(`¿Eliminar ${p.name}? Dejará de sincronizarse con este nodo y habrá que emparejarlo de nuevo.`, "Eliminar").then((ok) => ok && revoke.mutate(p.id))}>Eliminar</Button>
             </div>
           </Card></div>
         );
@@ -161,17 +164,17 @@ export function Environments() {
           <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); if (address.trim() && typed.trim()) pair.mutate(); }}>
             <p className="text-sm text-slate-600 dark:text-muted">O en el otro sentido: la dirección del nodo y su código.</p>
             <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="100.64.0.2 o servidor:7710" />
-            <Input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Código, p. ej. 1234-5678" className="font-mono" />
+            <Input ref={codeInput} value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Código, p. ej. 1234-5678" className="font-mono" />
             <Button disabled={!address.trim() || !typed.trim() || pair.isPending}>{pair.isPending ? "Emparejando…" : "Emparejar"}</Button>
             <ErrorText error={pair.error} />
           </form>
         </div>
         {!!mesh.data?.discovered.length && (
           <div className="mt-3 border-t border-slate-200 pt-3 dark:border-border">
-            <p className="mb-1 text-sm font-medium">Nodos encontrados en la red</p>
+            <p className="mb-1 text-sm font-medium">Nodos encontrados en la red (mDNS)</p>
             {mesh.data.discovered.map((d) => (
-              <button key={d.id} type="button" onClick={() => setAddress(d.address)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised">
-                <Desktop className="size-4" /><span>{d.name}</span><span className="ml-auto font-mono text-xs text-slate-500">{d.address}</span>
+              <button key={d.id} type="button" onClick={() => { setAddress(d.address); codeInput.current?.focus(); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised">
+                <Desktop className="size-4" /><span>{d.name}</span><span className="ml-auto font-mono text-xs text-slate-500">{d.address}</span><span className="text-xs text-blue-600">Emparejar</span>
               </button>
             ))}
           </div>

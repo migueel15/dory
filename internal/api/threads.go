@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -259,7 +260,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 			return
 		}
 		home, _ := os.UserHomeDir()
-		commands, skills := runtime.Commands(home, dir, t.Provider)
+		commands, skills := runtime.Commands(s.Runtime.Paths(home), dir, t.Provider)
 		writeJSON(w, http.StatusOK, map[string]any{"commands": commands, "skills": skills})
 	}))
 	// Files of the thread's folder, for @ mentions in the composer.
@@ -401,7 +402,11 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Worktree && body.Branch == "" {
 		// A new worktree gets its own branch; the agent may rename it later.
-		body.Branch = "dory/" + strings.ToLower(rand.Text()[:8])
+		if name := s.worktreeBranch(ctx, body.Title, body.Text); name != "" && !branchExists(ctx, path, name) {
+			body.Branch = name
+		} else {
+			body.Branch = "dory/" + strings.ToLower(rand.Text()[:8])
+		}
 	}
 	nt := runtime.NewThread{ProjectID: body.ProjectID, TaskID: body.TaskID, ParentID: body.ParentID, OriginID: body.OriginID, Provider: body.Provider, Model: body.Model,
 		Effort: body.Effort, RuntimeMode: body.RuntimeMode, Title: body.Title, Worktree: body.Worktree, RepoPath: path, Branch: body.Branch, BaseBranch: body.BaseBranch, ExistingDir: body.WorktreePath}
@@ -414,6 +419,14 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeDataError(w, err)
 		return
+	}
+	if body.Branch != "" && s.Settings.Get().SourceControl.AutoPull {
+		// Start the thread on the latest commits of its branch.
+		if dir, derr := s.Runtime.Dir(ctx, t.ID); derr == nil {
+			if perr := pullBranch(ctx, dir, body.Branch); perr != nil {
+				log.Printf("api: auto-pull %s: %v", body.Branch, perr)
+			}
+		}
 	}
 	if body.Text != "" {
 		if err = s.Runtime.Send(ctx, t.ID, body.Text); err != nil {

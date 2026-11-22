@@ -41,6 +41,43 @@ func (s *Server) mountProviders(mux *http.ServeMux) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
+	mux.HandleFunc("POST /api/nodes/{node}/accounts", here(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Driver string `json:"driver"`
+			Name   string `json:"name"`
+			Home   string `json:"home"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		a, err := s.Runtime.AddAccount(r.Context(), body.Driver, body.Name, body.Home)
+		if err != nil {
+			writeAccountError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, a)
+	}))
+	mux.HandleFunc("PUT /api/nodes/{node}/accounts/{id}", here(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Name string `json:"name"`
+			Home string `json:"home"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		if err := s.Runtime.UpdateAccount(r.Context(), r.PathValue("id"), body.Name, body.Home); err != nil {
+			writeAccountError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	mux.HandleFunc("DELETE /api/nodes/{node}/accounts/{id}", here(func(w http.ResponseWriter, r *http.Request) {
+		if err := s.Runtime.RemoveAccount(r.PathValue("id")); err != nil {
+			writeAccountError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
 	mux.HandleFunc("POST /api/nodes/{node}/providers/{id}/{kind}", here(func(w http.ResponseWriter, r *http.Request) {
 		job, err := s.Runtime.StartJob(r.PathValue("id"), r.PathValue("kind"))
 		if err != nil {
@@ -82,4 +119,12 @@ func (s *Server) mountProviders(mux *http.ServeMux) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
+}
+
+func writeAccountError(w http.ResponseWriter, err error) {
+	if errors.Is(err, runtime.ErrAccount) {
+		writeError(w, http.StatusBadRequest, "invalid_account", err.Error())
+		return
+	}
+	writeDataError(w, err)
 }

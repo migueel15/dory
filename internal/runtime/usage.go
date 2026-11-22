@@ -27,7 +27,7 @@ const usageTimeout = 45 * time.Second
 func (c Claude) Usage(ctx context.Context) ([]Window, error) {
 	request := `{"type":"control_request","request_id":"dory-usage","request":{"subtype":"get_usage"}}`
 	var out []Window
-	err := ask(ctx, cmdexec.Command(c.bin(), "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"), []string{request},
+	err := ask(ctx, withEnv(cmdexec.Command(c.bin(), "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"), c.Environ()), []string{request},
 		func(line []byte) (bool, error) {
 			var msg struct {
 				Type     string `json:"type"`
@@ -76,7 +76,7 @@ func (c Codex) Usage(ctx context.Context) ([]Window, error) {
 		ResetsAt           int64   `json:"resetsAt"`
 	}
 	var out []Window
-	err := ask(ctx, cmdexec.Command(c.bin(), "app-server"), requests, func(line []byte) (bool, error) {
+	err := ask(ctx, withEnv(cmdexec.Command(c.bin(), "app-server"), c.Environ()), requests, func(line []byte) (bool, error) {
 		var msg struct {
 			ID     int                       `json:"id"`
 			Error  *struct{ Message string } `json:"error"`
