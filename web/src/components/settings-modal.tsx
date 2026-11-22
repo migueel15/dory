@@ -63,7 +63,7 @@ const OPTIONS: Record<string, string[]> = {
   shortcuts: commands.map((c) => c.label),
   dictation: ["Dictado local", "Modelos de dictado", "Vista previa en directo", "Transcribe al terminar", "Descargar modelo"],
   notices: ["Avisos", "Notificaciones push", "Siempre push", "Solo en la app", "Automático", "Desactivado"],
-  connections: ["Entornos", "Nodos", "Emparejar", "Nodos encontrados en la red", "mDNS", "Activar o desactivar un nodo", "Eliminar nodo"],
+  connections: ["Conexiones", "Entornos", "Añadir conexión", "En tu red", "Mostrar código", "Conectar por dirección", "Actualizar todo", "Buscar actualizaciones", "Desactivar", "Eliminar", "Móviles"],
   providers: ["Cuentas", "Añadir cuenta", "Nombre visible", "Carpeta de configuración", "Iniciar sesión", "Claude Code", "Codex", "OpenCode"],
   threads: ["Modelo por defecto", "Modelo de respaldo", "Workspace por defecto", "Rama actual (checkout)", "Nuevo worktree", "Archivar hilos al mergear su rama"],
   skills: ["Skills del sistema", "Conflictos de skills"],

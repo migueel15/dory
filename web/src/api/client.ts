@@ -142,6 +142,7 @@ export const api = {
   mesh: () => req<Mesh>("GET", "/mesh"),
   meshUpdates: (fresh = false) => req<NodeUpdate[]>("GET", fresh ? "/mesh/update?fresh=1" : "/mesh/update"),
   updateMesh: (opts: { providers: boolean; force: boolean }) => req<NodeUpdate[]>("POST", "/mesh/update", opts),
+  updateNode: (node: string, opts: { providers: boolean; force: boolean }) => req<UpdateStatus>("POST", `/nodes/${node}/update`, opts),
   pairCode: () => req<{ code: string; expires_at: string; fingerprint: string; port: number }>("POST", "/mesh/pair/code"),
   pair: (address: string, code: string) => req<Peer>("POST", "/mesh/pair", { address, code }),
   revokePeer: (id: string) => req<void>("DELETE", `/mesh/peers/${id}`),
