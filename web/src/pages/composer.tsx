@@ -17,6 +17,7 @@ import { askAnswerText, openAsk, QuestionPanel, useQuestionFlow } from "../compo
 import { useCommand, useShortcuts } from "../components/shortcuts";
 import { formatChord } from "../components/dictation-shortcut";
 import { autoMessage } from "../lib/auto-message";
+import { useComposerFiles } from "../components/composer-files";
 import { paintTokens, quoteBlock, quoteLabel, tokenRanges, type Token, type Tokens } from "../components/composer-tokens";
 
 // The composer of a thread, kept from Dory v1: attachments, @ mentions of
@@ -266,8 +267,6 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
   );
 }
 
-type Draft = { key: string; name: string; mime: string; preview: string; done?: Attachment; error?: string };
-
 export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   t: ThreadView;
   onSent: () => void;
@@ -283,8 +282,9 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   const dictation = useLocalDictation(text, setText, area, { panelShortcut: true, onEnter: (draft) => latestSendDraft.current(draft) });
   const showingDictation = !!dictation.preview;
   const dictating = useDictationInProgress();
-  const picker = useRef<HTMLInputElement>(null);
-  const [files, setFiles] = useState<Draft[]>([]);
+  // Each file uploads as soon as it is added; the message carries the results.
+  const attach = useComposerFiles((file) => api.upload(t.id, file));
+  const files = attach.files;
   const quoteList = useRef<HTMLUListElement>(null);
   const codeTip = useCodeTip();
   const latestQuote = quotes.at(-1)?.id;
@@ -292,7 +292,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
     const list = quoteList.current;
     if (list) list.scrollTop = list.scrollHeight;
   }, [latestQuote]);
-  const uploading = files.some((f) => !f.done && !f.error);
+  const uploading = attach.uploading;
   useLayoutEffect(() => { const el = area.current; if (el && !showingDictation) { el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 240)}px`; } }, [dictation.value, showingDictation]);
   // Picked /commands, $skills and @files are tokens in the draft text.
   // The token reference preserves the full path of a selected file.
@@ -362,20 +362,6 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
     requestAnimationFrame(() => el.setSelectionRange(from, from));
     return true;
   };
-  // Each file uploads as soon as it is added; the message carries the results.
-  const addFiles = (list: FileList | File[]) => {
-    for (const file of Array.from(list)) {
-      const k = uuid();
-      const named = file.name ? file : new File([file], `imagen-${new Date().toISOString().slice(11, 19).replace(/:/g, "")}.png`, { type: file.type });
-      const preview = URL.createObjectURL(named);
-      setFiles((fs) => [...fs, { key: k, name: named.name, mime: named.type, preview }]);
-      api.upload(t.id, named).then(
-        (done) => setFiles((fs) => fs.map((f) => (f.key === k ? { ...f, done } : f))),
-        (e: unknown) => setFiles((fs) => fs.map((f) => (f.key === k ? { ...f, error: errMsg(e) || "No se pudo subir" } : f))),
-      );
-    }
-  };
-  const removeFile = (k: string) => setFiles((fs) => fs.filter((f) => { if (f.key === k) URL.revokeObjectURL(f.preview); return f.key !== k; }));
   const availableProviders = (providers.data ?? []).filter(usable);
   const currentProvider = availableProviders.find((p) => p.id === t.provider);
   const currentModel = findModel(currentProvider?.models ?? [], t.model);
@@ -397,8 +383,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
       setText("");
       setTokens({});
       onRemoveQuotes(quoteIds);
-      files.forEach((f) => URL.revokeObjectURL(f.preview));
-      setFiles([]);
+      attach.clear();
       onSent();
       qc.invalidateQueries({ queryKey: key });
     },
@@ -453,8 +438,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
     flow.answer(answer || "(ver adjuntos)", fileIds);
     setText("");
     setTokens({});
-    files.forEach((f) => URL.revokeObjectURL(f.preview));
-    setFiles([]);
+    attach.clear();
   };
   const sendDraft = (draft: string) => {
     if (asking) { answerDraft(draft); return; }
@@ -474,13 +458,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   return (
     <div className="mx-auto w-full max-w-[55.2rem] px-3 pb-4 pt-2 sm:px-6">
       <form data-quote-ui data-dictation-panel data-unsaved-draft={!!text.trim() || files.length > 0 || quotes.length > 0 || dictation.active} onSubmit={(e) => { e.preventDefault(); submit(); }}
-        onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
-        onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); addFiles(e.dataTransfer.files); } }}
-        onPaste={(e) => {
-          // Screenshots often come only as clipboard items, not in .files.
-          const fs = Array.from(e.clipboardData.items).flatMap((i) => { const f = i.kind === "file" ? i.getAsFile() : null; return f ? [f] : []; });
-          if (fs.length) { e.preventDefault(); addFiles(fs); }
-        }}
+        {...attach.formProps}
         className={composerFrame}>
         {asking && <QuestionPanel flow={flow} busy={reply.isPending} error={reply.error} />}
         {!dictation.active && suggest.menu}
@@ -507,20 +485,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
             ))}
           </ul>
         )}
-        {files.length > 0 && (
-          <div className="flex flex-wrap gap-2 px-3 pt-3">
-            {files.map((f) => (
-              <div key={f.key} title={f.error ?? f.name} className={`group relative size-14 shrink-0 overflow-hidden rounded-xl border bg-slate-50 dark:bg-raised ${f.error ? "border-red-400" : "border-slate-200 dark:border-border"}`}>
-                <a href={f.preview} target="_blank" rel="noreferrer" aria-label={`Ver ${f.name}`} className="block size-14 cursor-zoom-in">
-                  {f.mime.startsWith("image/") ? <img src={f.preview} alt="" className="size-14 shrink-0 object-cover" /> : <span className="grid size-14 shrink-0 place-items-center text-slate-400"><FileText className="size-6" /></span>}
-                </a>
-                {f.error && <span className="absolute inset-x-0 bottom-0 bg-red-500 text-center text-[0.5625rem] font-medium text-white">Error</span>}
-                {!f.done && !f.error && <span className="absolute inset-0 grid place-items-center bg-white/60 dark:bg-black/40"><span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /></span>}
-                <button type="button" onClick={() => removeFile(f.key)} aria-label={`Quitar ${f.name}`} className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-slate-900/70 text-white transition-opacity hover:bg-slate-900 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"><X weight="regular" className="size-3" /></button>
-              </div>
-            ))}
-          </div>
-        )}
+        {attach.tray}
         <div className="relative">
           {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} format={(part) => paintTokens(part, tokens)} />}
           {/* Tokens show as objects: this layer paints the text under a see-through textarea, glyph for glyph, so the caret stays aligned. */}
@@ -549,11 +514,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
         </div>
         <div className="flex items-center gap-0.5 px-2 pb-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
-            <input ref={picker} type="file" multiple hidden onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
-            <button type="button" onClick={() => picker.current?.click()} title="Adjuntar imágenes o ficheros" aria-label="Adjuntar"
-              className={iconButton}>
-              <Paperclip weight="regular" className="size-4" />
-            </button>
+            {attach.attachButton}
             <ModelPicker models={modelOptions} providers={pickerProviders} selected={JSON.stringify([t.provider, selectedModel])} effort={t.effort}
               modelId={t.reported_settings?.model ?? selectedModel} reportedEffort={t.reported_settings?.effort}
               effortsOf={(value) => {
