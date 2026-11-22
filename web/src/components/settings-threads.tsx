@@ -17,18 +17,17 @@ export function ThreadsSettings({ node }: SectionProps) {
   const list = (providers.data ?? []).map((p) => ({ ...p, models: explicitModels(p.models) })).filter((p) => p.models.length > 0);
   const threads = { ...EMPTY, ...settings.get("threads") };
   const disabled = !settings.loaded || settings.pending;
-  const patch = (change: Partial<ThreadDefaults>) => settings.set({ threads: { ...threads, ...change } } as Partial<NodeSettings>);
-
+  
   const modelPicker = (field: "default_model" | "fallback_model", title: string, help: ReactNode) => {
     const choice = threads[field];
     const provider = list.find((p) => p.id === choice.provider);
     const model = provider && findModel(provider.models, choice.model);
-    const setChoice = (next: ModelChoice) => patch({ [field]: next });
+    const setChoice = (next: ModelChoice) => settings.setPath(["threads", field], next);
     return (
       <div className="space-y-1.5 text-sm">
         <div className="flex items-start gap-3">
           <span className="min-w-0 flex-1"><strong className="block font-medium">{title}</strong><span className="text-slate-600 dark:text-muted">{help}</span></span>
-          <NodeDiff settings={settings} field="threads" format={(v) => { const c = (v as ThreadDefaults | undefined)?.[field]; return c?.provider ? `${c.provider} · ${c.model}${c.effort ? ` · ${c.effort}` : ""}` : "sin definir"; }} />
+          <NodeDiff settings={settings} field={["threads", field]} format={(v) => { const c = v as ModelChoice | undefined; return c?.provider ? `${c.provider} · ${c.model}${c.effort ? ` · ${c.effort}` : ""}` : "sin definir"; }} />
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
           <Select disabled={disabled} value={choice.provider} placeholder="Sin definir" onChange={(v) => {
@@ -51,8 +50,8 @@ export function ThreadsSettings({ node }: SectionProps) {
       {modelPicker("fallback_model", "Modelo de respaldo", "Se usa si el modelo por defecto no está disponible: el proveedor no está instalado o con sesión, o falla al arrancar el hilo.")}
       <div className="flex items-start gap-3 text-sm">
         <span className="min-w-0 flex-1"><strong className="block font-medium">Workspace por defecto</strong><span className="text-slate-600 dark:text-muted">Dónde empiezan los hilos nuevos de un proyecto. Puedes cambiarlo al crear cada hilo.</span></span>
-        <div className="w-56 shrink-0"><Select disabled={disabled} value={threads.default_workspace || "checkout"} onChange={(v) => patch({ default_workspace: v as ThreadDefaults["default_workspace"] })} options={WORKSPACES} /></div>
-        <NodeDiff settings={settings} field="threads" format={(v) => (v as ThreadDefaults | undefined)?.default_workspace || "checkout"} />
+        <div className="w-56 shrink-0"><Select disabled={disabled} value={threads.default_workspace || "checkout"} onChange={(v) => settings.setPath(["threads", "default_workspace"], v)} options={WORKSPACES} /></div>
+        <NodeDiff settings={settings} field={["threads", "default_workspace"]} format={(v) => (v as string | undefined) || "checkout"} />
       </div>
       <SettingRow settings={settings} field="archive_threads_on_finish" title="Archivar hilos al mergear su rama"
         help="Cuando la pull request de la rama de un hilo se mergea (o la tarea se cierra o cancela), se archivan los hilos de esa tarea y se detienen los que estén en marcha." />
