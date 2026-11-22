@@ -445,7 +445,6 @@ func (s *Server) taskPrompt(ctx context.Context, t data.Task) string {
 	if accepted != nil {
 		fmt.Fprintf(&b, "\nPlan aceptado:\n\n%s\n", planMarkdown(*accepted))
 	}
-	b.WriteString("\nUsa el MCP de Dory para leer el contexto del proyecto y guardar lo que aprendas.\n")
 	return autoMessage("implement", map[string]string{"task": t.ID, "title": t.Title, "branch": t.Branch, "issue": issue}, b.String(), "")
 }
 

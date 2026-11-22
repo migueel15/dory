@@ -11,12 +11,14 @@ type instructionSection struct {
 }
 
 var instructionSections = []instructionSection{
-	{[]string{"session_start", "ensure_thread_task", "get_task", "plan_read"}, `## Tasks and plans
-- Dory is the source of truth for projects, tasks, plans and memories. Read and write them with Dory tools, not in files.
-- For project work, call session_start first. Call ensure_thread_task before you write a plan.
-- Write a task's plan with plan_write or plan_edit, never as a plan file. After changing a task or plan, confirm it with get_task or plan_read.`},
+	{[]string{"search", "ensure_thread_task", "save_task", "plan_write"}, `## Tasks and plans
+- Dory is the source of truth for tasks, plans and memories; never keep them in files. Read only what the next step needs.
+- To work on a task, find an existing one with search, then link or create it with ensure_thread_task. Write its plan with plan_write or plan_edit, never as a plan file.
+- Write to Dory only when the work changes state: agreed scope, plan, issue or pull request, cancellation. A write's answer confirms it; do not read it back.
+- A task with a pull request is done when it is merged; do not mark it done yourself.`},
 	{[]string{"remember", "recall"}, `## Memories
-- Save durable decisions and findings with remember, with a kind and a short title. Look for earlier ones with recall. Use them instead of your own memory files.`},
+- Before a design decision or when you touch an area with history, recall a few memories by text and project. Do not load memories otherwise.
+- Remember only decisions the user agreed and lessons you verified that the code and git history do not tell, with a kind and a short title. Update an outdated memory by id. Use them instead of your own memory files.`},
 	{[]string{"subagent_spawn", "subagent_status", "subagent_cancel"}, `## Subagents
 - Use subagent_spawn instead of your native subagent tool (Agent, Task, spawn_agent), so the user can follow the child in Dory.
 - Do not poll subagent_status, sleep or loop: the child's end wakes you. Cancel a child you no longer need with subagent_cancel.
