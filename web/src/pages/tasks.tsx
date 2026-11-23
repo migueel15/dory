@@ -19,6 +19,7 @@ import { IdeaModal } from "../components/capture";
 import { TaskQuickMenu, type QuickLaunch } from "../components/task-quick-menu";
 import { githubRoute } from "../components/refs";
 import { planMessage } from "../lib/auto-message";
+import { isUnread } from "./threads";
 
 // Fixed meaning of each state color (requirement RF-48).
 const TONE = {
@@ -330,14 +331,14 @@ function ThreadRow({ threads }: { threads: Thread[] }) {
       <Link to="/threads/$threadId" params={{ threadId: t.id }} title={t.title} draggable={false} className={`${link} rounded-md border border-slate-200 px-1.5 py-0.5 hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/5`}>
         <ThreadEnv nodeId={t.node_id} className="size-3 shrink-0" />
         <span className="min-w-0 truncate">{t.model || t.provider}</span>
-        <ThreadDot status={t.status} />
+        <ThreadDot t={t} />
       </Link>
       {sorted.length > 1 && (<>
         <button type="button" popoverTarget={id} onClick={place} aria-label={`Ver los ${sorted.length} hilos`} className="rounded-md px-1.5 py-0.5 font-medium text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-white/5">+{sorted.length - 1}</button>
         <div ref={menu} id={id} popover="auto" role="menu" className="fixed m-0 w-72 rounded-xl border border-slate-200 bg-white p-1 text-slate-900 shadow-xl dark:border-border-strong dark:bg-surface dark:text-white">
           {sorted.map((x) => (
             <Link key={x.id} to="/threads/$threadId" params={{ threadId: x.id }} role="menuitem" className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm text-inherit no-underline hover:bg-slate-100 dark:hover:bg-raised">
-              <ThreadDot status={x.status} />
+              <ThreadDot t={x} />
               <ThreadEnv nodeId={x.node_id} className="size-4 shrink-0" />
               <span className="min-w-0 flex-1"><span className="block truncate">{x.model || x.provider}</span><span className="block truncate text-xs text-slate-500 dark:text-muted">{x.title || "Hilo"}</span></span>
               <span className="shrink-0 text-xs text-slate-500 dark:text-muted">{ago(linkedAt(x))}</span>
@@ -386,10 +387,12 @@ function TaskCard({ c, onOpen, onDrag, onMenu }: { c: Card; onOpen: () => void; 
 }
 
 // ThreadDot is the v1 colored dot of a thread's state.
-function ThreadDot({ status }: { status: string }) {
+function ThreadDot({ t }: { t: Thread }) {
+  const status = t.status;
   const d = status === "error" ? { label: "Error", color: "bg-red-500", pulse: false }
     : status === "waiting" ? { label: "Te necesita", color: "bg-amber-500", pulse: true }
     : status === "working" ? { label: "Trabajando", color: "bg-blue-500", pulse: true }
+    : isUnread(t) ? { label: "Terminado, sin leer", color: "bg-emerald-500", pulse: false }
     : { label: "Inactivo", color: "bg-slate-400", pulse: false };
   return <span role="img" title={d.label} aria-label={d.label} className={`size-2 shrink-0 rounded-full ${d.color} ${d.pulse ? "motion-safe:animate-pulse" : ""}`} />;
 }
@@ -770,7 +773,7 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
             {!c.threads.length && <p className="px-2 text-sm text-slate-500 dark:text-muted">Aún no hay hilos. Se crean al definir el plan o implementar.</p>}
             {c.threads.map((t) => (
               <Link key={t.id} to="/threads/$threadId" params={{ threadId: t.id }} className={`${row} gap-3`}>
-                <ThreadDot status={t.status} />
+                <ThreadDot t={t} />
                 <span className="min-w-0 flex-1 truncate" title={t.title}>{t.title || "Hilo"}</span>
                 <span role="img" aria-label={t.provider} title={t.provider} className="shrink-0">
                   <ModelLogo driver={t.provider} compact />
