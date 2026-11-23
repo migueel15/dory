@@ -66,6 +66,9 @@ type Manager struct {
 
 	mu      sync.Mutex
 	running map[string]context.CancelFunc
+	// turnEnded is when the last turn of Dory ended, by thread: the session
+	// file it wrote up to then is already shown and needs no resync.
+	turnEnded map[string]time.Time
 	// sessions holds the open turn of interactive harnesses, by thread.
 	sessions map[string]Session
 	queues   map[string][]Queued
@@ -98,7 +101,7 @@ type Manager struct {
 
 func NewManager(db *sql.DB, store *data.Store, node, dataDir string, providers ...Provider) *Manager {
 	m := &Manager{db: db, store: store, node: node, dataDir: dataDir, providers: map[string]Provider{},
-		running: map[string]context.CancelFunc{}, sessions: map[string]Session{}, queues: map[string][]Queued{}, subs: map[chan Update]string{}, usage: map[string][]Window{}, asked: map[string]bool{}, steering: map[string]bool{}, pending: map[string]ThreadSettings{}}
+		running: map[string]context.CancelFunc{}, turnEnded: map[string]time.Time{}, sessions: map[string]Session{}, queues: map[string][]Queued{}, subs: map[chan Update]string{}, usage: map[string][]Window{}, asked: map[string]bool{}, steering: map[string]bool{}, pending: map[string]ThreadSettings{}}
 	for _, p := range providers {
 		m.providers[p.ID()] = p
 	}
@@ -416,6 +419,7 @@ func (m *Manager) SendFrom(ctx context.Context, id, sender, text string, files .
 		cancel()
 		m.mu.Lock()
 		delete(m.running, id)
+		m.turnEnded[id] = time.Now()
 		m.mu.Unlock()
 		return err
 	}
@@ -711,6 +715,7 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 	}
 	if q.RunID == "" {
 		delete(m.running, t.ID)
+		m.turnEnded[t.ID] = time.Now()
 	}
 	remaining := append([]Queued{}, m.queues[t.ID]...)
 	var configured error
@@ -735,6 +740,7 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 		if err != nil {
 			m.mu.Lock()
 			delete(m.running, t.ID)
+			m.turnEnded[t.ID] = time.Now()
 			m.setStatusLocked(bg, t.ID, "error", err.Error())
 			m.mu.Unlock()
 		}
@@ -1149,6 +1155,14 @@ func (m *Manager) Follow(ctx context.Context, p Paths) {
 			}
 			first := seen[l.thread].IsZero()
 			seen[l.thread] = st.ModTime()
+			// What a turn of Dory wrote is already in the thread: only changes
+			// made outside Dory (the harness's own terminal) are synced.
+			m.mu.Lock()
+			ended := m.turnEnded[l.thread]
+			m.mu.Unlock()
+			if !ended.IsZero() && !st.ModTime().After(ended.Add(5*time.Second)) {
+				continue
+			}
 			// On start, only threads whose file changed after their last activity are rebuilt.
 			if first {
 				var last sql.NullString
