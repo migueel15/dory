@@ -175,14 +175,12 @@ public class DoryPlugin extends Plugin {
         getActivity().runOnUiThread(() -> {
             if (!isLauncher()) { call.reject("Abre el selector de entornos."); return; }
             try {
-                if (Build.VERSION.SDK_INT >= 29) {
-                    RoleManager roles = getContext().getSystemService(RoleManager.class);
-                    if (roles != null && roles.isRoleAvailable(RoleManager.ROLE_ASSISTANT)
-                        && !roles.isRoleHeld(RoleManager.ROLE_ASSISTANT)) {
-                        getActivity().startActivity(roles.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT));
-                        call.resolve();
-                        return;
-                    }
+                // Apps cannot request ROLE_ASSISTANT; open the system digital assistant screen instead.
+                try {
+                    getActivity().startActivity(new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS));
+                    call.resolve();
+                    return;
+                } catch (Exception ignored) {
                 }
                 getActivity().startActivity(new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS));
                 call.resolve();
@@ -190,6 +188,19 @@ public class DoryPlugin extends Plugin {
                 call.reject("No se pudo abrir la configuración del asistente.");
             }
         });
+    }
+
+    @PluginMethod
+    public void appVersion(PluginCall call) {
+        try {
+            android.content.pm.PackageInfo info = getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0);
+            JSObject result = new JSObject();
+            result.put("name", info.versionName);
+            result.put("build", Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode);
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("No se pudo leer la versión.");
+        }
     }
 
     @PluginMethod
