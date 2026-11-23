@@ -282,9 +282,10 @@ func (m *Manager) frame(p *page, params json.RawMessage) {
 	}()
 }
 
-// attachDesktop moves a tab to the native view of a desktop client. While
-// the agent is in a turn the tab stays where it is and the client watches it
-// as a screencast.
+// attachDesktop moves a tab to the native view of a desktop client, also in
+// the middle of a turn: whoever looks at a tab sees it native and sharp, and
+// the agent's next actions go to that view. The page reloads its address
+// there, so state the agent left unsaved in the headless page is lost.
 func (m *Manager) attachDesktop(c *Client, tabID string, width, height int, scale float64) error {
 	t, err := m.tab(c.ctx, c.thread, tabID)
 	if err != nil {
@@ -300,15 +301,10 @@ func (m *Manager) attachDesktop(c *Client, tabID string, width, height int, scal
 			return nil
 		}
 	}
-	busy := p != nil && p.backend == "node" && m.Busy != nil && m.Busy(c.thread)
-	if !busy && p != nil {
+	if p != nil {
 		delete(m.live, t.ID)
 	}
 	m.mu.Unlock()
-	if busy {
-		c.send(map[string]any{"t": "busy", "tab": t.ID})
-		return m.startCast(c, t.ID, width, height, scale)
-	}
 	if p != nil {
 		if dt, ok := p.target.(*desktopTarget); ok {
 			dt.c.send(map[string]any{"t": "detach", "tab": t.ID})

@@ -52,9 +52,6 @@ type Manager struct {
 	Profile string
 	// Changed tells the clients of the node that a thread's browser changed.
 	Changed func(threadID string)
-	// Busy tells whether the agent of a thread is in a turn; a tab does not
-	// move between engines then.
-	Busy func(threadID string) bool
 
 	mu      sync.Mutex
 	openMu  sync.Mutex

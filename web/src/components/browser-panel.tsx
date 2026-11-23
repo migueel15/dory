@@ -132,10 +132,6 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
           case "frame": setFrame({ tab: m.tab, src: `data:image/jpeg;base64,${m.data}`, w: m.w, h: m.h }); break;
           case "agent": setAgentAt({ tab: m.tab, at: Date.now() }); break;
           case "error": setError(m.message); setTimeout(() => setError(""), 5000); break;
-          case "busy":
-            // The agent is in a turn: watch the node's page and ask again soon.
-            setTimeout(() => { if (activeRef.current?.id === m.tab) send({ t: "view", tab: m.tab, ...size() }); }, 3000);
-            break;
           case "attach": {
             if (!b || !view.current) return;
             if (nativeView.current?.tab !== m.tab) releaseView();

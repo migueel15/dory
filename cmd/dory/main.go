@@ -167,7 +167,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	srv.Remote = net
 	rt.PeerComplete = srv.CompleteOnPeer
 	srv.MeshPort = cfg.MeshPort
-	srv.Browser = &browser.Manager{DB: store.DB(), Profile: filepath.Join(cfg.DataDir, "browser-profile"), Busy: rt.Running,
+	srv.Browser = &browser.Manager{DB: store.DB(), Profile: filepath.Join(cfg.DataDir, "browser-profile"),
 		Changed: func(id string) { events.Changed("browser", id) }}
 	go srv.Browser.Run(ctx)
 	notices.Columns = srv.TaskColumns
