@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
 import { useCommand } from "../components/shortcuts";
 import { hasWindowClose } from "../lib/window-close";
 import { PlanDoc } from "../components/plan-doc";
@@ -201,9 +201,20 @@ function ThreadConversation({ threadId }: { threadId: string }) {
   }, [quotes.length]);
   const quote = (text: string, reply: string) => addDraftQuote(threadId, { id: uuid(), text, reply });
   const removeQuotes = (ids: string[]) => removeDraftQuotes(threadId, ids);
+  // Entering the chat with the pointer takes the keyboard to its box, so
+  // dictation and Enter work without a click after the side panels.
+  const takeFocus = (e: ReactMouseEvent<HTMLElement>) => {
+    const box = composerInput.current;
+    if (!box || document.querySelector('dialog[open],[role=dialog],[role=alertdialog],[role=menu],[role=listbox]')) return;
+    const current = document.activeElement;
+    if (current && current !== document.body && e.currentTarget.contains(current)) return;
+    if (window.getSelection()?.toString()) return;
+    void window.doryDesktop?.browser?.focusUI?.();
+    box.focus({ preventScroll: true });
+  };
   if (view.error) return <div className="p-4"><ErrorText error={view.error} /></div>;
   return (
-    <section className="relative flex min-h-0 flex-1 flex-col">
+    <section className="relative flex min-h-0 flex-1 flex-col" onMouseEnter={takeFocus}>
       {t?.local && <QuoteSelection onQuote={quote} />}
       {/* No divider under the header: the conversation fades out as it scrolls under it. */}
       <div aria-hidden="true" className="pointer-events-none absolute left-0 right-3 top-0 z-10 h-10 bg-gradient-to-b from-slate-50 to-transparent dark:from-canvas" />

@@ -9,6 +9,10 @@ declare global {
     show(tab: string, url: string, bounds: Bounds): Promise<void>;
     bounds(tab: string, bounds: Bounds, visible: boolean): Promise<void>;
     hide(tab: string): Promise<void>;
+    // Optional: older desktop builds lack them.
+    park?(tab: string): Promise<void>;
+    focusUI?(): Promise<void>;
+    onKey?(cb: (tab: string, key: string) => void): () => void;
     cdp(tab: string, method: string, params: unknown): Promise<unknown>;
     onEvent(cb: (tab: string, method: string, params: unknown) => void): () => void;
     onOpen(cb: (tab: string, url: string) => void): () => void;

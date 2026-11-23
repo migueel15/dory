@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type WheelEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type RefObject, type MouseEvent, type WheelEvent } from "react";
 import { ArrowClockwise, ArrowLeft, ArrowRight, Browser, HandPointing, Plus, Robot, X } from "@phosphor-icons/react";
 import { req } from "../api/client";
 import { showPanelTab } from "./side-panel";
@@ -84,14 +84,23 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
   const activeRef = useRef(active);
   activeRef.current = active;
   const send = (m: Record<string, unknown>) => { if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify(m)); };
-  const size = () => { const r = view.current?.getBoundingClientRect(); return { width: Math.round(r?.width ?? 0), height: Math.round(r?.height ?? 0) }; };
-  const releaseView = (tab?: string) => {
+  const size = () => { const r = view.current?.getBoundingClientRect(); return { width: Math.round(r?.width ?? 0), height: Math.round(r?.height ?? 0), scale: window.devicePixelRatio || 1 }; };
+  // Native views of tabs left behind stay parked with their page, so coming
+  // back to a tab keeps its scroll and state; they close with their tab.
+  const parked = useRef(new Set<string>());
+  const dropView = (tab: string) => { parked.current.delete(tab); void desktop()?.hide(tab); };
+  const releaseView = (tab?: string, drop = false) => {
     const current = nativeView.current;
     if (!current || (tab !== undefined && current.tab !== tab)) return;
     nativeView.current = null;
-    if (current.shown) void desktop()?.hide(current.tab);
     setAttached(null);
+    if (!current.shown) return;
+    const b = desktop();
+    if (drop || !b?.park) { dropView(current.tab); send({ t: "release", tab: current.tab }); return; }
+    parked.current.add(current.tab);
+    void b.park(current.tab);
   };
+  const dropAll = () => { releaseView(undefined, true); for (const tab of [...parked.current]) dropView(tab); };
 
   useEffect(() => {
     const b = desktop();
@@ -106,14 +115,20 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
       s.onclose = () => {
         if (closed) return;
         setConnected(false);
-        releaseView();
+        dropAll();
         retry = setTimeout(connect, 2000);
       };
       s.onmessage = async (e) => {
         if (closed) return;
         const m = JSON.parse(e.data as string);
         switch (m.t) {
-          case "state": setState(m.state); break;
+          case "state": {
+            const st = m.state as BrowserState;
+            const ids = new Set(st.tabs.map((t) => t.id));
+            for (const tab of [...parked.current]) if (!ids.has(tab)) dropView(tab);
+            setState(st);
+            break;
+          }
           case "frame": setFrame({ tab: m.tab, src: `data:image/jpeg;base64,${m.data}`, w: m.w, h: m.h }); break;
           case "agent": setAgentAt({ tab: m.tab, at: Date.now() }); break;
           case "error": setError(m.message); setTimeout(() => setError(""), 5000); break;
@@ -125,6 +140,7 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
             if (!b || !view.current) return;
             if (nativeView.current?.tab !== m.tab) releaseView();
             const attachment = { tab: m.tab, shown: nativeView.current?.shown ?? false };
+            parked.current.delete(m.tab);
             nativeView.current = attachment;
             const port = loopbackPort(m.url);
             if (remote && port) {
@@ -143,7 +159,7 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
             send({ t: "ready", tab: m.tab });
             break;
           }
-          case "detach": releaseView(m.tab); break;
+          case "detach": releaseView(m.tab, true); dropView(m.tab); break;
           case "cdp":
             b?.cdp(m.tab, m.method, m.params)
               .then((result) => send({ t: "cdp_result", tab: m.tab, id: m.id, result }))
@@ -162,7 +178,7 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
       closed = true;
       clearTimeout(retry);
       offs.forEach((f) => f());
-      releaseView();
+      dropAll();
       ws.current?.close();
     };
   }, [threadId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -234,26 +250,42 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
     return () => { ro.disconnect(); clearTimeout(t); };
   }, [activeId, attached]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Ctrl+T, Ctrl+W and Ctrl+L act on the browser, from the panel or its page.
+  const urlInput = useRef<HTMLInputElement>(null);
+  const shortcut = (key: string) => {
+    const tab = activeRef.current;
+    if (key === "t") send({ t: "open", url: "about:blank", new: true });
+    else if (key === "w") { if (tab) send({ t: "close", tab: tab.id }); }
+    else if (key === "l") { void desktop()?.focusUI?.(); setTimeout(() => urlInput.current?.focus(), 0); }
+    else return false;
+    return true;
+  };
+  useEffect(() => desktop()?.onKey?.((_tab, key) => { shortcut(key); }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const onPanelKey = (e: KeyboardEvent) => {
+    if (e.altKey || e.shiftKey || !(navigator.platform.startsWith("Mac") ? e.metaKey : e.ctrlKey)) return;
+    if (shortcut(e.key.toLowerCase())) { e.preventDefault(); e.stopPropagation(); }
+  };
+
   const [now, setNow] = useState(Date.now());
   useEffect(() => { if (!agentAt) return; const t = setTimeout(() => setNow(Date.now()), 4000); return () => clearTimeout(t); }, [agentAt]);
   const agentOn = (tab: string) => agentAt?.tab === tab && Math.max(now, Date.now()) - agentAt.at < 4000;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col" onKeyDownCapture={onPanelKey}>
       <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-slate-200 px-2 py-1 dark:border-border">
         {state.tabs.map((t) => (
           <div key={t.id} className={`group flex max-w-48 shrink-0 items-center rounded-md text-xs ${t.active ? "bg-slate-100 font-medium dark:bg-raised" : "text-slate-500 hover:bg-slate-50 dark:text-muted dark:hover:bg-raised/60"}`}>
-            <button type="button" onClick={() => send({ t: "activate", tab: t.id })} title={t.url} className="flex min-w-0 items-center gap-1.5 py-1 pl-2 pr-1">
+            <button type="button" onClick={() => send({ t: "activate", tab: t.id })} title={t.url} className="flex min-w-0 items-center gap-1.5 py-1 pl-2 pr-1 outline-none focus-visible:outline-none">
               {agentOn(t.id) ? <Robot weight="fill" className="size-3.5 shrink-0 animate-pulse text-violet-500" aria-label="El agente está usando esta pestaña" /> : <Browser className="size-3.5 shrink-0" />}
               <span className="truncate">{t.title || t.url}</span>
             </button>
-            <button type="button" onClick={() => send({ t: "close", tab: t.id })} aria-label="Cerrar la pestaña" className="mr-1 grid size-4 place-items-center opacity-60 hover:opacity-100"><X className="size-3" /></button>
+            <button type="button" onClick={() => send({ t: "close", tab: t.id })} aria-label="Cerrar la pestaña" className="mr-1 grid size-4 place-items-center opacity-60 outline-none focus-visible:outline-none hover:opacity-100"><X className="size-3" /></button>
           </div>
         ))}
         <button type="button" onClick={() => send({ t: "open", url: "about:blank", new: true })} title="Nueva pestaña" aria-label="Nueva pestaña"
-          className="grid size-6 shrink-0 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white"><Plus className="size-3.5" /></button>
+          className="grid size-6 shrink-0 place-items-center text-slate-500 outline-none focus-visible:outline-none hover:text-slate-900 dark:text-muted dark:hover:text-white"><Plus className="size-3.5" /></button>
       </div>
-      {active && <AddressBar tab={active} userControl={state.user_control} send={send} />}
+      {active && <AddressBar tab={active} userControl={state.user_control} send={send} input={urlInput} />}
       {error && <p className="shrink-0 bg-amber-50 px-3 py-1 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">{error}</p>}
       <div ref={view} className="relative min-h-0 flex-1 bg-white dark:bg-[#1a1a1d]">
         {!active ? (
@@ -273,20 +305,20 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
   );
 }
 
-function AddressBar({ tab, userControl, send }: { tab: BrowserTab; userControl: boolean; send: (m: Record<string, unknown>) => void }) {
+function AddressBar({ tab, userControl, send, input }: { tab: BrowserTab; userControl: boolean; send: (m: Record<string, unknown>) => void; input: RefObject<HTMLInputElement | null> }) {
   const [url, setUrl] = useState(tab.url);
   const [editing, setEditing] = useState(false);
   useEffect(() => { if (!editing) setUrl(tab.url === "about:blank" ? "" : tab.url); }, [tab.url, editing]);
-  const btn = "grid size-7 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised";
+  const btn = "grid size-7 shrink-0 place-items-center text-slate-500 outline-none focus-visible:outline-none hover:text-slate-900 dark:text-muted dark:hover:text-white";
   return (
     <div className="flex shrink-0 items-center gap-1 border-b border-slate-200 px-2 py-1 dark:border-border">
       <button type="button" className={btn} onClick={() => send({ t: "nav", tab: tab.id, to: "back" })} aria-label="Atrás"><ArrowLeft className="size-3.5" /></button>
       <button type="button" className={btn} onClick={() => send({ t: "nav", tab: tab.id, to: "forward" })} aria-label="Adelante"><ArrowRight className="size-3.5" /></button>
       <button type="button" className={btn} onClick={() => send({ t: "nav", tab: tab.id, to: "reload" })} aria-label="Recargar"><ArrowClockwise className="size-3.5" /></button>
       <form className="min-w-0 flex-1" onSubmit={(e) => { e.preventDefault(); setEditing(false); if (url.trim()) send({ t: "open", tab: tab.id, url: url.trim() }); }}>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} onFocus={(e) => { setEditing(true); e.target.select(); }} onBlur={() => setEditing(false)}
+        <input ref={input} value={url} onChange={(e) => setUrl(e.target.value)} onFocus={(e) => { setEditing(true); e.target.select(); }} onBlur={() => setEditing(false)}
           placeholder="Escribe una dirección" spellCheck={false}
-          className="h-7 w-full rounded-md border border-slate-200 bg-transparent px-2 text-xs outline-none focus:border-slate-400 dark:border-border" />
+          className="h-7 w-full border-0 bg-transparent px-2 text-xs shadow-none outline-none focus-visible:outline-none ring-0 focus:outline-none focus-visible:outline-none focus:ring-0" />
       </form>
       <button type="button" onClick={() => send({ t: "control", on: !userControl })}
         title={userControl ? "Devolver el control al agente" : "Tomar el control: el agente podrá leer y capturar, pero no actuar"}

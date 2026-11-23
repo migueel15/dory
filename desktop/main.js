@@ -199,6 +199,14 @@ function browserView(tab, target) {
     if (win) win.webContents.send("browser:open", tab, next);
     return { action: "deny" };
   });
+  // Browser shortcuts typed in the page belong to the panel.
+  wc.on("before-input-event", (e, input) => {
+    if (input.type !== "keyDown" || input.alt || input.shift || !(process.platform === "darwin" ? input.meta : input.control)) return;
+    const key = String(input.key).toLowerCase();
+    if (!["t", "w", "l"].includes(key)) return;
+    e.preventDefault();
+    if (win) win.webContents.send("browser:key", tab, key);
+  });
   wc.debugger.attach("1.3");
   wc.debugger.on("message", (_e, method, params) => { if (win) win.webContents.send("browser:event", tab, method, params); });
   wc.debugger.on("detach", () => { if (win) win.webContents.send("browser:gone", tab); });
@@ -220,7 +228,9 @@ const rect = (b) => ({ x: Math.round(b.x), y: Math.round(b.y), width: Math.max(0
 
 ipcMain.handle("browser:show", (e, tab, target, bounds) => {
   if (!fromUI(e)) return;
-  browserView(tab, target).view.setBounds(rect(bounds));
+  const v = browserView(tab, target);
+  v.view.setBounds(rect(bounds));
+  v.view.setVisible(true);
 });
 ipcMain.handle("browser:bounds", (e, tab, bounds, visible) => {
   const v = fromUI(e) && views.get(tab);
@@ -229,6 +239,10 @@ ipcMain.handle("browser:bounds", (e, tab, bounds, visible) => {
   v.view.setVisible(visible !== false);
 });
 ipcMain.handle("browser:hide", (e, tab) => { if (fromUI(e)) dropView(tab); });
+// park hides a view and keeps its page, so coming back to the tab keeps it as it was.
+ipcMain.handle("browser:park", (e, tab) => { const v = fromUI(e) && views.get(tab); if (v) v.view.setVisible(false); });
+// focusUI gives the keyboard back to the interface from a page view.
+ipcMain.handle("browser:focus-ui", (e) => { if (fromUI(e)) win.webContents.focus(); });
 ipcMain.handle("browser:cdp", (e, tab, method, params) => {
   const v = fromUI(e) && views.get(tab);
   if (!v) throw new Error("no view");
