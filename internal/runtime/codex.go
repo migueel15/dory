@@ -137,7 +137,7 @@ func (p *codexParser) message(it codexItem, done bool) *Message {
 		m.Role, m.Title = "tool", it.Server+"."+it.Tool
 		m.Tool = &ToolCall{Kind: "mcp", Name: it.Tool, Server: it.Server, Tool: it.Tool}
 		if len(it.Arguments) > 0 && string(it.Arguments) != "null" {
-			m.Tool.Input = clip(string(it.Arguments), 4000)
+			m.Tool.Input = inputClip(it.Tool, string(it.Arguments))
 		}
 	case "web_search":
 		m.Role, m.Title, m.Detail = "tool", "Buscar en la web", it.Query

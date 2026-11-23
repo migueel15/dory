@@ -263,6 +263,15 @@ func short(s string, n int) string {
 	return s
 }
 
+// inputClip keeps a tool's arguments short, except render_html, whose page
+// travels in its arguments so the chat can show it.
+func inputClip(name, input string) string {
+	if name == "render_html" || strings.HasSuffix(name, "_render_html") {
+		return clip(input, 200_000+4000)
+	}
+	return clip(input, 4000)
+}
+
 // clip keeps at most n runes of s, all its lines included.
 func clip(s string, n int) string {
 	s = strings.TrimSpace(s)
