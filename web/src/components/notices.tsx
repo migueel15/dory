@@ -124,15 +124,33 @@ export function NoticeInbox() {
 // One id per loaded interface, so the mesh can tell open interfaces apart.
 const interfaceId = crypto.randomUUID();
 
+// idleAfter is how long without input before a focused interface counts as
+// unattended.
+const idleAfter = 2 * 60_000;
+
 // usePresence tells the node whether this interface is open and has the
 // focus. The node expires it if the heartbeat stops (a closed tab, a killed app).
 function usePresence() {
   useEffect(() => {
     const send = (state: string) => fetch("/api/presence", { method: "POST", credentials: "include", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: interfaceId, state }) }).catch(() => {});
-    const state = () => (document.visibilityState === "visible" && document.hasFocus() ? "focus" : "open");
-    const beat = () => send(state());
+    // Focus means the user is at this interface now: visible, focused and
+    // touched recently. A window left focused (the user walked away, the
+    // screen locked) stops counting, so the phone gets the notices again.
+    let last = Date.now();
+    let sent = "";
+    const state = () => (document.visibilityState === "visible" && document.hasFocus() && Date.now() - last < idleAfter ? "focus" : "open");
+    const beat = () => {
+      sent = state();
+      send(sent);
+    };
+    const active = () => {
+      last = Date.now();
+      if (sent !== state()) beat();
+    };
     beat();
     const id = setInterval(beat, 15_000);
+    const inputs = ["keydown", "pointerdown", "pointermove", "wheel", "touchstart"];
+    inputs.forEach((e) => window.addEventListener(e, active, { passive: true }));
     window.addEventListener("focus", beat);
     window.addEventListener("blur", beat);
     document.addEventListener("visibilitychange", beat);
@@ -140,6 +158,7 @@ function usePresence() {
     window.addEventListener("pagehide", leave);
     return () => {
       clearInterval(id);
+      inputs.forEach((e) => window.removeEventListener(e, active));
       window.removeEventListener("focus", beat);
       window.removeEventListener("blur", beat);
       document.removeEventListener("visibilitychange", beat);

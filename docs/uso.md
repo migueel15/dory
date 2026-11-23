@@ -98,7 +98,7 @@ Eventos que generan aviso: el agente terminó, el agente falló, un agente te ne
 
 Con el modo **Automático**:
 
-1. Si alguna interfaz de la malla tiene el foco (por ejemplo, Dory en el ordenador), el aviso sale solo dentro de esa app: el móvil y los navegadores no reciben notificación.
+1. Si alguna interfaz de la malla tiene el foco (por ejemplo, Dory en el ordenador), el aviso sale solo dentro de esa app: el móvil y los navegadores no reciben notificación. Una interfaz enfocada deja de contar tras 2 minutos sin teclado, ratón ni toques (te fuiste o se bloqueó la pantalla), y el móvil vuelve a avisar.
 2. Si ninguna tiene el foco, llega como notificación del sistema a todos tus dispositivos (otra ventana, el navegador en segundo plano, el móvil con la app cerrada) y por push a los navegadores suscritos.
 3. Con todo cerrado y sin push, el aviso espera en la bandeja.
 
