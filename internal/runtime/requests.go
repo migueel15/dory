@@ -35,7 +35,15 @@ func (m *Manager) Requests(ctx context.Context, thread string) ([]Request, error
 		if err = rows.Scan(&r.ID, &r.Kind, &r.MessageID, &qs, &r.CreatedAt); err != nil {
 			return nil, err
 		}
-		_ = json.Unmarshal([]byte(qs), &r.Questions)
+		if r.Kind == "secret" {
+			r.Secret = &SecretPrompt{}
+			_ = json.Unmarshal([]byte(qs), r.Secret)
+		} else {
+			_ = json.Unmarshal([]byte(qs), &r.Questions)
+		}
+		if r.Questions == nil {
+			r.Questions = []Question{}
+		}
 		out = append(out, r)
 	}
 	return out, rows.Err()
@@ -57,7 +65,7 @@ func (m *Manager) Answer(ctx context.Context, thread, id string, answers [][]str
 		return m.resolved(ctx, thread, id)
 	}
 	var exists bool
-	if err := m.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM thread_requests WHERE id = ? AND thread_id = ?)`, id, thread).Scan(&exists); err != nil {
+	if err := m.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM thread_requests WHERE id = ? AND thread_id = ? AND kind <> 'secret')`, id, thread).Scan(&exists); err != nil {
 		return err
 	}
 	if s == nil || !exists {

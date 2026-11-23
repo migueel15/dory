@@ -26,6 +26,9 @@ var instructionSections = []instructionSection{
 	{[]string{"thread_create", "list_threads", "thread_send"}, `## Threads
 - Create a thread with thread_create only when the user asks for a new thread or chat. "Subagent", "delegate" and "in parallel" mean subagent_spawn.
 - When the user names another thread, find it with list_threads. Write to it with thread_send.`},
+	{[]string{"request_secret"}, `## Secrets
+- Ask for passwords, sudo passwords, tokens, API keys, PINs and 2FA codes with request_secret, never in the chat. Several values go in one call as fields.
+- You get file paths, not values. Read a file only inside the command that uses it (sudo -S -p '' cmd < "$file", tool --token "$(cat "$file")") and never print it.`},
 	{[]string{"start_service", "list_services", "stop_service"}, `## Long-running processes
 - Start dev servers, databases and watchers with start_service instead of backgrounding them in your shell (&, nohup, setsid, run_in_background). The user sees their ports. Stop them with stop_service.`},
 	{[]string{"browser_open", "browser_tabs", "browser_close"}, `## Browser

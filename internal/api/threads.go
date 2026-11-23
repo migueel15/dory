@@ -188,6 +188,28 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
+	// The values of a secret request, or its decline. The body is never logged.
+	mux.HandleFunc("POST /api/threads/{id}/secrets/{req}", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
+		var body struct {
+			Values  map[string]string `json:"values"`
+			Decline bool              `json:"decline"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		err := s.Runtime.AnswerSecret(r.Context(), t.ID, r.PathValue("req"), body.Values, body.Decline)
+		clear(body.Values)
+		switch {
+		case errors.Is(err, runtime.ErrNoRequest):
+			writeError(w, http.StatusConflict, "conflict", err.Error())
+		case errors.Is(err, runtime.ErrSecretFields):
+			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+		case err != nil:
+			writeDataError(w, err)
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}))
 	mux.HandleFunc("POST /api/threads/{id}/attachments", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		f, h, err := r.FormFile("file")
 		if err != nil {

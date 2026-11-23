@@ -44,6 +44,7 @@ La comprobación de transporte con perfiles limpios y un MCP local de prueba alc
 | `recall` | Busca memorias por texto, proyecto, labels o tipo; filtra antes de limitar y devuelve 8 por defecto (`limit`). Con `id` lee una memoria completa |
 | `search` | Busca en tareas y memorias |
 | `ask_user` | Pregunta al usuario; el hilo queda esperando su respuesta |
+| `request_secret` | Pide al usuario contraseñas, tokens u otros datos privados con un formulario en el composer; los valores se guardan en archivos `0600` de `<datos>/secrets/files` (borrados a las 24 h) y el agente solo recibe sus rutas |
 
 ## Dispositivos Android
 

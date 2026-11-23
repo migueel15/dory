@@ -47,7 +47,10 @@ export type FileEdit = { path: string; change?: "add" | "update" | "delete" | st
 export type Todo = { text: string; status: "pending" | "in_progress" | "completed" | string; active?: string };
 export type Question = { id?: string; question: string; header?: string; options?: { label: string; description?: string }[]; multi_select?: boolean; answer?: string[] };
 // PendingRequest is something the agent waits for in the middle of its turn.
-export type PendingRequest = { id: string; kind: "question" | "permission"; message_id?: string; questions: Question[]; created_at: string };
+export type SecretField = { name: string; label: string; placeholder?: string; secret?: boolean };
+// A secret request carries only its form; the values never come back.
+export type SecretPrompt = { label: string; reason: string; url?: string; placeholder?: string; fields?: SecretField[] };
+export type PendingRequest = { id: string; kind: "question" | "permission" | "secret"; message_id?: string; questions: Question[]; secret?: SecretPrompt; created_at: string };
 export type ToolCall = {
   kind: ToolKind; name: string; files?: FileEdit[]; command?: string; exit_code?: number; todos?: Todo[];
   path?: string; lines?: string; pattern?: string; url?: string; query?: string; agent?: string; summary?: string; steps?: number;
@@ -231,6 +234,7 @@ export const api = {
   nodeCommands: (node: string, provider: string, project?: string) => req<{ commands: Entry[]; skills: Entry[] }>("GET", `/nodes/${node || "local"}/commands?provider=${encodeURIComponent(provider)}&project=${encodeURIComponent(project ?? "")}`),
   threadCommands: (id: string) => req<{ commands: Entry[]; skills: Entry[] }>("GET", `/threads/${id}/commands`),
   threadFiles: (id: string, q: string) => req<string[]>("GET", `/threads/${id}/files?q=${encodeURIComponent(q)}`),
+  answerSecret: (id: string, request: string, body: { values: Record<string, string> } | { decline: true }) => req<void>("POST", `/threads/${id}/secrets/${encodeURIComponent(request)}`, body),
   answer: (id: string, request: string, answers: string[][], files: string[][] = []) => req<void>("POST", `/threads/${id}/requests/${encodeURIComponent(request)}`, { answers, files }),
   interrupt: (id: string) => req<void>("POST", `/threads/${id}/interrupt`),
   threadDiff: (id: string, base = "") => req<{ diff: string; branch: string; base?: string; branches?: string[] }>("GET", `/threads/${id}/diff${base ? `?base=${encodeURIComponent(base)}` : ""}`),

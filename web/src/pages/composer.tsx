@@ -13,6 +13,7 @@ import { iconBtn, MessageParts } from "./chat";
 import { HoverCard } from "../components/tooltip";
 import { CodeRefCard, codeRefText } from "../components/code-ref";
 import type { DraftQuote } from "../components/quote-selection";
+import { SecretPanel } from "../components/secret-card";
 import { askAnswerText, openAsk, QuestionPanel, useQuestionFlow } from "../components/question-card";
 import { useCommand, useShortcuts } from "../components/shortcuts";
 import { formatChord } from "../components/dictation-shortcut";
@@ -408,6 +409,11 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
     onSuccess: () => { onSent(); return qc.invalidateQueries({ queryKey: key }); },
   });
   const flow = useQuestionFlow(question?.id ?? "", question?.questions ?? [], (answers, files) => reply.mutate({ answers, files }));
+  const secret = t.requests?.find((r) => r.kind === "secret" && r.secret);
+  const answerSecret = useMutation({
+    mutationFn: (body: { values: Record<string, string> } | { decline: true }) => api.answerSecret(t.id, secret!.id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+  });
   const asking = !!question && !!flow.q;
   const planQueued = t.queue.some((item) => item.text.includes(`<dory-context kind="plan" thread="${t.id}">`));
   const canPlan = t.local && !asking && !dictating && !planning.isPending && !send.isPending && !planQueued;
@@ -460,7 +466,9 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
       <form data-quote-ui data-dictation-panel data-unsaved-draft={!!text.trim() || files.length > 0 || quotes.length > 0 || dictation.active} onSubmit={(e) => { e.preventDefault(); submit(); }}
         {...attach.formProps}
         className={composerFrame}>
-        {asking && <QuestionPanel flow={flow} busy={reply.isPending} error={reply.error} />}
+        {secret ? <SecretPanel key={secret.id} request={secret} busy={answerSecret.isPending} error={answerSecret.error}
+          onSend={(values) => answerSecret.mutate({ values })} onDecline={() => answerSecret.mutate({ decline: true })} />
+          : asking && <QuestionPanel flow={flow} busy={reply.isPending} error={reply.error} />}
         {!dictation.active && suggest.menu}
         {codeTip.card}
         {quotes.length > 0 && (
