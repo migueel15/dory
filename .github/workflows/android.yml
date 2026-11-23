@@ -40,6 +40,7 @@ jobs:
           DORY_ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           DORY_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           DORY_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          DORY_ANDROID_BUILD: ${{ github.run_number }}
         run: cd mobile/android && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:

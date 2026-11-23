@@ -87,6 +87,30 @@ $("choose-assistant").onclick = async () => {
   }
 };
 
+async function showVersion() {
+  const out = $("app-version");
+  let build = 0;
+  try {
+    const version = await Dory.appVersion();
+    build = Number(version.build) || 0;
+    out.textContent = `Instalada: ${version.name}`;
+  } catch {
+    out.textContent = "No se pudo leer la versión instalada.";
+    return;
+  }
+  try {
+    const response = await fetch("https://api.github.com/repos/migueel15/dory/releases?per_page=50");
+    const releases = await response.json();
+    const latest = releases.map(r => /^android-(\d+)-/.exec(r.tag_name)).find(Boolean);
+    if (!latest) return;
+    const newest = Number(latest[1]);
+    out.textContent += newest > build ? ` · Disponible: android-${newest}` : " · Estás en la última";
+  } catch {
+    out.textContent += " · No se pudo consultar GitHub";
+  }
+}
+showVersion();
+
 $("capture-node").onchange = (event) => {
   captureNode = event.target.value;
   store();
