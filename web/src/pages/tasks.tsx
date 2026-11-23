@@ -5,7 +5,7 @@ import { useDictationInProgress } from "../components/local-dictation";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { Check, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, CircleNotch, ClipboardText, DotsThree, GitBranch, GitMerge, GitPullRequest, ChatCircle, CircleDashed, Plus, Rocket, X } from "@phosphor-icons/react";
+import { Check, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, CircleNotch, ClipboardText, DotsThree, GitBranch, GitMerge, GitPullRequest, CircleDashed, Plus, Rocket, X } from "@phosphor-icons/react";
 import { api, COLUMN_LABELS, repoName, type Card, type Column, type Pull, type Stage, type Thread } from "../api/client";
 import { Button, ErrorText, iconButton, Input, Label, Md, Modal, Select } from "../components/ui";
 import { useThreadActivity } from "../api/activity";
@@ -13,6 +13,7 @@ import { useArm } from "../components/github-ui";
 import { useLaunchForm } from "../components/launch-picker";
 import { useProject } from "../project";
 import { ModelLogo } from "../components/model-logo";
+import { EnvIcon } from "../components/env-icon";
 import { askConfirm } from "../components/confirm";
 import { IdeaModal } from "../components/capture";
 import { TaskQuickMenu, type QuickLaunch } from "../components/task-quick-menu";
@@ -299,6 +300,16 @@ function Reviewers({ pull }: { pull: Pull }) {
   );
 }
 
+// ThreadEnv draws the environment a thread runs in, which may be a peer of this node.
+function ThreadEnv({ nodeId, className }: { nodeId: string; className: string }) {
+  const node = useQuery({ queryKey: ["node"], queryFn: api.node, staleTime: 60_000 });
+  const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh, staleTime: 60_000 });
+  const self = node.data?.node;
+  const peer = mesh.data?.peers.find((p) => p.id === nodeId);
+  const env = self && nodeId === self.id ? self : peer?.info.node;
+  return <EnvIcon icon={env?.icon} os={env?.os} name={env?.name ?? peer?.name ?? `entorno ${nodeId.slice(0, 8)}`} className={className} />;
+}
+
 // ThreadRow links to the latest thread and, with more than one, opens a menu with all of them.
 function ThreadRow({ threads }: { threads: Thread[] }) {
   const id = useId();
@@ -317,7 +328,7 @@ function ThreadRow({ threads }: { threads: Thread[] }) {
   return (
     <div className="flex items-center gap-1.5 text-xs" onClick={(e) => e.stopPropagation()}>
       <Link to="/threads/$threadId" params={{ threadId: t.id }} title={t.title} draggable={false} className={`${link} rounded-md border border-slate-200 px-1.5 py-0.5 hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/5`}>
-        <ChatCircle aria-hidden="true" className="size-3 shrink-0" />
+        <ThreadEnv nodeId={t.node_id} className="size-3 shrink-0" />
         <span className="min-w-0 truncate">{t.model || t.provider}</span>
         <ThreadDot status={t.status} />
       </Link>
@@ -327,6 +338,7 @@ function ThreadRow({ threads }: { threads: Thread[] }) {
           {sorted.map((x) => (
             <Link key={x.id} to="/threads/$threadId" params={{ threadId: x.id }} role="menuitem" className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm text-inherit no-underline hover:bg-slate-100 dark:hover:bg-raised">
               <ThreadDot status={x.status} />
+              <ThreadEnv nodeId={x.node_id} className="size-4 shrink-0" />
               <span className="min-w-0 flex-1"><span className="block truncate">{x.model || x.provider}</span><span className="block truncate text-xs text-slate-500 dark:text-muted">{x.title || "Hilo"}</span></span>
               <span className="shrink-0 text-xs text-slate-500 dark:text-muted">{ago(linkedAt(x))}</span>
             </Link>
