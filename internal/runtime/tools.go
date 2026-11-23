@@ -307,8 +307,15 @@ func codexTool(name, args string) *ToolCall {
 	case "exec":
 		// Code mode: a script that calls tools as tools.<name>(...). The card
 		// shows the tool it calls, with the script as its input.
-		if c := codeModeCall.FindStringSubmatch(args); c != nil {
-			t := toolCall(c[1], nil)
+		// A page it renders is what the chat shows, so render_html wins.
+		var call string
+		for _, c := range codeModeCall.FindAllStringSubmatch(args, -1) {
+			if call == "" || strings.HasSuffix(c[1], "render_html") {
+				call = c[1]
+			}
+		}
+		if call != "" {
+			t := toolCall(call, nil)
 			if t.Kind == "mcp" || t.Kind == "other" {
 				t.Input = clip(args, 4000)
 				return t
