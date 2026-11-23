@@ -31,6 +31,7 @@ type clientMessage struct {
 	On      bool            `json:"on"`
 	Width   int             `json:"width"`
 	Height  int             `json:"height"`
+	Scale   float64         `json:"scale"`
 	ID      int64           `json:"id"`
 	Method  string          `json:"method"`
 	Params  json.RawMessage `json:"params"`
@@ -134,16 +135,19 @@ func (m *Manager) handle(c *Client, msg clientMessage) {
 		go func() {
 			var err error
 			if c.desktop {
-				err = m.attachDesktop(c, msg.Tab, msg.Width, msg.Height)
+				err = m.attachDesktop(c, msg.Tab, msg.Width, msg.Height, msg.Scale)
 			} else {
-				err = m.startCast(c, msg.Tab, msg.Width, msg.Height)
+				err = m.startCast(c, msg.Tab, msg.Width, msg.Height, msg.Scale)
 			}
 			if err != nil {
 				c.fail(err)
 			}
 		}()
 	case "hide":
+		// A hidden native view stays parked in the client with its page;
+		// it goes back to the node when its tab closes or the client leaves.
 		m.stopCast(c)
+	case "release":
 		m.detachDesktop(c, msg.Tab)
 	case "open":
 		go func() {
@@ -201,7 +205,7 @@ func (m *Manager) userNavigate(ctx context.Context, threadID, tabID, to string) 
 }
 
 // startCast streams a headless page to a client at the size of its panel.
-func (m *Manager) startCast(c *Client, tabID string, width, height int) error {
+func (m *Manager) startCast(c *Client, tabID string, width, height int, scale float64) error {
 	m.stopCast(c)
 	p, err := m.use(c.ctx, c.thread, tabID)
 	if err != nil {
@@ -214,12 +218,17 @@ func (m *Manager) startCast(c *Client, tabID string, width, height int) error {
 	p.viewers[c] = struct{}{}
 	p.casting = true
 	m.mu.Unlock()
+	// Frames come at the pixel density of the client's screen, so the page
+	// looks as sharp as the native view that replaces it.
+	if scale < 1 || scale > 3 {
+		scale = 1
+	}
 	if width >= 200 && height >= 200 {
-		p.target.Call(c.ctx, "Emulation.setDeviceMetricsOverride", map[string]any{"width": width, "height": height, "deviceScaleFactor": 1, "mobile": false})
+		p.target.Call(c.ctx, "Emulation.setDeviceMetricsOverride", map[string]any{"width": width, "height": height, "deviceScaleFactor": scale, "mobile": false})
 	} else {
 		width, height = 1280, 800
 	}
-	_, err = p.target.Call(c.ctx, "Page.startScreencast", map[string]any{"format": "jpeg", "quality": 70, "maxWidth": width, "maxHeight": height, "everyNthFrame": 1})
+	_, err = p.target.Call(c.ctx, "Page.startScreencast", map[string]any{"format": "jpeg", "quality": 85, "maxWidth": int(float64(width) * scale), "maxHeight": int(float64(height) * scale), "everyNthFrame": 1})
 	return err
 }
 
@@ -273,10 +282,11 @@ func (m *Manager) frame(p *page, params json.RawMessage) {
 	}()
 }
 
-// attachDesktop moves a tab to the native view of a desktop client. While
-// the agent is in a turn the tab stays where it is and the client watches it
-// as a screencast.
-func (m *Manager) attachDesktop(c *Client, tabID string, width, height int) error {
+// attachDesktop moves a tab to the native view of a desktop client, also in
+// the middle of a turn: whoever looks at a tab sees it native and sharp, and
+// the agent's next actions go to that view. The page reloads its address
+// there, so state the agent left unsaved in the headless page is lost.
+func (m *Manager) attachDesktop(c *Client, tabID string, width, height int, scale float64) error {
 	t, err := m.tab(c.ctx, c.thread, tabID)
 	if err != nil {
 		return err
@@ -286,18 +296,15 @@ func (m *Manager) attachDesktop(c *Client, tabID string, width, height int) erro
 	if p != nil {
 		if dt, ok := p.target.(*desktopTarget); ok && dt.c == c {
 			m.mu.Unlock()
+			// The view was parked: show it again as it was.
+			c.send(map[string]any{"t": "attach", "tab": t.ID, "url": t.URL})
 			return nil
 		}
 	}
-	busy := p != nil && p.backend == "node" && m.Busy != nil && m.Busy(c.thread)
-	if !busy && p != nil {
+	if p != nil {
 		delete(m.live, t.ID)
 	}
 	m.mu.Unlock()
-	if busy {
-		c.send(map[string]any{"t": "busy", "tab": t.ID})
-		return m.startCast(c, t.ID, width, height)
-	}
 	if p != nil {
 		if dt, ok := p.target.(*desktopTarget); ok {
 			dt.c.send(map[string]any{"t": "detach", "tab": t.ID})
