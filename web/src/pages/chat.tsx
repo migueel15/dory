@@ -77,7 +77,7 @@ export function Messages({ threadId, messages: all, running }: { threadId: strin
   let openQuestion: string | undefined;
   for (const m of messages) openQuestion = m.role === "user" ? undefined : isAsk(m) ? (m.status === "running" ? m.id : undefined) : m.role === "question" ? m.id : openQuestion;
   const prepaint = usePrepaint();
-  return <>{layout(messages, running).map((m) => <div key={m.id} ref={prepaint} style={offscreen}>{"changes" in m ? <TurnChanges threadId={threadId} turn={m.turn} /> : "worked" in m ? <WorkedBlock items={m.items} secs={m.secs} live={m.live} since={m.since} />
+  return <>{layout(messages, running).map((m) => <div key={m.id} data-anchor={m.id} ref={prepaint} style={offscreen}>{"changes" in m ? <TurnChanges threadId={threadId} turn={m.turn} /> : "worked" in m ? <WorkedBlock items={m.items} secs={m.secs} live={m.live} since={m.since} />
     : <Entry m={m} threadId={threadId} fresh={!initial.current?.has(m.id)} openQuestion={m.id === openQuestion} />}</div>)}</>;
 }
 
@@ -607,15 +607,39 @@ export function useFollow(deps: unknown[]) {
     const el = scroller.current;
     if (el) { el.scrollTop = el.scrollHeight; lastTop.current = el.scrollTop; }
   };
+  // Away from the end, the message under the top of the view is the anchor:
+  // whatever grows or shrinks around it (a step list collapsing, the answer
+  // ending, heights painted late), the view keeps it at the same place.
+  const anchor = useRef<{ id: string; offset: number } | null>(null);
+  const mark = () => {
+    const el = scroller.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top;
+    anchor.current = null;
+    for (const n of Array.from(el.querySelectorAll<HTMLElement>("[data-anchor]"))) {
+      const r = n.getBoundingClientRect();
+      if (r.bottom > top) { anchor.current = { id: n.dataset.anchor!, offset: r.top - top }; return; }
+    }
+  };
+  const hold = () => {
+    const el = scroller.current;
+    const a = anchor.current;
+    if (!el || !a) return;
+    const n = el.querySelector<HTMLElement>(`[data-anchor="${CSS.escape(a.id)}"]`);
+    if (!n) return mark();
+    const delta = n.getBoundingClientRect().top - el.getBoundingClientRect().top - a.offset;
+    if (Math.abs(delta) >= 1) { el.scrollTop += delta; lastTop.current = el.scrollTop; }
+  };
+  const settle = () => { if (pinned.current) toEnd(); else hold(); };
   useLayoutEffect(() => {
-    if (pinned.current) toEnd();
+    settle();
   }, deps); // eslint-disable-line react-hooks/exhaustive-deps
   // Content also grows without new messages (code highlighted late, a step
   // opened, the composer taller): keep the end in view while pinned.
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => { if (pinned.current) { chasing.current = false; toEnd(); } });
+    const ro = new ResizeObserver(() => { if (pinned.current) chasing.current = false; settle(); });
     const watch = () => { ro.disconnect(); ro.observe(el); for (const c of Array.from(el.children)) ro.observe(c); };
     watch();
     const mo = new MutationObserver(watch);
@@ -630,17 +654,20 @@ export function useFollow(deps: unknown[]) {
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const mark = () => { touched.current = Date.now(); chasing.current = false; };
-    const wheel = (e: WheelEvent) => { if (e.deltaY < 0) mark(); };
-    const key = (e: KeyboardEvent) => { if (["ArrowUp", "PageUp", "Home", " "].includes(e.key)) mark(); };
-    const pointer = (e: PointerEvent) => { if (e.target === el) { held.current = true; mark(); } }; // the scrollbar
+    const touch = () => { touched.current = Date.now(); chasing.current = false; };
+    // A gesture up leaves the end at once, before content growing in the same
+    // frame can pull the view back down and make it flicker.
+    const leave = () => { touch(); pinned.current = false; };
+    const wheel = (e: WheelEvent) => { if (e.deltaY < 0) leave(); };
+    const key = (e: KeyboardEvent) => { if (["ArrowUp", "PageUp", "Home"].includes(e.key)) leave(); };
+    const pointer = (e: PointerEvent) => { if (e.target === el) { held.current = true; touch(); } }; // the scrollbar
     const release = () => { held.current = false; };
     window.addEventListener("pointerup", release);
     el.addEventListener("wheel", wheel, { passive: true });
-    el.addEventListener("touchmove", mark, { passive: true });
+    el.addEventListener("touchmove", touch, { passive: true });
     el.addEventListener("keydown", key);
     el.addEventListener("pointerdown", pointer);
-    return () => { el.removeEventListener("wheel", wheel); el.removeEventListener("touchmove", mark); el.removeEventListener("keydown", key); el.removeEventListener("pointerdown", pointer); window.removeEventListener("pointerup", release); };
+    return () => { el.removeEventListener("wheel", wheel); el.removeEventListener("touchmove", touch); el.removeEventListener("keydown", key); el.removeEventListener("pointerdown", pointer); window.removeEventListener("pointerup", release); };
   }, []);
   const onScroll = () => {
     const el = scroller.current;
@@ -651,6 +678,7 @@ export function useFollow(deps: unknown[]) {
     if (distance < 40) { pinned.current = true; chasing.current = false; }
     else if (up && !chasing.current && (held.current || Date.now() - touched.current < 1000)) pinned.current = false;
     else if (pinned.current) toEnd(); // the browser moved the view; go back to the end
+    if (!pinned.current) mark();
     setAway(!pinned.current && distance > 200);
   };
   const follow = (smooth = false) => {
