@@ -277,11 +277,11 @@ function Avatar({ login, state }: { login: string; state: "approved" | "pending"
 function RefLink({ repo, kind, number }: { repo?: string; kind: "issues" | "pulls"; number: number }) {
   const Icon = kind === "pulls" ? GitPullRequest : CircleDashed;
   const label = kind === "pulls" ? `Pull request #${number}` : `Issue #${number}`;
-  const cls = "inline-flex shrink-0 items-center gap-1 rounded-md px-1 py-0.5 text-slate-600 no-underline dark:text-text-secondary";
+  const cls = "inline-flex shrink-0 items-center gap-2 text-slate-600 no-underline dark:text-text-secondary";
   const m = repo?.match(/^([\w.-]+)\/([\w.-]+)$/);
-  const body = <><Icon aria-hidden="true" className="size-3.5 shrink-0" />#{number}</>;
+  const body = <><Icon aria-hidden="true" className="size-4 shrink-0" />#{number}</>;
   if (!m) return <span className={cls} title={label}>{body}</span>;
-  return <Link to="/github/$owner/$repo/$kind/$number" params={{ owner: m[1], repo: m[2], kind, number: String(number) }} draggable={false} title={label} aria-label={label} className={`${cls} hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/5 dark:hover:text-white`}>{body}</Link>;
+  return <Link to="/github/$owner/$repo/$kind/$number" params={{ owner: m[1], repo: m[2], kind, number: String(number) }} draggable={false} title={label} aria-label={label} className={`${cls} hover:text-slate-900 dark:hover:text-white`}>{body}</Link>;
 }
 
 // Reviewers shows who reviewed the pull request and who still has to.
@@ -325,11 +325,11 @@ function ThreadRow({ threads }: { threads: Thread[] }) {
     el.style.top = `${r.bottom + 6}px`;
     el.style.left = `${Math.max(12, Math.min(r.left, window.innerWidth - 300))}px`;
   };
-  const link = "inline-flex min-w-0 items-center gap-1.5 text-slate-600 no-underline dark:text-text-secondary";
+  const link = "inline-flex min-w-0 items-center text-slate-600 no-underline dark:text-text-secondary";
   return (
     <div className="flex items-center gap-1.5 text-xs" onClick={(e) => e.stopPropagation()}>
-      <Link to="/threads/$threadId" params={{ threadId: t.id }} title={t.title} draggable={false} className={`${link} rounded-md border border-slate-200 px-1.5 py-0.5 hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/5`}>
-        <ThreadEnv nodeId={t.node_id} className="size-3 shrink-0" />
+      <Link to="/threads/$threadId" params={{ threadId: t.id }} title={t.title} draggable={false} className={`${link} gap-2 rounded-md border border-slate-200 px-1.5 py-0.5 hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/5`}>
+        <ThreadEnv nodeId={t.node_id} className="size-4 shrink-0" />
         <span className="min-w-0 truncate">{t.model || t.provider}</span>
         <ThreadDot t={t} />
       </Link>
@@ -367,9 +367,9 @@ function TaskCard({ c, onOpen, onDrag, onMenu }: { c: Card; onOpen: () => void; 
           <span className="mt-0.5 grid size-4 shrink-0 place-items-center" title={s.label} aria-label={s.label}>{s.icon}</span>
           <span className="line-clamp-2 min-w-0 font-semibold leading-tight">{c.title}</span>
         </div>
-        {where && <p className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-muted"><GitBranch aria-hidden="true" className="size-3.5 shrink-0" /><span className="truncate">{where}</span></p>}
+        {where && <p className="flex items-center gap-2 text-xs text-slate-500 dark:text-muted"><GitBranch aria-hidden="true" className="size-4 shrink-0" /><span className="truncate">{where}</span></p>}
         {(c.issue_number || c.pr_number) && (
-          <div className="flex items-center gap-1.5 text-xs" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-3 text-xs" onClick={(e) => e.stopPropagation()}>
             {c.issue_number && <RefLink repo={repo} kind="issues" number={c.issue_number} />}
             {c.pr_number && <RefLink repo={repo} kind="pulls" number={c.pr_number} />}
             {c.pr_number && c.pull && <Reviewers pull={c.pull} />}
