@@ -11,7 +11,7 @@ import ai.moonshine.voice.Transcriber;
 import ai.moonshine.voice.TranscriptEvent;
 
 /** Runs capture and inference on one worker so the final audio is flushed before sending. */
-final class MoonshineCapture {
+final class MoonshineCapture implements LocalCapture {
     interface Listener {
         void ready();
         void text(String value, boolean complete);
@@ -32,9 +32,9 @@ final class MoonshineCapture {
         this.listener = listener;
     }
 
-    void start() { new Thread(this::run, "moonshine-capture").start(); }
+    @Override public void start() { new Thread(this::run, "moonshine-capture").start(); }
 
-    void stop() {
+    @Override public void stop() {
         stopping = true;
         AudioRecord current = audio;
         if (current != null) {

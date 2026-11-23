@@ -109,6 +109,7 @@ function renderVoiceModels() {
     { id: "android", name: "Android", description: "Reconocedor del sistema", installed: true },
     { id: "tiny", name: "Moonshine Tiny", description: "Modelo local ligero · español", installed: voiceModels.tiny },
     { id: "small", name: "Moonshine Small", description: "Modelo local · español", installed: voiceModels.small },
+    { id: "parakeet", name: "Parakeet v3", description: "Modelo local preciso · transcribe al terminar · ~650 MB", installed: voiceModels.parakeet },
   ];
   $("voice-model-list").replaceChildren(...choices.filter(choice => choice.id === "android" || voiceModels.supported).map(choice => {
     const row = el("li");

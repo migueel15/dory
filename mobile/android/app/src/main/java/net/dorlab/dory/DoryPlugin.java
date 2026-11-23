@@ -202,6 +202,7 @@ public class DoryPlugin extends Plugin {
                 result.put("selected", AssistantModels.selected(getContext()));
                 result.put("tiny", AssistantModels.installed(getContext(), AssistantModels.TINY));
                 result.put("small", AssistantModels.installed(getContext(), AssistantModels.SMALL));
+                result.put("parakeet", AssistantModels.installed(getContext(), AssistantModels.PARAKEET));
                 call.resolve(result);
             }, "assistant-model-status").start();
         });
@@ -226,14 +227,19 @@ public class DoryPlugin extends Plugin {
         getActivity().runOnUiThread(() -> {
             if (!isLauncher()) { call.reject("Abre el selector de entornos."); return; }
             String id = call.getString("model", "");
-            if (Build.VERSION.SDK_INT < 26) { call.reject("Moonshine requiere Android 8 o posterior."); return; }
-            if (!AssistantModels.TINY.equals(id) && !AssistantModels.SMALL.equals(id)) {
+            if (Build.VERSION.SDK_INT < 26) { call.reject("Los modelos locales requieren Android 8 o posterior."); return; }
+            if (!AssistantModels.valid(id) || AssistantModels.ANDROID.equals(id)) {
                 call.reject("Modelo desconocido."); return;
             }
             if (downloadingAssistantModel) { call.reject("Ya hay una descarga en curso."); return; }
             downloadingAssistantModel = true;
             new Thread(() -> {
                 try {
+                    if (AssistantModels.PARAKEET.equals(id)) {
+                        downloadParakeet();
+                        call.resolve();
+                        return;
+                    }
                     new ai.moonshine.voice.AssetDownloader().ensureModelPresent(
                         AssistantModels.directory(getContext(), id), AssistantModels.spec(id),
                         (path, index, total, done, size) -> {
@@ -249,6 +255,46 @@ public class DoryPlugin extends Plugin {
                 finally { getActivity().runOnUiThread(() -> downloadingAssistantModel = false); }
             }, "assistant-model-download").start();
         });
+    }
+
+    /** Downloads each Parakeet file to a temporary name so a cut download never looks installed. */
+    private void downloadParakeet() throws Exception {
+        java.io.File dir = AssistantModels.directory(getContext(), AssistantModels.PARAKEET);
+        if (!dir.isDirectory() && !dir.mkdirs()) throw new Exception("No se pudo crear la carpeta del modelo.");
+        String[] files = AssistantModels.PARAKEET_FILES;
+        for (int index = 0; index < files.length; index++) {
+            java.io.File target = new java.io.File(dir, files[index]);
+            if (target.isFile()) continue;
+            java.io.File part = new java.io.File(dir, files[index] + ".part");
+            HttpsURLConnection c = (HttpsURLConnection) new java.net.URL(AssistantModels.PARAKEET_URL + files[index]).openConnection();
+            c.setConnectTimeout(15000);
+            c.setReadTimeout(30000);
+            int status = c.getResponseCode();
+            if (status >= 400) throw new Exception("La descarga respondió " + status + ".");
+            long size = c.getContentLengthLong();
+            long done = 0;
+            int last = -1;
+            try (InputStream in = c.getInputStream(); java.io.FileOutputStream out = new java.io.FileOutputStream(part)) {
+                byte[] b = new byte[1 << 16];
+                int n;
+                while ((n = in.read(b)) > 0) {
+                    out.write(b, 0, n);
+                    done += n;
+                    int percent = size > 0 ? (int) (100 * done / size) : -1;
+                    if (percent != last) {
+                        last = percent;
+                        JSObject progress = new JSObject();
+                        progress.put("model", AssistantModels.PARAKEET);
+                        progress.put("file", index + 1);
+                        progress.put("files", files.length);
+                        progress.put("percent", percent);
+                        notifyListeners("assistantModelProgress", progress);
+                    }
+                }
+            } finally { c.disconnect(); }
+            if (size > 0 && done != size) { part.delete(); throw new Exception("La descarga se cortó."); }
+            if (!part.renameTo(target)) throw new Exception("No se pudo guardar el modelo.");
+        }
     }
 
     static String send(HttpsURLConnection c, String method, String token, String body) throws Exception {

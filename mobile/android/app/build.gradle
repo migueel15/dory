@@ -34,6 +34,19 @@ android {
     }
 }
 
+// sherpa-onnx runs Parakeet in the assistant. Its AAR is not on Maven, so the build downloads the pinned release.
+def sherpaVersion = '2.0.3'
+def sherpaAar = file("libs/sherpa-onnx-static-link-onnxruntime-${sherpaVersion}.aar")
+def sherpaSha256 = '7744a3a8f08f017d59c2d8ed8d9b700345561f5abe9f4e06dc6eaef3a0b977b4'
+if (!sherpaAar.exists()) {
+    sherpaAar.parentFile.mkdirs()
+    def tmp = new File(sherpaAar.path + '.part')
+    new URL("https://github.com/k2-fsa/sherpa-onnx/releases/download/v${sherpaVersion}/${sherpaAar.name}").withInputStream { i -> tmp.withOutputStream { it << i } }
+    def digest = java.security.MessageDigest.getInstance('SHA-256').digest(tmp.bytes).encodeHex().toString()
+    if (digest != sherpaSha256) { tmp.delete(); throw new GradleException("sherpa-onnx AAR checksum mismatch: ${digest}") }
+    tmp.renameTo(sherpaAar)
+}
+
 repositories {
     flatDir{
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
@@ -43,6 +56,7 @@ repositories {
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation 'ai.moonshine:moonshine-voice:0.1.6'
+    implementation files(sherpaAar)
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"

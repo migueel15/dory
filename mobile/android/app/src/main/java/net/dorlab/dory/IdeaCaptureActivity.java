@@ -52,7 +52,7 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private long lastEvent;
     private final Runnable watchdog = this::checkRecognizer;
     private SpeechRecognizer recognizer;
-    private MoonshineCapture moonshine;
+    private LocalCapture moonshine;
     private String moonshineStopAction = "";
     private boolean foreground;
     private boolean usingOnDevice;
@@ -216,8 +216,8 @@ public class IdeaCaptureActivity extends AppCompatActivity {
     private void listenMoonshine(String model) {
         display(State.STARTING, "Cargando modelo…", null, null);
         stateRow.setVisibility(View.VISIBLE);
-        final MoonshineCapture[] ref = new MoonshineCapture[1];
-        ref[0] = new MoonshineCapture(this, model, new MoonshineCapture.Listener() {
+        final LocalCapture[] ref = new LocalCapture[1];
+        MoonshineCapture.Listener events = new MoonshineCapture.Listener() {
             private boolean current() { return moonshine == ref[0] && !ended; }
             @Override public void ready() {
                 if (current() && state == State.STARTING) display(State.LISTENING, "Escuchando…", null, null);
@@ -260,7 +260,8 @@ public class IdeaCaptureActivity extends AppCompatActivity {
                 updateTranscript(committed);
                 display(State.SPEECH_ERROR, "No se pudo completar el dictado local.", "Reintentar", IdeaCaptureActivity.this::requestMicrophone);
             }
-        });
+        };
+        ref[0] = AssistantModels.PARAKEET.equals(model) ? new ParakeetCapture(this, events) : new MoonshineCapture(this, model, events);
         moonshine = ref[0];
         silence(false);
         ref[0].start();

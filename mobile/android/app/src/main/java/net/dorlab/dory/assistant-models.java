@@ -10,9 +10,17 @@ final class AssistantModels {
     static final String ANDROID = "android";
     static final String TINY = "tiny";
     static final String SMALL = "small";
+    static final String PARAKEET = "parakeet";
+    /** Parakeet TDT 0.6B v3 int8 exported for sherpa-onnx. */
+    static final String PARAKEET_URL = "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/main/";
+    static final String[] PARAKEET_FILES = {"tokens.txt", "decoder.int8.onnx", "joiner.int8.onnx", "encoder.int8.onnx"};
 
     static boolean valid(String id) {
-        return ANDROID.equals(id) || TINY.equals(id) || SMALL.equals(id);
+        return ANDROID.equals(id) || TINY.equals(id) || SMALL.equals(id) || PARAKEET.equals(id);
+    }
+
+    static boolean moonshine(String id) {
+        return TINY.equals(id) || SMALL.equals(id);
     }
 
     static int arch(String id) {
@@ -30,7 +38,13 @@ final class AssistantModels {
     }
 
     static boolean installed(Context context, String id) {
-        return ANDROID.equals(id) || (android.os.Build.VERSION.SDK_INT >= 26 && new AssetDownloader().isModelPresent(directory(context, id), spec(id)));
+        if (ANDROID.equals(id)) return true;
+        if (android.os.Build.VERSION.SDK_INT < 26) return false;
+        if (PARAKEET.equals(id)) {
+            for (String name : PARAKEET_FILES) if (!new File(directory(context, id), name).isFile()) return false;
+            return true;
+        }
+        return new AssetDownloader().isModelPresent(directory(context, id), spec(id));
     }
 
     static String selected(Context context) {
