@@ -6,18 +6,38 @@ import { useTheme } from "../theme";
 // thread's node; the message only carries its reference, and the frame loads
 // it sandboxed (opaque origin, scripts on), so it cannot reach Dory.
 
-export const isHtml = (m: Message) => m.role === "tool" && !!m.tool && (m.tool.tool === "render_html" || /(^|_)render_html$/.test(m.tool.name));
-
 type Ref = { attachment_id: string; title: string; height: number };
 
-// htmlRef reads the reference from the tool's result.
+// htmlRef finds the reference in the tool's result, whatever wraps it: plain
+// JSON, an MCP result, a code-mode script output, or JSON escaped as a string
+// inside any of those. Any tool whose result carries one counts as a page.
 export function htmlRef(m: Message): Ref | undefined {
-  const at = m.text.indexOf("{");
-  if (at < 0) return undefined;
-  try {
-    const r = JSON.parse(m.text.slice(at))?.html_render;
-    return typeof r?.attachment_id === "string" && /^[\w-]+$/.test(r.attachment_id) ? r : undefined;
-  } catch { return undefined; }
+  if (m.role !== "tool" || !m.text.includes("html_render")) return undefined;
+  const valid = (r: any): Ref | undefined => typeof r?.attachment_id === "string" && /^[\w-]+$/.test(r.attachment_id) ? r : undefined;
+  const walk = (v: any, depth: number): Ref | undefined => {
+    if (depth > 8 || v == null) return undefined;
+    if (typeof v === "string") {
+      if (!v.includes("html_render")) return undefined;
+      // The JSON may follow a header ("Script completed…"): try each start.
+      const end = Math.max(v.lastIndexOf("}"), v.lastIndexOf("]"));
+      for (let at = 0; at < end; at++) {
+        if (v[at] !== "{" && v[at] !== "[") continue;
+        let parsed: unknown;
+        try { parsed = JSON.parse(v.slice(at, end + 1)); } catch { continue; }
+        const r = walk(parsed, depth + 1);
+        if (r) return r;
+      }
+      return undefined;
+    }
+    if (Array.isArray(v)) { for (const x of v) { const r = walk(x, depth + 1); if (r) return r; } return undefined; }
+    if (typeof v === "object") {
+      const r = valid(v.html_render);
+      if (r) return r;
+      for (const x of Object.values(v)) { const f = walk(x, depth + 1); if (f) return f; }
+    }
+    return undefined;
+  };
+  return walk(m.text, 0);
 }
 
 const MIN = 80, MAX = 20000;

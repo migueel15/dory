@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { CaretDown, CaretRight, CheckCircle, Circle, CircleNotch, FileText, Globe, MagnifyingGlass, PencilSimple, Plug, Robot, TerminalWindow, Wrench, XCircle } from "@phosphor-icons/react";
+import { CaretDown, CaretRight, CheckCircle, Circle, CircleNotch, FileText, Globe, MagnifyingGlass, PencilSimple, Robot, TerminalWindow, Wrench, XCircle } from "@phosphor-icons/react";
 import type { Message, Question, ToolCall } from "../api/client";
 
 // The cards of the tool calls in the chat, one per Dory tool kind. Every
@@ -147,7 +147,7 @@ function AgentCard({ m, t }: { m: Message; t: ToolCall }) {
 function McpCard({ m, t }: { m: Message; t: ToolCall }) {
   const chip = "rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[0.6875rem] text-slate-600 dark:bg-raised dark:text-text-secondary";
   return (
-    <Row m={m} icon={t.kind === "mcp" ? <Plug className="size-4" /> : <Wrench className="size-4" />}
+    <Row m={m} icon={<Wrench className="size-4" />}
       body={<div className="space-y-1.5">{t.input && <Output text={pretty(t.input)} />}{m.text && <Output text={m.text} />}</div>}>
       {t.kind === "mcp" ? <><span className={chip}>{t.server}</span><span className={`${chip} truncate`}>{t.tool}</span></> : <span className="truncate">{t.name}</span>}
     </Row>

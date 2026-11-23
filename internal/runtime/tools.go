@@ -3,6 +3,7 @@ package runtime
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -154,6 +155,44 @@ func toolCall(name string, input json.RawMessage) *ToolCall {
 	return t
 }
 
+var codeModeCall = regexp.MustCompile(`\btools\.(\w+)\s*\(`)
+
+// codexOutput reads a tool's output from a rollout: a string, or a list of
+// text parts. A code-mode script returns its tool's MCP result as one part
+// ({"content":[{"type":"text","text":...}]}); then only that result counts.
+func codexOutput(o any) string {
+	switch o := o.(type) {
+	case string:
+		return o
+	case []any:
+		var all, inner []string
+		for _, x := range o {
+			part, _ := x.(map[string]any)
+			text, _ := part["text"].(string)
+			all = append(all, text)
+			var res struct {
+				Content []struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"content"`
+			}
+			if json.Unmarshal([]byte(text), &res) == nil {
+				for _, c := range res.Content {
+					if c.Type == "text" {
+						inner = append(inner, c.Text)
+					}
+				}
+			}
+		}
+		if len(inner) > 0 {
+			return strings.Join(inner, "\n")
+		}
+		return strings.Join(all, "\n")
+	}
+	raw, _ := json.Marshal(o)
+	return string(raw)
+}
+
 // mcpName splits "mcp__server__tool" (Claude) or "server_tool" is left alone.
 func mcpName(name string) (server, tool string, ok bool) {
 	if !strings.HasPrefix(name, "mcp__") {
@@ -265,6 +304,23 @@ func codexTool(name, args string) *ToolCall {
 		return t
 	case "request_user_input":
 		return &ToolCall{Kind: "question", Name: name, Questions: parseQuestions(json.RawMessage(args))}
+	case "exec":
+		// Code mode: a script that calls tools as tools.<name>(...). The card
+		// shows the tool it calls, with the script as its input.
+		// A page it renders is what the chat shows, so render_html wins.
+		var call string
+		for _, c := range codeModeCall.FindAllStringSubmatch(args, -1) {
+			if call == "" || strings.HasSuffix(c[1], "render_html") {
+				call = c[1]
+			}
+		}
+		if call != "" {
+			t := toolCall(call, nil)
+			if t.Kind == "mcp" || t.Kind == "other" {
+				t.Input = clip(args, 4000)
+				return t
+			}
+		}
 	}
 	return toolCall(name, json.RawMessage(args))
 }
