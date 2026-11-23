@@ -96,12 +96,11 @@ La bandeja de avisos (icono de bandeja, junto a la campana) guarda cada aviso co
 
 Eventos que generan aviso: el agente terminó, el agente falló, un agente te necesita, plan listo para revisar, plan aceptado (tarea lista para implementar) y tarea lista para mergear (pasa a la columna *Ready to merge*, sin tener en cuenta el CI).
 
-Como en una app de mensajería, cada aviso llega a todos tus dispositivos a la vez. Con el modo **Automático**:
+Con el modo **Automático**:
 
-1. En la interfaz que tiene el foco, el aviso sale dentro de la app.
-2. En el resto (otra ventana, el navegador en segundo plano, el móvil con la app cerrada) llega como notificación del sistema.
-3. El servidor envía también push a los navegadores suscritos.
-4. Con todo cerrado y sin push, el aviso espera en la bandeja.
+1. Si alguna interfaz de la malla tiene el foco (por ejemplo, Dory en el ordenador), el aviso sale solo dentro de esa app: el móvil y los navegadores no reciben notificación.
+2. Si ninguna tiene el foco, llega como notificación del sistema a todos tus dispositivos (otra ventana, el navegador en segundo plano, el móvil con la app cerrada) y por push a los navegadores suscritos.
+3. Con todo cerrado y sin push, el aviso espera en la bandeja.
 
 Si una interfaz se cierra bruscamente, la malla la da por cerrada a los 45 s.
 

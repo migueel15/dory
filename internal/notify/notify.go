@@ -251,11 +251,15 @@ func (n *Notifier) deliver(id string) {
 	if at, err := time.Parse(time.RFC3339Nano, nt.CreatedAt); err != nil || time.Since(at) > fresh {
 		return
 	}
-	// Like a messaging app, every device gets the notice; each one decides
-	// whether it shows inside the app (focused) or as a notification.
+	// With an interface in focus anywhere in the mesh the user is already at
+	// Dory, so the notice shows there and no device gets a push.
 	switch n.Mode(ctx, nt.Kind) {
 	case ModeOff, ModeApp:
 		return
+	case ModeAuto:
+		if n.Delivery(ctx).Focus {
+			return
+		}
 	}
 	n.mu.Lock()
 	done := n.pushed[id]
