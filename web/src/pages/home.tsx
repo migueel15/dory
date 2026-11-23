@@ -79,7 +79,10 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
   };
   const latestSendDraft = useRef(sendDraft);
   useLayoutEffect(() => { latestSendDraft.current = sendDraft; });
-  const submit = () => { if (!dictation.active) sendDraft(text); };
+  const submit = () => {
+    if (dictation.active) dictation.finishAndSubmit((draft) => latestSendDraft.current(draft));
+    else sendDraft(text);
+  };
   const models = form.providers.flatMap((provider) =>
     provider.models.map((model) => ({
       value: JSON.stringify([provider.id, modelId(model)]),
@@ -143,7 +146,7 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
             </button>
           </div>
           <DictationMic dictation={dictation} disabled={start.isPending} />
-          <button type="submit" className={iconButton} title="Enviar" aria-label="Enviar" disabled={(!text.trim() && !files.length) || !form.ready || start.isPending || dictation.active}>
+          <button type="submit" className={iconButton} title="Enviar" aria-label="Enviar" disabled={(!dictation.value.trim() && !files.length) || !form.ready || start.isPending}>
             {start.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <ArrowUp className="size-4" weight="regular" />}
           </button>
         </div>
