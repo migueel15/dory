@@ -66,7 +66,7 @@ public class MainActivity extends BridgeActivity {
         Intent open = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent tap = PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         NotificationManagerCompat.from(this).notify(tag == null ? 0 : tag.hashCode(), new NotificationCompat.Builder(this, "notices")
-            .setSmallIcon(R.mipmap.ic_launcher).setContentTitle(title).setContentText(body).setAutoCancel(true).setContentIntent(tap).build());
+            .setSmallIcon(R.drawable.ic_stat_dory).setContentTitle(title).setContentText(body).setAutoCancel(true).setContentIntent(tap).build());
     }
 
     @Override
