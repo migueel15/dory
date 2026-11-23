@@ -35,7 +35,8 @@ export function ThreadView() {
   const thread = useThread(threadId).data;
   const local = thread?.local;
   const taskId = thread?.task_id ?? null;
-  useOpenPlanOnAgentEdit(taskId, panel);
+  // Until the thread loads its task is unknown, not missing.
+  useOpenPlanOnAgentEdit(thread ? taskId : undefined, panel);
   // The agent opens or closes a device tab; the user watches what it does.
   const latest = useRef(panel);
   latest.current = panel;
@@ -80,13 +81,15 @@ export function ThreadView() {
 
 // useOpenPlanOnAgentEdit brings the plan tab to the front when the agent
 // changes the plan of the thread's task, so the user watches it being written.
-function useOpenPlanOnAgentEdit(taskId: string | null, panel: SidePanelState) {
+// taskId is undefined while the thread loads, so opening a thread is not taken
+// for linking a task to it: the panel then stays as the user left it.
+function useOpenPlanOnAgentEdit(taskId: string | null | undefined, panel: SidePanelState) {
   const plan = useQuery({ queryKey: ["plans", taskId, "doc"], queryFn: () => api.plan(taskId!), enabled: !!taskId });
   const seen = useRef<number | undefined>(undefined);
   const previousTask = useRef(taskId);
   const newlyLinked = useRef(false);
   const revision = plan.data?.revision;
-  useEffect(() => { newlyLinked.current = !previousTask.current && !!taskId; previousTask.current = taskId; seen.current = undefined; }, [taskId]);
+  useEffect(() => { newlyLinked.current = previousTask.current === null && !!taskId; previousTask.current = taskId; seen.current = undefined; }, [taskId]);
   useEffect(() => {
     if (revision === undefined) return;
     const before = seen.current;
