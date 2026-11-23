@@ -38,10 +38,12 @@ type Session interface {
 type Request struct {
 	ID       string `json:"id"`
 	ThreadID string `json:"thread_id,omitempty"`
-	// Kind is question; permission will follow.
+	// Kind is question or secret; permission will follow.
 	Kind string `json:"kind"`
 	// MessageID is the tool message that shows the request in the chat.
 	MessageID string     `json:"message_id,omitempty"`
 	Questions []Question `json:"questions"`
-	CreatedAt string     `json:"created_at"`
+	// Secret is the form of a secret request (kind secret), without values.
+	Secret    *SecretPrompt `json:"secret,omitempty"`
+	CreatedAt string        `json:"created_at"`
 }

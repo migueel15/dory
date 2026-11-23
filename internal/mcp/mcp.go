@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/migueel15/dory/internal/api"
 	"github.com/migueel15/dory/internal/auth"
@@ -170,6 +171,21 @@ type askInput struct {
 	Question  string             `json:"question,omitempty" jsonschema:"A single free question; prefer questions"`
 	Questions []runtime.Question `json:"questions,omitempty" jsonschema:"One or more questions, each with a short header and 2-4 options; the user may also answer freely"`
 }
+
+type secretInput struct {
+	Label       string                `json:"label" jsonschema:"Short title, e.g. sudo password"`
+	Reason      string                `json:"reason" jsonschema:"Why you need it, in the user's language"`
+	URL         string                `json:"url,omitempty" jsonschema:"Page where the user can get the value"`
+	Placeholder string                `json:"placeholder,omitempty"`
+	Fields      []runtime.SecretField `json:"fields,omitempty" jsonschema:"1-8 values asked together (e.g. account id + token); omit for a single value"`
+	Value       string                `json:"value,omitempty" jsonschema:"A secret the user already pasted in the chat: saved to a file without asking"`
+	TimeoutS    int                   `json:"timeout_s,omitempty" jsonschema:"Seconds to wait, default 600, max 3600"`
+}
+
+const secretHelp = "Ask the user for private values (passwords, sudo, tokens, API keys, PINs, 2FA codes, account ids) with a secure form; never ask for them in the chat. " +
+	"The values never reach you: each is saved to an owner-only file deleted after 24h, and you get its path ({status:saved, file} or files by field name). " +
+	"Read a file only inside the command that needs it and never print it, e.g. sudo -S -p '' cmd < \"$file\" or tool --token \"$(cat \"$file\")\". " +
+	"Other statuses: declined, timed_out, cancelled, with a note."
 
 // Handler serves the tools. The caller authenticates the request; a thread
 // passes its id as ?thread= so questions reach the right conversation.
@@ -348,6 +364,25 @@ func build(s *api.Server, devices bool) *sdk.Server {
 			out[i] = map[string]any{"question": q.Question, "answer": a}
 		}
 		return map[string]any{"answers": out}, nil
+	})
+
+	add(srv, "request_secret", secretHelp, func(ctx context.Context, in secretInput) (any, error) {
+		id, _ := ctx.Value(threadKey{}).(string)
+		if id == "" {
+			return nil, errors.New("request_secret only works inside a Dory thread")
+		}
+		if in.Value != "" {
+			return s.Runtime.SaveSecret(in.Value)
+		}
+		p := runtime.SecretPrompt{Label: in.Label, Reason: in.Reason, URL: in.URL, Placeholder: in.Placeholder, Fields: in.Fields}
+		if err := p.Validate(); err != nil {
+			return nil, err
+		}
+		timeout := 600 * time.Second
+		if in.TimeoutS > 0 {
+			timeout = time.Duration(min(in.TimeoutS, 3600)) * time.Second
+		}
+		return s.Runtime.RequestSecret(ctx, id, p, timeout)
 	})
 
 	add(srv, "start_service", "Run a long-lived process for this thread (dev server, database, watcher) detached in its folder; the user sees its ports. Use it instead of backgrounding in your shell.", func(ctx context.Context, in struct {

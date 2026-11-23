@@ -1,7 +1,7 @@
 ---
 name: dory-workflow
 description: "How to work on a task with Dory (MCP server `dory`): register it, plan it, read and save memories, hand it over and close it with few calls. Use for any feature, fix or task in a project that Dory tracks, or to resume one."
-version: 1
+version: 2
 ---
 
 # Dory workflow
@@ -33,6 +33,8 @@ If the work needs a state or field that does not exist, ask the user; do not enc
 ## 3. Ask the user
 
 When a decision belongs to the user, ask with `ask_user` from the Dory MCP: one to four questions, each with a short header and two to four options; the user can always answer freely. The thread waits for the answer. Do not leave questions as loose text at the end of a turn.
+
+When you need a password, sudo password, token, API key, PIN or 2FA code, ask with `request_secret`, never in the chat. You get file paths, not values: read a file only inside the command that uses it (`sudo -S -p '' cmd < "$file"`, `tool --token "$(cat "$file")"`) and never print it.
 
 ## 4. Memory: read on demand, write rarely
 

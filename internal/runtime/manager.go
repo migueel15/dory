@@ -73,6 +73,8 @@ type Manager struct {
 	usage    map[string][]Window
 	// waiters hold the ask_user calls waiting for the user, by request id.
 	waiters map[string]chan [][]string
+	// secretWaiters hold the request_secret calls waiting for the user.
+	secretWaiters map[string]secretWaiter
 	// disabled holds the providers turned off on this node, under its own lock.
 	disabledMu sync.Mutex
 	disabled   map[string]bool
@@ -101,6 +103,7 @@ func NewManager(db *sql.DB, store *data.Store, node, dataDir string, providers .
 		m.providers[p.ID()] = p
 	}
 	m.waiters = map[string]chan [][]string{}
+	m.secretWaiters = map[string]secretWaiter{}
 	m.loadUsage()
 	m.loadDisabled()
 	m.loadAccounts()
