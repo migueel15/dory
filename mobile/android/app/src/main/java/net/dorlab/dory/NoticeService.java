@@ -188,11 +188,18 @@ public class NoticeService extends Service {
         Map<String, String> modes = new HashMap<>();
         JSONArray settings = new JSONArray(get(node, "/api/notice-settings"));
         for (int i = 0; i < settings.length(); i++) modes.put(settings.getJSONObject(i).getString("kind"), settings.getJSONObject(i).getString("mode"));
-        
+        // An interface in focus anywhere in the mesh (the desktop, say) means the
+        // user is at Dory already: the notice shows there, not on the phone.
+        boolean focus = MainActivity.visible;
+        if (!focus) try {
+            focus = new JSONObject(get(node, "/api/presence")).optBoolean("focus");
+        } catch (Exception ignored) {
+            // Unknown presence: notify as before.
+        }
         for (JSONObject n : fresh) {
             seen.add(n.getString("id"));
             String mode = modes.getOrDefault(n.getString("kind"), "auto");
-            if (mode.equals("off") || mode.equals("app") || (mode.equals("auto") && MainActivity.visible)) continue;
+            if (mode.equals("off") || mode.equals("app") || (mode.equals("auto") && focus)) continue;
             show(n, node);
         }
         while (seen.size() > 300) seen.remove(seen.iterator().next());
