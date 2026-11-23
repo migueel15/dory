@@ -19,3 +19,4 @@ Cada nodo se instalaba compilando desde el código, y un nodo con una versión a
 - El repositorio es público: las releases se descargan sin cuenta. La API sin autenticar permite 60 llamadas por hora y dirección; cada nodo consulta como mucho una vez cada cinco minutos.
 - En Mac, la actualización automática de la app exige firmarla; mientras no se firme, hay que reinstalarla a mano.
 - El núcleo que va dentro de un AppImage es de solo lectura; en ese caso lo actualiza la propia app de escritorio.
+- En equipos con app de escritorio, ADR-029 sustituye el núcleo instalado como servicio por el núcleo incluido en la app.

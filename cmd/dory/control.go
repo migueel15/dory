@@ -95,6 +95,13 @@ func control(args []string) (bool, error) {
 		if err := stop(base); err != nil {
 			return true, err
 		}
+		// The desktop app starts its core again by itself.
+		for range 25 {
+			if _, err := health(base); err == nil {
+				return true, nil
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
 		return true, start(base, cfg.DataDir)
 	case "open":
 		if err := start(base, cfg.DataDir); err != nil {

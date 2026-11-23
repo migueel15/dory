@@ -1,9 +1,9 @@
-// Dory desktop: a thin window over the core of this machine. The core is a
-// background service; the app starts it when needed and never stops it, so
-// threads keep running with the window closed (requirement 4.4).
+// Dory desktop: a window over the core of this machine. The app runs the core
+// it ships as its child and lives in the tray, so threads keep running with
+// the window closed; quitting from the tray stops both (ADR-029).
 const { app, BrowserWindow, WebContentsView, ipcMain, shell, Menu, Tray, nativeImage, dialog } = require("electron");
 const net = require("node:net");
-const { execFile } = require("node:child_process");
+const { execFile, spawn } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -30,16 +30,17 @@ if (devURL || fs.existsSync(profile) || !fs.existsSync(path.join(app.getPath("us
 
 const exe = process.platform === "win32" ? "dory.exe" : "dory";
 const bundled = path.join(process.resourcesPath || "", "bin", exe);
-// The core this app installs as a user service, next to the CLI.
+// Where older versions installed the core as a user service; the app now
+// leaves the dory CLI there on Linux and macOS.
 const installed = process.platform === "win32"
   ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "Dory", "bin", exe)
   : path.join(os.homedir(), ".local", "bin", exe);
 const managed = path.join(profile, "core-managed");
+const cliManaged = path.join(profile, "cli-managed");
 
-// The installed core, the one shipped with the app, or the one on PATH.
+// The core shipped with the app, or the one on PATH in a local build.
 function doryBin() {
-  for (const bin of [installed, bundled]) if (fs.existsSync(bin)) return bin;
-  return exe;
+  return app.isPackaged && fs.existsSync(bundled) ? bundled : exe;
 }
 
 function run(bin, args) {
@@ -48,39 +49,39 @@ function run(bin, args) {
   });
 }
 
-const dory = (args) => run(doryBin(), args);
-
-// installCore leaves the core of the app as a user service, so it keeps
-// running with the window closed and starts with the session. It installs
-// it when there is no core yet and keeps updating the one it installed; a
-// core installed by other means is left alone.
-async function installCore() {
-  if (!app.isPackaged || !fs.existsSync(bundled)) return;
-  if (process.env.APPIMAGE) {
-    // dory open and the launcher find the app here.
-    const link = path.join(os.homedir(), ".local", "bin", "Dory.AppImage");
-    try {
-      if (fs.lstatSync(link, { throwIfNoEntry: false })?.isSymbolicLink() !== false) {
-        fs.mkdirSync(path.dirname(link), { recursive: true });
-        fs.rmSync(link, { force: true });
-        fs.symlinkSync(process.env.APPIMAGE, link);
-      }
-    } catch {}
+// migrateCore removes the core older versions installed as a user service
+// (ADR-029): the app runs its own core now. A core installed by other means,
+// without the marker, is left alone.
+async function migrateCore() {
+  if (!fs.existsSync(managed)) return;
+  if (fs.existsSync(installed)) {
+    await run(installed, ["stop"]).catch(() => {});
+    await run(installed, ["service", "uninstall"]).catch(() => {});
   }
-  const exists = fs.existsSync(installed);
-  if (exists && !fs.existsSync(managed)) return;
-  if (exists && (await run(installed, ["version"]).catch(() => "")) === (await run(bundled, ["version"]).catch(() => "-"))) return;
+  for (const f of [installed, `${installed}.old`, `${installed}.new`]) fs.rmSync(f, { force: true });
+  if (process.platform === "win32") fs.rmSync(path.dirname(installed), { recursive: true, force: true });
+  fs.rmSync(managed, { force: true });
+}
+
+// installCLI leaves the dory command of the app on PATH: a copy in
+// ~/.local/bin on Linux and macOS (an AppImage mounts elsewhere each run),
+// and the app's own folder in the user PATH on Windows.
+async function installCLI() {
+  if (!app.isPackaged || !fs.existsSync(bundled)) return;
+  if (process.platform === "win32") {
+    const dir = path.dirname(bundled);
+    const ps = `$p=[Environment]::GetEnvironmentVariable('Path','User'); if (-not (($p -split ';') -contains '${dir}')) { [Environment]::SetEnvironmentVariable('Path', (($p.TrimEnd(';'), '${dir}') -join ';').TrimStart(';'), 'User') }`;
+    await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", ps]).catch(() => {});
+    return;
+  }
+  if (fs.existsSync(installed) && !fs.existsSync(cliManaged)) return;
+  if (fs.existsSync(installed) && (await run(installed, ["version"]).catch(() => "")) === (await run(bundled, ["version"]).catch(() => "-"))) return;
   fs.mkdirSync(path.dirname(installed), { recursive: true });
   const tmp = `${installed}.new`;
   fs.copyFileSync(bundled, tmp);
   fs.chmodSync(tmp, 0o755);
-  // Windows keeps a running executable locked but lets it be renamed.
-  if (exists && process.platform === "win32") fs.renameSync(installed, `${installed}.old`);
   fs.renameSync(tmp, installed);
-  fs.rmSync(`${installed}.old`, { force: true });
-  fs.writeFileSync(managed, "");
-  await run(installed, ["service", "install"]);
-  if (exists) await run(installed, ["restart"]).catch(() => {});
+  fs.writeFileSync(cliManaged, "");
 }
 
 async function healthy(url) {
@@ -92,6 +93,42 @@ async function healthy(url) {
   }
 }
 
+// The core runs as a child of the app and stops when the app quits. When it
+// ends on its own, by `dory restart` or a failure, the app starts it again.
+let core;
+
+function spawnCore() {
+  const log = fs.openSync(path.join(profile, "core.log"), "a");
+  core = spawn(doryBin(), ["serve"], {
+    env: { ...process.env, DORY_DESKTOP_CORE: "1" },
+    stdio: ["ignore", log, log],
+    windowsHide: true,
+  });
+  fs.closeSync(log);
+  core.on("error", (err) => console.error("dory: core:", err.message));
+  core.on("exit", () => {
+    core = undefined;
+    if (!quitting) setTimeout(() => startCore().catch(() => {}), 1000);
+  });
+}
+
+// startCore uses a healthy core already on the port, such as a dev one, and
+// otherwise starts the core of the app and waits for it.
+async function startCore(url = coreURL) {
+  if (await healthy(url)) return;
+  spawnCore();
+  for (let i = 0; i < 100; i++) {
+    if (await healthy(url)) return;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error(`el núcleo no arrancó; mira ${path.join(profile, "core.log")}`);
+}
+
+function stopCore() {
+  if (core) core.kill();
+}
+
+let coreURL;
 let win;
 
 // The core downloads the desktop release of its channel when the mesh updates
@@ -116,9 +153,13 @@ async function followUpdates(url) {
 }
 
 async function open() {
-  if (!devURL) await installCore().catch((err) => console.error("dory: install core:", err.message));
-  const url = devURL || await dory(["url"]).catch(() => "http://127.0.0.1:7700");
-  if (!devURL && !(await healthy(url))) await dory(["start"]);
+  if (!devURL) {
+    await migrateCore().catch((err) => console.error("dory: migrate core:", err.message));
+    installCLI().catch((err) => console.error("dory: install cli:", err.message));
+  }
+  const url = devURL || await run(doryBin(), ["url"]).catch(() => "http://127.0.0.1:7700");
+  coreURL = url;
+  if (!devURL) await startCore(url);
   win = new BrowserWindow({
     width: 1400, height: 900, minWidth: 380, minHeight: 500, show: !hidden,
     title: devURL ? "Dory (dev)" : "Dory", backgroundColor: "#0f0f11", autoHideMenuBar: true,
@@ -133,7 +174,7 @@ async function open() {
   win.webContents.on("will-navigate", (e, target) => {
     if (!target.startsWith(url)) { e.preventDefault(); shell.openExternal(target); }
   });
-  // Closing the window hides it: the app stays in the tray, like the core.
+  // Closing the window hides it: the app and its core stay in the tray.
   win.on("close", (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
   await win.loadURL(url);
   if (!devURL) followUpdates(url);
@@ -289,14 +330,14 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", show);
-  app.on("before-quit", () => { quitting = true; });
+  app.on("before-quit", () => { quitting = true; stopCore(); });
   app.whenReady().then(() => {
     Menu.setApplicationMenu(null);
     createTray();
     startAtLogin();
     integrateAppImage();
     open().catch((err) => {
-      dialog.showErrorBox("Dory", `No se pudo arrancar el núcleo.\n\n${err.message}\n\nInstala el binario dory o ejecuta \`dory service install\`.`);
+      dialog.showErrorBox("Dory", `No se pudo arrancar el núcleo.\n\n${err.message}`);
       app.quit();
     });
   });
