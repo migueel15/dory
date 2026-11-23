@@ -59,7 +59,7 @@ public class NoticeService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         channels();
         Notification ongoing = new NotificationCompat.Builder(this, "connection")
-            .setSmallIcon(R.mipmap.ic_launcher).setContentTitle("Dory conectado a la malla")
+            .setSmallIcon(R.drawable.ic_stat_dory).setContentTitle("Dory conectado a la malla")
             .setContentText("Recibe los avisos con la app cerrada.").setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_MIN).setContentIntent(openApp()).build();
         if (Build.VERSION.SDK_INT >= 34) startForeground(ONGOING, ongoing, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
@@ -205,7 +205,7 @@ public class NoticeService extends Service {
         String id = n.optString("id");
         try {
             NotificationManagerCompat.from(this).notify(id.hashCode(), new NotificationCompat.Builder(this, "notices")
-                .setSmallIcon(R.mipmap.ic_launcher).setContentTitle(n.optString("title")).setContentText(n.optString("body"))
+                .setSmallIcon(R.drawable.ic_stat_dory).setContentTitle(n.optString("title")).setContentText(n.optString("body"))
                 .setAutoCancel(true).setContentIntent(openNotice(id, node, n.optString("url"))).build());
         } catch (SecurityException ignored) {
             // Permission revoked meanwhile.
