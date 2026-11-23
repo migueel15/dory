@@ -360,18 +360,13 @@ func codexRecord(line []byte, emit func(Message), out []Message, index map[strin
 	case "function_call_output", "custom_tool_call_output":
 		if i, ok := index[p.CallID]; ok {
 			m := out[i]
-			switch o := p.Output.(type) {
-			case string:
-				m.Text = clip(o, 4000)
-				if m.Tool != nil && m.Tool.Kind == "question" {
-					t := *m.Tool
-					if qs, ok := codexAnswers(t.Questions, o); ok {
-						t.Questions, m.Tool, m.Text = qs, &t, ""
-					}
+			o := codexOutput(p.Output)
+			m.Text = clip(o, 4000)
+			if _, ok := p.Output.(string); ok && m.Tool != nil && m.Tool.Kind == "question" {
+				t := *m.Tool
+				if qs, ok := codexAnswers(t.Questions, o); ok {
+					t.Questions, m.Tool, m.Text = qs, &t, ""
 				}
-			default:
-				raw, _ := json.Marshal(o)
-				m.Text = clip(string(raw), 4000)
 			}
 			emit(m)
 		}
