@@ -222,6 +222,7 @@ func (u *Updater) run(ctx context.Context, opts Options) error {
 	if sha == version.Read().Revision {
 		return providerError(notes)
 	}
+	inApp := os.Getenv(DesktopEnv) != ""
 	dir := filepath.Join(u.DataDir, "updates")
 	if err = os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -230,10 +231,12 @@ func (u *Updater) run(ctx context.Context, opts Options) error {
 	if runtime.GOOS == "windows" {
 		asset += ".exe"
 	}
-	if err = download(ctx, tag, dir, asset); err != nil {
-		return err
+	if !inApp {
+		if err = download(ctx, tag, dir, asset); err != nil {
+			return err
+		}
 	}
-	if desktopInstalled() {
+	if inApp || desktopInstalled() {
 		desk := u.DesktopDir()
 		stage, stageErr := os.MkdirTemp(dir, "desktop-")
 		if stageErr != nil {
@@ -256,10 +259,13 @@ func (u *Updater) run(ctx context.Context, opts Options) error {
 		}
 		_ = os.RemoveAll(backup)
 	}
-	// The core bundled inside an AppImage is read-only; the desktop update
-	// brings it instead.
-	if err = replace(filepath.Join(dir, asset)); err != nil && !desktopInstalled() {
-		return err
+	// The core the desktop app runs lives inside the app: the desktop update
+	// brings it, and the app restarts with it.
+	if inApp {
+		return providerError(notes)
+	}
+	if err = replaceCore(filepath.Join(dir, asset)); err != nil {
+		return fmt.Errorf("no se pudo sustituir el núcleo: %w", err)
 	}
 	if len(notes) > 0 {
 		log.Printf("update: harnesses that failed: %s", strings.Join(notes, "; "))
@@ -269,6 +275,9 @@ func (u *Updater) run(ctx context.Context, opts Options) error {
 	}
 	return nil
 }
+
+// DesktopEnv is set by the desktop app on the core it runs as its child.
+const DesktopEnv = "DORY_DESKTOP_CORE"
 
 // api is the GitHub REST API; unauthenticated calls allow 60 an hour per
 // address, and a node makes at most one check every few minutes.
@@ -410,6 +419,9 @@ func desktopInstalled() bool {
 	_, err = os.Stat(filepath.Join(home, ".dory", "desktop"))
 	return err == nil
 }
+
+// replaceCore is replace, swapped in tests.
+var replaceCore = replace
 
 // replace puts the downloaded binary in place of the running one. Windows
 // cannot overwrite a running executable, but it can rename it.
