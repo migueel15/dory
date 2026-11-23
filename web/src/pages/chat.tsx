@@ -9,6 +9,7 @@ import { ModelLogo } from "../components/model-logo";
 import { rehypeFade, useSmoothText } from "../components/stream";
 import { CodeRefChip } from "../components/code-ref";
 import { askQuestions, GroupCard, isAsk, TodoCard, ToolCard } from "../components/tool-card";
+import { HtmlCard, htmlRef, isHtml } from "../components/html-card";
 import { TurnChanges, turnFiles, type Turn } from "../components/turn-changes";
 import { NativeQuestionCard, QuestionCard } from "../components/question-card";
 import { Link } from "@tanstack/react-router";
@@ -112,6 +113,7 @@ export function Entry({ m, threadId = "", fresh = false, openQuestion = false }:
       return <Reasoning m={m} />;
     case "tool":
       if (isAsk(m)) return <QuestionCard m={m} />;
+      if (isHtml(m) && htmlRef(m)) return <HtmlCard m={m} threadId={threadId} />;
       if (m.tool?.kind === "question") return <NativeQuestionCard m={m} />;
       return m.tool ? <ToolCard m={m} /> : <StepLine run={[m]} />;
     case "plan":
@@ -499,8 +501,9 @@ export const changeTurns = (ms: Message[]): Turn[] => layout(ms, false).flatMap(
 
 function layout(ms: Message[], live: boolean): (Message | Worked | Changes)[] {
   const out: (Message | Worked | Changes)[] = [];
-  // A question is one more step: the composer is where it is answered.
-  const isWork = (m: Message) => m.role === "reasoning" || m.role === "tool" || m.role === "question" || m.role === "assistant";
+  // A question is one more step: the composer is where it is answered. A
+  // rendered HTML page is part of the answer and stays out of the fold.
+  const isWork = (m: Message) => m.role === "reasoning" || (m.role === "tool" && !(isHtml(m) && htmlRef(m))) || m.role === "question" || m.role === "assistant";
   let start = 0;
   const flush = (end: number, last: boolean) => {
     const seg = ms.slice(start, end);

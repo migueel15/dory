@@ -1,7 +1,7 @@
 ---
 name: dory-workflow
 description: "How to work on a task with Dory (MCP server `dory`): register it, plan it, read and save memories, hand it over and close it with few calls. Use for any feature, fix or task in a project that Dory tracks, or to resume one."
-version: 2
+version: 3
 ---
 
 # Dory workflow
@@ -66,5 +66,6 @@ Dory links the pull request by the task branch; set `pr_number` only when the br
 
 - Long-running processes (dev servers, watchers): `start_service`, `stop_service`.
 - Passwords, tokens and other private values: `request_secret`.
+- Charts, diagrams, tables or mockups shown in the chat: check the page with `html_preview`, then show it with `render_html`.
 - Subagents: `subagent_spawn`; do not poll, the child's end wakes you.
 - The shared browser panel: `browser_*`. Android devices: `device_*`.

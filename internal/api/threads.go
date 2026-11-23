@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/htmlrender"
 	"github.com/migueel15/dory/internal/runtime"
 )
 
@@ -232,6 +233,24 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 		}
 		w.Header().Set("Cache-Control", "private, max-age=86400")
 		http.ServeFile(w, r, path)
+	}))
+	// A page of render_html, wrapped in the theme. The CSP sandbox gives it an
+	// opaque origin even when opened outside its iframe.
+	mux.HandleFunc("GET /api/threads/{id}/renders/{file}", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
+		path, err := s.Runtime.AttachmentPath(t.ID, r.PathValue("file"))
+		if err != nil {
+			writeDataError(w, err)
+			return
+		}
+		page, err := os.ReadFile(path)
+		if err != nil {
+			writeDataError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Content-Security-Policy", "sandbox allow-scripts allow-popups")
+		w.Header().Set("Cache-Control", "private, max-age=86400")
+		w.Write([]byte(htmlrender.Document(string(page), r.URL.Query().Get("theme") != "light")))
 	}))
 	// Messages waiting for the running turn: edit, drop or send now.
 	mux.HandleFunc("POST /api/threads/{id}/queue/{run}", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {

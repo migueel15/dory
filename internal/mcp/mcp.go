@@ -18,6 +18,7 @@ import (
 	"github.com/migueel15/dory/internal/api"
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/htmlrender"
 	"github.com/migueel15/dory/internal/oplog"
 	"github.com/migueel15/dory/internal/runtime"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -68,7 +69,7 @@ func receipt(raw []byte) []byte {
 func add[I any](server *sdk.Server, name, description string, fn func(context.Context, I) (any, error)) {
 	sdk.AddTool(server, &sdk.Tool{Name: name, Description: description}, func(ctx context.Context, _ *sdk.CallToolRequest, in I) (*sdk.CallToolResult, any, error) {
 		scope := "write"
-		for _, prefix := range []string{"list_", "get_", "search", "recall", "session_start", "plan_read", "browser_tabs", "browser_read", "browser_screenshot", "browser_console"} {
+		for _, prefix := range []string{"list_", "get_", "search", "recall", "session_start", "plan_read", "browser_tabs", "browser_read", "browser_screenshot", "browser_console", "html_preview", "render_html"} {
 			if strings.HasPrefix(name, prefix) {
 				scope = "read"
 			}
@@ -79,6 +80,9 @@ func add[I any](server *sdk.Server, name, description string, fn func(context.Co
 		value, err := fn(ctx, in)
 		if err != nil {
 			return nil, nil, err
+		}
+		if p, ok := value.(previewResult); ok {
+			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.ImageContent{Data: p.png, MIMEType: "image/png"}, &sdk.TextContent{Text: p.info}}}, nil, nil
 		}
 		if img, ok := value.(pngImage); ok {
 			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.ImageContent{Data: img, MIMEType: "image/png"}}}, nil, nil
@@ -186,6 +190,29 @@ const secretHelp = "Ask the user for private values (passwords, sudo, tokens, AP
 	"The values never reach you: each is saved to an owner-only file deleted after 24h, and you get its path ({status:saved, file} or files by field name). " +
 	"Read a file only inside the command that needs it and never print it, e.g. sudo -S -p '' cmd < \"$file\" or tool --token \"$(cat \"$file\")\". " +
 	"Other statuses: declined, timed_out, cancelled, with a note."
+
+type htmlSource struct {
+	HTML string `json:"html,omitempty" jsonschema:"Inline page, at most 512000 bytes"`
+	Path string `json:"path,omitempty" jsonschema:"Absolute .html file path, instead of html"`
+}
+
+type htmlInput struct {
+	htmlSource
+	Title  string `json:"title" jsonschema:"Short title shown above the page"`
+	Height int    `json:"height" jsonschema:"Frame height in CSS pixels, 80 to 2000; use the content_height from html_preview"`
+}
+
+type htmlPreviewInput struct {
+	htmlSource
+	Width int  `json:"width,omitempty" jsonschema:"CSS pixels, 240 to 1600; default 728, about 390 for phones"`
+	Light bool `json:"light,omitempty" jsonschema:"Light theme; default dark"`
+}
+
+// previewResult is html_preview's answer: the capture and its measures.
+type previewResult struct {
+	png  []byte
+	info string
+}
 
 // Handler serves the tools. The caller authenticates the request; a thread
 // passes its id as ?thread= so questions reach the right conversation.
@@ -383,6 +410,49 @@ func build(s *api.Server, devices bool) *sdk.Server {
 			timeout = time.Duration(min(in.TimeoutS, 3600)) * time.Second
 		}
 		return s.Runtime.RequestSecret(ctx, id, p, timeout)
+	})
+
+	add(srv, "html_preview", "Check an HTML page before render_html: returns a PNG at the given width, content_height and console output. "+htmlrender.Guide, func(ctx context.Context, in htmlPreviewInput) (any, error) {
+		if s.Browser == nil {
+			return nil, errors.New("this node has no browser to preview with")
+		}
+		page, err := htmlrender.Read(in.HTML, in.Path)
+		if err != nil {
+			return nil, err
+		}
+		width := htmlrender.ColumnWidth
+		if in.Width != 0 {
+			width = min(max(in.Width, 240), 1600)
+		}
+		p, err := s.Browser.Preview(ctx, htmlrender.Document(page, !in.Light), width)
+		if err != nil {
+			return nil, err
+		}
+		info, _ := json.Marshal(map[string]any{"content_height": p.ContentHeight, "captured_height": p.CapturedHeight, "width": width, "console": p.Console})
+		return previewResult{png: p.PNG, info: string(info)}, nil
+	})
+
+	add(srv, "render_html", "Show a finished HTML page (chart, diagram, table, mockup) inline in this thread, above your final reply, in a sandboxed frame. Do not announce or restate the page. Check it first with html_preview. "+htmlrender.Guide, func(ctx context.Context, in htmlInput) (any, error) {
+		id, _ := ctx.Value(threadKey{}).(string)
+		if id == "" {
+			return nil, errors.New("render_html only works inside a Dory thread")
+		}
+		page, err := htmlrender.Read(in.HTML, in.Path)
+		if err != nil {
+			return nil, err
+		}
+		title := strings.TrimSpace(in.Title)
+		if title == "" || len(title) > htmlrender.MaxTitle {
+			return nil, fmt.Errorf("title must have 1 to %d characters", htmlrender.MaxTitle)
+		}
+		if in.Height < htmlrender.MinHeight || in.Height > htmlrender.MaxHeight {
+			return nil, fmt.Errorf("height must be between %d and %d", htmlrender.MinHeight, htmlrender.MaxHeight)
+		}
+		a, err := s.Runtime.SaveAttachment(id, "page.html", "text/html", strings.NewReader(page))
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"status": "shown", "html_render": map[string]any{"attachment_id": a.ID, "title": title, "height": in.Height}}, nil
 	})
 
 	add(srv, "start_service", "Run a long-lived process for this thread (dev server, database, watcher) detached in its folder; the user sees its ports. Use it instead of backgrounding in your shell.", func(ctx context.Context, in struct {
