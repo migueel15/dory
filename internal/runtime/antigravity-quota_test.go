@@ -2,11 +2,6 @@ package runtime
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"testing"
 	"time"
@@ -21,39 +16,16 @@ func (p fixtureQuotaProvider) Usage(context.Context) ([]Window, error) { return 
 
 func TestAntigravityQuotaStore(t *testing.T) {
 	reset := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
-	makeHost := func(project, buckets string) *httptest.Server {
-		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodPost || r.Header.Get("Authorization") != "Bearer test-token" || r.Header.Get("User-Agent") != "Dory/2 antigravity" {
-				t.Error("unexpected quota request")
-				w.WriteHeader(http.StatusUnauthorized)
-				return
-			}
-			switch r.URL.Path {
-			case "/v1internal:loadCodeAssist":
-				fmt.Fprintf(w, `{"cloudaicompanionProject":%q}`, project)
-			case "/v1internal:retrieveUserQuotaSummary":
-				var args struct{ Project string }
-				if err := json.NewDecoder(r.Body).Decode(&args); err != nil || args.Project != project {
-					t.Errorf("invalid quota project: %+v (%v)", args, err)
-				}
-				fmt.Fprintf(w, buckets, reset.Format(time.RFC3339))
-			default:
-				w.WriteHeader(http.StatusNotFound)
-			}
-		}))
-	}
-	daily := makeHost("daily", `{"buckets":[{"bucketId":"gemini-5h","displayName":"Gemini","remainingFraction":0.25,"resetTime":%q},{"bucketId":"disabled","remainingFraction":0.5,"disabled":true}]}`)
-	defer daily.Close()
-	prod := makeHost("prod", `{"groups":[{"displayName":"Gemini","buckets":[{"bucketId":"gemini-5h","remainingFraction":1},{"bucketId":"gemini-weekly","window":"weekly","remainingFraction":0.75,"resetTime":%q},{"bucketId":"missing-balance","remainingAmount":12}]}]}`)
-	defer prod.Close()
-
-	got, err := fetchAgyQuota(t.Context(), daily.Client(), "test-token", daily.URL, prod.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	weekly := reset.Add(72 * time.Hour)
+	tsv := "Gemini Models\tFive Hour Limit Remaining\t25%\t" + reset.Format(time.RFC3339) + "\n" +
+		"Gemini Models\tWeekly Limit Remaining\t75%\t" + weekly.Format(time.RFC3339) + "\n" +
+		"Gemini Models\tWeekly Limit Remaining\t10%\t" + weekly.Format(time.RFC3339) + "\n" +
+		"Remaining credits\t0\n" +
+		"Claude and GPT models\tLímite semanal\tabc%\t" + weekly.Format(time.RFC3339) + "\n"
+	got := parseAgyQuota([]byte(tsv))
 	want := []Window{
-		{Kind: "gemini-5h", Label: "Gemini · 5 horas", Minutes: 300, Utilization: 0.75, ResetsAt: reset},
-		{Kind: "gemini-weekly", Label: "Gemini · Semanal", Minutes: 10080, Utilization: 0.25, ResetsAt: reset},
+		{Kind: "gemini-models-5h", Label: "Gemini Models · 5 horas", Minutes: 300, Utilization: 0.75, ResetsAt: reset},
+		{Kind: "gemini-models-weekly", Label: "Gemini Models · Semanal", Minutes: 10080, Utilization: 0.25, ResetsAt: weekly},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("quota windows = %+v, want %+v", got, want)
@@ -68,14 +40,15 @@ func TestAntigravityQuotaStore(t *testing.T) {
 	}
 }
 
-func TestAntigravityTokenFormats(t *testing.T) {
-	nested := `{"token":{"access_token":"token","expiry":"2126-01-01T00:00:00Z"},"auth_method":"oauth-personal"}`
-	for _, raw := range []string{nested, "go-keyring-base64:" + base64.StdEncoding.EncodeToString([]byte(nested)), `{"access_token":"token"}`} {
-		if token := parseAgyToken([]byte(raw)); token.AccessToken != "token" {
-			t.Error("failed to read access token")
-		}
+func TestAntigravityQuotaFormats(t *testing.T) {
+	weekly := time.Now().Add(72 * time.Hour).UTC().Truncate(time.Second)
+	translated := parseAgyQuota([]byte("Gemini\tLímite semanal restante\t40%\t" + weekly.Format(time.RFC3339) + "\n"))
+	if len(translated) != 1 || translated[0].Minutes != 10080 || translated[0].Kind != "gemini-weekly" {
+		t.Errorf("translated label = %+v", translated)
 	}
-	if token := parseAgyToken([]byte("go-keyring-base64::corrupt")); token.AccessToken != "" {
-		t.Error("accepted a corrupt keyring record")
+	for _, raw := range []string{"", "unknown format\n", "{\"buckets\":[]}"} {
+		if got := parseAgyQuota([]byte(raw)); len(got) != 0 {
+			t.Errorf("parseAgyQuota(%q) = %+v", raw, got)
+		}
 	}
 }
