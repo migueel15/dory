@@ -18,6 +18,7 @@ import (
 	"github.com/migueel15/dory/internal/api"
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/htmlrender"
 	"github.com/migueel15/dory/internal/oplog"
 	"github.com/migueel15/dory/internal/runtime"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -68,7 +69,7 @@ func receipt(raw []byte) []byte {
 func add[I any](server *sdk.Server, name, description string, fn func(context.Context, I) (any, error)) {
 	sdk.AddTool(server, &sdk.Tool{Name: name, Description: description}, func(ctx context.Context, _ *sdk.CallToolRequest, in I) (*sdk.CallToolResult, any, error) {
 		scope := "write"
-		for _, prefix := range []string{"list_", "get_", "search", "recall", "session_start", "plan_read", "browser_tabs", "browser_read", "browser_screenshot", "browser_console"} {
+		for _, prefix := range []string{"list_", "get_", "search", "recall", "session_start", "plan_read", "browser_tabs", "browser_read", "browser_screenshot", "browser_console", "html_preview", "render_html"} {
 			if strings.HasPrefix(name, prefix) {
 				scope = "read"
 			}
@@ -79,6 +80,9 @@ func add[I any](server *sdk.Server, name, description string, fn func(context.Co
 		value, err := fn(ctx, in)
 		if err != nil {
 			return nil, nil, err
+		}
+		if p, ok := value.(previewResult); ok {
+			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.ImageContent{Data: p.png, MIMEType: "image/png"}, &sdk.TextContent{Text: p.info}}}, nil, nil
 		}
 		if img, ok := value.(pngImage); ok {
 			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.ImageContent{Data: img, MIMEType: "image/png"}}}, nil, nil
@@ -187,15 +191,28 @@ const secretHelp = "Ask the user for private values (passwords, sudo, tokens, AP
 	"Read a file only inside the command that needs it and never print it, e.g. sudo -S -p '' cmd < \"$file\" or tool --token \"$(cat \"$file\")\". " +
 	"Other statuses: declined, timed_out, cancelled, with a note."
 
-type htmlInput struct {
-	Title  string `json:"title" jsonschema:"Short title shown above the page"`
-	HTML   string `json:"html" jsonschema:"The whole page, self-contained: inline <style> and <script>; remote URLs load as-is. At most 200000 characters"`
-	Height int    `json:"height,omitempty" jsonschema:"Initial frame height in CSS pixels (80-2000); the frame then fits the content"`
+type htmlSource struct {
+	HTML string `json:"html,omitempty" jsonschema:"Inline page, at most 512000 bytes"`
+	Path string `json:"path,omitempty" jsonschema:"Absolute .html file path, instead of html"`
 }
 
-const htmlHelp = "Show a finished, self-contained HTML page (chart, diagram, table, mockup) inline in this thread, in a sandboxed frame as wide as the reply. " +
-	"Do not restate the page in your reply. Use the theme variables, not fixed colors: --background, --foreground, --muted, --border, --accent, --card, --font-sans, --font-mono; the base sheet sets background, text and font, and they follow light/dark mode. " +
-	"Leave html and body without background, border or side padding; let the content set the height (no vh units or height:100%). Scripts run, but the page cannot reach Dory or its cookies."
+type htmlInput struct {
+	htmlSource
+	Title  string `json:"title" jsonschema:"Short title shown above the page"`
+	Height int    `json:"height" jsonschema:"Frame height in CSS pixels, 80 to 2000; use the content_height from html_preview"`
+}
+
+type htmlPreviewInput struct {
+	htmlSource
+	Width int  `json:"width,omitempty" jsonschema:"CSS pixels, 240 to 1600; default 728, about 390 for phones"`
+	Light bool `json:"light,omitempty" jsonschema:"Light theme; default dark"`
+}
+
+// previewResult is html_preview's answer: the capture and its measures.
+type previewResult struct {
+	png  []byte
+	info string
+}
 
 // Handler serves the tools. The caller authenticates the request; a thread
 // passes its id as ?thread= so questions reach the right conversation.
@@ -395,18 +412,47 @@ func build(s *api.Server, devices bool) *sdk.Server {
 		return s.Runtime.RequestSecret(ctx, id, p, timeout)
 	})
 
-	add(srv, "render_html", htmlHelp, func(ctx context.Context, in htmlInput) (any, error) {
-		switch {
-		case strings.TrimSpace(in.HTML) == "":
-			return nil, errors.New("html is empty")
-		case len(in.HTML) > 200_000:
-			return nil, errors.New("html is over 200000 characters; trim it or link heavy assets")
-		case len(in.Title) > 200:
-			return nil, errors.New("title is over 200 characters")
-		case in.Height != 0 && (in.Height < 80 || in.Height > 2000):
-			return nil, errors.New("height must be between 80 and 2000")
+	add(srv, "html_preview", "Check an HTML page before render_html: returns a PNG at the given width, content_height and console output. "+htmlrender.Guide, func(ctx context.Context, in htmlPreviewInput) (any, error) {
+		if s.Browser == nil {
+			return nil, errors.New("this node has no browser to preview with")
 		}
-		return map[string]any{"status": "shown"}, nil
+		page, err := htmlrender.Read(in.HTML, in.Path)
+		if err != nil {
+			return nil, err
+		}
+		width := htmlrender.ColumnWidth
+		if in.Width != 0 {
+			width = min(max(in.Width, 240), 1600)
+		}
+		p, err := s.Browser.Preview(ctx, htmlrender.Document(page, !in.Light), width)
+		if err != nil {
+			return nil, err
+		}
+		info, _ := json.Marshal(map[string]any{"content_height": p.ContentHeight, "captured_height": p.CapturedHeight, "width": width, "console": p.Console})
+		return previewResult{png: p.PNG, info: string(info)}, nil
+	})
+
+	add(srv, "render_html", "Show a finished HTML page (chart, diagram, table, mockup) inline in this thread, above your final reply, in a sandboxed frame. Do not announce or restate the page. Check it first with html_preview. "+htmlrender.Guide, func(ctx context.Context, in htmlInput) (any, error) {
+		id, _ := ctx.Value(threadKey{}).(string)
+		if id == "" {
+			return nil, errors.New("render_html only works inside a Dory thread")
+		}
+		page, err := htmlrender.Read(in.HTML, in.Path)
+		if err != nil {
+			return nil, err
+		}
+		title := strings.TrimSpace(in.Title)
+		if title == "" || len(title) > htmlrender.MaxTitle {
+			return nil, fmt.Errorf("title must have 1 to %d characters", htmlrender.MaxTitle)
+		}
+		if in.Height < htmlrender.MinHeight || in.Height > htmlrender.MaxHeight {
+			return nil, fmt.Errorf("height must be between %d and %d", htmlrender.MinHeight, htmlrender.MaxHeight)
+		}
+		a, err := s.Runtime.SaveAttachment(id, "page.html", "text/html", strings.NewReader(page))
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"status": "shown", "html_render": map[string]any{"attachment_id": a.ID, "title": title, "height": in.Height}}, nil
 	})
 
 	add(srv, "start_service", "Run a long-lived process for this thread (dev server, database, watcher) detached in its folder; the user sees its ports. Use it instead of backgrounding in your shell.", func(ctx context.Context, in struct {

@@ -345,6 +345,21 @@ func (s *codexSession) notification(r codexRPC, emit func(Event)) {
 					if string(raw) != "null" {
 						m.ResultChars = len(raw)
 					}
+					var res struct {
+						Content []struct {
+							Type string `json:"type"`
+							Text string `json:"text"`
+						} `json:"content"`
+					}
+					if m.Text == "" && json.Unmarshal(p.Item.Result, &res) == nil {
+						var texts []string
+						for _, c := range res.Content {
+							if c.Type == "text" {
+								texts = append(texts, c.Text)
+							}
+						}
+						m.Text = clip(strings.Join(texts, "\n"), 4000)
+					}
 				}
 			}
 			if p.Item.Type == "fileChange" && m.Tool != nil {

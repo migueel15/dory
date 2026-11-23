@@ -66,6 +66,6 @@ Dory links the pull request by the task branch; set `pr_number` only when the br
 
 - Long-running processes (dev servers, watchers): `start_service`, `stop_service`.
 - Passwords, tokens and other private values: `request_secret`.
-- Charts, diagrams, tables or mockups shown in the chat: `render_html`, a self-contained page with Dory's theme variables.
+- Charts, diagrams, tables or mockups shown in the chat: check the page with `html_preview`, then show it with `render_html`.
 - Subagents: `subagent_spawn`; do not poll, the child's end wakes you.
 - The shared browser panel: `browser_*`. Android devices: `device_*`.

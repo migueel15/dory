@@ -154,7 +154,7 @@ func (s *antigravitySession) update(raw json.RawMessage) {
 			}
 			_ = json.Unmarshal(u.RawInput, &in)
 			msg.InputChars = len(u.RawInput)
-			tool.Input = inputClip(tool.Name, string(u.RawInput))
+			tool.Input = clip(string(u.RawInput), 4000)
 			tool.Command, tool.Path, tool.Query, tool.Pattern, tool.URL = in.Command, in.Path, in.Query, in.Pattern, in.URL
 			if tool.Command == "" {
 				tool.Command = in.Cmd

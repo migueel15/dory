@@ -29,9 +29,9 @@ var instructionSections = []instructionSection{
 	{[]string{"request_secret"}, `## Secrets
 - Ask for passwords, sudo passwords, tokens, API keys, PINs and 2FA codes with request_secret, never in the chat. Several values go in one call as fields.
 - You get file paths, not values. Read a file only inside the command that uses it (sudo -S -p '' cmd < "$file", tool --token "$(cat "$file")") and never print it.`},
-	{[]string{"render_html"}, `## HTML in the chat
-- To show a chart, diagram, table or mockup, call render_html with a self-contained page; it appears in the thread above your reply. Do not restate it.
-- Use the theme variables (--foreground, --muted, --border, --accent, --card), no page background, and let the content set the height.`},
+	{[]string{"html_preview", "render_html"}, `## HTML in the chat
+- To show a chart, diagram, table or mockup, write a self-contained page, check it with html_preview (PNG, content_height, console) and show it with render_html, passing that height. It appears in the thread above your reply; do not restate it.
+- Use the theme variables (--foreground, --muted, --border, --accent, --card, --chart-1..6), no page background, and let the content set the height.`},
 	{[]string{"start_service", "list_services", "stop_service"}, `## Long-running processes
 - Start dev servers, databases and watchers with start_service instead of backgrounding them in your shell (&, nohup, setsid, run_in_background). The user sees their ports. Stop them with stop_service.`},
 	{[]string{"browser_open", "browser_tabs", "browser_close"}, `## Browser

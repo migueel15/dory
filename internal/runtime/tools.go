@@ -148,7 +148,7 @@ func toolCall(name string, input json.RawMessage) *ToolCall {
 			t.Kind = "other"
 		}
 		if len(input) > 0 && string(input) != "null" {
-			t.Input = inputClip(name, string(input))
+			t.Input = clip(string(input), 4000)
 		}
 	}
 	return t
