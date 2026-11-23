@@ -274,3 +274,24 @@ func (m *Manager) SweepSecrets(ctx context.Context) {
 		}
 	}
 }
+
+// redactSecret drops the value a request_secret call carries in its
+// arguments, so a pasted secret is not kept in the chat.
+func redactSecret(msg *Message) {
+	t := msg.Tool
+	if t == nil || !(strings.HasSuffix(t.Name, "request_secret") || t.Tool == "request_secret") || t.Input == "" {
+		return
+	}
+	var in map[string]any
+	if json.Unmarshal([]byte(t.Input), &in) != nil {
+		t.Input = ""
+		return
+	}
+	if v, ok := in["value"].(string); ok && v != "" {
+		in["value"] = "[redacted]"
+		msg.Text = strings.ReplaceAll(msg.Text, v, "[redacted]")
+		msg.Detail = strings.ReplaceAll(msg.Detail, v, "[redacted]")
+		raw, _ := json.Marshal(in)
+		t.Input = string(raw)
+	}
+}

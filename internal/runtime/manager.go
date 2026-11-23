@@ -765,6 +765,7 @@ func (m *Manager) save(ctx context.Context, msg Message) {
 	if msg.Streaming {
 		streaming = 1
 	}
+	redactSecret(&msg)
 	at := now()
 	if msg.CreatedAt == "" {
 		msg.CreatedAt = at

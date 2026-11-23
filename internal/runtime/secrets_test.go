@@ -140,3 +140,11 @@ func TestSecretPromptValidate(t *testing.T) {
 		}
 	}
 }
+
+func TestRedactSecretValue(t *testing.T) {
+	msg := Message{Text: "x hunter2", Tool: &ToolCall{Name: "mcp__dory__request_secret", Input: `{"label":"a","value":"hunter2"}`}}
+	redactSecret(&msg)
+	if strings.Contains(msg.Tool.Input+msg.Text, "hunter2") {
+		t.Fatalf("leaked: %+v %s", msg, msg.Tool.Input)
+	}
+}
