@@ -65,7 +65,8 @@ var palettes = map[bool]string{
 }
 
 // Document wraps a page in Dory's theme and a script that reports its
-// height to the parent frame, which fits the frame to it.
+// height to the parent frame, which fits the frame to it, and tells it when
+// the user scrolls up inside, since the parent cannot see that gesture.
 func Document(html string, dark bool) string {
 	scheme := "light"
 	if dark {
@@ -74,6 +75,6 @@ func Document(html string, dark bool) string {
 	head := `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
 		`<style>:root{` + palettes[dark] + `;--radius:8px;--font-sans:"Adwaita Sans",Inter,system-ui,sans-serif;--font-mono:ui-monospace,SFMono-Regular,monospace;color-scheme:` + scheme + `}` +
 		`html{padding:8px}html,body{margin:0;background:transparent;color:var(--foreground);font:14px/1.5 var(--font-sans)}</style>` +
-		`<script>(()=>{const s=()=>parent!==window&&parent.postMessage({doryHtml:Math.ceil(document.documentElement.getBoundingClientRect().height)},"*");addEventListener("load",s);new ResizeObserver(s).observe(document.documentElement)})()</script>`
+		`<script>(()=>{const s=()=>parent!==window&&parent.postMessage({doryHtml:Math.ceil(document.documentElement.getBoundingClientRect().height)},"*");addEventListener("load",s);new ResizeObserver(s).observe(document.documentElement);const u=()=>parent!==window&&parent.postMessage({doryUp:1},"*");addEventListener("wheel",e=>{if(e.deltaY<0)u()},{passive:true});addEventListener("keydown",e=>{if(["ArrowUp","PageUp","Home"].includes(e.key))u()})})()</script>`
 	return head + html
 }

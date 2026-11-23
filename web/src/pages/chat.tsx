@@ -693,12 +693,16 @@ export function useFollow(deps: unknown[]) {
     const key = (e: KeyboardEvent) => { if (["ArrowUp", "PageUp", "Home"].includes(e.key)) leave(); };
     const pointer = (e: PointerEvent) => { if (e.target === el) { held.current = true; touch(); } }; // the scrollbar
     const release = () => { held.current = false; };
+    // A page rendered in a frame is another document: its wheel and keys never
+    // reach el, so the page reports a gesture up itself.
+    const framed = (e: MessageEvent) => { if (e.data?.doryUp && Array.from(el.querySelectorAll("iframe")).some((f) => f.contentWindow === e.source)) leave(); };
+    window.addEventListener("message", framed);
     window.addEventListener("pointerup", release);
     el.addEventListener("wheel", wheel, { passive: true });
     el.addEventListener("touchmove", touch, { passive: true });
     el.addEventListener("keydown", key);
     el.addEventListener("pointerdown", pointer);
-    return () => { el.removeEventListener("wheel", wheel); el.removeEventListener("touchmove", touch); el.removeEventListener("keydown", key); el.removeEventListener("pointerdown", pointer); window.removeEventListener("pointerup", release); };
+    return () => { el.removeEventListener("wheel", wheel); el.removeEventListener("touchmove", touch); el.removeEventListener("keydown", key); el.removeEventListener("pointerdown", pointer); window.removeEventListener("pointerup", release); window.removeEventListener("message", framed); };
   }, []);
   const onScroll = () => {
     const el = scroller.current;
@@ -709,7 +713,7 @@ export function useFollow(deps: unknown[]) {
     // A move up by the user leaves the end even within the last pixels: re-pinning
     // there let the next growth pull the view back down, so small wheel or touch
     // steps could never get out.
-    if (up && !chasing.current && (held.current || Date.now() - touched.current < 1000)) { if (pinned.current) anchor.current = null; pinned.current = false; }
+    if (up && !chasing.current && (held.current || Date.now() - touched.current < 1000 || el.querySelector("iframe:hover"))) { if (pinned.current) anchor.current = null; pinned.current = false; }
     else if (distance < 40 && !up) { pinned.current = true; chasing.current = false; }
     else if (pinned.current) toEnd(); // the browser moved the view; go back to the end
     if (!pinned.current) mark();
