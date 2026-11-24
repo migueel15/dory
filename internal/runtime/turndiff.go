@@ -68,7 +68,7 @@ func (m *Manager) Revert(ctx context.Context, id, messageID string) (Reverted, e
 	} else if !sent.IsZero() {
 		workspace.DropSnapshots(ctx, root, id, sent.Unix())
 	}
-	m.publish(Update{ThreadID: id, Reload: true})
+	m.emitJSON(ctx, id, EventMarker, map[string]string{"kind": "rewind", "message_id": messageID})
 	out.Text = target.Text
 	return out, nil
 }

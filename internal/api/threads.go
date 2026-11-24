@@ -23,6 +23,9 @@ import (
 // ThreadView is a thread with its conversation, as the chat shows it.
 type ThreadView struct {
 	data.Thread
+	// Seq is the last event of the thread this view includes; the thread's
+	// stream resumes after it.
+	Seq              int                      `json:"seq"`
 	LastTurnModel    *runtime.TurnModel       `json:"last_turn_model,omitempty"`
 	ReportedSettings runtime.ReportedSettings `json:"reported_settings"`
 	Messages         []runtime.Message        `json:"messages"`
@@ -76,7 +79,10 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/threads", s.postThread)
 	// A thread runs where it is created: the mesh forwards it to the chosen node.
 	mux.HandleFunc("POST /api/nodes/{node}/threads", s.postThread)
+	mux.HandleFunc("GET /api/threads/{id}/stream", s.owned(s.streamThread))
 	mux.HandleFunc("GET /api/threads/{id}", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
+		// Read before the messages: whatever is recorded in between is replayed.
+		seq := s.Runtime.EventSeq(r.Context(), t.ID)
 		msgs, err := s.Runtime.Messages(r.Context(), t.ID)
 		if err != nil {
 			writeErr(w, r, err)
@@ -88,7 +94,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 			return
 		}
 		dir, _ := s.Runtime.Dir(r.Context(), t.ID)
-		writeJSON(w, http.StatusOK, ThreadView{Thread: t, LastTurnModel: s.Runtime.LastTurnModel(r.Context(), t.ID), ReportedSettings: s.Runtime.ReportedSettings(r.Context(), t), Messages: msgs, Queue: s.Runtime.Queue(t.ID), Requests: requests, Running: s.Runtime.Running(t.ID), Worktree: dir, Local: true})
+		writeJSON(w, http.StatusOK, ThreadView{Thread: t, Seq: seq, LastTurnModel: s.Runtime.LastTurnModel(r.Context(), t.ID), ReportedSettings: s.Runtime.ReportedSettings(r.Context(), t), Messages: msgs, Queue: s.Runtime.Queue(t.ID), Requests: requests, Running: s.Runtime.Running(t.ID), Worktree: dir, Local: true})
 	}))
 	mux.HandleFunc("POST /api/threads/{id}/messages", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		var body peerapi.SendMessageRequest

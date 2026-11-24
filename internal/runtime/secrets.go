@@ -118,7 +118,7 @@ func (m *Manager) RequestSecret(ctx context.Context, thread string, p SecretProm
 		return SecretResult{}, err
 	}
 	m.setStatus(ctx, thread, "waiting", "")
-	m.publish(Update{ThreadID: thread, Reload: true})
+	m.emitJSON(ctx, thread, EventRequestOpened, map[string]string{"id": req, "kind": "secret"})
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	bg := context.WithoutCancel(ctx)
@@ -135,7 +135,7 @@ func (m *Manager) RequestSecret(ctx context.Context, thread string, p SecretProm
 	case <-ctx.Done():
 		m.forgetSecret(thread, req)
 		m.db.ExecContext(bg, `DELETE FROM thread_requests WHERE id = ?`, req)
-		m.publish(Update{ThreadID: thread, Reload: true})
+		m.emitJSON(bg, thread, EventRequestResolved, map[string]string{"id": req, "kind": "secret"})
 		return SecretResult{Status: "cancelled"}, ctx.Err()
 	}
 }

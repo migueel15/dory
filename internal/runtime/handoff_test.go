@@ -75,7 +75,7 @@ func TestSwitchProviderKeepsThreadAndHandsOffText(t *testing.T) {
 	if last := m.LastTurnModel(ctx, thread.ID); last == nil || last.Provider != claude.id || last.ReportedModel != "claude-haiku-5-5" {
 		t.Fatalf("selecting a provider changed the last applied model: %+v", last)
 	}
-	updates, unsubscribe := m.Subscribe(thread.ID)
+	updates, _, unsubscribe := m.SubscribeEvents(thread.ID)
 	defer unsubscribe()
 	second, events := run(codex, "¿Qué color acordamos?")
 	if second.Session != "" || second.Dir != first.Dir || second.Model != model || second.Effort != effort {
@@ -92,8 +92,13 @@ func TestSwitchProviderKeepsThreadAndHandsOffText(t *testing.T) {
 	}
 	var streamed *TurnModel
 	for len(updates) > 0 {
-		if update := <-updates; update.LastTurnModel != nil {
-			streamed = update.LastTurnModel
+		if e := <-updates; e.Type == EventSettings {
+			var p struct {
+				Model *TurnModel `json:"last_turn_model"`
+			}
+			if json.Unmarshal(e.Payload, &p) == nil && p.Model != nil {
+				streamed = p.Model
+			}
 		}
 	}
 	if streamed == nil || streamed.Provider != codex.id || streamed.Model == nil || *streamed.Model != model {

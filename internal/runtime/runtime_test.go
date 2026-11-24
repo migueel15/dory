@@ -96,16 +96,24 @@ func TestManagerRunsAndQueues(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	th = wait(t, store, th.ID, "idle")
-	msgs, err := m.Messages(ctx, th.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// The queued turn starts a moment after the first one ends.
 	users := 0
-	for _, msg := range msgs {
-		if msg.Role == "user" {
-			users++
+	for range 300 {
+		th = wait(t, store, th.ID, "idle")
+		msgs, err := m.Messages(ctx, th.ID)
+		if err != nil {
+			t.Fatal(err)
 		}
+		users = 0
+		for _, msg := range msgs {
+			if msg.Role == "user" {
+				users++
+			}
+		}
+		if users == 2 && !m.Running(th.ID) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	// Both turns ran; the replay reuses message ids, so each turn adds its user message.
 	if users != 2 || !th.Unread || th.ReadAt != nil || th.LastActivityAt == nil {

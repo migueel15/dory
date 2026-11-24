@@ -18,7 +18,7 @@ func (m *Manager) request(ctx context.Context, thread string, r Request) {
 		return
 	}
 	m.setStatus(ctx, thread, "waiting", "")
-	m.publish(Update{ThreadID: thread, Reload: true})
+	m.emitJSON(ctx, thread, EventRequestOpened, map[string]string{"id": r.ID, "kind": r.Kind})
 }
 
 // Requests returns what the agent of a thread is waiting for, oldest first.
@@ -67,7 +67,7 @@ func (m *Manager) resolved(ctx context.Context, thread, id string) error {
 	if !left {
 		m.setStatus(ctx, thread, "working", "")
 	}
-	m.publish(Update{ThreadID: thread, Reload: true})
+	m.emitJSON(ctx, thread, EventRequestResolved, map[string]string{"id": id})
 	return nil
 }
 
