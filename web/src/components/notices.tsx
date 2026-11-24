@@ -5,6 +5,7 @@ import { Bell, BellRinging, Tray, X } from "@phosphor-icons/react";
 import { api, req } from "../api/client";
 import { Button } from "./ui";
 import { qk } from "../api/queries/keys";
+import type { Notice } from "../api/types.gen";
 
 const b64 = (s: string) => {
   const raw = atob((s + "=".repeat((4 - (s.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
@@ -39,7 +40,6 @@ export function NoticesToggle() {
 }
 
 type NoticeSetting = { kind: string; title: string; mode: "auto" | "push" | "app" | "off" };
-type Notice = { id: string; kind: string; title: string; body: string; url: string; read_at: string | null; created_at: string };
 
 // useNotices lists the inbox, newest first; it is shared by every device of the mesh.
 function useNotices() {
