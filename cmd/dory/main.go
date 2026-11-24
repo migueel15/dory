@@ -28,6 +28,8 @@ import (
 	"github.com/migueel15/dory/internal/dictation"
 	"github.com/migueel15/dory/internal/github"
 	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/acp"
+	"github.com/migueel15/dory/internal/harness/acp/antigravity"
 	"github.com/migueel15/dory/internal/harness/procpool"
 	"github.com/migueel15/dory/internal/localdb"
 	"github.com/migueel15/dory/internal/mcp"
@@ -115,7 +117,10 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	if err := store.PublishLocations(ctx); err != nil {
 		log.Printf("publish repository locations: %v", err)
 	}
-	providers := []runtime.Provider{runtime.Claude{}, runtime.Codex{}, runtime.OpenCode{}, runtime.Antigravity{}}
+	providers := []runtime.Provider{runtime.Claude{}, runtime.Codex{}, runtime.OpenCode{}, acp.New(antigravity.Profile(""), nil)}
+	for _, a := range cfg.ACP {
+		providers = append(providers, acp.New(acp.Declared(a.ID, a.Name, a.Command, a.Args, a.Env), nil))
+	}
 	var rt *runtime.Manager
 	pool := procpool.New(func(thread string) bool { return len(rt.ThreadServices(thread)) != 0 })
 	rt = runtime.NewManager(store.LocalDB(), store, log_.Node(), cfg.DataDir, state, pool, providers...)

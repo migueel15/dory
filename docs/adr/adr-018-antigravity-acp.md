@@ -16,3 +16,7 @@ El arnés usa su modo `default`. Dory aprueba las solicitudes de permiso con acc
 ## Consequences
 
 Cada nodo usa su propia sesión de Google y el binario oficial de su plataforma. Las skills del catálogo se enlazan en `~/.gemini/config/skills`. Si Windows impide crear un enlace, Dory instala una copia gestionada. El historial de tokens se obtiene de la metadata protobuf de las bases SQLite locales, abierta en modo de solo lectura. Dory lee los saldos de suscripción ejecutando `agy -p /quota`, que responde sin modelo con una fila TSV por ventana y no crea conversaciones. Dory no lee ni usa credenciales de Antigravity ni llama a Google directamente: todo el tráfico sale del binario oficial. Si el formato cambia, la página de uso queda sin datos. Dory guarda los saldos por ventana y omite las ventanas vencidas hasta obtener una lectura actual.
+
+## Actualización
+
+La implementación ACP ya no es exclusiva de Antigravity: el paquete `internal/harness/acp` es un adaptador genérico configurado por perfiles y Antigravity (`internal/harness/acp/antigravity`) es el primero. Un arnés ACP adicional se declara con una entrada `[[acp]]` en `config.toml`, sin código nuevo ni cuotas propias.

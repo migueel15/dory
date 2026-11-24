@@ -1,42 +1,47 @@
-package runtime
+package antigravity
 
 import (
 	"bytes"
 	"context"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/migueel15/dory/internal/cmdexec"
+	"github.com/migueel15/dory/internal/harness"
 )
 
-// Usage asks the official agy binary for the quota of the signed-in account.
+// usageTimeout bounds one quota query, process start included.
+const usageTimeout = 45 * time.Second
+
+// quota asks the official agy binary for the quota of the signed-in account.
 // Dory never reads Antigravity credentials nor calls Google directly: agy
 // answers "/quota" without a model and prints one TSV row per window.
-func (a Antigravity) Usage(ctx context.Context) ([]Window, error) {
-	bin, err := exec.LookPath(a.bin())
+func quota(ctx context.Context, bin string) ([]harness.Window, error) {
+	bin, err := exec.LookPath(bin)
 	if err != nil {
-		return nil, ErrNoUsage
+		return nil, harness.ErrNoUsage
 	}
 	ctx, cancel := context.WithTimeout(ctx, usageTimeout)
 	defer cancel()
 	out, err := cmdexec.CommandContext(ctx, bin, "-p", "/quota").Output()
 	if err != nil {
-		return nil, ErrNoUsage
+		return nil, harness.ErrNoUsage
 	}
 	windows := parseAgyQuota(out)
 	if len(windows) == 0 {
-		return nil, ErrNoUsage
+		return nil, harness.ErrNoUsage
 	}
 	return windows, nil
 }
 
 // parseAgyQuota reads rows "group\tlabel\tNN%\treset". The format is not a
 // documented contract, so unknown rows are skipped instead of failing.
-func parseAgyQuota(raw []byte) []Window {
+func parseAgyQuota(raw []byte) []harness.Window {
 	seen := map[string]bool{}
-	var out []Window
+	var out []harness.Window
 	for line := range bytes.Lines(raw) {
 		fields := strings.Split(strings.TrimSpace(string(line)), "\t")
 		if len(fields) != 4 {
@@ -70,7 +75,8 @@ func parseAgyQuota(raw []byte) []Window {
 			continue
 		}
 		seen[kind] = true
-		out = append(out, Window{Kind: kind, Label: group + " · " + name, Minutes: minutes, Utilization: 1 - pct/100, ResetsAt: reset.UTC()})
+		out = append(out, harness.Window{Kind: kind, Label: group + " · " + name, Minutes: minutes, Utilization: 1 - pct/100, ResetsAt: reset.UTC()})
 	}
-	return sortWindows(out)
+	sort.Slice(out, func(i, j int) bool { return out[i].Kind < out[j].Kind })
+	return out
 }

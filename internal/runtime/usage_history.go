@@ -77,10 +77,6 @@ func (c Codex) UsageHistory(p Paths, _ time.Time) []usageEvent {
 	return c.history.events(filepath.Join(accountDir(p, c), "sessions"), readCodexUsage)
 }
 
-func (Antigravity) UsageHistory(p Paths, from time.Time) []usageEvent {
-	return antigravityUsageEvents(p.Home, from)
-}
-
 func aggregateUsage(events []usageEvent, from time.Time, hourly bool, loc *time.Location) UsageReport {
 	type key struct {
 		bucket          time.Time
