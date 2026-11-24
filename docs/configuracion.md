@@ -5,14 +5,14 @@ Dory lee `~/.config/dory/config.toml` (o el fichero de `DORY_CONFIG`). Cada clav
 | Clave | Variable | Por defecto | Qué es |
 |---|---|---|---|
 | `listen` | `DORY_LISTEN` | `127.0.0.1:7700` | Dirección de la API, la interfaz y el MCP |
-| `data_dir` | `DORY_DATA_DIR` | `~/.dory/data` | Base SQLite, clave del nodo, adjuntos, worktrees y manifiestos |
+| `data_dir` | `DORY_DATA_DIR` | `~/.dory/data` | Base SQLite, clave del nodo, adjuntos y worktrees |
 | `node_name` | `DORY_NODE_NAME` | nombre del equipo | Nombre del nodo en la malla |
 | `mesh_port` | `DORY_MESH_PORT` | `7710` | Puerto entre nodos; `0` apaga la malla |
 | `cookie_secure` | `DORY_COOKIE_SECURE` | `false` | Cookie solo por HTTPS; actívala detrás de un proxy TLS |
 | `public_origin` | `DORY_PUBLIC_ORIGIN` | vacío | Origen HTTPS público detrás de un proxy |
 | `session_ttl` | `DORY_SESSION_TTL` | `168h` | Duración de la sesión web |
 
-Ajustes de limpieza del nodo, en las tablas `[tasks]` y `[threads]`. También se cambian en **Ajustes → Tareas**; lo que guardas allí va a `settings.json` del directorio de datos, no se replica y tiene prioridad sobre el fichero:
+Ajustes de limpieza del nodo, en las tablas `[tasks]` y `[threads]`. También se cambian en **Ajustes → Tareas**; los valores guardados allí son locales al nodo y tienen prioridad sobre los de `config.toml`.
 
 | Clave | Por defecto | Qué es |
 |---|---|---|
@@ -38,9 +38,10 @@ El token se resuelve en este orden: `DORY_GITHUB_TOKEN`, el guardado desde la in
 El entorno de desarrollo iniciado con `scripts/dev.sh` usa `~/.dory/dev`. Electron guarda su perfil en `~/.dory/desktop`. Las instalaciones con una base de datos o un perfil anterior siguen usando esas rutas hasta que su copia esté disponible en la nueva ubicación. Una ruta explícita de datos tiene prioridad.
 
 En `data_dir`:
-- `dory.db`: datos. Las tablas replicadas solo cambian por el registro de operaciones.
+- `dory.db`: datos. La tabla local `node_kv` contiene, entre otros, los ajustes, las cuentas de los proveedores y el manifiesto de las skills. Las tablas replicadas solo cambian por el registro de operaciones.
 - `attachments/<hilo>`: archivos adjuntos de los mensajes.
 - `node.key`: identidad del nodo (permisos 0600).
 - `vapid.json`: claves de los avisos push.
 - `worktrees/<hilo>`: un worktree por hilo de implementación.
-- `skills-manifest.json`: ficheros de skills que escribió el nodo.
+
+Al arrancar, Dory importa los archivos JSON de estado de versiones anteriores. Añade el sufijo `.migrated` al archivo tras guardar su contenido. Si la clave ya está en la base, conserva el valor de SQLite y deja el archivo como estaba.
