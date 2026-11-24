@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ArrowSquareOut, Eye, EyeSlash, LockKey } from "@phosphor-icons/react";
-import { type PendingRequest } from "../api/client";
-import { ErrorText } from "./ui";
+import { type PendingRequest } from "../../api/client";
+import { ErrorText } from "../../components/ui";
 
 // SecretPanel is a request_secret form inside the composer. The values live
 // only in this component's state: never in the draft, the query cache or

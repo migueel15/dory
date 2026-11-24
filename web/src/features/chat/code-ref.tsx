@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Code } from "@phosphor-icons/react";
-import { HoverCard } from "./tooltip";
-import { highlight, languageOf, loadLanguage } from "../highlight";
+import { HoverCard } from "../../components/tooltip";
+import { highlight, languageOf, loadLanguage } from "../../highlight";
 
 // A code reference is lines of a file from a diff, sent with a message and
 // an optional comment. It goes to the agent as plain text that reads well and

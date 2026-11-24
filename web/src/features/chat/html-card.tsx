@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { Message } from "../api/client";
-import { useTheme } from "../theme";
+import type { Message } from "../../api/client";
+import { useTheme } from "../../theme";
 
 // HtmlCard shows the page of a render_html call. The page is a file of the
 // thread's node; the message only carries its reference, and the frame loads

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { CaretDown, CaretRight, CheckCircle, Circle, CircleNotch, FileText, Globe, MagnifyingGlass, PencilSimple, Robot, TerminalWindow, Wrench, XCircle } from "@phosphor-icons/react";
-import type { Message, Question, ToolCall } from "../api/client";
+import type { Message, Question, ToolCall } from "../../api/client";
 
 // The cards of the tool calls in the chat, one per Dory tool kind. Every
 // harness maps its tools onto these kinds in the runtime (ToolCall), so a

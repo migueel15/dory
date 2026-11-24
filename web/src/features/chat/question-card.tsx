@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CaretLeft, CaretRight, Check, Question as QuestionIcon } from "@phosphor-icons/react";
-import { type Message, type Question } from "../api/client";
-import { ErrorText } from "./ui";
+import { type Message, type Question } from "../../api/client";
+import { ErrorText } from "../../components/ui";
 import { askQuestions, isAsk } from "./tool-card";
 
 // The agent's questions are answered from the composer: QuestionPanel sits

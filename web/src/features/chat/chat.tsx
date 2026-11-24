@@ -1,22 +1,22 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowCounterClockwise, ArrowDown, ArrowRight, Brain, ChatText, GitMerge, GitPullRequest, Lightning, Rocket, Question as QuestionIcon, CaretDown, CaretRight, Check, ClipboardText, Copy, FileText, ListChecks, Stop, TerminalWindow, WarningCircle, Wrench, X } from "@phosphor-icons/react";
-import { api, type Attachment, type Message, type TurnModel } from "../api/client";
-import { copyText, defaultUrlTransform, Md } from "../components/ui";
-import { TokenChip, tokenize, type TokenKind } from "../features/composer/composer-tokens";
-import { claudeModelName } from "../components/model-label";
-import { splitMessageQuotes } from "../components/message-quotes";
-import { ModelLogo } from "../components/model-logo";
-import { rehypeFade, useSmoothText } from "../components/stream";
-import { CodeRefChip } from "../components/code-ref";
-import { askQuestions, GroupCard, isAsk, TodoCard, ToolCard } from "../components/tool-card";
-import { HtmlCard, htmlRef } from "../components/html-card";
-import { TurnChanges, turnFiles, type Turn } from "../components/turn-changes";
-import { NativeQuestionCard, QuestionCard } from "../components/question-card";
+import { api, type Attachment, type Message, type TurnModel } from "../../api/client";
+import { copyText, defaultUrlTransform, Md } from "../../components/ui";
+import { TokenChip, tokenize, type TokenKind } from "../composer/composer-tokens";
+import { claudeModelName } from "../../components/model-label";
+import { splitMessageQuotes } from "./message-quotes";
+import { ModelLogo } from "../../components/model-logo";
+import { rehypeFade, useSmoothText } from "./stream";
+import { CodeRefChip } from "./code-ref";
+import { askQuestions, GroupCard, isAsk, TodoCard, ToolCard } from "./tool-card";
+import { HtmlCard, htmlRef } from "./html-card";
+import { TurnChanges, turnFiles, type Turn } from "./turn-changes";
+import { NativeQuestionCard, QuestionCard } from "./question-card";
 import { Link } from "@tanstack/react-router";
-import { parseAutoMessage, type AutoMessage } from "../lib/auto-message";
-import { RefLink } from "../components/refs";
-import { AgentMessage, agentNote } from "../components/subagents";
-import { messageText, t } from "../i18n/es";
+import { parseAutoMessage, type AutoMessage } from "../../lib/auto-message";
+import { RefLink } from "../../components/refs";
+import { AgentMessage, agentNote } from "./subagents";
+import { messageText, t } from "../../i18n/es";
 
 // The look of the conversation, kept from Dory v1: user
 // bubbles, answers as plain markdown, and each finished turn's work folded

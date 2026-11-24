@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { agentNote } from "../../components/subagents";
+import { agentNote } from "../chat/subagents";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUp, CaretDown, Check, ClipboardText, Code, File as FileIcon, FileText, Lightning, ListBullets, MagnifyingGlass, Paperclip, PencilSimple, Quotes, Stop, TerminalWindow, Trash, X } from "@phosphor-icons/react";
 import { api, usable, type Attachment, type ThreadView } from "../../api/client";
@@ -9,12 +9,12 @@ import { DictationMic, DictationPreview, useDictationInProgress, useLocalDictati
 import { claudeModelName } from "../../components/model-label";
 import { ProviderIcon } from "./launch-picker";
 import { explicitModels, findModel, modelEffort, modelId as concreteModelId, rememberModel } from "../../effort";
-import { FILL_COMPOSER, iconBtn, MessageParts } from "../../pages/chat";
+import { FILL_COMPOSER, iconBtn, MessageParts } from "../chat/chat";
 import { HoverCard } from "../../components/tooltip";
-import { CodeRefCard, codeRefText } from "../../components/code-ref";
-import type { DraftQuote } from "../../components/quote-selection";
-import { SecretPanel } from "../../components/secret-card";
-import { askAnswerText, openAsk, QuestionPanel, useQuestionFlow } from "../../components/question-card";
+import { CodeRefCard, codeRefText } from "../chat/code-ref";
+import type { DraftQuote } from "../chat/quote-selection";
+import { SecretPanel } from "../chat/secret-card";
+import { askAnswerText, openAsk, QuestionPanel, useQuestionFlow } from "../chat/question-card";
 import { useCommand, useShortcuts } from "../../components/shortcuts";
 import { formatChord } from "./dictation-shortcut";
 import { autoMessage } from "../../lib/auto-message";

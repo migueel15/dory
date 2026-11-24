@@ -2,10 +2,10 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowBendLeftUp, CaretRight, Robot } from "@phosphor-icons/react";
-import { api, type Message, type Thread } from "../api/client";
-import { Md } from "./ui";
-import { ProviderIcon } from "../features/composer/launch-picker";
-import { qk } from "../api/queries/keys";
+import { api, type Message, type Thread } from "../../api/client";
+import { Md } from "../../components/ui";
+import { ProviderIcon } from "../composer/launch-picker";
+import { qk } from "../../api/queries/keys";
 
 // useSubagents lists the children of a thread, archived ones included: they
 // are the finished subagents.

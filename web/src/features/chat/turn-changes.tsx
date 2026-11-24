@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { CaretRight, Folder, FolderOpen, GitDiff } from "@phosphor-icons/react";
-import type { Message } from "../api/client";
-import { mergeTurnFiles, type TurnFile } from "../lib/turn-changes";
-import { tree, type Dir } from "../features/github/github-diff";
-import { showPanelTab } from "../features/thread/side-panel";
+import type { Message } from "../../api/client";
+import { mergeTurnFiles, type TurnFile } from "../../lib/turn-changes";
+import { tree, type Dir } from "../github/github-diff";
+import { showPanelTab } from "../thread/side-panel";
 
 // A turn's changes: the box at the end of each agent turn, and the filter the
 // side panel's "Cambios" tab reads to show one turn instead of the thread.

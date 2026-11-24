@@ -9,7 +9,7 @@ import { expectedRemaining, windowLabel, windowMinutes, windowReset } from "../.
 import { HoverCard } from "../../components/tooltip";
 import { EnvIcon } from "../../components/env-icon";
 import { copyText } from "../../components/ui";
-import { Related, Subagents } from "../../components/subagents";
+import { Related, Subagents } from "../chat/subagents";
 import { qk } from "../../api/queries/keys";
 import { useCard, useMesh, useNode, useProjects } from "../../api/queries/hooks";
 
