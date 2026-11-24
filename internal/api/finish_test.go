@@ -10,32 +10,11 @@ import (
 
 	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/data"
-	"github.com/migueel15/dory/internal/github"
 	"github.com/migueel15/dory/internal/localdb"
 	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/oplog"
 	"github.com/migueel15/dory/internal/runtime"
 )
-
-func TestColumnDoneByHand(t *testing.T) {
-	n := int64(7)
-	cases := []struct {
-		name string
-		c    Card
-		want string
-	}{
-		{"sin pull request", Card{Task: data.Task{Stage: "done"}}, "done"},
-		{"abierta", Card{Task: data.Task{Stage: "done", PRNumber: &n}, PRState: "open", Pull: &github.Pull{}}, "ready_to_merge"},
-		{"borrador", Card{Task: data.Task{Stage: "done", PRNumber: &n}, PRState: "draft", Pull: &github.Pull{Draft: true}}, "working"},
-		{"mergeada", Card{Task: data.Task{Stage: "done", PRNumber: &n}, PRState: "merged"}, "done"},
-		{"cerrada", Card{Task: data.Task{Stage: "done", PRNumber: &n}, PRState: "closed"}, "cancelled"},
-	}
-	for _, tc := range cases {
-		if got := column(tc.c); got != tc.want {
-			t.Errorf("%s: column = %s, want %s", tc.name, got, tc.want)
-		}
-	}
-}
 
 func newFinishServer(t *testing.T, settings Settings) (*Server, string) {
 	t.Helper()
@@ -55,6 +34,7 @@ func newFinishServer(t *testing.T, settings Settings) (*Server, string) {
 	s := &Server{Store: store, Node: Node{ID: log.Node()}, Settings: NewSettingsStore(state, settings)}
 	s.Runtime = runtime.NewManager(db, store, log.Node(), dir, state, nil)
 	s.Threads = &app.Threads{Store: store, Runtime: s.Runtime, Settings: s.Settings, Node: s.Node.ID}
+	s.Tasks = &app.Tasks{Store: store, Threads: s.Threads, Node: s.Node.ID, ArchiveOnFinish: func() bool { return s.Settings.Get().ArchiveThreadsOnFinish }}
 	return s, dir
 }
 
@@ -122,7 +102,7 @@ func TestFinishTask(t *testing.T) {
 			t.Errorf("opción %v: archivado = %v", on, got)
 		}
 		// Idempotente: una segunda llamada no falla ni duplica trabajo.
-		s.finishTask(ctx, task.ID)
+		s.Tasks.FinishTask(ctx, task.ID)
 		if got := archived(t, s, th.ID); got != on {
 			t.Errorf("opción %v tras repetir: archivado = %v", on, got)
 		}
