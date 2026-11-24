@@ -1,6 +1,6 @@
 # ADR-015: Sesiones interactivas de los arneses
 
-- Status: parcialmente sustituido por ADR-036
+- Status: parcialmente sustituido por ADR-037
 - Date: 2026-11-18
 
 ## Context
