@@ -627,7 +627,7 @@ func listTasks(ctx context.Context, s *api.Server, in taskListInput) ([]api.Card
 	if in.IssueNumber != 0 {
 		fields["issue_number"] = in.IssueNumber
 	}
-	tasks, err := s.Store.Tasks().List(ctx, data.Filter{Fields: fields, Limit: 1000})
+	tasks, err := s.Tasks.List(ctx, data.Filter{Fields: fields})
 	if err != nil {
 		return nil, err
 	}

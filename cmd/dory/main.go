@@ -188,10 +188,17 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		Store: store, Runtime: rt, Workspace: workspace.Git{}, Settings: srv.Settings, Peers: srv.PeerClient,
 		Namer: app.ModelBranchNamer{Runtime: rt}, Node: log_.Node(), DataDir: cfg.DataDir,
 	}
+	srv.Tasks = &app.Tasks{Store: store, Threads: srv.Threads, Node: log_.Node(), ArchiveOnFinish: func() bool { return srv.Settings.Get().ArchiveThreadsOnFinish }}
 	go gh.Watch(ctx, func() {
+		changed, err := srv.Tasks.RefreshPulls(ctx, gh)
+		if err != nil {
+			log.Printf("refresh pull requests: %v", err)
+		}
 		events.Changed("github", "")
 		notices.Github()
-		srv.FinishTasks(ctx)
+		if changed {
+			srv.Tasks.Finish(ctx)
+		}
 	})
 	srv.StartWorktreeMaintenance(ctx)
 	// What this node owes other nodes waits here until they are connected.
@@ -203,7 +210,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	srv.Browser = &browser.Manager{DB: store.LocalDB(), Profile: filepath.Join(cfg.DataDir, "browser-profile"),
 		Changed: func(id string) { events.Changed("browser", id) }}
 	go srv.Browser.Run(ctx)
-	notices.Columns = srv.TaskColumns
+	notices.Columns = srv.Tasks.Columns
 	notices.InfoChanged = net.Changed
 	notices.PeerInfo = func(ctx context.Context) []json.RawMessage {
 		peers, _ := net.Peers(ctx)
@@ -301,7 +308,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 
 // followed maps the remote of every repository of an active project to it.
 func followed(ctx context.Context, store *data.Store) (map[string]string, error) {
-	repos, err := store.Repositories().List(ctx, data.Filter{Limit: 1000})
+	repos, err := store.Repositories().ListAll(ctx, data.Filter{})
 	if err != nil {
 		return nil, err
 	}

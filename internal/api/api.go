@@ -46,6 +46,7 @@ type Server struct {
 	NodeState    *nodestate.Store
 	Runtime      *runtime.Manager
 	Threads      *app.Threads
+	Tasks        *app.Tasks
 	GitHub       *github.Client
 	Dictation    *dictation.Manager
 	SpeechModels *dictation.LocalModels

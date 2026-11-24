@@ -3,13 +3,10 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"net/http"
 
-	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
-	"github.com/migueel15/dory/internal/github"
 )
 
 var stages = map[string]bool{"inbox": true, "ready": true, "done": true, "cancelled": true}
@@ -20,13 +17,13 @@ func (s *Server) CreateTask(ctx context.Context, t data.Task) (data.Task, error)
 		return t, invalidStage()
 	}
 	if t.Stage == "done" {
-		if err := s.checkDone(ctx, t); err != nil {
+		if err := s.Tasks.CheckDone(ctx, t); err != nil {
 			return t, err
 		}
 	}
 	out, err := s.Store.Tasks().Create(ctx, t)
 	if err == nil && (out.Stage == "done" || out.Stage == "cancelled") {
-		s.finishTask(ctx, out.ID)
+		s.Tasks.FinishTask(ctx, out.ID)
 	}
 	return out, err
 }
@@ -65,90 +62,19 @@ func (s *Server) PatchTask(ctx context.Context, id string, expected *string, fie
 				}
 			}
 		}
-		if err := s.checkDone(ctx, candidate); err != nil {
+		if err := s.Tasks.CheckDone(ctx, candidate); err != nil {
 			return current, err
 		}
 	}
 	out, err := tasks.PatchIf(ctx, id, current.UpdatedAt, fields)
 	if err == nil && changed && (out.Stage == "done" || out.Stage == "cancelled") {
-		s.finishTask(ctx, out.ID)
+		s.Tasks.FinishTask(ctx, out.ID)
 	}
 	return out, err
 }
 
 func invalidStage() error {
 	return data.ErrInvalid.Msgf("stage must be inbox, ready, done or cancelled")
-}
-
-// checkDone accepts a task without pull request or whose pull request is
-// merged. When GitHub cannot tell the state of its pull request it refuses, so
-// the rule is never skipped.
-func (s *Server) checkDone(ctx context.Context, t data.Task) error {
-	c := Card{Task: t}
-	if t.RepositoryID != nil {
-		if r, err := s.Store.Repositories().Get(ctx, *t.RepositoryID); err == nil {
-			c.Repo, _ = github.ParseRemote(r.RemoteURL)
-		}
-	}
-	s.attachPull(ctx, &c, s.openPulls(ctx))
-	if c.PRNumber == nil || c.PRState == "merged" {
-		return nil
-	}
-	return data.ErrInvalid.Msgf("the task has an unmerged pull request (#%d); it cannot be marked done", *c.PRNumber).With("reason", "open_pull_request").With("number", *c.PRNumber)
-}
-
-// finishTask archives the threads of a task that is done or cancelled, when
-// the node is set to. Archived threads are skipped, so it is safe to call it
-// again from the manual change and from the pull request refresh.
-func (s *Server) finishTask(ctx context.Context, taskID string) {
-	if !s.Settings.Get().ArchiveThreadsOnFinish {
-		return
-	}
-	threads, err := s.Store.Threads().List(ctx, data.Filter{Fields: map[string]any{"task_id": taskID}, Limit: 1000})
-	if err != nil {
-		log.Printf("api: finish task %s: %v", taskID, err)
-		return
-	}
-	for _, t := range threads {
-		if t.NodeID != s.Node.ID {
-			continue
-		}
-		if err := s.Threads.Archive(ctx, t.ID, app.ArchiveOptions{}); err != nil {
-			log.Printf("api: archive thread %s: %v", t.ID, err)
-		}
-	}
-}
-
-// FinishTasks archives the threads of every task whose pull request was
-// merged or closed. The GitHub watcher calls it when a pull request changes.
-func (s *Server) FinishTasks(ctx context.Context) {
-	if !s.Settings.Get().ArchiveThreadsOnFinish {
-		return
-	}
-	threads, err := s.Store.Threads().List(ctx, data.Filter{Limit: 1000})
-	if err != nil {
-		return
-	}
-	seen := map[string]bool{}
-	var tasks []data.Task
-	for _, th := range threads {
-		if th.TaskID == nil || th.NodeID != s.Node.ID || seen[*th.TaskID] {
-			continue
-		}
-		seen[*th.TaskID] = true
-		if t, err := s.Store.Tasks().Get(ctx, *th.TaskID); err == nil {
-			tasks = append(tasks, t)
-		}
-	}
-	cards, err := s.Cards(ctx, tasks)
-	if err != nil {
-		return
-	}
-	for _, c := range cards {
-		if c.Column == "done" || c.Column == "cancelled" {
-			s.finishTask(ctx, c.ID)
-		}
-	}
 }
 
 // mountWorktreeState lets the interface warn about the worktree an archived
