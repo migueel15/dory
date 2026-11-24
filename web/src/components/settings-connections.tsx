@@ -66,11 +66,12 @@ function NodeCard({ row: r, update }: { row: Row; update?: NodeUpdate }) {
   const core = !!st?.available;
   const provUpdates = st?.providers.filter((p) => p.available) ?? [];
   const run = useMutation({
-    mutationFn: () => api.updateNode(r.local ? "local" : r.id, { providers: provUpdates.length > 0, force: false }),
+    mutationFn: (force: boolean) => api.updateNode(r.local ? "local" : r.id, { providers: provUpdates.length > 0, force }),
     onSettled: () => qc.invalidateQueries({ queryKey: ["mesh-update"] }),
   });
   const toggle = useMutation({ mutationFn: () => api.setPeerEnabled(r.id, r.state === "disabled"), onSuccess: () => qc.invalidateQueries({ queryKey: ["mesh"] }) });
   const remove = useMutation({ mutationFn: () => api.revokePeer(r.id), onSuccess: () => qc.invalidateQueries({ queryKey: ["mesh"] }) });
+  const failure = (run.error as Error | null)?.message || update?.error;
   const updating = st?.state === "updating" || run.isPending;
   const s = STATE[r.state];
   return (
@@ -92,7 +93,7 @@ function NodeCard({ row: r, update }: { row: Row; update?: NodeUpdate }) {
           {updating ? (
             <span className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-muted"><ArrowsClockwise className="size-4 animate-spin" aria-hidden="true" />Actualizando…</span>
           ) : (core || provUpdates.length > 0) ? (
-            <Button onClick={() => run.mutate()}><ArrowCircleUp className="mr-1.5 size-4" aria-hidden="true" />Actualizar</Button>
+            <Button onClick={() => run.mutate(false)}><ArrowCircleUp className="mr-1.5 size-4" aria-hidden="true" />Actualizar</Button>
           ) : st && st.channel !== "dev" ? <span className="text-xs text-emerald-600 dark:text-emerald-400">Al día</span> : null}
           {!r.local && (
             <div className="relative">
@@ -118,8 +119,17 @@ function NodeCard({ row: r, update }: { row: Row; update?: NodeUpdate }) {
         </div>
       )}
       {st?.state === "failed" && <p className="mt-2 text-xs text-red-600 dark:text-red-400">La actualización falló: {st.error}</p>}
+      {failure && !updating && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-red-600 dark:text-red-400">
+          <span>No se pudo actualizar: {failure}</span>
+          {r.state === "on" && (
+            <button type="button" className="font-medium underline"
+              onClick={async () => (await askConfirm(`¿Actualizar ${r.name} igualmente? Se cortarán los turnos en marcha.`, "Actualizar")) && run.mutate(true)}>Actualizar igualmente</button>
+          )}
+        </div>
+      )}
       {(st?.active_turns ?? 0) > 0 && (core || provUpdates.length > 0) && <p className="mt-2 text-xs text-slate-500 dark:text-muted">Tiene {st!.active_turns} turnos en marcha: se actualizará cuando terminen.</p>}
-      <ErrorText error={run.error ?? toggle.error ?? remove.error} />
+      <ErrorText error={toggle.error ?? remove.error} />
       {!!providers.data?.length && <ProviderChips list={providers.data} />}
     </div>
   );
