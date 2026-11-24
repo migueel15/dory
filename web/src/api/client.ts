@@ -18,6 +18,7 @@ export type {
   TurnModel, UpdateStatus, UsageBreakdownRow, UsageCost, UsageReport, UsageRow, UsageTokens,
   UsageTurn, UsageTurnCall, UsageWindow, Version,
 } from "./types.gen";
+import { textFor, type ErrorParams } from "../lib/errors";
 
 export type GithubAction = Pick<GithubActionFields, "type"> & Partial<GithubActionFields>;
 export type TaskInput = Partial<Task> & { title?: string };
@@ -33,10 +34,18 @@ export type User = { id: string; username: string };
 
 export type GithubAuth = { source: "env" | "ui" | "gh" | "none"; login: string };
 
+// ApiError keeps what the backend sent: status, stable code, technical message
+// (detail) and params. Its message is the Spanish text of the code, so what
+// the components show as error.message is already the one the user reads.
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
+  constructor(public status: number, public code: string, public detail: string, public params: ErrorParams = {}) {
+    super(textFor(code, detail, params));
   }
+}
+
+export async function apiError(res: Response): Promise<ApiError> {
+  const e = (await res.json().catch(() => null))?.error;
+  return new ApiError(res.status, e?.code ?? "", e?.message ?? res.statusText, e?.params ?? {});
 }
 
 export async function req<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
@@ -48,8 +57,7 @@ export async function req<T>(method: string, path: string, body?: unknown, signa
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!res.ok) {
-    const e = await res.json().catch(() => null);
-    throw new ApiError(res.status, e?.error?.message ?? res.statusText);
+    throw await apiError(res);
   }
   return res.status === 204 ? (undefined as T) : res.json();
 }
@@ -160,7 +168,7 @@ export const api = {
     const form = new FormData();
     form.append("file", file);
     const res = await fetch(`/api/threads/${id}/attachments`, { method: "POST", credentials: "same-origin", body: form });
-    if (!res.ok) { const e = await res.json().catch(() => null); throw new ApiError(res.status, e?.error?.message ?? res.statusText); }
+    if (!res.ok) throw await apiError(res);
     return (await res.json()) as Attachment;
   },
   attachmentUrl: (id: string, file: string) => `/api/threads/${id}/attachments/${file}`,
