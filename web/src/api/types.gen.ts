@@ -360,6 +360,8 @@ export type NodeSettings = {
   "remove_worktree_on_archive": boolean;
   "stop_services_on_shutdown": boolean;
   "agents_use_devices": boolean;
+  "agents_use_browser": boolean;
+  "browser_search_engine": string;
   "browser_tunnel_disabled": boolean;
   "input"?: InputSettings | null;
   "source_control": SourceControlSettings;

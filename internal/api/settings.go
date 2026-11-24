@@ -26,6 +26,12 @@ type Settings struct {
 	// AgentsUseDevices lets the agents of this node drive Android devices
 	// through the device_* tools; on by default.
 	AgentsUseDevices bool `json:"agents_use_devices"`
+	// AgentsUseBrowser lets the agents of this node use the thread's
+	// browser through the browser_* tools; on by default.
+	AgentsUseBrowser bool `json:"agents_use_browser"`
+	// BrowserSearchEngine is the id of the engine the address bar of the
+	// thread browser searches with (browser.SearchEngines); empty is Google.
+	BrowserSearchEngine string `json:"browser_search_engine"`
 	// BrowserTunnelDisabled keeps the desktop app from reaching the loopback
 	// ports of this node through the browser of a thread.
 	BrowserTunnelDisabled bool `json:"browser_tunnel_disabled"`

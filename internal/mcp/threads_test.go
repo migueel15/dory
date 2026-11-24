@@ -24,7 +24,7 @@ import (
 )
 
 func TestThreadControlTools(t *testing.T) {
-	tools := toolsOf(t, build(&Deps{Devices: devices.NewManager()}, false))
+	tools := toolsOf(t, build(&Deps{Devices: devices.NewManager()}, false, true))
 	for _, n := range []string{"list_models", "list_threads", "get_thread", "thread_configure", "thread_send", "thread_stop", "subagent_spawn", "thread_create", "list_environments", "subagent_status", "subagent_cancel"} {
 		if tools[n] == nil {
 			t.Errorf("missing %s", n)

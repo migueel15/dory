@@ -35,7 +35,7 @@ export function ConnectionsSettings(_: SectionProps) {
         <h2 id="connections-title" className="text-lg font-semibold">Conexiones</h2>
         <button type="button" title="Buscar actualizaciones" aria-label="Buscar actualizaciones" disabled={recheck.isPending} onClick={() => recheck.mutate()}
           className="ml-auto grid size-8 place-items-center rounded-md text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">
-          <ArrowsClockwise className={`size-4 ${recheck.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
+          <ArrowsClockwise weight="regular" className={`size-4 ${recheck.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
         </button>
         {pending > 0 && (
           <Button disabled={all.isPending} onClick={async () => (await askConfirm(`¿Actualizar ${pending === 1 ? "1 entorno" : `${pending} entornos`} y sus proveedores? Cada uno se reinicia al terminar.`, "Actualizar")) && all.mutate()}>
@@ -93,7 +93,7 @@ function NodeCard({ row: r, update }: { row: Row; update?: NodeUpdate }) {
         </div>
         <div className="ml-auto flex items-center gap-1">
           {updating ? (
-            <span className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-muted"><ArrowsClockwise className="size-4 animate-spin" aria-hidden="true" />Actualizando…</span>
+            <span className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-muted"><ArrowsClockwise weight="regular" className="size-4 animate-spin" aria-hidden="true" />Actualizando…</span>
           ) : (core || provUpdates.length > 0) ? (
             <Button onClick={() => run.mutate(false)}><ArrowCircleUp className="mr-1.5 size-4" aria-hidden="true" />Actualizar</Button>
           ) : st && st.channel !== "dev" ? <span className="text-xs text-emerald-600 dark:text-emerald-400">Al día</span> : null}
@@ -169,7 +169,7 @@ function AddConnection({ discovered }: { discovered: { id: string; name: string;
   const pick = (address: string, name?: string) => { setTarget({ address, name }); setTimeout(() => codeInput.current?.focus(), 0); };
   return (
     <div className="space-y-3">
-      <h3 className="flex items-center gap-2 font-semibold"><Plus className="size-4" aria-hidden="true" />Añadir conexión</h3>
+      <h3 className="flex items-center gap-2 font-semibold"><Plus weight="regular" className="size-4" aria-hidden="true" />Añadir conexión</h3>
       <div className="grid gap-3 md:grid-cols-2">
         <div className="rounded-xl border border-slate-200 p-4 dark:border-border">
           <p className="mb-2 flex items-center gap-1.5 text-sm font-medium"><WifiHigh className="size-4" aria-hidden="true" />En tu red</p>

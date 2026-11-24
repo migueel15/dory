@@ -16,6 +16,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "cookie-import.js",
       "build/icon.png"
     ],
     "extraResources": [

@@ -131,6 +131,8 @@ type Deps struct {
 	Browser *browser.Manager
 	// AgentsUseDevices says whether the node setting lets agents drive devices.
 	AgentsUseDevices func() bool
+	// AgentsUseBrowser says whether the node setting lets agents use the browser.
+	AgentsUseBrowser func() bool
 	// Notify tells the open clients about something that is not a stored change.
 	Notify func(entity, id string, data any)
 }
@@ -138,13 +140,13 @@ type Deps struct {
 // Handler serves the tools. The caller authenticates the request; a thread
 // passes its id as ?thread= so questions reach the right conversation.
 func Handler(s *Deps) http.Handler {
-	plain, withDevices := build(s, false), build(s, true)
+	// servers[devices][browser]: each tool group exists only while the node
+	// setting allows agents to use it.
+	servers := [2][2]*sdk.Server{{build(s, false, false), build(s, false, true)}, {build(s, true, false), build(s, true, true)}}
 	h := sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server {
-		// The device tools exist only while the node setting allows agents to use devices.
-		if s.Devices != nil && s.AgentsUseDevices != nil && s.AgentsUseDevices() {
-			return withDevices
-		}
-		return plain
+		devices := s.Devices != nil && s.AgentsUseDevices != nil && s.AgentsUseDevices()
+		browser := s.AgentsUseBrowser == nil || s.AgentsUseBrowser()
+		return servers[b2i(devices)][b2i(browser)]
 	}, &sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if id := r.URL.Query().Get("thread"); id != "" {
@@ -154,7 +156,14 @@ func Handler(s *Deps) http.Handler {
 	})
 }
 
-func build(s *Deps, devices bool) *sdk.Server {
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+func build(s *Deps, devices, browser bool) *sdk.Server {
 	srv := sdk.NewServer(&sdk.Implementation{Name: "dory", Version: "2.0.0"}, nil)
 	addTaskTools(srv, s)
 	addPlanTools(srv, s)
@@ -162,7 +171,9 @@ func build(s *Deps, devices bool) *sdk.Server {
 	addUITools(srv, s)
 	addServiceTools(srv, s)
 	addThreadTools(srv, s)
-	addBrowser(srv, s)
+	if browser {
+		addBrowser(srv, s)
+	}
 	if devices {
 		addDeviceTools(srv, s)
 	}

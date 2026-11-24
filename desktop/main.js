@@ -1,7 +1,7 @@
 // Dory desktop: a window over the core of this machine. The app runs the core
 // it ships as its child and lives in the tray, so threads keep running with
 // the window closed; quitting from the tray stops both (ADR-029).
-const { app, BrowserWindow, WebContentsView, ipcMain, shell, Menu, Tray, nativeImage, dialog } = require("electron");
+const { app, BrowserWindow, WebContentsView, ipcMain, shell, Menu, Tray, nativeImage, dialog, session } = require("electron");
 const net = require("node:net");
 const { execFile, spawn } = require("node:child_process");
 const fs = require("node:fs");
@@ -187,15 +187,31 @@ async function open() {
 const views = new Map();
 const fromUI = (e) => win && e.sender === win.webContents;
 
+// The browser session presents itself as plain Chrome: sign-in pages such as
+// Google's refuse browsers whose user agent names Electron.
+let browserSessionReady = false;
+function browserSession() {
+  if (browserSessionReady) return;
+  browserSessionReady = true;
+  const ses = session.fromPartition("persist:dory-browser");
+  ses.setUserAgent(ses.getUserAgent().replace(/\s(Electron|dory-desktop|Dory)\/\S+/gi, ""));
+}
+
 function browserView(tab, target) {
   let v = views.get(tab);
   if (v) return v;
+  browserSession();
   const view = new WebContentsView({ webPreferences: { partition: "persist:dory-browser", sandbox: true, contextIsolation: true, nodeIntegration: false } });
   v = { view };
   views.set(tab, v);
   const wc = view.webContents;
-  // New windows become tabs of the same thread; the page stays here.
-  wc.setWindowOpenHandler(({ url: next }) => {
+  // Popups (sign-in with Google and the like) open as real child windows, so
+  // they keep window.opener and can hand the result back to the page. Other
+  // new windows become tabs of the same thread; the page stays here.
+  wc.setWindowOpenHandler(({ url: next, disposition, features }) => {
+    if (disposition === "new-window" || features) {
+      return { action: "allow", overrideBrowserWindowOptions: { parent: win, width: 520, height: 680, autoHideMenuBar: true } };
+    }
     if (win) win.webContents.send("browser:open", tab, next);
     return { action: "deny" };
   });
@@ -210,6 +226,11 @@ function browserView(tab, target) {
   wc.debugger.attach("1.3");
   wc.debugger.on("message", (_e, method, params) => { if (win) win.webContents.send("browser:event", tab, method, params); });
   wc.debugger.on("detach", () => { if (win) win.webContents.send("browser:gone", tab); });
+  // A new tab is an empty black page until the user goes somewhere; real
+  // pages keep the white default under their own background.
+  const paint = (url) => view.setBackgroundColor(!url || url === "about:blank" ? "#000000" : "#ffffff");
+  paint(target);
+  wc.on("did-start-navigation", (_e, url, _inPage, isMain) => { if (isMain) paint(url); });
   win.contentView.addChildView(view);
   if (target) wc.loadURL(target).catch(() => {});
   return v;
@@ -243,6 +264,29 @@ ipcMain.handle("browser:hide", (e, tab) => { if (fromUI(e)) dropView(tab); });
 ipcMain.handle("browser:park", (e, tab) => { const v = fromUI(e) && views.get(tab); if (v) v.view.setVisible(false); });
 // focusUI gives the keyboard back to the interface from a page view.
 ipcMain.handle("browser:focus-ui", (e) => { if (fromUI(e)) win.webContents.focus(); });
+// Cookie import: the settings (source browser and auto-import at start) live
+// in this app's profile, as they belong to this machine's browsers.
+const importFile = () => path.join(app.getPath("userData"), "browser-import.json");
+function importSettings() {
+  try { return { source: "", auto: false, ...JSON.parse(fs.readFileSync(importFile(), "utf8")) }; } catch { return { source: "", auto: false }; }
+}
+async function runImport(source) {
+  browserSession();
+  const cookies = require("./cookie-import");
+  const id = source || importSettings().source || (await cookies.listSources()).default;
+  return cookies.importCookies(session.fromPartition("persist:dory-browser"), id);
+}
+ipcMain.handle("browser:import-sources", async (e) => {
+  if (!fromUI(e)) return;
+  return { ...(await require("./cookie-import").listSources()), settings: importSettings() };
+});
+ipcMain.handle("browser:import-settings", (e, s) => {
+  if (!fromUI(e)) return;
+  const next = { source: String(s?.source || ""), auto: !!s?.auto };
+  fs.writeFileSync(importFile(), JSON.stringify(next));
+  return next;
+});
+ipcMain.handle("browser:import-cookies", (e, source) => { if (fromUI(e)) return runImport(source ? String(source) : ""); });
 ipcMain.handle("browser:cdp", (e, tab, method, params) => {
   const v = fromUI(e) && views.get(tab);
   if (!v) throw new Error("no view");
@@ -350,6 +394,8 @@ if (!app.requestSingleInstanceLock()) {
     createTray();
     startAtLogin();
     integrateAppImage();
+    // Auto-import refreshes the browser's sign-ins from the chosen browser.
+    if (importSettings().auto) runImport("").catch(() => {});
     open().catch((err) => {
       dialog.showErrorBox("Dory", `No se pudo arrancar el núcleo.\n\n${err.message}`);
       app.quit();

@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/i18n"
+	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -54,6 +56,9 @@ type Manager struct {
 	Profile string
 	// Changed tells the clients of the node that a thread's browser changed.
 	Changed func(threadID string)
+	// SearchEngine returns the id of the engine the address bar searches
+	// with; nil or an unknown id is Google.
+	SearchEngine func() string
 
 	mu      sync.Mutex
 	openMu  sync.Mutex
@@ -576,6 +581,35 @@ func setup(ctx context.Context, t Target, headless bool) error {
 		return err
 	}
 	return nil
+}
+
+// SearchEngines maps the id of a search engine to its query URL.
+var SearchEngines = map[string]string{
+	"google":     "https://www.google.com/search?q=",
+	"duckduckgo": "https://duckduckgo.com/?q=",
+	"bing":       "https://www.bing.com/search?q=",
+	"brave":      "https://search.brave.com/search?q=",
+	"startpage":  "https://www.startpage.com/do/search?q=",
+}
+
+var addressLike = regexp.MustCompile(`^(localhost|\[[0-9a-fA-F:]+\]|[^\s/:]+\.[a-zA-Z]{2,}|\d{1,3}(\.\d{1,3}){3})(:\d+)?(/\S*)?$`)
+
+// address turns what the user typed in the address bar into a URL: an
+// address as is, anything else a search with the node's engine.
+func (m *Manager) address(text string) string {
+	t := strings.TrimSpace(text)
+	if t == "" || strings.Contains(t, "://") || strings.HasPrefix(t, "about:") || strings.HasPrefix(t, "data:") || addressLike.MatchString(t) {
+		return normalizeURL(t)
+	}
+	engine := ""
+	if m.SearchEngine != nil {
+		engine = m.SearchEngine()
+	}
+	base, ok := SearchEngines[engine]
+	if !ok {
+		base = SearchEngines["google"]
+	}
+	return base + url.QueryEscape(t)
 }
 
 func normalizeURL(u string) string {

@@ -34,12 +34,12 @@ func toolsOf(t *testing.T, srv *sdk.Server) map[string]*sdk.Tool {
 
 func TestDeviceToolsOnlyWhenEnabled(t *testing.T) {
 	s := &Deps{Devices: devices.NewManager()}
-	for name := range toolsOf(t, build(s, false)) {
+	for name := range toolsOf(t, build(s, false, true)) {
 		if strings.HasPrefix(name, "device_") {
 			t.Errorf("%s should be hidden", name)
 		}
 	}
-	tools := toolsOf(t, build(s, true))
+	tools := toolsOf(t, build(s, true, true))
 	for _, n := range []string{"device_list", "device_open", "device_close", "device_screenshot", "device_ui", "device_tap", "device_swipe", "device_type", "device_key", "device_launch", "device_open_url", "device_apps", "device_scroll", "device_long_press", "device_tap_text", "device_find", "device_wait_for", "device_state", "device_notifications", "device_screen", "device_setting"} {
 		if tools[n] == nil {
 			t.Errorf("missing %s", n)
