@@ -58,7 +58,7 @@ function NodeProviders({ node, onBack }: { node: string; onBack?: () => void }) 
         <h2 className="text-lg font-semibold">Proveedores</h2>
         {onBack && <Button variant="ghost" onClick={onBack}>Todos los nodos</Button>}
       </div>
-      <AddAccount node={node} onAdded={(id) => setSelected(id)} />
+      <AddAccount node={node} providers={providers.filter((p) => p.id === driver(p) && multi(p))} onAdded={(id) => setSelected(id)} />
       {list.isPending && <p className="text-sm text-slate-500 dark:text-muted">Buscando proveedores…</p>}
       <ErrorText error={list.error ?? toggle.error} />
       {providers.length > 0 && (
@@ -91,7 +91,7 @@ function NodeProviders({ node, onBack }: { node: string; onBack?: () => void }) 
 }
 
 const driver = (p: Provider) => p.driver ?? p.id;
-const multi = (p: Provider) => driver(p) === "claude" || driver(p) === "codex";
+const multi = (p: Provider) => p.capabilities.includes("accounts");
 
 const version = (p: Provider) => p.version.split(" ")[0] || "instalado";
 
@@ -160,8 +160,8 @@ function ProviderDetail({ node, provider: p }: { node: string; provider: Provide
         <div className="rounded-md bg-slate-100 p-2 dark:bg-raised">
           <p className="mb-1 flex items-center gap-2 text-xs font-medium">{{ login: "Inicio de sesión", update: "Actualización", install: "Instalación" }[state.data.kind]} · {state.data.done ? (state.data.error ? `terminó con error (${state.data.error})` : "terminado") : "en curso…"}
             <button type="button" className="ml-auto text-slate-500" onClick={() => setJob(undefined)}>cerrar</button></p>
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-xs"><Linkify text={state.data.output || "Esperando salida…"} linkLabel={(driver(p) === "claude" || driver(p) === "antigravity") && state.data.kind === "login" && !state.data.done ? `Abrir ${p.name} en el navegador` : undefined} /></pre>
-          {!state.data.done && (driver(p) === "claude" || driver(p) === "antigravity") && state.data.kind === "login" && state.data.accepts_code !== undefined && (
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-xs"><Linkify text={state.data.output || "Esperando salida…"} linkLabel={p.capabilities.includes("login_code") && state.data.kind === "login" && !state.data.done ? `Abrir ${p.name} en el navegador` : undefined} /></pre>
+          {!state.data.done && p.capabilities.includes("login_code") && state.data.kind === "login" && state.data.accepts_code !== undefined && (
             <LoginCodeForm key={job} node={node} id={job} acceptsCode={state.data.accepts_code} />
           )}
         </div>
@@ -219,13 +219,13 @@ function Linkify({ text, linkLabel }: { text: string; linkLabel?: string }) {
   return <>{text.split(/(https?:\/\/\S+)/g).map((part, i) => (/^https?:\/\//.test(part) ? <a key={i} href={part} target="_blank" rel="noreferrer" className="text-blue-600 underline dark:text-accent-text">{linkLabel ?? part}</a> : part))}</>;
 }
 
-const defaultDirs: Record<string, string> = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME" };
-
 // AddAccount signs a harness in a second time with its own configuration directory.
-function AddAccount({ node, onAdded }: { node: string; onAdded: (id: string) => void }) {
+function AddAccount({ node, providers, onAdded }: { node: string; providers: Provider[]; onAdded: (id: string) => void }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [drv, setDrv] = useState("claude");
+  const [selected, setSelected] = useState("");
+  const selectedProvider = providers.find((p) => p.id === selected) ?? providers[0];
+  const drv = selectedProvider?.id ?? "";
   const [name, setName] = useState("");
   const [home, setHome] = useState("");
   const add = useMutation({
@@ -239,14 +239,15 @@ function AddAccount({ node, onAdded }: { node: string; onAdded: (id: string) => 
   });
   const accounts = useNodeDefault(node, (d) => d.accounts, "");
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "cuenta";
+  if (!selectedProvider) return null;
   if (!open) return <Button variant="ghost" onClick={() => setOpen(true)}>Añadir cuenta</Button>;
   return (
     <form className="space-y-2 rounded-xl border border-slate-200 p-4 dark:border-border" onSubmit={(e) => { e.preventDefault(); if (name.trim()) add.mutate(); }}>
       <div className="flex flex-wrap gap-2">
-        <Select className="w-44" value={drv} onChange={setDrv} options={[{ value: "claude", label: "Claude Code" }, { value: "codex", label: "Codex" }]} />
+        <Select className="w-44" value={drv} onChange={setSelected} options={providers.map((p) => ({ value: p.id, label: p.driver_name || p.name }))} />
         <Input className="min-w-40 flex-1" placeholder="Nombre visible (p. ej. Trabajo)" value={name} onChange={(e) => setName(e.target.value)} required />
       </div>
-      <Input placeholder={accounts ? `${accounts}/${drv}-${slug}` : defaultDirs[drv]} aria-label={`Carpeta de configuración (${defaultDirs[drv]})`} value={home} onChange={(e) => setHome(e.target.value)} />
+      <Input placeholder={accounts ? `${accounts}/${drv}-${slug}` : selectedProvider.config_env ?? ""} aria-label={`Carpeta de configuración (${selectedProvider.config_env ?? ""})`} value={home} onChange={(e) => setHome(e.target.value)} />
       <div className="flex gap-2">
         <Button type="submit" disabled={add.isPending}>Añadir</Button>
         <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
@@ -261,9 +262,9 @@ function AddAccount({ node, onAdded }: { node: string; onAdded: (id: string) => 
 function AccountForm({ node, provider: p }: { node: string; provider: Provider }) {
   const qc = useQueryClient();
   const extra = p.id !== driver(p);
-  const [name, setName] = useState(p.name === (driver(p) === "claude" ? "Claude Code" : "Codex") && !extra ? "" : p.name);
+  const [name, setName] = useState(p.name === p.driver_name && !extra ? "" : p.name);
   const [home, setHome] = useState(p.home ?? "");
-  const harnessHome = useNodeDefault(node, (d) => (driver(p) === "claude" ? d.claude_home : d.codex_home), "");
+  const harnessHome = p.default_home ?? "";
   const done = () => { qc.invalidateQueries({ queryKey: ["node-providers"] }); qc.invalidateQueries({ queryKey: ["node"] }); };
   const save = useMutation({ mutationFn: () => api.updateAccount(node, p.id, { name, home }), onSuccess: done });
   const remove = useMutation({ mutationFn: () => api.removeAccount(node, p.id), onSuccess: done });
@@ -271,10 +272,10 @@ function AccountForm({ node, provider: p }: { node: string; provider: Provider }
     <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
       <label className="block space-y-1 text-sm">
         <span>Nombre visible</span>
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={extra ? "" : driver(p) === "claude" ? "Claude Code" : "Codex"} required={extra} />
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={extra ? "" : p.driver_name} required={extra} />
       </label>
       <label className="block space-y-1 text-sm">
-        <span>Carpeta de configuración ({defaultDirs[driver(p)]})</span>
+        <span>Carpeta de configuración{p.config_env && ` (${p.config_env})`}</span>
         <Input value={home} onChange={(e) => setHome(e.target.value)} placeholder={extra ? "" : harnessHome} required={extra} />
         {!extra && <span className="block text-xs text-slate-500 dark:text-muted">Skills, comandos, sesiones externas y uso se leen de esta carpeta.</span>}
       </label>

@@ -312,6 +312,8 @@ export function ExternalView() {
   const { node, provider, id } = useParams({ strict: false }) as { node: string; provider: string; id: string };
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const providers = useQuery({ queryKey: ["node-providers", node], queryFn: () => api.nodeProviders(node) });
+  const providerName = providers.data?.find((p) => p.id === provider)?.name ?? provider;
   const view = useQuery({ queryKey: ["external", node, provider, id], queryFn: () => api.externalSession(node, provider, id) });
   const adopt = useMutation({
     mutationFn: () => api.adoptSession(node, provider, id),
@@ -329,7 +331,7 @@ export function ExternalView() {
       <div data-scroller className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[55.2rem] space-y-4 px-3 py-3 sm:px-6">
           <ErrorText error={view.error ?? adopt.error} />
-          <p className="rounded-md bg-slate-100 px-3 py-2 text-xs text-slate-600 dark:bg-raised dark:text-muted">Conversación iniciada en {provider === "claude" ? "Claude Code" : "Codex"}. Se muestra en solo lectura; al continuarla en Dory, el agente retoma la misma sesión en su carpeta.</p>
+          <p className="rounded-md bg-slate-100 px-3 py-2 text-xs text-slate-600 dark:bg-raised dark:text-muted">Conversación iniciada en {providerName}. Se muestra en solo lectura; al continuarla en Dory, el agente retoma la misma sesión en su carpeta.</p>
           {view.data && <Messages threadId="" messages={view.data.messages} running={false} />}
         </div>
       </div>

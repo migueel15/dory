@@ -343,9 +343,9 @@ export type ModelChoice = {
 export type NodeDefaults = {
   "worktrees": string;
   "accounts": string;
+  "home": string;
   "claude_home": string;
   "codex_home": string;
-  "home": string;
 };
 
 export type NodeSettings = {
@@ -422,6 +422,9 @@ export type Project = {
 export type Provider = {
   "id": string;
   "driver"?: string;
+  "driver_name": string;
+  "config_env"?: string;
+  "default_home"?: string;
   "name": string;
   "home"?: string;
   "installed": boolean;
