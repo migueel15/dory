@@ -206,7 +206,7 @@ export function NoticeAlerts() {
   }, [notices.data]);
   if (toasts.length === 0) return null;
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-80 max-w-[calc(100%-2rem)] flex-col gap-2" role="status">
+    <div className="pointer-events-none fixed inset-x-4 top-[calc(env(safe-area-inset-top)+0.5rem)] z-50 flex flex-col gap-2 sm:inset-x-auto sm:bottom-4 sm:right-4 sm:top-auto sm:w-80" role="status">
       {toasts.map((n) => (
         <Toast key={n.id} notice={n} onDismiss={() => setToasts((t) => t.filter((x) => x.id !== n.id))}
           onOpen={() => { setToasts((t) => t.filter((x) => x.id !== n.id)); if (n.url) navigate({ to: n.url as never }); }} />
@@ -223,7 +223,7 @@ function Toast({ notice: n, onOpen, onDismiss }: { notice: Notice; onOpen: () =>
   const moved = useRef(false);
   return (
     <div style={{ transform: `translateX(${dx}px)`, opacity: 1 - Math.min(Math.abs(dx) / 160, 0.8), transition: start.current === undefined ? "transform 150ms, opacity 150ms" : "none" }}
-      className="pointer-events-auto flex touch-pan-y items-start rounded-lg border border-slate-200 bg-white shadow-lg dark:border-border dark:bg-surface"
+      className="toast-in pointer-events-auto flex touch-pan-y items-start rounded-lg border border-slate-200 bg-white shadow-lg dark:border-border dark:bg-surface"
       onPointerDown={(e) => { start.current = e.clientX; moved.current = false; }}
       onPointerMove={(e) => { if (start.current === undefined) return; const d = e.clientX - start.current; if (!moved.current && Math.abs(d) > 6) { moved.current = true; e.currentTarget.setPointerCapture(e.pointerId); } if (moved.current) setDx(d); }}
       onPointerUp={() => { start.current = undefined; if (Math.abs(dx) > 80) onDismiss(); else setDx(0); }}

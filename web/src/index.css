@@ -63,9 +63,10 @@ body { @apply bg-slate-50 text-slate-900 dark:bg-canvas dark:text-text; }
   .mobile-drawer[open] { animation: none; }
 }
 
-/* Toasts rise from the bottom edge. */
+/* On phones toasts drop in from the top edge. */
 @keyframes toast-in { from { translate: 0 -120%; opacity: 0; } }
 .toast-in { animation: toast-in 0.3s ease-out; }
+@media (min-width: 640px) { .toast-in { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .toast-in { animation: none; } }
 
 /* The notifications panel rises slightly into place. */
