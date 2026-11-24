@@ -33,3 +33,4 @@
 | [ADR-029](adr-029-nucleo-dentro-de-la-app.md) | El núcleo vive dentro de la app de escritorio | accepted |
 | [ADR-032](adr-032-esquema-replicado.md) | Registro del esquema replicado y tipos web generados | accepted |
 | [ADR-033](adr-033-estado-local-en-sqlite.md) | Estado local en SQLite | accepted |
+| [ADR-034](adr-034-protocolo-de-malla.md) | Protocolo versionado entre nodos de la malla | accepted |

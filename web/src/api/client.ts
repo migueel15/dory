@@ -26,7 +26,7 @@ export type MemoryInput = Partial<Memory> & { content: string };
 // usable says whether a provider can run threads: installed and not turned off.
 export const usable = (p: Provider) => p.installed && p.enabled !== false;
 export type NodeInfo = { id: string; name: string; os: string; version: string; data_dir: string; listen: string; platform: string; icon?: string };
-export type Peer = { id: string; name: string; address: string; fingerprint: string; connected: boolean; last_seen: string; revoked: boolean; disabled?: boolean; info: { node?: NodeInfo; providers?: Provider[] } };
+export type Peer = { id: string; name: string; address: string; fingerprint: string; connected: boolean; last_seen: string; revoked: boolean; disabled?: boolean; protocol: number; incompatible: boolean; info: { node?: NodeInfo; providers?: Provider[] } };
 export type Mesh = { node_id: string; fingerprint: string; port: number; peers: Peer[]; discovered: { id: string; name: string; address: string }[] };
 export type UsageRange = "24h" | "7d" | "30d" | "90d";
 export type NodeStatus = { node: NodeInfo; providers: Provider[]; usage: Record<string, UsageWindow[]>; peers?: Peer[] };

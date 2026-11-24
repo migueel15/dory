@@ -9,7 +9,7 @@ import { askConfirm } from "./confirm";
 import { Button, ErrorText, Input } from "./ui";
 import type { SectionProps } from "./settings-node";
 
-type Row = { id: string; name: string; icon?: string; os?: string; version?: string; local: boolean; state: "on" | "off" | "disabled"; seen?: string };
+type Row = { id: string; name: string; icon?: string; os?: string; version?: string; local: boolean; state: "on" | "off" | "disabled"; seen?: string; incompatible?: boolean };
 
 // ConnectionsSettings is the "Conexiones" section: the nodes of the mesh with
 // what matters about each one (state, version, updates, providers), and how to
@@ -23,7 +23,7 @@ export function ConnectionsSettings(_: SectionProps) {
   const all = useMutation({ mutationFn: () => api.updateMesh({ providers: true, force: false }), onSuccess: (d) => qc.setQueryData(["mesh-update"], d) });
   const rows: Row[] = [];
   if (node.data) rows.push({ id: node.data.node.id, name: node.data.node.name, icon: node.data.node.icon, os: node.data.node.os, version: node.data.node.version, local: true, state: "on" });
-  for (const p of mesh.data?.peers ?? []) if (!p.revoked) rows.push({ id: p.id, name: p.name, icon: p.info.node?.icon, os: p.info.node?.os, version: p.info.node?.version, local: false, state: p.disabled ? "disabled" : p.connected ? "on" : "off", seen: p.last_seen });
+  for (const p of mesh.data?.peers ?? []) if (!p.revoked) rows.push({ id: p.id, name: p.name, icon: p.info.node?.icon, os: p.info.node?.os, version: p.info.node?.version, local: false, state: p.disabled ? "disabled" : p.connected ? "on" : "off", seen: p.last_seen, incompatible: p.incompatible });
   const byNode = new Map((updates.data ?? []).map((u) => [u.node, u]));
   const pending = (updates.data ?? []).filter((u) => u.status?.available || u.status?.providers.some((p) => p.available)).length;
   return (
@@ -118,6 +118,7 @@ function NodeCard({ row: r, update }: { row: Row; update?: NodeUpdate }) {
           {provUpdates.map((p) => <span key={p.id} className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 dark:bg-accent-subtle dark:text-accent-text">{p.name} {p.current} → {p.latest}</span>)}
         </div>
       )}
+      {r.incompatible && <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">Versión de malla incompatible. Actualiza Dory en {r.name}.</p>}
       {st?.state === "failed" && <p className="mt-2 text-xs text-red-600 dark:text-red-400">La actualización falló: {st.error}</p>}
       {failure && !updating && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-red-600 dark:text-red-400">
