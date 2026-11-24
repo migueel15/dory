@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { DEFAULT_SIZE, fontSize } from "./lib/fonts";
 import { events } from "./lib/store";
 import { storage, storageKeys } from "./lib/storage";
 
@@ -27,8 +28,14 @@ export function applyScale(s = stored()) {
   // The desktop app zooms the page itself: breakpoints, px sizes and window
   // measurements follow the scale, like the browser zoom.
   const zoom = window.doryDesktop?.setZoom;
-  if (zoom) return zoom(s);
-  document.documentElement.style.fontSize = s === 1 ? "" : `${s * 100}%`;
+  // The size chosen for the interface is the root size; on the web the scale multiplies it.
+  const base = fontSize("ui");
+  const root = document.documentElement.style;
+  if (zoom) {
+    root.fontSize = base === DEFAULT_SIZE.ui ? "" : `${base}px`;
+    return zoom(s);
+  }
+  root.fontSize = s === 1 && base === DEFAULT_SIZE.ui ? "" : `${base * s}px`;
 }
 
 // step moves the scale 5% up or down, or back to 100% with 0.

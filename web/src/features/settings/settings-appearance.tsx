@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Desktop, Moon, Sun } from "@phosphor-icons/react";
 import { MAX_SCALE, MIN_SCALE, setScale, useScale } from "../../scale";
+import { Select } from "../../components/ui";
+import { DEFAULT_TERMINAL_FONT, DEFAULT_UI_FONT, chosenFont, chooseFont, defaultFontName, chooseSize, fontSize, DEFAULT_SIZE, SIZE_RANGE, useInstalledFonts } from "../../lib/fonts";
 import { useTheme, type Theme } from "../../theme";
 
 const THEMES: { value: Theme; label: string; icon: typeof Sun }[] = [
@@ -17,6 +19,8 @@ export function AppearanceSettings() {
   const [draft, setDraft] = useState(Math.round(scale * 100));
   useEffect(() => setDraft(Math.round(scale * 100)), [scale]);
   const commit = () => draft !== Math.round(scale * 100) && setScale(draft / 100);
+  const ui = useInstalledFonts(false);
+  const mono = useInstalledFonts(true);
   const min = MIN_SCALE * 100, max = MAX_SCALE * 100;
   const fill = ((draft - min) / (max - min)) * 100;
   return (
@@ -50,6 +54,46 @@ export function AppearanceSettings() {
           Se aplica al soltar. También con Ctrl + / Ctrl − (de 5 en 5) y Ctrl 0 para volver al 100% (Cmd en macOS). Se guarda en este navegador.
         </p>
       </div>
+      <FontPicker id="ui-font" label="Fuente de la interfaz" kind="ui" fonts={ui} fallback={DEFAULT_UI_FONT} />
+      <FontPicker id="terminal-font" label="Fuente de la terminal" kind="terminal" fonts={mono} fallback={DEFAULT_TERMINAL_FONT} />
+    </div>
+  );
+}
+
+// FontPicker chooses a font among the ones installed on this device. The
+// choice goes first in the stack and the defaults stay behind it, so a font
+// that is missing or lacks a glyph falls back instead of breaking the text.
+function FontPicker({ id, label, kind, fonts, fallback }: { id: string; label: string; kind: "ui" | "terminal"; fonts: string[] | null; fallback: string }) {
+  const [, bump] = useState(0);
+  // The picker always shows the family in use: the chosen one or, with no choice, the one the defaults draw with.
+  const [fallbackName] = useState(() => defaultFontName(kind));
+  const chosen = chosenFont(kind);
+  const value = chosen || fallbackName;
+  const size = fontSize(kind);
+  // The field keeps what is typed, even empty or out of range; the size applies when it is valid
+  // and, on leaving the field, it is clamped to the range.
+  const [draft, setDraft] = useState(String(size));
+  useEffect(() => setDraft(String(size)), [size]);
+  const [min, max] = SIZE_RANGE[kind];
+  const commit = () => { const n = Number(draft); if (draft.trim() === "" || Number.isNaN(n)) setDraft(String(size)); else { chooseSize(kind, n); setDraft(String(fontSize(kind))); } bump((x) => x + 1); };
+  const names = [...new Set([value, ...(fonts ?? [])])].sort((a, b) => a.localeCompare(b));
+  const options = names.map((f) => ({ value: f, label: f === chosen && !fonts?.includes(f) ? `${f} (no instalada)` : f }));
+  return (
+    <div className="max-w-md space-y-2">
+      <span id={id} className="block text-sm font-medium">{label}</span>
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1"><Select value={value} options={options} placeholder={value} onChange={(v) => { chooseFont(kind, v === fallbackName ? "" : v); bump((n) => n + 1); }} /></div>
+        <input type="number" aria-label={`Tamaño de ${label.toLowerCase()}`} title="Tamaño en px" min={min} max={max} step={1} value={draft} placeholder={String(DEFAULT_SIZE[kind])}
+          onChange={(e) => { setDraft(e.target.value); const n = Number(e.target.value); if (e.target.value !== "" && n >= min && n <= max) { chooseSize(kind, n); bump((x) => x + 1); } }}
+          onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") commit(); }}
+          className="w-16 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-border-strong dark:bg-surface" />
+        <span className="text-xs text-slate-500 dark:text-muted">px</span>
+        <button type="button" disabled={size === DEFAULT_SIZE[kind]} onClick={() => { chooseSize(kind, DEFAULT_SIZE[kind]); bump((n) => n + 1); }} className="text-xs text-slate-500 hover:text-slate-900 disabled:invisible dark:text-muted dark:hover:text-white">Restablecer</button>
+      </div>
+      <p className="text-xs text-slate-500 dark:text-muted">
+        {fonts && fonts.length === 0 ? "No se han podido listar las fuentes de este equipo; se usa la de siempre. " : ""}
+        Solo se ofrecen las fuentes instaladas en este equipo{kind === "terminal" ? " de ancho fijo. Para ver los iconos de la terminal elige una Nerd Font" : ""}. Si falta o no tiene un símbolo, se usa la siguiente: {fallback.replace(/"/g, "").split(",").slice(0, 3).join(", ")}… Se guarda en este navegador.
+      </p>
     </div>
   );
 }

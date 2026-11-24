@@ -61,7 +61,7 @@ const SECTIONS = GROUPS.flatMap((g) => g.sections);
 // screen, so the search box can open the section and point at the option.
 // Keep them in sync when a section adds or renames an option.
 const OPTIONS: Record<string, string[]> = {
-  appearance: ["Tema", "Claro", "Oscuro", "Sistema", "Escala de la interfaz", "Zoom"],
+  appearance: ["Tema", "Claro", "Oscuro", "Sistema", "Escala de la interfaz", "Zoom", "Fuente de la interfaz", "Fuente de la terminal", "Tipografía", "Tamaño de fuente"],
   browser: ["Permitir que los agentes usen el navegador", "Herramientas del navegador", "Motor de búsqueda", "Buscador", "Google", "DuckDuckGo", "Bloquear el túnel del navegador", "Importar sesiones desde", "Importar ahora", "Importar al iniciar Dory", "Cookies", "Zen", "Firefox", "Chrome"],
   shortcuts: commands.map((c) => c.label),
   dictation: ["Dictado local", "Modelos de dictado", "Vista previa en directo", "Transcribe al terminar", "Descargar modelo"],

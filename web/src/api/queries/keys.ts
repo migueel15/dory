@@ -51,6 +51,7 @@ export const qk = {
   threadRelated: (id: string) => ["threads", "related", id],
   thread: key<[id: string]>("thread"),
   threadTitle: key<[id: string]>("thread-title"),
+  threadTerminals: key<[id: string]>("thread-terminals"),
   threadServices: key<[id: string]>("thread-services"),
   threadDiff: key<[id: string, base: string]>("thread-diff"),
   external: key<[node: string, provider?: string, id?: string]>("external"),

@@ -19,6 +19,7 @@ import (
 	"github.com/migueel15/dory/internal/devices"
 	"github.com/migueel15/dory/internal/mesh"
 	"github.com/migueel15/dory/internal/runtime"
+	"github.com/migueel15/dory/internal/terminal"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -73,7 +74,7 @@ func toolError(err error) *sdk.CallToolResult {
 func add[I any](server *sdk.Server, name, description string, fn func(context.Context, I) (any, error)) {
 	sdk.AddTool(server, &sdk.Tool{Name: name, Description: description}, func(ctx context.Context, _ *sdk.CallToolRequest, in I) (*sdk.CallToolResult, any, error) {
 		scope := "write"
-		for _, prefix := range []string{"list_", "get_", "search", "recall", "session_start", "plan_read", "browser_tabs", "browser_read", "browser_screenshot", "browser_console", "html_preview", "render_html"} {
+		for _, prefix := range []string{"list_", "get_", "search", "recall", "session_start", "plan_read", "browser_tabs", "browser_read", "browser_screenshot", "browser_console", "terminal_list", "terminal_read", "html_preview", "render_html"} {
 			if strings.HasPrefix(name, prefix) {
 				scope = "read"
 			}
@@ -129,6 +130,8 @@ type Deps struct {
 	Devices *devices.Manager
 	// Browser runs the browsers of the threads; nil disables them.
 	Browser *browser.Manager
+	// Terminals runs the shells of the threads; nil disables the terminal tools.
+	Terminals *terminal.Manager
 	// AgentsUseDevices says whether the node setting lets agents drive devices.
 	AgentsUseDevices func() bool
 	// AgentsUseBrowser says whether the node setting lets agents use the browser.
@@ -171,6 +174,7 @@ func build(s *Deps, devices, browser bool) *sdk.Server {
 	addUITools(srv, s)
 	addServiceTools(srv, s)
 	addThreadTools(srv, s)
+	addTerminalTools(srv, s)
 	if browser {
 		addBrowser(srv, s)
 	}

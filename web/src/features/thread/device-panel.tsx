@@ -171,7 +171,7 @@ function Live({ node, device, onBack, floating, onFloat }: { node: string; devic
       {/* The canvas fills the free space and object-contain fits the picture inside it, so the
           phone keeps its aspect ratio and never grows past the panel, whatever its height. */}
       <div className="relative min-h-0 flex-1 overflow-hidden bg-black/5 dark:bg-black/30">
-        <canvas ref={canvas} tabIndex={0} {...input} className="absolute inset-2 size-[calc(100%-1rem)] touch-none bg-transparent object-contain outline-none" />
+        <canvas ref={canvas} data-panel-focus tabIndex={0} {...input} className="absolute inset-2 size-[calc(100%-1rem)] touch-none bg-transparent object-contain outline-none" />
       </div>
       {tools && <Tools node={node} device={device} onClose={() => setTools(false)} />}
       <div className="flex shrink-0 items-center justify-center gap-1 border-t border-slate-200 p-1 dark:border-border">

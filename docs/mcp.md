@@ -96,3 +96,17 @@ Cada hilo tiene un navegador propio en su nodo. Las herramientas solo funcionan 
 | `browser_resize` | Cambia el tamaño de la vista de una pestaña que corre en el nodo |
 
 Una pestaña corre en el Chromium sin interfaz del nodo, o en una vista nativa de la app de escritorio mientras el usuario la tiene en la pestaña **Navegador** del panel lateral. Mientras el usuario ha tomado el control, las acciones devuelven un error y la lectura y las capturas siguen funcionando.
+
+### Terminales
+
+Cada hilo puede abrir terminales reales (una shell con PTY) en su nodo; aparecen como pestañas **Terminal** del panel lateral. Todas las herramientas reciben `terminal`, que acepta el id o el nombre (se busca primero por id; se recomienda el id) y devuelven siempre `{id, name}`.
+
+| Herramienta | Qué hace |
+|---|---|
+| `terminal_open` | Abre una terminal (`name` opcional) en el lugar de trabajo del hilo; devuelve `{id, name, cwd}` |
+| `terminal_list` | Lista `[{id, name, cwd, running}]` del hilo |
+| `terminal_rename` | Cambia el nombre, único dentro del hilo |
+| `terminal_read` | Últimas líneas de salida (`lines`), sin códigos ANSI |
+| `terminal_write` | Escribe texto sin esperar (`enter` pulsa Enter; `\u0003` es Ctrl+C) |
+| `terminal_run` | Escribe un comando y espera a que la salida quede quieta o a `timeout` (segundos); devuelve lo nuevo |
+| `terminal_close` | Cierra la terminal y mata su shell |

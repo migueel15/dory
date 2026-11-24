@@ -4,27 +4,31 @@ import { formatChord } from "../composer/dictation-shortcut";
 import { hasWindowClose } from "../../lib/window-close";
 import { ContextMenu } from "../../components/context-menu";
 import { ResizeHandle } from "./thread";
-import { Browser, ClipboardText, DeviceMobile, GitDiff, Plus, SidebarSimple, X } from "@phosphor-icons/react";
+import { Browser, ClipboardText, DeviceMobile, GitDiff, Plus, SidebarSimple, TerminalWindow, X } from "@phosphor-icons/react";
+import { useHasUnseen } from "../../lib/terminal/activity";
 import { events } from "../../lib/store";
 import { storage, storageKeys } from "../../lib/storage";
 
 // A thread's side panel holds tabs of objects related to the thread: its
 // changes and the plan of its task; new kinds join TAB_KINDS.
-export type TabKind = "diff" | "plan" | "device" | "browser";
+export type TabKind = "diff" | "plan" | "device" | "browser" | "terminal";
 export const TAB_KINDS: Record<TabKind, { label: string; icon: ReactNode }> = {
   diff: { label: "Cambios", icon: <GitDiff className="size-4" /> },
   plan: { label: "Plan", icon: <ClipboardText className="size-4" /> },
   device: { label: "Dispositivo", icon: <DeviceMobile className="size-4" /> },
   browser: { label: "Navegador", icon: <Browser className="size-4" /> },
+  terminal: { label: "Terminal", icon: <TerminalWindow className="size-4" /> },
 };
 
 // A tab is a kind ("diff", "plan") or, for the kinds that allow several,
 // "kind:<id>"; per-tab data (a custom name, the chosen device) lives in meta.
-export type TabMeta = { name?: string; serial?: string; floating?: boolean };
+export type TabMeta = { name?: string; serial?: string; floating?: boolean; terminal?: string };
 type State = { open: boolean; tabs: string[]; active: string | null; meta: Record<string, TabMeta> };
 const empty: State = { open: false, tabs: [], active: null, meta: {} };
 export const kindOf = (key: string) => key.split(":")[0] as TabKind;
-const MULTIPLE: TabKind[] = ["device"];
+const MULTIPLE: TabKind[] = ["device", "terminal"];
+// Kinds whose view stays mounted while another tab is in front: a terminal keeps its screen.
+const KEEP_MOUNTED: TabKind[] = ["terminal"];
 const read = (key: string): State => {
   try { const v = JSON.parse(storage.get(key) ?? "null"); return v && Array.isArray(v.tabs) ? { ...empty, ...v, tabs: v.tabs.filter((k: string) => kindOf(k) in TAB_KINDS) } : empty; } catch { return empty; }
 };
@@ -84,7 +88,7 @@ export function SidePanelToggle({ panel }: { panel: SidePanelState }) {
 
 // SidePanel draws the tabs and the active one; with no tabs it offers what
 // can be created.
-export function SidePanel({ panel, render, available }: { panel: SidePanelState; render: (tab: string) => ReactNode; available: TabKind[] }) {
+export function SidePanel({ panel, threadId, render, available, onRename, onCloseTab }: { panel: SidePanelState; threadId: string; render: (tab: string) => ReactNode; available: TabKind[]; onRename?: (tab: string, name: string) => boolean; onCloseTab?: (tab: string) => void }) {
   const aside = useRef<HTMLElement>(null);
   // The content mounts on first open and then stays, so closing slides it out.
   const [opened, setOpened] = useState(panel.open);
@@ -95,6 +99,22 @@ export function SidePanel({ panel, render, available }: { panel: SidePanelState;
   // Every kind is listed; the ones this thread cannot open (no changes, no task) show dimmed.
   const kinds = Object.keys(TAB_KINDS) as TabKind[];
   const [renaming, setRenaming] = useState<string | null>(null);
+  const content = useRef<HTMLDivElement>(null);
+  // The view under the pointer takes the keyboard without a click; each view says what it focuses
+  // with data-panel-focus, and one that says nothing gets the container, so keys scroll it.
+  // Nothing moves while a menu, a dialog, a field or a text selection is in use.
+  const focusView = (e: React.PointerEvent) => {
+    if (e.buttons !== 0 || document.querySelector('[role="menu"], dialog[open]')) return;
+    const at = document.activeElement as HTMLElement | null;
+    // A field in use (renaming a tab, say) keeps the focus; neither the terminal's own input nor the message box does.
+    if (at && /^(INPUT|TEXTAREA|SELECT)$/.test(at.tagName) && !at.hasAttribute("data-panel-focus") && at.getAttribute("aria-label") !== "Mensaje") return;
+    if (at?.isContentEditable && !aside.current?.contains(at)) return;
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed && !aside.current?.contains(sel.anchorNode)) return;
+    const view = content.current?.querySelector<HTMLElement>("[data-view-active]");
+    const target = view?.querySelector<HTMLElement>("[data-panel-focus]") ?? content.current;
+    if (target && target !== at) target.focus({ preventScroll: true });
+  };
   return (
     // As on main: always mounted, its width slides between 0 and a fixed
     // pixel width while the content stays pinned right at full width, so it
@@ -110,12 +130,12 @@ export function SidePanel({ panel, render, available }: { panel: SidePanelState;
           <div key={k} className={`group flex items-center rounded-md text-sm ${panel.active === k ? "bg-slate-100 font-medium dark:bg-raised" : "text-slate-500 hover:bg-slate-50 dark:text-muted dark:hover:bg-raised/60"}`}>
             {renaming === k ? (
               <input autoFocus defaultValue={panel.label(k)} aria-label="Nombre de la pestaña" className="mx-1 w-28 rounded bg-white px-1.5 py-0.5 text-sm outline-none ring-1 ring-slate-300 dark:bg-surface dark:ring-border-strong"
-                onBlur={(e) => { panel.setMeta(k, { name: e.target.value.trim() }); setRenaming(null); }}
+                onBlur={(e) => { const name = e.target.value.trim(); if (name && !onRename?.(k, name)) panel.setMeta(k, { name }); setRenaming(null); }}
                 onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") setRenaming(null); }} />
             ) : (
-              <button type="button" role="tab" aria-selected={panel.active === k} onClick={() => panel.focus(k)} onDoubleClick={() => MULTIPLE.includes(kindOf(k)) && setRenaming(k)} className="flex items-center gap-1.5 py-1 pl-2.5 pr-1">{TAB_KINDS[kindOf(k)].icon}{panel.label(k)}</button>
+              <button type="button" role="tab" aria-selected={panel.active === k} onClick={() => panel.focus(k)} onDoubleClick={() => MULTIPLE.includes(kindOf(k)) && setRenaming(k)} className="flex items-center gap-1.5 py-1 pl-2.5 pr-1">{TAB_KINDS[kindOf(k)].icon}{panel.label(k)}{kindOf(k) === "terminal" && <Unseen threadId={threadId} tab={k} />}</button>
             )}
-            <button type="button" onClick={() => panel.close(k)} aria-label={`Cerrar ${panel.label(k)}`} className="mr-1 grid size-5 place-items-center opacity-60 hover:opacity-100"><X weight="regular" className="size-3" /></button>
+            <button type="button" onClick={() => { onCloseTab?.(k); panel.close(k); }} aria-label={`Cerrar ${panel.label(k)}`} className="mr-1 grid size-5 place-items-center opacity-60 hover:opacity-100"><X weight="regular" className="size-3" /></button>
           </div>
         ))}
         <button type="button" aria-label="Abrir una pestaña" title="Abrir una pestaña" aria-haspopup="menu" aria-expanded={!!menu}
@@ -123,8 +143,11 @@ export function SidePanel({ panel, render, available }: { panel: SidePanelState;
           onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu(menu ? null : { x: r.left, y: r.bottom + 4 }); }}
           className="grid size-7 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white"><Plus weight="regular" className="size-4" /></button>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
-        {!opened ? null : panel.active ? render(panel.active) : (
+      <div ref={content} tabIndex={-1} onPointerEnter={focusView} className="min-h-0 flex-1 overflow-auto outline-none">
+        {!opened ? null : panel.tabs.filter((k) => KEEP_MOUNTED.includes(kindOf(k))).map((k) => (
+          <div key={k} data-view-active={panel.active === k || undefined} className={panel.active === k ? "h-full" : "hidden"}>{render(k)}</div>
+        ))}
+        {!opened ? null : panel.active && KEEP_MOUNTED.includes(kindOf(panel.active)) ? null : panel.active ? <div data-view-active className="h-full">{render(panel.active)}</div> : (
           <div className="grid h-full place-items-center p-6">
             <div className="w-56">
               <p className="mb-2 text-center text-sm font-medium">Abrir una pestaña</p>
@@ -139,6 +162,11 @@ export function SidePanel({ panel, render, available }: { panel: SidePanelState;
         actions={kinds.map((k) => ({ label: TAB_KINDS[k].label, content: <KindRow kind={k} enabled={available.includes(k)} onPick={() => panel.show(k)} menu /> }))} />}
     </aside>
   );
+}
+
+// Unseen is the dot of a tab whose terminal printed something nobody looked at.
+function Unseen({ threadId, tab }: { threadId: string; tab: string }) {
+  return useHasUnseen(threadId, tab) ? <span aria-label="Salida nueva" className="size-1.5 rounded-full bg-accent" /> : null;
 }
 
 // KindRow is one thing the panel can open: its icon and name, dimmed when this thread cannot open it.
