@@ -4,7 +4,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { api } from "../../api/client";
 import { Button, ErrorText, Modal, Select, Textarea, uuid } from "../../components/ui";
 import { useProject } from "../../project";
-import { DictationMic, DictationPreview, useDictationInProgress, useLocalDictation, useEnterFinishesDictation } from "./local-dictation";
+import { useDictationInProgress, useLocalDictation } from "./local-dictation";
+import { DictationMic, DictationPreview, useEnterFinishesDictation } from "./dictation-ui";
 import { qk } from "../../api/queries/keys";
 import { useProjects } from "../../api/queries/hooks";
 

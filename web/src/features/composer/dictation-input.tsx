@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { hasDictationPopupOutside, isTextInput, useDictationShortcut } from "./dictation-shortcut";
-import { createDictationMeter, DictationMic, reserveDictation, useDictationInProgress } from "./local-dictation";
+import { createDictationMeter, reserveDictation, useDictationInProgress } from "./local-dictation";
+import { DictationMic } from "./dictation-ui";
 import { playDictationSound, prepareDictationSound } from "./dictation-sound";
 import { openDictationMicrophone } from "./dictation-microphone";
 import { wav } from "./audio-wav";

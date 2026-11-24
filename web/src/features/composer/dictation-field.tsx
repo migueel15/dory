@@ -1,5 +1,6 @@
 import { useId, useRef, type ComponentProps } from "react";
-import { DictationMic, DictationPreview, useLocalDictation, useEnterFinishesDictation } from "./local-dictation";
+import { useLocalDictation } from "./local-dictation";
+import { DictationMic, DictationPreview, useEnterFinishesDictation } from "./dictation-ui";
 import { ErrorText, Textarea } from "../../components/ui";
 
 type Props = Omit<ComponentProps<typeof Textarea>, "value" | "onChange" | "ref"> & {
