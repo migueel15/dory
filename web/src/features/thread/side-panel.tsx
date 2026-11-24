@@ -5,6 +5,7 @@ import { hasWindowClose } from "../../lib/window-close";
 import { ContextMenu } from "../../components/context-menu";
 import { ResizeHandle } from "./thread";
 import { Browser, ClipboardText, DeviceMobile, GitDiff, Plus, SidebarSimple, X } from "@phosphor-icons/react";
+import { events } from "../../lib/store";
 
 // A thread's side panel holds tabs of objects related to the thread: its
 // changes and the plan of its task; new kinds join TAB_KINDS.
@@ -27,8 +28,6 @@ const read = (key: string): State => {
   try { const v = JSON.parse(localStorage.getItem(key) ?? "null"); return v && Array.isArray(v.tabs) ? { ...empty, ...v, tabs: v.tabs.filter((k: string) => kindOf(k) in TAB_KINDS) } : empty; } catch { return empty; }
 };
 
-const PANEL_EVENT = "dory-side-panel";
-
 // showPanelTab opens the side panel of a thread on a tab from anywhere in the
 // interface, whether or not the thread is on screen.
 export function showPanelTab(threadId: string, kind: TabKind) {
@@ -36,7 +35,7 @@ export function showPanelTab(threadId: string, kind: TabKind) {
   const s = read(key);
   const next: State = { ...s, open: true, tabs: s.tabs.includes(kind) ? s.tabs : [...s.tabs, kind], active: kind };
   try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* per-viewer only */ }
-  window.dispatchEvent(new CustomEvent(PANEL_EVENT, { detail: key }));
+  events.panelChanged.emit(key);
 }
 
 // useSidePanel keeps, per thread and in this browser, whether the panel is
@@ -46,9 +45,7 @@ export function useSidePanel(threadId: string) {
   const [s, setS] = useState(() => read(key));
   useEffect(() => setS(read(key)), [key]);
   useEffect(() => {
-    const on = (e: Event) => { if ((e as CustomEvent).detail === key) setS(read(key)); };
-    window.addEventListener(PANEL_EVENT, on);
-    return () => window.removeEventListener(PANEL_EVENT, on);
+    return events.panelChanged.on((k) => { if (k === key) setS(read(key)); });
   }, [key]);
   // Updates apply to the latest state, so several in one event do not overwrite each other.
   const update = (f: (s: State) => State) => setS((prev) => { const next = f(prev); try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* per-viewer only */ } return next; });

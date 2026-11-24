@@ -7,8 +7,9 @@ import { wav } from "./audio-wav";
 import { playDictationSound, prepareDictationSound } from "./dictation-sound";
 import { openDictationMicrophone } from "./dictation-microphone";
 import { iconButton } from "../../components/ui";
-import { modelEvent, modelKey, useInputSettingsSync } from "../settings/input-settings";
+import { modelKey, useInputSettingsSync } from "../settings/input-settings";
 import { qk } from "../../api/queries/keys";
+import { events } from "../../lib/store";
 
 export type SpeechModel = {
   id: string; name: string; bytes: number; streaming: boolean;
@@ -28,12 +29,9 @@ export function useSpeechModels() {
 }
 
 function subscribe(notify: () => void) {
-  window.addEventListener(modelEvent, notify);
+  const off = events.dictationModelChanged.on(notify);
   window.addEventListener("storage", notify);
-  return () => {
-    window.removeEventListener(modelEvent, notify);
-    window.removeEventListener("storage", notify);
-  };
+  return () => { off(); window.removeEventListener("storage", notify); };
 }
 
 // pickSpeechModel is the model a node uses: the chosen one if it is installed,
@@ -65,12 +63,10 @@ type Session = {
 };
 type Phase = "idle" | "starting" | "recording" | "finishing";
 
-const activity = new EventTarget();
 let microphoneOwner: symbol | undefined;
 const isDictating = () => microphoneOwner !== undefined;
 const subscribeActivity = (notify: () => void) => {
-  activity.addEventListener("change", notify);
-  return () => activity.removeEventListener("change", notify);
+  return events.dictationActivityChanged.on(notify);
 };
 
 export function useDictationInProgress() {
@@ -81,11 +77,11 @@ export function reserveDictation() {
   if (microphoneOwner) return undefined;
   const owner = Symbol();
   microphoneOwner = owner;
-  activity.dispatchEvent(new Event("change"));
+  events.dictationActivityChanged.emit();
   return () => {
     if (microphoneOwner !== owner) return;
     microphoneOwner = undefined;
-    activity.dispatchEvent(new Event("change"));
+    events.dictationActivityChanged.emit();
   };
 }
 

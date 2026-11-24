@@ -4,6 +4,7 @@ import { noteThreadUpdate } from "./activity";
 import type { ThreadView } from "./types.gen";
 import { qk } from "./queries/keys";
 import { needsRefetch, reduceDelta, reduceEvent, type ThreadEvent } from "./thread-reducer";
+import { events, type DeviceEvent } from "../lib/store";
 
 // useVisible tracks whether this tab is on screen. Live streams only stay open
 // while it is: over plain HTTP a browser allows about six connections per host.
@@ -91,9 +92,9 @@ export function useLiveUpdates(enabled: boolean) {
     source.addEventListener("change", (e) => {
       const { entity, id, data } = JSON.parse((e as MessageEvent).data) as { entity: string; id: string; data?: unknown };
       // An agent opened or closed a device: the thread page reacts.
-      if (entity === "device") window.dispatchEvent(new CustomEvent("dory-device", { detail: { thread: id, ...(data as object) } }));
+      if (entity === "device") events.deviceChanged.emit({ thread: id, ...(data as object) } as DeviceEvent);
       if (entity === "browser" && (data as { action?: string } | undefined)?.action === "open") {
-        window.dispatchEvent(new CustomEvent("dory-browser-open", { detail: id }));
+        events.browserOpened.emit(id);
       }
       for (const k of queriesFor(entity, id)) pending.set(JSON.stringify(k), k);
       clearTimeout(timer);

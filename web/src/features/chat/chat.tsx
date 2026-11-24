@@ -17,6 +17,7 @@ import { parseAutoMessage, type AutoMessage } from "../../lib/auto-message";
 import { RefLink } from "../../components/refs";
 import { AgentMessage, agentNote } from "./subagents";
 import { messageText, t } from "../../i18n/es";
+import { events } from "../../lib/store";
 
 // The look of the conversation, kept from Dory v1: user
 // bubbles, answers as plain markdown, and each finished turn's work folded
@@ -352,8 +353,6 @@ function Dots() {
   );
 }
 
-// FILL_COMPOSER asks a thread's message box to take a text: { threadId, text }.
-export const FILL_COMPOSER = "dory-fill-composer";
 
 // MessageMeta shows, on hover, when a message was sent and a button to copy it.
 export function MessageMeta({ m, threadId = "" }: { m: Message; threadId?: string }) {
@@ -366,7 +365,7 @@ export function MessageMeta({ m, threadId = "" }: { m: Message; threadId?: strin
     setReverting(true);
     try {
       const r = await api.revert(threadId, m.id);
-      window.dispatchEvent(new CustomEvent(FILL_COMPOSER, { detail: { threadId, text: r.text } }));
+      events.fillComposer.emit({ threadId, text: r.text });
       if (!r.files_restored) alert("La conversación ha vuelto atrás, pero este turno no tenía foto de los ficheros: no se han restaurado.");
     } catch (e) {
       alert(e instanceof Error ? e.message : String(e));

@@ -9,17 +9,17 @@ import { commands as shortcutCommands, useCommand, useShortcuts, available, runC
 import { formatChord } from "../features/composer/dictation-shortcut";
 import { qk } from "../api/queries/keys";
 import { useMesh, useNode, useProjects } from "../api/queries/hooks";
+import { events, useEmitter } from "../lib/store";
 
 type Command = { id: string; group: string; label: string; icon: ComponentType<IconProps>; hint?: string; run: () => void };
 
-const OPEN_EVENT = "dory:commands";
 const kbd = "rounded border border-slate-200 bg-slate-50 px-1 font-sans text-[0.625rem] font-medium text-slate-500 dark:border-border dark:bg-raised dark:text-muted";
 
 // CommandsButton opens the palette and shows its shortcut; it sits next to the app name.
 export function CommandsButton() {
   const get = useShortcuts();
   return (
-    <button type="button" onClick={() => window.dispatchEvent(new Event(OPEN_EVENT))} title="Comandos" aria-label="Abrir comandos"
+    <button type="button" onClick={() => events.commandsOpen.emit()} title="Comandos" aria-label="Abrir comandos"
       className="ml-auto flex items-center gap-1 rounded px-1.5 py-1 font-normal text-slate-500 hover:bg-slate-200 dark:text-muted dark:hover:bg-raised">
       <CommandIcon aria-hidden="true" className="size-4" />
       <kbd className={kbd}>{formatChord(get("palette"))}</kbd>
@@ -32,11 +32,7 @@ export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [idea, setIdea] = useState(false);
   const navigate = useNavigate();
-  useEffect(() => {
-    const onOpen = () => setOpen(true);
-    window.addEventListener(OPEN_EVENT, onOpen);
-    return () => window.removeEventListener(OPEN_EVENT, onOpen);
-  }, []);
+  useEmitter(events.commandsOpen, () => setOpen(true));
   useCommand("palette", () => setOpen((o) => !o));
   useCommand("new-idea", () => { setOpen(false); setIdea(true); });
   const get = useShortcuts();

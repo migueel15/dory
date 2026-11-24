@@ -24,6 +24,7 @@ import { applyTheme, useTheme } from "./theme";
 import { applyScale, listenZoomKeys } from "./scale";
 import "./index.css";
 import { qk } from "./api/queries/keys";
+import { events } from "./lib/store";
 
 applyTheme();
 applyScale();
@@ -185,7 +186,7 @@ function Layout() {
   useCommand("sidebar", () => fold(!folded));
   const navigateWithoutLosingDraft = async (search: boolean) => {
     if (search && path.startsWith("/threads")) {
-      window.dispatchEvent(new Event("dory:focus-thread-search"));
+      events.focusThreadSearch.emit();
       return;
     }
     if (document.querySelector('[data-unsaved-draft="true"]')) {
@@ -193,7 +194,7 @@ function Layout() {
       return;
     }
     await navigate({ to: "/threads" });
-    if (search) window.setTimeout(() => window.dispatchEvent(new Event("dory:focus-thread-search")), 0);
+    if (search) window.setTimeout(() => events.focusThreadSearch.emit(), 0);
   };
   useCommand("new-thread", () => { void navigateWithoutLosingDraft(false); });
   useCommand("search-threads", () => { void navigateWithoutLosingDraft(true); });

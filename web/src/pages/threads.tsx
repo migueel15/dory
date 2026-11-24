@@ -16,6 +16,7 @@ import { useThreadMenu } from "../features/thread/thread-menu";
 import { EnvIcon } from "../components/env-icon";
 import { qk } from "../api/queries/keys";
 import { useMesh, useNode, useRepositories } from "../api/queries/hooks";
+import { events, useEmitter } from "../lib/store";
 
 // Filters of the single inbox of threads (requirement RF-19).
 const FILTERS = { active: "Activos", needs: "Te necesitan", working: "Trabajando", archived: "Archivados", external: "En los agentes" } as const;
@@ -37,11 +38,7 @@ export function Threads() {
   const [listFolded, setListFolded] = useState(() => { try { return localStorage.getItem("dory.threads-folded") === "1"; } catch { return false; } });
   const foldList = (v: boolean) => { setListFolded(v); try { localStorage.setItem("dory.threads-folded", v ? "1" : "0"); } catch { /* per-browser only */ } };
   const searchInput = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    const focusSearch = () => { foldList(false); requestAnimationFrame(() => searchInput.current?.focus()); };
-    window.addEventListener("dory:focus-thread-search", focusSearch);
-    return () => window.removeEventListener("dory:focus-thread-search", focusSearch);
-  }, []);
+  useEmitter(events.focusThreadSearch, () => { foldList(false); requestAnimationFrame(() => searchInput.current?.focus()); });
   const folded = listFolded && !!threadId;
   useCommand("thread-list", () => foldList(!listFolded), !!threadId);
   // The list width is dragged from its right edge and kept per browser.

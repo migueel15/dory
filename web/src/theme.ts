@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
+import { events } from "./lib/store";
 
 export type Theme = "light" | "dark" | "system";
 const KEY = "theme";
-const EVENT = "ui-theme";
 const media = window.matchMedia("(prefers-color-scheme: dark)");
 
 export const storedTheme = (): Theme => {
@@ -21,7 +21,7 @@ export function setTheme(t: Theme) {
   if (t === "system") localStorage.removeItem(KEY);
   else localStorage.setItem(KEY, t);
   applyTheme(t);
-  window.dispatchEvent(new Event(EVENT));
+  events.themeChanged.emit();
 }
 
 // Theme choice persisted in localStorage; "system" tracks the OS preference live.
@@ -36,9 +36,9 @@ export function useTheme() {
       setDark(isDark(t));
       applyTheme(t);
     };
-    window.addEventListener(EVENT, sync);
+    const off = events.themeChanged.on(sync);
     media.addEventListener("change", sync);
-    return () => { window.removeEventListener(EVENT, sync); media.removeEventListener("change", sync); };
+    return () => { off(); media.removeEventListener("change", sync); };
   }, []);
   return [dark, setTheme, theme] as const;
 }

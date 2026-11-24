@@ -2,9 +2,10 @@ import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Warning } from "@phosphor-icons/react";
 import { api, type InputSettings } from "../../api/client";
-import { dictationShortcutEvent, dictationShortcutKey } from "../composer/dictation-shortcut";
+import { dictationShortcutKey } from "../composer/dictation-shortcut";
 import { qk } from "../../api/queries/keys";
 import { useNodeSettings } from "../../api/queries/hooks";
+import { events, type Emitter } from "../../lib/store";
 
 // Shortcuts and the dictation model live in the settings of each node
 // (NodeSettings.input). The running app is a client of the node that serves it
@@ -12,9 +13,7 @@ import { useNodeSettings } from "../../api/queries/hooks";
 // in localStorage so that key handlers can read them synchronously; the copy is
 // refreshed every time the settings of the local node load or change.
 export const shortcutsKey = "dory.shortcuts";
-export const shortcutsEvent = "dory:shortcuts";
 export const modelKey = "dory.dictation-model";
-export const modelEvent = "dory:dictation-model";
 
 export const emptyInput: InputSettings = { shortcuts: {}, dictation: { model: "" } };
 
@@ -31,17 +30,17 @@ function fromBrowser(): InputSettings | undefined {
   return input;
 }
 
-function mirror(key: string, value: string | null, event: string) {
+function mirror(key: string, value: string | null, event: Emitter<void>) {
   if (read(key) === value) return;
   try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch { return; }
-  window.dispatchEvent(new Event(event));
+  event.emit();
 }
 
 function applyLocal(input: InputSettings) {
   const { dictation, ...rest } = input.shortcuts;
-  mirror(shortcutsKey, Object.keys(rest).length ? JSON.stringify(rest) : null, shortcutsEvent);
-  mirror(dictationShortcutKey, dictation ? JSON.stringify(dictation) : null, dictationShortcutEvent);
-  mirror(modelKey, input.dictation.model || null, modelEvent);
+  mirror(shortcutsKey, Object.keys(rest).length ? JSON.stringify(rest) : null, events.shortcutsChanged);
+  mirror(dictationShortcutKey, dictation ? JSON.stringify(dictation) : null, events.dictationShortcutChanged);
+  mirror(modelKey, input.dictation.model || null, events.dictationModelChanged);
 }
 
 let migrating = false;

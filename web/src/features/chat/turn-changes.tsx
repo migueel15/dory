@@ -4,6 +4,7 @@ import type { Message } from "../../api/client";
 import { mergeTurnFiles, type TurnFile } from "../../lib/turn-changes";
 import { tree, type Dir } from "../github/github-diff";
 import { showPanelTab } from "../thread/side-panel";
+import { events } from "../../lib/store";
 
 // A turn's changes: the box at the end of each agent turn, and the filter the
 // side panel's "Cambios" tab reads to show one turn instead of the thread.
@@ -21,21 +22,18 @@ export const turnFiles = (ms: Message[]) => {
 // The filter is per thread and per viewer; the panel listens for its changes.
 export type TurnFilter = { turn: string | null; path?: string; seq: number };
 const filters = new Map<string, TurnFilter>();
-const EVENT = "dory-turn-filter";
 let seq = 0;
 
 export function setTurnFilter(threadId: string, turn: string | null, path?: string) {
   filters.set(threadId, { turn, path, seq: ++seq });
-  window.dispatchEvent(new CustomEvent(EVENT, { detail: threadId }));
+  events.turnFilterChanged.emit(threadId);
 }
 
 export function useTurnFilter(threadId: string): TurnFilter {
   const [f, setF] = useState<TurnFilter>(() => filters.get(threadId) ?? { turn: null, seq: 0 });
   useEffect(() => {
     setF(filters.get(threadId) ?? { turn: null, seq: 0 });
-    const on = (e: Event) => { if ((e as CustomEvent).detail === threadId) setF(filters.get(threadId)!); };
-    window.addEventListener(EVENT, on);
-    return () => window.removeEventListener(EVENT, on);
+    return events.turnFilterChanged.on((id) => { if (id === threadId) setF(filters.get(threadId)!); });
   }, [threadId]);
   return f;
 }

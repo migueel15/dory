@@ -9,7 +9,7 @@ import { DictationMic, DictationPreview, useDictationInProgress, useLocalDictati
 import { claudeModelName } from "../../components/model-label";
 import { ProviderIcon } from "./launch-picker";
 import { explicitModels, findModel, modelEffort, modelId as concreteModelId, rememberModel } from "../../effort";
-import { FILL_COMPOSER, iconBtn, MessageParts } from "../chat/chat";
+import { iconBtn, MessageParts } from "../chat/chat";
 import { HoverCard } from "../../components/tooltip";
 import { CodeRefCard, codeRefText } from "../chat/code-ref";
 import type { DraftQuote } from "../chat/quote-selection";
@@ -22,6 +22,8 @@ import { useComposerFiles } from "./composer-files";
 import { paintTokens, quoteBlock, quoteLabel, tokenRanges, type Token, type Tokens } from "./composer-tokens";
 import { qk } from "../../api/queries/keys";
 import { useNodeProviders } from "../../api/queries/hooks";
+import { events } from "../../lib/store";
+import { useEmitter } from "../../lib/store";
 
 // The composer of a thread, kept from Dory v1: attachments, @ mentions of
 // files, model, effort and permissions, and send, queue or stop.
@@ -282,11 +284,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   const key = qk.thread(t.id);
   const providers = useNodeProviders(t.node_id, { staleTime: 60_000 });
   const [text, setText] = useState("");
-  useEffect(() => {
-    const on = (e: Event) => { const d = (e as CustomEvent<{ threadId: string; text: string }>).detail; if (d.threadId === t.id) { setText(d.text); area.current?.focus(); } };
-    window.addEventListener(FILL_COMPOSER, on);
-    return () => window.removeEventListener(FILL_COMPOSER, on);
-  }, [t.id, area]);
+  useEmitter(events.fillComposer, (d) => { if (d.threadId === t.id) { setText(d.text); area.current?.focus(); } });
   const dictation = useLocalDictation(text, setText, area, { panelShortcut: true, onEnter: (draft) => latestSendDraft.current(draft) });
   const showingDictation = !!dictation.preview;
   const dictating = useDictationInProgress();
