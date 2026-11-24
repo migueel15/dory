@@ -6,6 +6,7 @@ import (
 	"crypto/sha1"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -27,9 +28,18 @@ func (l *Log) Apply(ctx context.Context, ops []Op) error {
 		return err
 	}
 	defer tx.Rollback()
-	touched := map[[2]string]bool{}
-	var latest hlc.Timestamp
+	horizon, err := readHorizon(ctx, tx)
+	if err != nil {
+		return err
+	}
+	return l.apply(ctx, tx, ops, horizon, map[[2]string]bool{}, hlc.Timestamp{})
+}
+
+func (l *Log) apply(ctx context.Context, tx *sql.Tx, ops []Op, horizon Vector, touched map[[2]string]bool, latest hlc.Timestamp) error {
 	for _, op := range ops {
+		if op.Seq <= horizon[op.Node] {
+			continue
+		}
 		ts, err := hlc.Parse(op.HLC)
 		if err != nil {
 			return err
@@ -51,17 +61,17 @@ func (l *Log) Apply(ctx context.Context, ops []Op) error {
 		if _, known := schema.Lookup(key[0]); !known {
 			continue
 		}
-		if err = materialize(ctx, tx, key[0], key[1]); err != nil {
+		if err := materialize(ctx, tx, key[0], key[1]); err != nil {
 			return err
 		}
 	}
 	if len(touched) > 0 {
 		next := l.clock.Observe(latest)
-		if _, err = tx.ExecContext(ctx, `UPDATE node_state SET hlc = ? WHERE id = 1`, next.String()); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE node_state SET hlc = ? WHERE id = 1`, next.String()); err != nil {
 			return err
 		}
 	}
-	if err = tx.Commit(); err != nil {
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 	for key := range touched {
@@ -91,44 +101,31 @@ func (l *Log) begin(ctx context.Context) (*sql.Tx, error) {
 	return tx, nil
 }
 
-// materialize rebuilds a row from all its operations: each column takes the
-// value of the latest operation, by clock, that set it.
+// materialize rebuilds a row from its snapshot and remaining operations.
+// Each column takes the value of the latest operation that set it.
 func materialize(ctx context.Context, tx *sql.Tx, entity, id string) error {
 	t, _ := schema.Lookup(entity)
-	rows, err := tx.QueryContext(ctx, `SELECT fields, hlc, base FROM ops WHERE entity = ? AND entity_id = ? ORDER BY hlc`, entity, id)
+	s, err := readSnapshot(ctx, tx, entity, id)
 	if err != nil {
 		return err
 	}
-	values := map[string]any{}
-	var versions []version
-	for rows.Next() {
-		var raw string
-		var v version
-		if err = rows.Scan(&raw, &v.hlc, &v.base); err != nil {
-			rows.Close()
-			return err
-		}
-		fields := map[string]any{}
-		dec := json.NewDecoder(strings.NewReader(raw))
-		dec.UseNumber()
-		if err = dec.Decode(&fields); err != nil {
-			rows.Close()
-			return err
-		}
-		for name, v := range fields {
-			values[name] = v
-		}
-		if text, ok := fields[t.Merge].(string); ok && t.Merge != "" {
-			v.text = text
-			versions = append(versions, v)
-		}
-	}
-	rows.Close()
-	if err = rows.Err(); err != nil {
+	rows, err := tx.QueryContext(ctx, `SELECT node_id, seq, hlc, entity, entity_id, fields, base FROM ops
+		WHERE entity = ? AND entity_id = ?`, entity, id)
+	if err != nil {
 		return err
 	}
-	if len(versions) > 1 {
-		values[t.Merge] = merged(versions)
+	ops, err := scanOps(rows)
+	if err != nil {
+		return err
+	}
+	for _, op := range ops {
+		if err := s.fold(op, t.Merge); err != nil {
+			return err
+		}
+	}
+	values, err := s.values(ctx, tx, t.Merge)
+	if err != nil {
+		return err
 	}
 
 	keys := strings.Split(id, "/")
@@ -148,15 +145,22 @@ func materialize(ctx context.Context, tx *sql.Tx, entity, id string) error {
 		}
 	}
 	sort.Strings(names)
+	var previous string
+	var unique any
 	for _, name := range names {
 		v, err := column(values[name])
 		if err != nil {
 			return err
 		}
 		if name == t.Unique {
+			err := tx.QueryRowContext(ctx, fmt.Sprintf(`SELECT %s FROM %s WHERE id = ?`, t.Unique, t.Table), id).Scan(&previous)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
 			if v, err = claim(ctx, tx, entity, id, v); err != nil {
 				return err
 			}
+			unique = v
 		}
 		cols = append(cols, name)
 		args = append(args, v)
@@ -169,8 +173,20 @@ func materialize(ctx context.Context, tx *sql.Tx, entity, id string) error {
 	} else {
 		query += "UPDATE SET " + strings.Join(set, ", ")
 	}
-	_, err = tx.ExecContext(ctx, query, args...)
-	return err
+	if _, err = tx.ExecContext(ctx, query, args...); err != nil {
+		return err
+	}
+	if previous != "" && previous != unique {
+		owner, err := uniqueOwner(ctx, tx, entity, t.Unique, previous)
+		if err != nil {
+			return err
+		}
+		if owner.Valid {
+			_, err = tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET %s = ? WHERE id = ?`, t.Table, t.Unique), previous, owner.String)
+			return err
+		}
+	}
+	return nil
 }
 
 // column converts a decoded JSON value to what SQLite stores: objects and
@@ -200,17 +216,11 @@ func column(v any) (any, error) {
 // their own id. If this row owns value, rows already holding it are renamed.
 func claim(ctx context.Context, tx *sql.Tx, entity, id string, value any) (any, error) {
 	t, _ := schema.Lookup(entity)
-	path := "$." + t.Unique
-	var owner string
-	err := tx.QueryRowContext(ctx, `SELECT MIN(o.entity_id) FROM ops o
-		WHERE o.entity = ? AND json_extract(o.fields, ?) = ?
-		AND NOT EXISTS (SELECT 1 FROM ops p WHERE p.entity = o.entity AND p.entity_id = o.entity_id
-			AND p.hlc > o.hlc AND json_extract(p.fields, ?) IS NOT NULL)`,
-		entity, path, value, path).Scan(&owner)
+	owner, err := uniqueOwner(ctx, tx, entity, t.Unique, value)
 	if err != nil {
 		return nil, err
 	}
-	if owner != id {
+	if !owner.Valid || owner.String != id {
 		return suffixed(value, id), nil
 	}
 	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT id FROM %s WHERE %s = ? AND id <> ?`, t.Table, t.Unique), value, id)
@@ -227,12 +237,37 @@ func claim(ctx context.Context, tx *sql.Tx, entity, id string, value any) (any, 
 		holders = append(holders, other)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	for _, other := range holders {
 		if _, err = tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET %s = ? WHERE id = ?`, t.Table, t.Unique), suffixed(value, other), other); err != nil {
 			return nil, err
 		}
 	}
 	return value, nil
+}
+
+// uniqueOwner arbitrates over the latest wish of each row, including
+// wishes whose original operations have been compacted.
+func uniqueOwner(ctx context.Context, tx *sql.Tx, entity, name string, value any) (sql.NullString, error) {
+	var owner sql.NullString
+	err := tx.QueryRowContext(ctx, `WITH wishes AS (
+		SELECT entity_id, hlc, node_id, seq, json_extract(fields, :field) AS value
+		FROM ops WHERE entity = :entity AND json_type(fields, :field) IS NOT NULL
+		UNION ALL
+		SELECT entity_id, json_extract(columns, :hlc), json_extract(columns, :node),
+			json_extract(columns, :seq), json_extract(columns, :value)
+		FROM row_snapshots WHERE entity = :entity AND json_type(columns, :value) IS NOT NULL
+	), ranked AS (
+		SELECT entity_id, value, ROW_NUMBER() OVER (PARTITION BY entity_id
+			ORDER BY hlc DESC, node_id DESC, seq DESC) AS rank FROM wishes
+	)
+	SELECT MIN(entity_id) FROM ranked WHERE rank = 1 AND value = :wanted`,
+		sql.Named("entity", entity), sql.Named("field", "$."+name), sql.Named("hlc", "$."+name+".hlc"),
+		sql.Named("node", "$."+name+".node"), sql.Named("seq", "$."+name+".seq"),
+		sql.Named("value", "$."+name+".v"), sql.Named("wanted", value)).Scan(&owner)
+	return owner, err
 }
 
 func suffixed(value any, id string) string {
