@@ -32,8 +32,15 @@ func TestConcurrentUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup
-	for range 20 {
+	for i := range 20 {
 		wg.Go(func() {
+			if err := store.Put(ctx, "latest", i); err != nil {
+				t.Error(err)
+			}
+			var latest int
+			if found, err := store.Get(ctx, "latest", &latest); !found || err != nil {
+				t.Errorf("latest: found=%v, err=%v", found, err)
+			}
 			var count int
 			if err := store.Update(ctx, "counter", &count, func() error {
 				count++

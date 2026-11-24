@@ -1,5 +1,5 @@
 // Package nodestate stores local, unreplicated node preferences and snapshots.
-// VAPID keys, GitHub and control tokens, node.key, and the mesh identity stay
+// vapid.json, github.token, control.token, node.key, and the mesh identity stay
 // on disk for the components that read them directly or before the DB opens.
 package nodestate
 
