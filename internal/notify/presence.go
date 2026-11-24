@@ -3,6 +3,7 @@ package notify
 import (
 	"context"
 	"encoding/json"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"time"
 )
@@ -130,7 +131,7 @@ func (n *Notifier) mountPresence(mux *http.ServeMux) {
 		var body struct{ ID, State string }
 		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body) != nil || body.ID == "" ||
 			body.State != Closed && body.State != Open && body.State != Focus {
-			http.Error(w, "invalid presence", http.StatusBadRequest)
+			apperr.WriteHTTP(w, r, apperr.New(apperr.Invalid, "invalid presence"))
 			return
 		}
 		n.Beat(body.ID, body.State)

@@ -3,6 +3,7 @@ package notify
 import (
 	"context"
 	"encoding/json"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"slices"
 	"time"
@@ -48,11 +49,11 @@ func (n *Notifier) mountSettings(mux *http.ServeMux) {
 		var body struct{ Kind, Mode string }
 		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body) != nil || titles[body.Kind] == "" ||
 			!slices.Contains([]string{ModeAuto, ModePush, ModeApp, ModeOff}, body.Mode) {
-			http.Error(w, "invalid setting", http.StatusBadRequest)
+			apperr.WriteHTTP(w, r, apperr.New(apperr.Invalid, "invalid setting"))
 			return
 		}
 		if _, err := n.store.Settings().Put(r.Context(), data.Setting{ID: settingPrefix + body.Kind, Value: body.Mode, UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano)}); err != nil {
-			http.Error(w, err.Error(), 500)
+			apperr.WriteHTTP(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

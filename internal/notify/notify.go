@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/migueel15/dory/internal/apperr"
 	"log"
 	"net/http"
 	"os"
@@ -316,14 +317,14 @@ func (n *Notifier) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/push/subscriptions", func(w http.ResponseWriter, r *http.Request) {
 		var sub webpush.Subscription
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&sub); err != nil || sub.Endpoint == "" {
-			http.Error(w, "invalid subscription", http.StatusBadRequest)
+			apperr.WriteHTTP(w, r, apperr.New(apperr.Invalid, "invalid subscription"))
 			return
 		}
 		raw, _ := json.Marshal(sub)
 		_, err := n.db.ExecContext(r.Context(), `INSERT INTO push_subscriptions(endpoint, subscription, created_at) VALUES (?, ?, ?)
 			ON CONFLICT(endpoint) DO UPDATE SET subscription = excluded.subscription`, sub.Endpoint, string(raw), time.Now().UTC().Format(time.RFC3339))
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			apperr.WriteHTTP(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -334,7 +335,7 @@ func (n *Notifier) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/notices", func(w http.ResponseWriter, r *http.Request) {
 		list, err := n.store.Notices().List(r.Context(), data.Filter{Limit: 1000})
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			apperr.WriteHTTP(w, r, err)
 			return
 		}
 		slices.Reverse(list)
@@ -349,7 +350,7 @@ func (n *Notifier) Mount(mux *http.ServeMux) {
 		json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body)
 		list, err := n.store.Notices().List(r.Context(), data.Filter{Limit: 1000})
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			apperr.WriteHTTP(w, r, err)
 			return
 		}
 		at := time.Now().UTC().Format(time.RFC3339Nano)
@@ -357,7 +358,7 @@ func (n *Notifier) Mount(mux *http.ServeMux) {
 			if nt.ReadAt == nil && (len(body.IDs) == 0 || slices.Contains(body.IDs, nt.ID)) {
 				nt.ReadAt = &at
 				if _, err := n.store.Notices().Put(r.Context(), nt); err != nil {
-					http.Error(w, err.Error(), 500)
+					apperr.WriteHTTP(w, r, err)
 					return
 				}
 			}

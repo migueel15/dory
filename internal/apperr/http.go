@@ -56,6 +56,17 @@ func HTTPStatus(c Code) int {
 	return http.StatusInternalServerError
 }
 
+// ForStatus is the code of an HTTP status, for the transports that decide the
+// status first (the auth and mesh endpoints).
+func ForStatus(status int) Code {
+	for code, s := range map[Code]int{Invalid: 400, Unauthorized: 401, Forbidden: 403, NotFound: 404, Conflict: 409, TooManyRequests: 429} {
+		if s == status {
+			return code
+		}
+	}
+	return Internal
+}
+
 // Body is the JSON envelope of an error response.
 type Body struct {
 	Error struct {
@@ -68,6 +79,7 @@ type Body struct {
 // WriteHTTP answers with the status and envelope of err. A domain error sends
 // its own message; anything else is an internal error whose text only goes to
 // the log, because it may carry command output or paths.
+// r may be nil.
 func WriteHTTP(w http.ResponseWriter, r *http.Request, err error) {
 	var b Body
 	e := As(err)
@@ -79,7 +91,11 @@ func WriteHTTP(w http.ResponseWriter, r *http.Request, err error) {
 	}
 	status := HTTPStatus(b.Error.Code)
 	if status >= 500 {
-		log.Printf("api: %s %s: %v", r.Method, r.URL.Path, err)
+		if r != nil {
+			log.Printf("api: %s %s: %v", r.Method, r.URL.Path, err)
+		} else {
+			log.Printf("api: %v", err)
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

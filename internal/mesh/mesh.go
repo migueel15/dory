@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"io"
 	"log"
 	"net"
@@ -167,7 +168,7 @@ func (m *Mesh) Serve(ctx context.Context) error {
 	mux.HandleFunc("GET /peer/v1/vector", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
 		v, err := m.log.Vector(r.Context())
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			apperr.WriteHTTP(w, r, err)
 			return
 		}
 		reply(w, v)
@@ -175,12 +176,12 @@ func (m *Mesh) Serve(ctx context.Context) error {
 	mux.HandleFunc("POST /peer/v1/ops", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
 		var since oplog.Vector
 		if json.NewDecoder(r.Body).Decode(&since) != nil {
-			http.Error(w, "bad vector", 400)
+			apperr.WriteHTTP(w, r, apperr.New(apperr.ForStatus(400), "bad vector"))
 			return
 		}
 		ops, err := m.log.Since(r.Context(), since, pageSize)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			apperr.WriteHTTP(w, r, err)
 			return
 		}
 		reply(w, ops)
@@ -188,11 +189,11 @@ func (m *Mesh) Serve(ctx context.Context) error {
 	mux.HandleFunc("POST /peer/v1/apply", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
 		var ops []oplog.Op
 		if json.NewDecoder(io.LimitReader(r.Body, 64<<20)).Decode(&ops) != nil {
-			http.Error(w, "bad ops", 400)
+			apperr.WriteHTTP(w, r, apperr.New(apperr.ForStatus(400), "bad ops"))
 			return
 		}
 		if err := m.log.Apply(r.Context(), ops); err != nil {
-			http.Error(w, err.Error(), 500)
+			apperr.WriteHTTP(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -281,12 +282,12 @@ func (m *Mesh) members(h func(http.ResponseWriter, *http.Request, string)) http.
 	return func(w http.ResponseWriter, r *http.Request) {
 		key, err := peerKey(rawCerts(r))
 		if err != nil {
-			http.Error(w, "no client certificate", 401)
+			apperr.WriteHTTP(w, r, apperr.New(apperr.ForStatus(401), "no client certificate"))
 			return
 		}
 		node, ok := m.member(r.Context(), key)
 		if !ok {
-			http.Error(w, "not paired", 403)
+			apperr.WriteHTTP(w, r, apperr.New(apperr.ForStatus(403), "not paired"))
 			return
 		}
 		m.seen(r.Context(), node, "", nil)
@@ -348,19 +349,19 @@ func proof(code, from, to string) string {
 func (m *Mesh) acceptPair(w http.ResponseWriter, r *http.Request) {
 	key, err := peerKey(rawCerts(r))
 	if err != nil {
-		http.Error(w, "no client certificate", 401)
+		apperr.WriteHTTP(w, r, apperr.New(apperr.ForStatus(401), "no client certificate"))
 		return
 	}
 	var req pairRequest
 	if json.NewDecoder(io.LimitReader(r.Body, 8192)).Decode(&req) != nil || req.NodeID == "" {
-		http.Error(w, "bad request", 400)
+		apperr.WriteHTTP(w, r, apperr.New(apperr.ForStatus(400), "bad request"))
 		return
 	}
 	m.mu.Lock()
 	code, valid := m.pairCode, time.Now().Before(m.pairExp)
 	m.mu.Unlock()
 	if !valid || !hmac.Equal([]byte(req.Proof), []byte(proof(code, key, m.id.PublicKey()))) {
-		http.Error(w, "wrong or expired code", 403)
+		apperr.WriteHTTP(w, r, apperr.New(apperr.ForStatus(403), "wrong or expired code"))
 		return
 	}
 	address := req.Address
@@ -370,7 +371,7 @@ func (m *Mesh) acceptPair(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err = m.addPeer(r.Context(), req.NodeID, req.Name, key, address); err != nil {
-		http.Error(w, err.Error(), 500)
+		apperr.WriteHTTP(w, r, err)
 		return
 	}
 	m.mu.Lock()
@@ -407,14 +408,14 @@ func (m *Mesh) Pair(ctx context.Context, address, code string) (Peer, error) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(resp.Body)
-		return Peer{}, fmt.Errorf("el otro nodo rechazó el emparejamiento: %s", strings.TrimSpace(string(msg)))
+		return Peer{}, apperr.New(apperr.Forbidden, "the other node rejected the pairing").With("reason", "pair_rejected").With("detail", strings.TrimSpace(string(msg)))
 	}
 	var out pairResponse
 	if err = json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return Peer{}, err
 	}
 	if !hmac.Equal([]byte(out.Proof), []byte(proof(code, theirKey, m.id.PublicKey()))) {
-		return Peer{}, errors.New("el otro nodo no demostró conocer el código")
+		return Peer{}, apperr.New(apperr.Forbidden, "the other node did not prove it knows the code").With("reason", "pair_proof")
 	}
 	if err = m.addPeer(ctx, out.NodeID, out.Name, theirKey, address); err != nil {
 		return Peer{}, err
@@ -475,7 +476,7 @@ func (m *Mesh) pairDevice(w http.ResponseWriter, r *http.Request) {
 		Name string `json:"name"`
 	}
 	if m.IssueDevice == nil || json.NewDecoder(io.LimitReader(r.Body, 8192)).Decode(&req) != nil || req.Code == "" {
-		http.Error(w, "bad request", 400)
+		apperr.WriteHTTP(w, r, apperr.New(apperr.ForStatus(400), "bad request"))
 		return
 	}
 	m.mu.Lock()
@@ -488,12 +489,12 @@ func (m *Mesh) pairDevice(w http.ResponseWriter, r *http.Request) {
 	code := req.Code
 	m.mu.Unlock()
 	if !valid {
-		http.Error(w, "wrong or expired code", 403)
+		apperr.WriteHTTP(w, r, apperr.New(apperr.ForStatus(403), "wrong or expired code"))
 		return
 	}
 	token, err := m.IssueDevice(r.Context(), req.Name)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		apperr.WriteHTTP(w, r, err)
 		return
 	}
 	reply(w, map[string]string{"node_id": m.log.Node(), "name": m.name, "pin": m.id.DevicePin, "token": token, "proof": proof(code, m.id.DevicePin, "device")})

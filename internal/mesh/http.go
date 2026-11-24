@@ -1,7 +1,10 @@
 package mesh
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"time"
 )
@@ -11,7 +14,7 @@ func (m *Mesh) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/mesh", func(w http.ResponseWriter, r *http.Request) {
 		peers, err := m.Peers(r.Context())
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			apperr.WriteHTTP(w, r, err)
 			return
 		}
 		reply(w, map[string]any{"node_id": m.log.Node(), "fingerprint": Fingerprint(m.id.PublicKey()), "port": m.port, "peers": peers, "discovered": m.Discovered()})
@@ -26,12 +29,12 @@ func (m *Mesh) Mount(mux *http.ServeMux) {
 			Code    string `json:"code"`
 		}
 		if json.NewDecoder(r.Body).Decode(&body) != nil || body.Address == "" || body.Code == "" {
-			writeErr(w, http.StatusBadRequest, "address and code are required")
+			apperr.WriteHTTP(w, r, apperr.New(apperr.Invalid, "address and code are required"))
 			return
 		}
 		p, err := m.Pair(r.Context(), body.Address, body.Code)
 		if err != nil {
-			writeErr(w, http.StatusBadGateway, err.Error())
+			apperr.WriteHTTP(w, r, pairFailure(err))
 			return
 		}
 		reply(w, p)
@@ -41,26 +44,33 @@ func (m *Mesh) Mount(mux *http.ServeMux) {
 			Enabled bool `json:"enabled"`
 		}
 		if json.NewDecoder(r.Body).Decode(&body) != nil {
-			writeErr(w, http.StatusBadRequest, "enabled is required")
+			apperr.WriteHTTP(w, r, apperr.New(apperr.Invalid, "enabled is required"))
 			return
 		}
 		if err := m.SetEnabled(r.Context(), r.PathValue("id"), body.Enabled); err != nil {
-			writeErr(w, http.StatusNotFound, err.Error())
+			if errors.Is(err, sql.ErrNoRows) {
+				err = apperr.Wrap(apperr.NotFound, err, "peer not found")
+			}
+			apperr.WriteHTTP(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("DELETE /api/mesh/peers/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if err := m.Revoke(r.Context(), r.PathValue("id")); err != nil {
-			writeErr(w, 500, err.Error())
+			apperr.WriteHTTP(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
 }
 
-func writeErr(w http.ResponseWriter, status int, msg string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": http.StatusText(status), "message": msg}})
+// pairFailure keeps the domain errors of a pairing and turns any other failure
+// (the other node is unreachable, bad address) into an upstream one whose text
+// is shown to the user.
+func pairFailure(err error) error {
+	if apperr.As(err) != nil {
+		return err
+	}
+	return apperr.Wrap(apperr.Upstream, err, "pairing failed").With("detail", err.Error())
 }
