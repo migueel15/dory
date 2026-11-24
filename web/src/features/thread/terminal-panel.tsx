@@ -54,6 +54,7 @@ export function TerminalPanel({ threadId, tab, id, active, onId }: { threadId: s
       return true;
     });
 
+    const offFonts = events.fontsChanged.on(() => { term.options.fontFamily = terminalFont(); refit(); });
     let raf = 0;
     const observer = new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(refit); });
     observer.observe(el);
@@ -85,6 +86,7 @@ export function TerminalPanel({ threadId, tab, id, active, onId }: { threadId: s
       cancelAnimationFrame(raf);
       observer.disconnect();
       offTheme();
+      offFonts();
       el.removeEventListener("keydown", keep);
       term.dispose();
     };

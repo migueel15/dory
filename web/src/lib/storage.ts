@@ -12,6 +12,8 @@ export const storageKeys = {
   threadsWidth: "dory.threads-width",
   diffView: "dory.diff-view",
   githubTab: "github-tab",
+  uiFont: "dory.ui-font",
+  terminalFont: "dory.terminal-font",
   panelWidth: "dory.thread-panel-width",
   deviceQuality: "dory.device-quality",
   planFollow: "dory.plan-follow",

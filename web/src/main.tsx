@@ -25,11 +25,13 @@ import { WindowClose,hasWindowClose } from "./lib/window-close";
 import { Environments,Memories,memorySearch } from "./pages/crud";
 import { Home } from "./pages/home";
 import { Threads,ThreadsHome } from "./pages/threads";
+import { applyUiFont } from "./lib/fonts";
 import { applyScale,listenZoomKeys } from "./scale";
 import { applyTheme,useTheme } from "./theme";
 
 applyTheme();
 applyScale();
+applyUiFont();
 listenZoomKeys();
 
 const queryClient = new QueryClient({

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Desktop, Moon, Sun } from "@phosphor-icons/react";
 import { MAX_SCALE, MIN_SCALE, setScale, useScale } from "../../scale";
+import { Select } from "../../components/ui";
+import { DEFAULT_TERMINAL_FONT, DEFAULT_UI_FONT, chosenFont, chooseFont, useInstalledFonts } from "../../lib/fonts";
 import { useTheme, type Theme } from "../../theme";
 
 const THEMES: { value: Theme; label: string; icon: typeof Sun }[] = [
@@ -17,6 +19,8 @@ export function AppearanceSettings() {
   const [draft, setDraft] = useState(Math.round(scale * 100));
   useEffect(() => setDraft(Math.round(scale * 100)), [scale]);
   const commit = () => draft !== Math.round(scale * 100) && setScale(draft / 100);
+  const ui = useInstalledFonts(false);
+  const mono = useInstalledFonts(true);
   const min = MIN_SCALE * 100, max = MAX_SCALE * 100;
   const fill = ((draft - min) / (max - min)) * 100;
   return (
@@ -50,6 +54,27 @@ export function AppearanceSettings() {
           Se aplica al soltar. También con Ctrl + / Ctrl − (de 5 en 5) y Ctrl 0 para volver al 100% (Cmd en macOS). Se guarda en este navegador.
         </p>
       </div>
+      <FontPicker id="ui-font" label="Fuente de la interfaz" kind="ui" fonts={ui} fallback={DEFAULT_UI_FONT} />
+      <FontPicker id="terminal-font" label="Fuente de la terminal" kind="terminal" fonts={mono} fallback={DEFAULT_TERMINAL_FONT} />
+    </div>
+  );
+}
+
+// FontPicker chooses a font among the ones installed on this device. The
+// choice goes first in the stack and the defaults stay behind it, so a font
+// that is missing or lacks a glyph falls back instead of breaking the text.
+function FontPicker({ id, label, kind, fonts, fallback }: { id: string; label: string; kind: "ui" | "terminal"; fonts: string[] | null; fallback: string }) {
+  const [, bump] = useState(0);
+  const value = chosenFont(kind);
+  const options = [{ value: "", label: "Predeterminada" }, ...(value && !fonts?.includes(value) ? [{ value, label: `${value} (no instalada)` }] : []), ...(fonts ?? []).map((f) => ({ value: f, label: f }))];
+  return (
+    <div className="max-w-sm space-y-2">
+      <span id={id} className="block text-sm font-medium">{label}</span>
+      <Select value={value} options={options} placeholder={fonts ? "Predeterminada" : "Buscando fuentes…"} onChange={(v) => { chooseFont(kind, v); bump((n) => n + 1); }} />
+      <p className="text-xs text-slate-500 dark:text-muted">
+        {fonts && fonts.length === 0 ? "No se han podido listar las fuentes de este equipo; se usa la predeterminada. " : ""}
+        Solo se ofrecen las fuentes instaladas en este equipo{kind === "terminal" ? " de ancho fijo. Para ver los iconos de la terminal elige una Nerd Font" : ""}. Si falta, se usa la predeterminada: {fallback.replace(/"/g, "").split(",").slice(0, 3).join(", ")}… Se guarda en este navegador.
+      </p>
     </div>
   );
 }

@@ -116,6 +116,8 @@ En **Ajustes → Navegador** eliges, por nodo, si los agentes pueden usar el nav
 
 En **Ajustes → Apariencia**, la escala de la interfaz va del 75% al 200%. También cambia con Ctrl + y Ctrl − (Cmd en macOS) y vuelve al 100% con Ctrl 0. Se guarda en cada navegador o app de escritorio.
 
+En la misma sección eliges la **fuente de la interfaz** y la **fuente de la terminal** entre las instaladas en ese equipo (la de la terminal, solo de ancho fijo). La elegida va la primera de una pila que conserva las predeterminadas detrás: si falta o no tiene un símbolo, se usa la siguiente (interfaz: Adwaita Sans, Inter, la del sistema; terminal: Nerd Fonts, luego la monoespaciada del sistema) y al final la genérica. Para ver los iconos de la terminal conviene una Nerd Font. Se guarda en cada navegador o app de escritorio.
+
 ## Atajos
 
 En **Ajustes → Atajos** puedes consultar y cambiar las combinaciones, cancelar la captura con Escape o restaurar los valores originales. El ajuste de dictado anterior se conserva. Los atajos solo actúan con Dory enfocado y algunos dependen de la vista. El navegador o el sistema pueden interceptar combinaciones, incluido Ctrl+N; puedes elegir otra. En macOS se usa Cmd en lugar de Ctrl para los valores iniciales, salvo el dictado existente.
