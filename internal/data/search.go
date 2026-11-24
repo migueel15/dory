@@ -102,7 +102,7 @@ func (s *Store) runSearch(ctx context.Context, query string, args []any) ([]Hit,
 		return nil, err
 	}
 	for i := range hits {
-		found, err := s.query(ctx, hits[i].Entity, Filter{Fields: map[string]any{"id": hits[i].ID}, Limit: 1})
+		found, err := queryRows(ctx, s.db, hits[i].Entity, Filter{Fields: map[string]any{"id": hits[i].ID}, Limit: 1})
 		if err != nil || len(found) == 0 {
 			return nil, fmt.Errorf("search: %s %s: %w", hits[i].Entity, hits[i].ID, err)
 		}

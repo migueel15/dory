@@ -72,7 +72,7 @@ func (s *Store) publishLocation(ctx context.Context, repositoryID, path string) 
 	if err == nil && current.Path == path {
 		return nil
 	}
-	_, err = s.RepositoryLocations().Put(ctx, RepositoryLocation{RepositoryID: repositoryID, NodeID: s.log.Node(), Path: path})
+	_, err = s.RepositoryLocations().Upsert(ctx, RepositoryLocation{RepositoryID: repositoryID, NodeID: s.log.Node(), Path: path})
 	return err
 }
 
