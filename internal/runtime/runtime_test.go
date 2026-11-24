@@ -16,8 +16,26 @@ import (
 	"github.com/migueel15/dory/internal/workspace"
 )
 
-// Event is the accumulated-snapshot form the test providers still emit.
-type Event = harness.LegacyEvent
+// Event is what test providers emit.
+type Event = harness.Event
+
+// scripted is a test session over a channel of events.
+type scripted struct {
+	events  <-chan Event
+	respond func(string, [][]string) error
+}
+
+func (s scripted) Events() <-chan Event { return s.events }
+func (s scripted) Respond(id string, a [][]string) error {
+	if s.respond == nil {
+		return ErrNoRequest
+	}
+	return s.respond(id, a)
+}
+
+func adapt(events <-chan Event, respond func(string, [][]string) error) Session {
+	return scripted{events, respond}
+}
 
 func manager(t *testing.T, delay time.Duration) (*Manager, *data.Store) {
 	t.Helper()

@@ -65,7 +65,7 @@ func (a *fakeAgent) update(session string, u params) {
 
 func collect(s *session) (func() []harness.Message, func() []event) {
 	var mu sync.Mutex
-	var msgs []harness.Message
+	var log transcript
 	var all []event
 	done := make(chan struct{})
 	go func() {
@@ -73,14 +73,12 @@ func collect(s *session) (func() []harness.Message, func() []event) {
 		for e := range s.events {
 			mu.Lock()
 			all = append(all, e)
-			if e.Message != nil {
-				msgs = append(msgs, *e.Message)
-			}
+			log.apply(e)
 			mu.Unlock()
 		}
 	}()
 	wait := func() { <-done }
-	return func() []harness.Message { wait(); return msgs }, func() []event { wait(); return all }
+	return func() []harness.Message { wait(); return log.messages }, func() []event { wait(); return all }
 }
 
 func fakeServe(permission *string, cancelled *bool) func(*fakeAgent, rpcFrame) {
@@ -240,24 +238,27 @@ func TestResumeTranscript(t *testing.T) {
 			done <- d.run(s)
 			close(s.events)
 		}()
-		var last harness.Message
+		var log transcript
 		var sawSession, sawEdit, sawPlan bool
 		for event := range s.events {
-			switch {
-			case event.Session == "saved":
-				sawSession = true
-			case event.Request != nil:
-				if err := s.Answer(event.Request.ID, [][]string{{"dev"}}); err != nil {
+			log.apply(event)
+			switch e := event.(type) {
+			case harness.SessionBound:
+				sawSession = sawSession || e.ID == "saved"
+			case harness.RequestOpened:
+				if err := s.Respond(e.Request.ID, [][]string{{"dev"}}); err != nil {
 					t.Fatal(err)
 				}
-			case event.Message != nil:
-				last = *event.Message
-				if last.Text == "old message" {
-					t.Fatal("resumed history was emitted as a live turn")
-				}
-				sawEdit = sawEdit || (last.Tool != nil && last.Tool.Kind == "edit" && last.Status == "completed")
-				sawPlan = sawPlan || (last.Role == "plan" && strings.Contains(last.Text, "- [x] Inspect"))
 			}
+		}
+		var last harness.Message
+		for _, m := range log.messages {
+			if m.Text == "old message" {
+				t.Fatal("resumed history was emitted as a live turn")
+			}
+			last = m
+			sawEdit = sawEdit || (m.Tool != nil && m.Tool.Kind == "edit" && m.Status == "completed")
+			sawPlan = sawPlan || (m.Role == "plan" && strings.Contains(m.Text, "- [x] Inspect"))
 		}
 		if err := <-done; err != nil {
 			t.Fatal(err)

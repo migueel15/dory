@@ -92,20 +92,12 @@ func (r rich) Read(ctx context.Context, e harness.External) ([]harness.Message, 
 	}
 	s := newSession(ctx, c, harness.Turn{RunID: e.ID, Dir: e.Dir, Session: e.ID}, r.p.DefaultModel.Slug)
 	s.id = e.ID
-	var result []harness.Message
+	var log transcript
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		index := map[string]int{}
 		for event := range s.events {
-			if msg := event.Message; msg != nil {
-				if i, ok := index[msg.ID]; ok {
-					result[i] = *msg
-				} else {
-					index[msg.ID] = len(result)
-					result = append(result, *msg)
-				}
-			}
+			log.apply(event)
 		}
 	}()
 	err = c.call(ctx, "session/load", params{"sessionId": e.ID, "cwd": e.Dir, "mcpServers": []any{}}, nil, func(f rpcFrame) error {
@@ -118,5 +110,5 @@ func (r rich) Read(ctx context.Context, e harness.External) ([]harness.Message, 
 	s.finishChunk()
 	close(s.events)
 	<-done
-	return result, err
+	return log.messages, err
 }

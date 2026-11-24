@@ -16,7 +16,7 @@ import (
 	"github.com/migueel15/dory/internal/harness/kit"
 )
 
-type event = harness.LegacyEvent
+type event = harness.Event
 
 type session struct {
 	ctx  context.Context
@@ -28,7 +28,7 @@ type session struct {
 	id           string
 	live         bool
 	events       chan event
-	chunk        harness.Message
+	chunk        *kit.Text
 	seq          int
 	tools        map[string]harness.Message
 	mu           sync.Mutex
@@ -41,7 +41,7 @@ func newSession(ctx context.Context, c *conn, t harness.Turn, defaultModel strin
 
 func (s *session) Events() <-chan event { return s.events }
 
-func (s *session) Answer(id string, answers [][]string) error {
+func (s *session) Respond(id string, answers [][]string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if pending := s.questions[id]; pending != nil {
@@ -120,14 +120,20 @@ func (s *session) update(raw json.RawMessage) {
 		}
 		var content struct{ Type, Text string }
 		if json.Unmarshal(u.Content, &content) == nil && content.Type == "text" && content.Text != "" {
-			if s.chunk.Role != role {
+			kind := harness.TextKind(role)
+			if role == "user" {
+				// A replayed user message is not part of a live turn.
 				s.finishChunk()
 				s.seq++
-				s.chunk = harness.Message{ID: fmt.Sprintf("%s:acp:%d", s.turn.RunID, s.seq), RunID: s.turn.RunID, Role: role, CreatedAt: kit.Now(), Streaming: true}
+				s.emit(harness.MessageReported{Message: harness.Message{ID: fmt.Sprintf("%s:acp:%d", s.turn.RunID, s.seq), RunID: s.turn.RunID, Role: "user", Text: content.Text, CreatedAt: kit.Now()}})
+				return
 			}
-			s.chunk.Text += content.Text
-			msg := s.chunk
-			s.emit(event{Message: &msg})
+			if s.chunk == nil || s.chunk.Kind != kind {
+				s.finishChunk()
+				s.seq++
+				s.chunk = kit.NewText(fmt.Sprintf("%s:acp:%d", s.turn.RunID, s.seq), s.turn.RunID, kind)
+			}
+			s.chunk.Append(content.Text, s.emit)
 		}
 		return
 	}
@@ -221,8 +227,16 @@ func (s *session) update(raw json.RawMessage) {
 			}
 		}
 		msg.Tool = &tool
+		_, seen := s.tools[u.ToolCallID]
 		s.tools[u.ToolCallID] = msg
-		s.emit(event{Message: &msg})
+		switch {
+		case msg.Status == "completed" || msg.Status == "failed":
+			s.emit(kit.FinishTool(&msg))
+		case !seen:
+			s.emit(kit.StartTool(&msg))
+		default:
+			s.emit(kit.UpdateTool(&msg))
+		}
 	case "plan":
 		s.finishChunk()
 		tool := &harness.ToolCall{Kind: "todo", Name: "Plan"}
@@ -235,23 +249,21 @@ func (s *session) update(raw json.RawMessage) {
 			fmt.Fprintf(&plan, "- [%s] %s\n", check, entry.Content)
 			tool.Todos = append(tool.Todos, harness.Todo{Text: entry.Content, Status: entry.Status})
 		}
-		s.emit(event{Message: &harness.Message{ID: s.turn.RunID + ":acp-plan", RunID: s.turn.RunID, Role: "plan", Title: "Plan", Text: plan.String(), CreatedAt: kit.Now(), Tool: tool}})
+		s.emit(kit.Plan(&harness.Message{ID: s.turn.RunID + ":acp-plan", RunID: s.turn.RunID, Role: "plan", Title: "Plan", Text: plan.String(), CreatedAt: kit.Now(), Tool: tool}))
 	case "config_option_update":
 		info := sessionInfo{ConfigOptions: u.ConfigOptions}
-		s.emit(event{Settings: &harness.ReportedSettings{Model: info.option("model").CurrentValue, Effort: info.option("thought_level").CurrentValue}})
+		s.emit(harness.SettingsReported{Model: info.option("model").CurrentValue, Effort: info.option("thought_level").CurrentValue})
 	case "current_model_update":
-		s.emit(event{Settings: &harness.ReportedSettings{Model: u.CurrentModelID}})
+		s.emit(harness.SettingsReported{Model: u.CurrentModelID})
 	}
 }
 
 func (s *session) finishChunk() {
-	if s.chunk.ID == "" {
+	if s.chunk == nil {
 		return
 	}
-	msg := s.chunk
-	msg.Streaming = false
-	s.emit(event{Message: &msg})
-	s.chunk = harness.Message{}
+	s.emit(s.chunk.Done(s.chunk.String()))
+	s.chunk = nil
 }
 
 func (s *session) permission(frame rpcFrame) error {
@@ -469,8 +481,8 @@ func (s *session) ask(frame rpcFrame, title string, questions []harness.Question
 		s.mu.Unlock()
 	}()
 	s.finishChunk()
-	s.emit(event{Message: &harness.Message{ID: id, RunID: s.turn.RunID, Role: "tool", Title: title, CreatedAt: kit.Now(), Tool: &harness.ToolCall{Kind: "question", Questions: questions}}})
-	s.emit(event{Request: &harness.Request{ID: id, Kind: "question", MessageID: id, Questions: questions, CreatedAt: kit.Now()}})
+	s.emit(kit.StartTool(&harness.Message{ID: id, RunID: s.turn.RunID, Role: "tool", Title: title, CreatedAt: kit.Now(), Tool: &harness.ToolCall{Kind: "question", Questions: questions}}))
+	s.emit(harness.RequestOpened{Request: harness.Request{ID: id, Kind: "question", MessageID: id, Questions: questions, CreatedAt: kit.Now()}})
 	select {
 	case answers := <-pending:
 		return answers, nil

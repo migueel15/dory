@@ -41,24 +41,6 @@ type ReportedSettings struct {
 	Effort string `json:"effort,omitempty"`
 }
 
-// LegacyEvent is what an adapter reports while a turn runs. Exactly one of its
-// fields is set.
-type LegacyEvent struct {
-	Message  *Message
-	Settings *ReportedSettings
-	// Session is the harness id of the conversation, used to resume it.
-	Session string
-	Usage   []Window
-	// Step is the usage of one model call of the turn.
-	Step  *StepUsage
-	Steps []StepUsage
-	// Request pauses the turn until the user answers it.
-	Request *Request
-	// Done ends the turn; Err is set when it failed.
-	Done bool
-	Err  string
-}
-
 // Turn is one message of the user and everything the agent does after it.
 type Turn struct {
 	ThreadID    string
