@@ -180,7 +180,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	srv.Remote = net
 	srv.PeerClient = net.Client()
 	// What this node owes other nodes waits here until they are connected.
-	out := outbox.New(store.DB(), srv.PeerClient)
+	out := outbox.New(store.LocalDB(), srv.PeerClient)
 	rt.Outbox = out
 	net.Connected = func(node string) { out.KickNode(ctx, node) }
 	go out.Run(ctx)
