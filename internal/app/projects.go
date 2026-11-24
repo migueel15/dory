@@ -26,7 +26,7 @@ type FindInput struct {
 
 // List is every project.
 func (a *Projects) List(ctx context.Context) ([]data.Project, error) {
-	return a.Store.Projects().List(ctx, data.Filter{Limit: 1000})
+	return a.Store.Projects().ListAll(ctx, data.Filter{})
 }
 
 // Find returns the project of the input among projects, or nil if none matches.
@@ -151,7 +151,7 @@ func (a *Projects) Checkout(ctx context.Context, projectID string) (repositoryID
 
 // IssueTask creates a task linked to an issue of a registered repository.
 func (a *Projects) IssueTask(ctx context.Context, repo string, number int, title, description string) (data.Task, error) {
-	repos, err := a.Store.Repositories().List(ctx, data.Filter{Limit: 1000})
+	repos, err := a.Store.Repositories().ListAll(ctx, data.Filter{})
 	if err != nil {
 		return data.Task{}, err
 	}

@@ -28,7 +28,16 @@ func (l *Log) Compact(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	cutoff := time.Now().Add(-30 * 24 * time.Hour).UTC().Format(time.RFC3339Nano)
+	now := time.Now().UTC()
+	// A paired peer that has not acknowledged anything yet, as every peer
+	// right after the upgrade, holds an empty vector: it stops compaction
+	// until its first ack, or until it stays silent past the usual window.
+	if _, err := l.db.ExecContext(ctx, `INSERT INTO peer_vectors (node_id, vector, synced_at)
+		SELECT node_id, '{}', ? FROM peers WHERE revoked_at IS NULL AND disabled_at IS NULL
+		ON CONFLICT(node_id) DO NOTHING`, now.Format(time.RFC3339Nano)); err != nil {
+		return err
+	}
+	cutoff := now.Add(-30 * 24 * time.Hour).Format(time.RFC3339Nano)
 	for {
 		n, err := l.compactBatch(ctx, known, cutoff)
 		if err != nil || n < BatchSize {

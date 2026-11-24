@@ -1,6 +1,7 @@
 package oplog
 
 import (
+	"database/sql"
 	"errors"
 	"maps"
 	"testing"
@@ -106,4 +107,66 @@ func TestCompactKeepsUnknownOperationAndItsTail(t *testing.T) {
 	if err != nil || len(ops) != 2 || ops[0].Entity != "future" || ops[1].Seq != 3 {
 		t.Fatalf("retained tail = %+v, %v", ops, err)
 	}
+}
+
+// After the upgrade no peer has a vector yet: a paired peer counts as having
+// seen nothing until its first ack, while a node with no peers compacts.
+func TestCompactWaitsForPeersWithoutVector(t *testing.T) {
+	ctx := t.Context()
+	count := func(t *testing.T, db interface {
+		QueryRow(string, ...any) *sql.Row
+	}) int {
+		var n int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM ops`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	t.Run("no peers", func(t *testing.T) {
+		db, l := node(t)
+		write(t, l, "memory", "m1", map[string]any{"scope": "global", "content": "uno", "created_at": "", "updated_at": ""})
+		if err := l.Compact(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if n := count(t, db); n != 0 {
+			t.Fatalf("ops = %d, want 0", n)
+		}
+	})
+
+	t.Run("peer without vector", func(t *testing.T) {
+		db, l := node(t)
+		_, peer := node(t)
+		if _, err := db.Exec(`INSERT INTO peers(node_id, public_key, paired_at) VALUES (?, ?, '2020-01-01T00:00:00Z')`, peer.Node(), peer.Node()); err != nil {
+			t.Fatal(err)
+		}
+		write(t, l, "memory", "m1", map[string]any{"scope": "global", "content": "uno", "created_at": "", "updated_at": ""})
+		write(t, l, "memory", "m1", map[string]any{"content": "dos"})
+		if err := l.Compact(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if n := count(t, db); n != 2 {
+			t.Fatalf("ops before the first ack = %d, want 2", n)
+		}
+		// Compacting again keeps waiting: the empty vector is not refreshed.
+		if err := l.Compact(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if n := count(t, db); n != 2 {
+			t.Fatalf("ops on the second pass = %d, want 2", n)
+		}
+		vector, err := l.Vector(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := l.RecordPeerVector(ctx, peer.Node(), vector); err != nil {
+			t.Fatal(err)
+		}
+		if err := l.Compact(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if n := count(t, db); n != 0 {
+			t.Fatalf("ops after the ack = %d, want 0", n)
+		}
+	})
 }

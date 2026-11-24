@@ -296,3 +296,28 @@ func TestLinksReplicate(t *testing.T) {
 		t.Fatalf("removal not replicated: %+v", deps)
 	}
 }
+
+// Readers that must see every thread, like the cleanup of merged worktrees,
+// read past the page size, archived threads included.
+func TestListAllReadsPastOnePage(t *testing.T) {
+	ctx := t.Context()
+	s := open(t)
+	const n = 1005
+	var last Thread
+	for range n {
+		th, err := s.Threads().Create(ctx, Thread{NodeID: s.log.Node(), Provider: "codex"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		last = th
+	}
+	if err := s.Threads().Archive(ctx, last.ID); err != nil {
+		t.Fatal(err)
+	}
+	if all, err := s.Threads().ListAll(ctx, Filter{}); err != nil || len(all) != n-1 {
+		t.Fatalf("active threads = %d, %v", len(all), err)
+	}
+	if all, err := s.Threads().ListAll(ctx, Filter{IncludeArchived: true}); err != nil || len(all) != n {
+		t.Fatalf("threads with archived = %d, %v", len(all), err)
+	}
+}

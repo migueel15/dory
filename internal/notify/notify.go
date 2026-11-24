@@ -91,7 +91,7 @@ func New(ctx context.Context, store *data.Store, node, dir string) (*Notifier, e
 	n := &Notifier{db: store.LocalDB(), store: store, node: node, private: keys.Private, public: keys.Public,
 		last: map[string]string{}, pushed: map[string]bool{}}
 	// Start from the current states, so a restart does not notify old news.
-	threads, err := store.Threads().List(ctx, data.Filter{Limit: 1000})
+	threads, err := store.Threads().ListAll(ctx, data.Filter{})
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +193,7 @@ func (n *Notifier) ThreadState(id string) {
 
 // planPending says whether the latest plan of the task waits to be accepted.
 func (n *Notifier) planPending(ctx context.Context, task string) bool {
-	plans, err := n.store.Plans().List(ctx, data.Filter{Fields: map[string]any{"task_id": task}, Limit: 1000})
+	plans, err := n.store.Plans().ListAll(ctx, data.Filter{Fields: map[string]any{"task_id": task}})
 	if err != nil || len(plans) == 0 {
 		return false
 	}
@@ -335,7 +335,7 @@ func (n *Notifier) Mount(mux *http.ServeMux) {
 		}
 	})
 	mux.HandleFunc("GET /api/notices", func(w http.ResponseWriter, r *http.Request) {
-		list, err := n.store.Notices().List(r.Context(), data.Filter{Limit: 1000})
+		list, err := n.store.Notices().ListAll(r.Context(), data.Filter{})
 		if err != nil {
 			apperr.WriteHTTP(w, r, err)
 			return
@@ -350,7 +350,7 @@ func (n *Notifier) Mount(mux *http.ServeMux) {
 			IDs []string `json:"ids"`
 		}
 		json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body)
-		list, err := n.store.Notices().List(r.Context(), data.Filter{Limit: 1000})
+		list, err := n.store.Notices().ListAll(r.Context(), data.Filter{})
 		if err != nil {
 			apperr.WriteHTTP(w, r, err)
 			return

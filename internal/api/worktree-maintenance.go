@@ -37,7 +37,7 @@ func (s *Server) AutoPull(ctx context.Context) {
 	if !s.Settings.Get().SourceControl.AutoPull {
 		return
 	}
-	threads, err := s.Store.Threads().List(ctx, data.Filter{Limit: 1000})
+	threads, err := s.Store.Threads().ListAll(ctx, data.Filter{})
 	if err != nil {
 		return
 	}
@@ -62,7 +62,7 @@ func (s *Server) RemoveMergedWorktrees(ctx context.Context) {
 	if !s.Settings.Get().Worktrees.RemoveOnMerge {
 		return
 	}
-	threads, err := s.Store.Threads().List(ctx, data.Filter{IncludeArchived: true, Limit: 1000})
+	threads, err := s.Store.Threads().ListAll(ctx, data.Filter{IncludeArchived: true})
 	if err != nil {
 		return
 	}

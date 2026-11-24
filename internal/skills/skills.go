@@ -174,7 +174,7 @@ func (r *Reconciler) reconcile(ctx context.Context) error {
 	if err := SeedSystem(ctx, r.Store); err != nil {
 		log.Printf("skills: system skills: %v", err)
 	}
-	all, err := r.Store.Skills().List(ctx, data.Filter{Limit: 1000, IncludeArchived: true})
+	all, err := r.Store.Skills().ListAll(ctx, data.Filter{IncludeArchived: true})
 	if err != nil {
 		return err
 	}
@@ -342,7 +342,7 @@ func removeEmpty(dir, stop string) {
 
 // publish writes this node's states, only where they changed.
 func (r *Reconciler) publish(ctx context.Context, states map[string]data.SkillState) error {
-	current, err := r.Store.SkillStates().List(ctx, data.Filter{Fields: map[string]any{"node_id": r.Node}, Limit: 1000, IncludeArchived: true})
+	current, err := r.Store.SkillStates().ListAll(ctx, data.Filter{Fields: map[string]any{"node_id": r.Node}, IncludeArchived: true})
 	if err != nil {
 		return err
 	}

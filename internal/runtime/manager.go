@@ -160,7 +160,7 @@ func (m *Manager) Recover(ctx context.Context) error {
 		return err
 	}
 	m.loadQueues(ctx)
-	threads, err := m.store.Threads().List(ctx, data.Filter{Fields: map[string]any{"node_id": m.node, "status": "working"}, Limit: 1000})
+	threads, err := m.store.Threads().ListAll(ctx, data.Filter{Fields: map[string]any{"node_id": m.node, "status": "working"}})
 	if err != nil {
 		return err
 	}
@@ -922,14 +922,12 @@ func (m *Manager) importExternal(ctx context.Context, thread string, e External)
 	)`, thread, e.ID, e.Provider, e.Provider).Scan(&matches); err != nil || !matches {
 		return err
 	}
-	// Items older than the last message are already there under the ids of
-	// the live turns; only what came after is new.
-	var last sql.NullString
-	if err := m.db.QueryRowContext(ctx, `SELECT MAX(created_at) FROM thread_messages WHERE thread_id = ?`, thread).Scan(&last); err != nil {
+	cutoff, err := m.importCutoff(ctx, thread)
+	if err != nil {
 		return err
 	}
 	for _, msg := range msgs {
-		if msg.CreatedAt != "" && msg.CreatedAt <= last.String {
+		if at, err := time.Parse(time.RFC3339Nano, msg.CreatedAt); err == nil && !at.After(cutoff) {
 			continue
 		}
 		harnessID := msg.ID
@@ -946,6 +944,28 @@ func (m *Manager) importExternal(ctx context.Context, thread string, e External)
 		m.persist(ctx, &msg, EventItemCompleted, harnessID)
 	}
 	return nil
+}
+
+// importCutoff is the moment up to which a thread already holds what its
+// harness file says. A live turn stores its items under its own ids, and a
+// text under the time of its first fragment, while the harness writes it when
+// the block ends: so everything up to the end of the last live turn, as well
+// as up to the last message, is already there.
+func (m *Manager) importCutoff(ctx context.Context, thread string) (time.Time, error) {
+	var lastMessage, lastTurn sql.NullString
+	if err := m.db.QueryRowContext(ctx, `SELECT MAX(created_at) FROM thread_messages WHERE thread_id = ?`, thread).Scan(&lastMessage); err != nil {
+		return time.Time{}, err
+	}
+	if err := m.db.QueryRowContext(ctx, `SELECT MAX(created_at) FROM thread_events WHERE thread_id = ? AND type = ?`, thread, EventTurnEnded).Scan(&lastTurn); err != nil {
+		return time.Time{}, err
+	}
+	var cutoff time.Time
+	for _, s := range []string{lastMessage.String, lastTurn.String} {
+		if t, err := time.Parse(time.RFC3339Nano, s); err == nil && t.After(cutoff) {
+			cutoff = t
+		}
+	}
+	return cutoff, nil
 }
 
 func (m *Manager) LatestVersion(id string) func(context.Context) string {

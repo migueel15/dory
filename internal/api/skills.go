@@ -12,7 +12,7 @@ import (
 // node (requirements RF-37 to RF-41).
 func (s *Server) mountSkills(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/skills", func(w http.ResponseWriter, r *http.Request) {
-		list, err := s.Store.Skills().List(r.Context(), data.Filter{Limit: 1000})
+		list, err := s.Store.Skills().ListAll(r.Context(), data.Filter{})
 		if err != nil {
 			writeErr(w, r, err)
 			return
@@ -20,7 +20,7 @@ func (s *Server) mountSkills(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, list)
 	})
 	mux.HandleFunc("GET /api/skills/states", func(w http.ResponseWriter, r *http.Request) {
-		list, err := s.Store.SkillStates().List(r.Context(), data.Filter{Limit: 1000})
+		list, err := s.Store.SkillStates().ListAll(r.Context(), data.Filter{})
 		if err != nil {
 			writeErr(w, r, err)
 			return
