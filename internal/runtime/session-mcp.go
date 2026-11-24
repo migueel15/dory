@@ -16,10 +16,6 @@ import (
 	"github.com/migueel15/dory/internal/data"
 )
 
-// legacyDoryInstructions was prepended to user messages before the guidance
-// moved to the system prompt; history recovery still strips it.
-const legacyDoryInstructions = `Estás en un hilo gestionado por Dory. Usa el servidor MCP dory para consultar el contexto del proyecto (session_start), gestionar tareas y operar sobre este hilo. Descubre las herramientas disponibles en el catálogo MCP del arnés y sigue sus esquemas. Para mostrar un mockup web en el panel del hilo, abre su URL con browser_open y comprueba la pestaña activa con browser_tabs. Para confirmar cambios de tareas o planes, consulta get_task o plan_read.`
-
 // prepareMCP uses the same connection and guidance for new and resumed turns.
 // The guidance, built from the tools the catalog offers, travels in Turn.Instructions; each provider delivers it once per
 // session through its system channel, so user messages stay clean.

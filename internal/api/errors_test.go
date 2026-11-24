@@ -58,7 +58,7 @@ func TestWriteErrDomainErrorsKeepStatusCodeAndParams(t *testing.T) {
 }
 
 func TestWriteErrNeverSendsTheTextOfAnUnknownError(t *testing.T) {
-	status, b, raw := errorResponse(t, errors.New("git: fatal: not a repository: /home/miguel/secret"))
+	status, b, raw := errorResponse(t, errors.New("git: fatal: not a repository: /home/example/secret"))
 	if status != 500 || b.Error.Code != apperr.Internal || b.Error.Message != "internal error" {
 		t.Fatalf("status %d body %+v", status, b)
 	}
@@ -66,7 +66,7 @@ func TestWriteErrNeverSendsTheTextOfAnUnknownError(t *testing.T) {
 		t.Fatalf("leaked: %s", raw)
 	}
 	// A domain error that wraps a cause keeps the cause out of the response too.
-	_, _, raw = errorResponse(t, apperr.Wrap(apperr.Conflict, errors.New("/home/miguel/secret"), "branch busy"))
+	_, _, raw = errorResponse(t, apperr.Wrap(apperr.Conflict, errors.New("/home/example/secret"), "branch busy"))
 	if strings.Contains(raw, "secret") {
 		t.Fatalf("leaked cause: %s", raw)
 	}

@@ -11,7 +11,9 @@ import (
 
 	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/apperr"
+	"github.com/migueel15/dory/internal/harness"
 	"github.com/migueel15/dory/internal/nodestate"
+	"github.com/migueel15/dory/internal/runtime"
 )
 
 // Settings are the choices of a node about how finished work is cleaned up.
@@ -160,7 +162,16 @@ func (s *Server) mountSettings(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, s.Settings.Get())
 	}))
 	mux.HandleFunc("GET /api/nodes/{node}/defaults", s.onNode(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, s.Runtime.Defaults())
+		defaults := s.Runtime.Defaults()
+		writeJSON(w, http.StatusOK, struct {
+			runtime.Defaults
+			ClaudeHome string `json:"claude_home"`
+			CodexHome  string `json:"codex_home"`
+		}{
+			Defaults:   defaults,
+			ClaudeHome: harness.DefaultConfigDir(defaults.Home, "claude"),
+			CodexHome:  harness.DefaultConfigDir(defaults.Home, "codex"),
+		})
 	}))
 	mux.HandleFunc("PUT /api/nodes/{node}/settings", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		v := s.Settings.Get()

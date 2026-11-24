@@ -241,18 +241,6 @@ func (m *Manager) Key(ctx context.Context, serial, name string) error {
 	return err
 }
 
-// Launch opens an app by package name.
-func (m *Manager) Launch(ctx context.Context, serial, pkg string) error {
-	if !ident.MatchString(pkg) {
-		return errors.New(i18n.Text("devices.paquete_no_valido"))
-	}
-	out, err := m.ADB.Shell(ctx, serial, 10*time.Second, "monkey", "-p", pkg, "-c", "android.intent.category.LAUNCHER", "1")
-	if err == nil && strings.Contains(out, "No activities found") {
-		err = fmt.Errorf(i18n.Text("devices.no_esta_instalada_no"), pkg)
-	}
-	return err
-}
-
 var schemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.\-]*:`)
 
 // OpenURL opens a link or deep link with the app that handles it.

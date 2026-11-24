@@ -47,17 +47,14 @@ func (m *Manager) RemoveAccount(id string) error {
 
 // Defaults are the folders this node uses when a setting is left empty.
 type Defaults struct {
-	Worktrees  string `json:"worktrees"`
-	Accounts   string `json:"accounts"`
-	Home       string `json:"home"`
-	ClaudeHome string `json:"claude_home"`
-	CodexHome  string `json:"codex_home"`
+	Worktrees string `json:"worktrees"`
+	Accounts  string `json:"accounts"`
+	Home      string `json:"home"`
 }
 
 func (m *Manager) Defaults() Defaults {
 	home, _ := os.UserHomeDir()
 	return Defaults{
 		Worktrees: filepath.Join(m.dataDir, "worktrees"), Accounts: filepath.Join(m.dataDir, "accounts"), Home: home,
-		ClaudeHome: harness.DefaultConfigDir(home, "claude"), CodexHome: harness.DefaultConfigDir(home, "codex"),
 	}
 }

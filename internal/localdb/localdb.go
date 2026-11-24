@@ -42,7 +42,7 @@ func migrate(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db, sub)
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db, sub, goose.WithGoMigrations(goose.NewGoMigration(33, &goose.GoFunc{RunTx: migrateMessageTools}, &goose.GoFunc{})))
 	if err != nil {
 		return err
 	}

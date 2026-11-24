@@ -1,4 +1,4 @@
-package harness
+package harness_test
 
 import (
 	"context"
@@ -6,28 +6,29 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/migueel15/dory/internal/harness"
 	"github.com/migueel15/dory/internal/harness/procpool"
 	"github.com/migueel15/dory/internal/localdb"
 	"github.com/migueel15/dory/internal/nodestate"
 )
 
 type testDriver struct {
-	account Account
+	account harness.Account
 	order   int
 	pool    *procpool.Pool
 }
 
-func (d testDriver) Info() Info {
-	return Info{ID: d.account.ID(), Driver: d.account.Driver, Order: d.order, Capabilities: Capabilities{Resume: true}}
+func (d testDriver) Info() harness.Info {
+	return harness.Info{ID: d.account.ID(), Driver: d.account.Driver, Order: d.order, Capabilities: harness.Capabilities{Resume: true}}
 }
-func (testDriver) Detect(context.Context) Status                { return Status{} }
-func (testDriver) Start(context.Context, Turn) (Session, error) { return nil, nil }
-func (d testDriver) WithAccount(a Account) Driver               { d.account = a; return d }
-func (d testDriver) WithPool(p *procpool.Pool) Driver           { d.pool = p; return d }
-func (testDriver) ConfigEnv() string                            { return "TEST_CONFIG" }
-func (testDriver) DefaultHome(home string) string               { return filepath.Join(home, ".test") }
-func (d testDriver) AccountHome() string                        { return d.account.Home }
-func (d testDriver) Environ() []string                          { return []string{"TEST_CONFIG=" + d.account.Home} }
+func (testDriver) Detect(context.Context) harness.Status                        { return harness.Status{} }
+func (testDriver) Start(context.Context, harness.Turn) (harness.Session, error) { return nil, nil }
+func (d testDriver) WithAccount(a harness.Account) harness.Driver               { d.account = a; return d }
+func (d testDriver) WithPool(p *procpool.Pool) harness.Driver                   { d.pool = p; return d }
+func (testDriver) ConfigEnv() string                                            { return "TEST_CONFIG" }
+func (testDriver) DefaultHome(home string) string                               { return filepath.Join(home, ".test") }
+func (d testDriver) AccountHome() string                                        { return d.account.Home }
+func (d testDriver) Environ() []string                                          { return []string{"TEST_CONFIG=" + d.account.Home} }
 
 func TestRegistry(t *testing.T) {
 	ctx := t.Context()
@@ -39,9 +40,9 @@ func TestRegistry(t *testing.T) {
 	state := nodestate.New(db)
 	pool := procpool.New(nil)
 	root := t.TempDir()
-	late := testDriver{account: Account{Driver: "a"}, order: 2}
-	early := testDriver{account: Account{Driver: "z"}, order: 1}
-	r := NewRegistry(state, root, pool, late, early)
+	late := testDriver{account: harness.Account{Driver: "a"}, order: 2}
+	early := testDriver{account: harness.Account{Driver: "z"}, order: 1}
+	r := harness.NewRegistry(state, root, pool, late, early)
 	a, err := r.AddAccount(ctx, "z", "Trabajo", "")
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +54,7 @@ func TestRegistry(t *testing.T) {
 	if err := r.SetEnabled(ctx, id, false); err != nil {
 		t.Fatal(err)
 	}
-	r = NewRegistry(state, root, pool, late, early)
+	r = harness.NewRegistry(state, root, pool, late, early)
 	var ids []string
 	for _, entry := range r.All() {
 		ids = append(ids, entry.Info().ID)

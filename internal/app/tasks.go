@@ -49,10 +49,6 @@ func (a *Tasks) List(ctx context.Context, f data.Filter) ([]data.Task, error) {
 	return a.Store.Tasks().ListAll(ctx, f)
 }
 
-func (a *Tasks) ListPage(ctx context.Context, f data.Filter) ([]data.Task, int, error) {
-	return a.Store.Tasks().ListPage(ctx, f)
-}
-
 func (a *Tasks) Card(ctx context.Context, id string) (Card, error) {
 	t, err := a.Get(ctx, id)
 	if err != nil {

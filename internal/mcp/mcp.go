@@ -182,11 +182,3 @@ func threadID(ctx context.Context, id string) (string, error) {
 	}
 	return id, nil
 }
-
-// revision is the base revision of a plan save; -1 skips the check.
-func revision(r *int64) int64 {
-	if r == nil {
-		return -1
-	}
-	return *r
-}

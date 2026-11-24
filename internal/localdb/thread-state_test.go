@@ -33,6 +33,8 @@ func TestMigrateThreadState(t *testing.T) {
 		INSERT INTO node_state (id, node_id) VALUES (1, 'local');
 		INSERT INTO threads (id, node_id, provider, status, created_at, updated_at, last_activity_at, read_at)
 		VALUES ('t', 'local', 'codex', 'error', '2026-11-24T00:00:00Z', '2026-11-24T00:00:04Z', '2026-11-24T00:00:04Z', '2026-11-24T00:00:02Z');
+		INSERT INTO thread_messages (id, thread_id, role, title, detail, created_at, updated_at)
+		VALUES ('legacy-tool', 't', 'tool', 'Bash', 'go test ./...', '2026-11-24T00:00:00Z', '2026-11-24T00:00:00Z');
 		INSERT INTO ops (node_id, seq, hlc, entity, entity_id, fields) VALUES
 		('local', 1, '1', 'thread', 't', '{"node_id":"local","provider":"codex","status":"idle","created_at":"2026-11-24T00:00:00Z","updated_at":"2026-11-24T00:00:00Z"}'),
 		('local', 2, '2', 'thread', 't', '{"read_at":"2026-11-24T00:00:02Z","status":"working","updated_at":"2026-11-24T00:00:02Z"}'),
@@ -43,6 +45,12 @@ func TestMigrateThreadState(t *testing.T) {
 	}
 	if err := migrate(ctx, db); err != nil {
 		t.Fatal(err)
+	}
+	var kind, command string
+	err = db.QueryRowContext(ctx, `SELECT json_extract(tool, '$.kind'), json_extract(tool, '$.command')
+		FROM thread_messages WHERE id = 'legacy-tool'`).Scan(&kind, &command)
+	if err != nil || kind != "command" || command != "go test ./..." {
+		t.Fatalf("migrated tool = %q %q: %v", kind, command, err)
 	}
 	var count, stateFields int
 	err = db.QueryRowContext(ctx, `SELECT COUNT(*),

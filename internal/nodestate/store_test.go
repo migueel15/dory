@@ -1,7 +1,8 @@
-package nodestate
+package nodestate_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,21 +10,22 @@ import (
 	"testing"
 
 	"github.com/migueel15/dory/internal/localdb"
+	"github.com/migueel15/dory/internal/nodestate"
 )
 
-func openStore(t *testing.T) *Store {
+func openStore(t *testing.T) (*nodestate.Store, *sql.DB) {
 	t.Helper()
 	db, err := localdb.Open(context.Background(), ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	return New(db)
+	return nodestate.New(db), db
 }
 
 func TestConcurrentUpdate(t *testing.T) {
 	ctx := context.Background()
-	store := openStore(t)
+	store, _ := openStore(t)
 	var got int
 	if found, err := store.Get(ctx, "counter", &got); found || err != nil {
 		t.Fatalf("missing key: found=%v, err=%v", found, err)
@@ -66,7 +68,7 @@ func TestConcurrentUpdate(t *testing.T) {
 
 func TestImportFile(t *testing.T) {
 	ctx := context.Background()
-	store := openStore(t)
+	store, db := openStore(t)
 	path := filepath.Join(t.TempDir(), "legacy.json")
 	write := func(raw string) {
 		t.Helper()
@@ -75,12 +77,12 @@ func TestImportFile(t *testing.T) {
 		}
 	}
 	write("{")
-	if err := store.ImportFile(ctx, KeyNodeIcon, path); err == nil {
+	if err := store.ImportFile(ctx, nodestate.KeyNodeIcon, path); err == nil {
 		t.Fatal("imported invalid JSON")
 	}
 	const raw = " { \"icon\": \"moon\" }\n"
 	write(raw)
-	if err := store.ImportFile(ctx, KeyNodeIcon, path); err != nil {
+	if err := store.ImportFile(ctx, nodestate.KeyNodeIcon, path); err != nil {
 		t.Fatal(err)
 	}
 	archived, err := os.ReadFile(path + ".migrated")
@@ -88,14 +90,14 @@ func TestImportFile(t *testing.T) {
 		t.Fatalf("archive = %q, err=%v", archived, err)
 	}
 	write("{")
-	if err := store.ImportFile(ctx, KeyNodeIcon, path); err != nil {
+	if err := store.ImportFile(ctx, nodestate.KeyNodeIcon, path); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal(err)
 	}
 	var got string
-	if err := store.db.QueryRowContext(ctx, "SELECT value FROM node_kv WHERE key = ?", KeyNodeIcon).Scan(&got); err != nil || got != raw {
+	if err := db.QueryRowContext(ctx, "SELECT value FROM node_kv WHERE key = ?", nodestate.KeyNodeIcon).Scan(&got); err != nil || got != raw {
 		t.Fatalf("value = %q, err=%v", got, err)
 	}
 }

@@ -28,16 +28,7 @@ func (l *Log) Compact(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	now := time.Now().UTC()
-	// A paired peer that has not acknowledged anything yet, as every peer
-	// right after the upgrade, holds an empty vector: it stops compaction
-	// until its first ack, or until it stays silent past the usual window.
-	if _, err := l.db.ExecContext(ctx, `INSERT INTO peer_vectors (node_id, vector, synced_at)
-		SELECT node_id, '{}', ? FROM peers WHERE revoked_at IS NULL AND disabled_at IS NULL
-		ON CONFLICT(node_id) DO NOTHING`, now.Format(time.RFC3339Nano)); err != nil {
-		return err
-	}
-	cutoff := now.Add(-30 * 24 * time.Hour).Format(time.RFC3339Nano)
+	cutoff := time.Now().UTC().Add(-30 * 24 * time.Hour).Format(time.RFC3339Nano)
 	for {
 		n, err := l.compactBatch(ctx, known, cutoff)
 		if err != nil || n < BatchSize {
@@ -59,8 +50,8 @@ func (l *Log) compactBatch(ctx context.Context, known, cutoff string) (int, erro
 	// Stop before the first unknown operation of an origin. Skipping
 	// that sequence would make a bootstrap receiver miss the retained op.
 	rows, err := tx.QueryContext(ctx, `WITH active AS (
-		SELECT v.vector FROM peer_vectors v JOIN peers p USING (node_id)
-		WHERE p.revoked_at IS NULL AND p.disabled_at IS NULL AND julianday(v.synced_at) >= julianday(?)
+		SELECT COALESCE(v.vector, '{}') AS vector FROM peers p LEFT JOIN peer_vectors v USING (node_id)
+		WHERE p.revoked_at IS NULL AND p.disabled_at IS NULL AND (v.node_id IS NULL OR julianday(v.synced_at) >= julianday(?))
 	), unknown AS (
 		SELECT node_id, MIN(seq) AS first FROM ops
 		WHERE entity NOT IN (SELECT value FROM json_each(?)) GROUP BY node_id

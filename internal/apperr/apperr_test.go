@@ -85,7 +85,7 @@ func TestWriteHTTPDomainError(t *testing.T) {
 
 func TestWriteHTTPUnknownErrorIsGeneric(t *testing.T) {
 	rec := httptest.NewRecorder()
-	WriteHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/x", nil), errors.New("git: fatal: /home/miguel/repo"))
+	WriteHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/x", nil), errors.New("git: fatal: /home/example/repo"))
 	if rec.Code != 500 {
 		t.Fatalf("status = %d", rec.Code)
 	}

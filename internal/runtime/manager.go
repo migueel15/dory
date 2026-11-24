@@ -527,12 +527,6 @@ func (m *Manager) save(ctx context.Context, msg Message) {
 	}
 }
 
-// persistMessage stores the projection of a message and, unless the text is
-// still being written, the event that records it.
-func (m *Manager) persistMessage(ctx context.Context, msg *Message) bool {
-	return m.persist(ctx, msg, "", "")
-}
-
 // persist upserts a message in the read model. Together with it, in the same
 // transaction, goes its event: typ, or the one the message calls for. A text
 // that is still streaming records none until it is first seen or finished.
@@ -628,8 +622,6 @@ func (m *Manager) Messages(ctx context.Context, id string) ([]Message, error) {
 			if json.Unmarshal([]byte(tool), msg.Tool) != nil {
 				msg.Tool = nil
 			}
-		} else if msg.Role == "tool" {
-			msg.Tool = legacyTool(msg.Title, msg.Detail)
 		}
 		msg.Streaming = streaming == 1
 		m.restoreAttachments(id, &msg)
