@@ -6,6 +6,12 @@ type Text = string | ((p: ErrorParams) => string);
 
 // A key is "code" or "code:reason"; the reason param refines a generic code.
 const TEXTS: Record<string, Text> = {
+  "too_many_requests": "hay demasiadas peticiones pendientes; espera un momento",
+  "invalid_range": "el rango no es válido",
+  "plan_conflict": "el plan cambió desde que lo leíste; léelo de nuevo",
+  "revision_conflict": "el contenido cambió desde que lo leíste; léelo de nuevo",
+  "no_repository": "la tarea necesita un repositorio",
+  "no_thread": "la tarea no tiene un hilo",
   "thread_busy": "espera a que termine el turno antes de cambiar de proveedor",
   "node_offline": (p) => (p.thread ? "el nodo que ejecuta este hilo no está conectado" : "el nodo no está conectado"),
   "confirm_required": "apagar un móvil físico necesita confirmación",
@@ -83,4 +89,9 @@ export function errorText(err: unknown): string {
   if (!(err instanceof Error)) return "";
   const e = err as Error & { code?: string; detail?: string; params?: ErrorParams };
   return e.code ? textFor(e.code, e.detail ?? e.message, e.params) : e.message;
+}
+
+// hasText says whether the web writes a text for a code, with or without reason.
+export function hasText(code: string): boolean {
+  return Object.keys(TEXTS).some((k) => k === code || k.startsWith(`${code}:`));
 }
