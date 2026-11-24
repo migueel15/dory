@@ -11,6 +11,7 @@ import (
 
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/mesh"
 	"github.com/migueel15/dory/internal/runtime"
 )
 
@@ -37,7 +38,7 @@ func TestWriteErrDomainErrorsKeepStatusCodeAndParams(t *testing.T) {
 		{runtime.ErrRemote, 409, apperr.Remote},
 		{runtime.ErrProvider.Msgf("nope"), 400, apperr.Invalid},
 		{runtime.ErrDirtyWorktree, 409, apperr.DirtyWorktree},
-		{ErrUnreachable, 502, apperr.Unreachable},
+		{mesh.ErrUnreachable, 502, apperr.Unreachable},
 		{errNotCloned, 400, apperr.RepositoryNotClone},
 		{ErrPlanConflict.Msgf("now at revision %d", 4).With("revision", 4), 409, apperr.RevisionConflict},
 	} {

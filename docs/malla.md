@@ -37,9 +37,11 @@ Un cambio llega al otro nodo en menos de 2 s si están conectados. Sin conexión
 
 ## Nodos con versiones distintas
 
-La malla no compara versiones al sincronizar: un nodo desactualizado sigue recibiendo y enviando cambios. Cada nodo interpreta los datos con el código de su binario:
+Los nodos anuncian su protocolo en `/peer/v2/info` antes de intercambiar operaciones. Si un par usa otro protocolo, Dory pausa la sincronización y muestra un aviso en **Entornos** y **Conexiones**. Actualiza Dory en ese nodo para reanudarla con el mismo emparejamiento. Los móviles se conectan mediante `/device/v1`.
 
-- Guarda en su registro todas las operaciones que recibe, pero al escribir sus tablas solo usa las columnas que conoce su binario. Ignora las demás.
+Los nodos con el mismo protocolo pueden tener esquemas distintos:
+
+- Cada nodo conserva y reenvía las operaciones que recibe, incluidas las de entidades desconocidas. En sus tablas materializa las entidades y columnas que conoce.
 - Aplica las reglas de su versión. Por ejemplo, un nodo anterior a las skills del sistema (ADR-028) instala también las skills desactivadas y los forks, y deja editar las skills del sistema; los nodos actualizados restauran después su contenido.
 
 Al actualizarse, el nodo se corrige solo: la migración recupera del registro los valores de las columnas nuevas que había recibido, las skills del sistema vuelven a su contenido y el reconciliador reinstala lo que corresponde en las carpetas de los agentes. Para acortar ese periodo, actualiza toda la malla a la vez desde **Entornos**.
@@ -48,7 +50,7 @@ Si mientras el nodo estaba desactualizado se editó a mano el fichero de una ski
 
 ### Añadir una columna replicada
 
-Al actualizarse, cada nodo necesita recuperar en la migración las columnas nuevas ya presentes en sus operaciones. Para añadir una columna a una entidad replicada, sigue estos pasos.
+Las migraciones recuperan del registro las operaciones ya recibidas. Al incorporar una entidad, su migración materializa sus filas a partir de esas operaciones. Para añadir una columna a una entidad replicada, sigue estos pasos.
 
 1. Añade la columna en una migración.
 2. En la misma migración, recupera su valor de las operaciones ya recibidas: para cada fila, el último valor por `hlc` de esa clave en `ops`. Distingue la clave ausente (`json_type(...) IS NULL`) de un `null` explícito. `00022_system_skills.sql` es el ejemplo.

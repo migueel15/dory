@@ -2,6 +2,7 @@ package mesh
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -14,6 +15,7 @@ import (
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/localdb"
 	"github.com/migueel15/dory/internal/oplog"
+	"github.com/migueel15/dory/internal/schema"
 )
 
 type node struct {
@@ -48,7 +50,7 @@ func start(t *testing.T, ctx context.Context, name string) node {
 	}
 	m := New(db, log, id, name, freePort(t))
 	log.OnChange = func(string, string) { m.Changed() }
-	m.Info = func(context.Context) any { return map[string]string{"name": name} }
+	m.Info = func(context.Context) map[string]any { return map[string]any{"name": name} }
 	m.API = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprintf(w, "%s answered %s", name, r.URL.Path) })
 	go m.Serve(ctx)
 	// Wait until the listener is up.
@@ -111,8 +113,20 @@ func TestPairSyncAndForward(t *testing.T) {
 	eventually(t, "presence", func() bool {
 		pa, _ := a.m.Peers(ctx)
 		pb, _ := b.m.Peers(ctx)
-		return len(pa) == 1 && pa[0].Connected && len(pb) == 1 && pb[0].Connected
+		return len(pa) == 1 && pa[0].Connected && pa[0].Protocol == ProtocolVersion &&
+			len(pb) == 1 && pb[0].Connected && pb[0].Protocol == ProtocolVersion
 	})
+
+	peers, err := a.m.Peers(ctx)
+	if err != nil || len(peers) != 1 {
+		t.Fatalf("peers = %+v, %v", peers, err)
+	}
+	var info struct {
+		Schema string `json:"schema"`
+	}
+	if err := json.Unmarshal(peers[0].Info, &info); err != nil || info.Schema != schema.Hash() {
+		t.Fatalf("peer schema = %q, want %q, decode error: %v", info.Schema, schema.Hash(), err)
+	}
 
 	// A call for a thread of a is answered by a.
 	rec := httptest.NewRecorder()

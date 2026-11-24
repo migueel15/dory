@@ -231,3 +231,36 @@ func TestConcurrentMemoryEditsKeepBothTexts(t *testing.T) {
 		t.Fatalf("conflict not resolved: %q", got)
 	}
 }
+
+func TestApplyRetainsUnknownEntityAndColumn(t *testing.T) {
+	ctx := context.Background()
+	db, l := node(t)
+	_, origin := node(t)
+	op := Op{
+		Node: origin.Node(), Seq: 1, HLC: origin.clock.Now().String(),
+		Entity: "future_entity", EntityID: "f1", Fields: []byte(`{"future":42}`),
+	}
+	project := Op{
+		Node: origin.Node(), Seq: 2, HLC: origin.clock.Now().String(),
+		Entity: "project", EntityID: "p1",
+		Fields: []byte(`{"slug":"demo","name":"Demo","created_at":"2026-11-16","updated_at":"2026-11-16","future":42}`),
+	}
+	batch := []Op{op, project}
+	if err := l.Apply(ctx, batch); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Apply(ctx, batch); err != nil {
+		t.Fatal(err)
+	}
+	var name string
+	if err := db.QueryRow(`SELECT name FROM projects WHERE id = 'p1'`).Scan(&name); err != nil || name != "Demo" {
+		t.Fatalf("materialized project = %q, %v", name, err)
+	}
+	ops, err := l.Since(ctx, Vector{}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ops) != 2 || ops[0].Entity != op.Entity || string(ops[0].Fields) != string(op.Fields) || string(ops[1].Fields) != string(project.Fields) {
+		t.Fatalf("relayed operations = %+v", ops)
+	}
+}

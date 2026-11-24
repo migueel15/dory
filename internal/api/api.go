@@ -4,23 +4,23 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"github.com/migueel15/dory/internal/apperr"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
 
-	"github.com/migueel15/dory/internal/update"
-
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/browser"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/devices"
 	"github.com/migueel15/dory/internal/dictation"
 	"github.com/migueel15/dory/internal/github"
+	"github.com/migueel15/dory/internal/mesh"
 	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/runtime"
 	"github.com/migueel15/dory/internal/skills"
+	"github.com/migueel15/dory/internal/update"
 	"github.com/migueel15/dory/internal/version"
 )
 
@@ -52,6 +52,8 @@ type Server struct {
 	Peers func() any
 	// Remote forwards thread calls to the node that owns the thread.
 	Remote Remote
+	// PeerClient calls another node from Go.
+	PeerClient *mesh.Client
 	// Updater moves this node to the latest release; nil disables the routes.
 	Updater *update.Updater
 	// Mesh lists the peers that answer now.

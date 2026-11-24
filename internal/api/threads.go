@@ -14,6 +14,7 @@ import (
 
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/htmlrender"
+	"github.com/migueel15/dory/internal/mesh/peerapi"
 	"github.com/migueel15/dory/internal/runtime"
 	"github.com/migueel15/dory/internal/workspace"
 )
@@ -89,12 +90,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, ThreadView{Thread: t, LastTurnModel: s.Runtime.LastTurnModel(r.Context(), t.ID), ReportedSettings: s.Runtime.ReportedSettings(r.Context(), t), Messages: msgs, Queue: s.Runtime.Queue(t.ID), Requests: requests, Running: s.Runtime.Running(t.ID), Worktree: dir, Local: true})
 	}))
 	mux.HandleFunc("POST /api/threads/{id}/messages", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
-		var body struct {
-			Text  string   `json:"text"`
-			Files []string `json:"files"`
-			// SenderThreadID marks a message an agent of that thread wrote.
-			SenderThreadID string `json:"sender_thread_id"`
-		}
+		var body peerapi.SendMessageRequest
 		if !decode(w, r, &body) {
 			return
 		}
@@ -367,23 +363,7 @@ func (s *Server) owned(h func(http.ResponseWriter, *http.Request, data.Thread)) 
 }
 
 func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ProjectID    *string `json:"project_id"`
-		TaskID       *string `json:"task_id"`
-		ParentID     *string `json:"parent_id"`
-		OriginID     *string `json:"origin_id"`
-		RepositoryID string  `json:"repository_id"`
-		Provider     string  `json:"provider"`
-		Model        string  `json:"model"`
-		Effort       string  `json:"effort"`
-		RuntimeMode  string  `json:"runtime_mode"`
-		Title        string  `json:"title"`
-		Text         string  `json:"text"`
-		Worktree     bool    `json:"worktree"`
-		Branch       string  `json:"branch"`
-		BaseBranch   string  `json:"base_branch"`
-		WorktreePath string  `json:"worktree_path"`
-	}
+	var body peerapi.CreateThreadRequest
 	if !decode(w, r, &body) {
 		return
 	}
@@ -477,7 +457,7 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"thread_id": t.ID})
+	writeJSON(w, http.StatusOK, peerapi.CreateThreadResponse{ThreadID: t.ID})
 }
 
 func shortTitle(text string) string {

@@ -171,7 +171,8 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	})
 	srv.StartWorktreeMaintenance(ctx)
 	srv.Remote = net
-	rt.PeerComplete = srv.CompleteOnPeer
+	srv.PeerClient = net.Client()
+	rt.PeerComplete = srv.PeerClient.CompleteDelegation
 	srv.MeshPort = cfg.MeshPort
 	srv.Browser = &browser.Manager{DB: store.DB(), Profile: filepath.Join(cfg.DataDir, "browser-profile"),
 		Changed: func(id string) { events.Changed("browser", id) }}
@@ -241,7 +242,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		return auth.IssueDevice(ctx, store.Accounts(), name)
 	}
 	net.DeviceSession = func(w http.ResponseWriter, r *http.Request) { auth.DeviceSession(w, r, store.Accounts(), cfg) }
-	net.Info = func(ctx context.Context) any {
+	net.Info = func(ctx context.Context) map[string]any {
 		return map[string]any{"node": srv.Info(), "providers": rt.Providers(ctx), "presence": notices.Presence(), "push": notices.HasPush(ctx)}
 	}
 	done := make(chan error, 2)

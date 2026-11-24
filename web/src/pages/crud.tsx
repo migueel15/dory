@@ -145,6 +145,7 @@ export function Environments() {
               <Button variant="ghost" className="ml-auto text-xs" disabled={toggle.isPending} onClick={() => toggle.mutate({ id: p.id, enabled: !!p.disabled })}>{p.disabled ? "Activar" : "Desactivar"}</Button>
               <Button variant="ghost" className="text-xs" onClick={() => askConfirm(`¿Eliminar ${p.name}? Dejará de sincronizarse con este nodo y habrá que emparejarlo de nuevo.`, "Eliminar").then((ok) => ok && revoke.mutate(p.id))}>Eliminar</Button>
             </div>
+            {p.incompatible && <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">Versión de malla incompatible. Actualiza Dory en {p.name}.</p>}
           </Card></div>
         );
       })}
