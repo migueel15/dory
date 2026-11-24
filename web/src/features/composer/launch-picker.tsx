@@ -1,12 +1,10 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { api, usable, type LaunchChoice, type Model } from "../../api/client";
-import { Label, Select } from "../../components/ui";
-import { explicitModels, findModel, lastModel, modelEffort, modelId, rememberModel } from "../../effort";
+import { usable,type LaunchChoice,type Model } from "../../api/client";
+import { useNode,useNodeProviders,useNodeSettings,useRepositories,useRepositoryLocations } from "../../api/queries/hooks";
 import { ModelLogo } from "../../components/model-logo";
-import { qk } from "../../api/queries/keys";
-import { useNodeProviders, useNodeSettings } from "../../api/queries/hooks";
-import { storage, storageKeys } from "../../lib/storage";
+import { Label,Select } from "../../components/ui";
+import { explicitModels,findModel,lastModel,modelEffort,modelId,rememberModel } from "../../effort";
+import { storage,storageKeys } from "../../lib/storage";
 
 export const ProviderIcon = (props: Parameters<typeof ModelLogo>[0]) => <ModelLogo {...props} />;
 
@@ -16,14 +14,14 @@ const stored = (section: string): Partial<LaunchChoice> => {
 
 // useProviders lists the harnesses installed on a node, this one by default.
 export function useProviders(node = "local") {
-  const local = useQuery({ queryKey: qk.node(), queryFn: api.node, staleTime: 60_000, select: (n) => n.providers.filter(usable), enabled: node === "local" });
+  const local = useNode({ staleTime: 60_000, select: (n) => n.providers.filter(usable), enabled: node === "local" });
   const remote = useNodeProviders(node, { staleTime: 60_000, select: (ps) => ps.filter(usable), enabled: node !== "local" });
   return node === "local" ? local : remote;
 }
 
 // useNodes lists where a new thread can run: this node and the connected peers.
 export function useNodes() {
-  const status = useQuery({ queryKey: qk.node(), queryFn: api.node, staleTime: 60_000 });
+  const status = useNode({ staleTime: 60_000 });
   const peers = (status.data?.peers ?? []).filter((p) => p.connected && !p.revoked);
   return [{ value: "local", label: status.data?.node.name ?? "Este nodo" }, ...peers.map((p) => ({ value: p.id, label: p.name }))];
 }
@@ -31,9 +29,9 @@ export function useNodes() {
 // useProjectNodes lists the nodes that keep a repository of a project, with
 // this node as "local". Empty when the project has no known environment.
 export function useProjectNodes(project?: string | null) {
-  const status = useQuery({ queryKey: qk.node(), queryFn: api.node, staleTime: 60_000 });
-  const repos = useQuery({ queryKey: qk.repositories(), queryFn: () => api.repositories.list(), enabled: !!project });
-  const locations = useQuery({ queryKey: qk.repositoryLocations(), queryFn: api.repositoryLocations, enabled: !!project });
+  const status = useNode({ staleTime: 60_000 });
+  const repos = useRepositories({ enabled: !!project });
+  const locations = useRepositoryLocations({ enabled: !!project });
   const ids = new Set((repos.data ?? []).filter((r) => r.project_id === project).map((r) => r.id));
   const self = status.data?.node.id;
   return [...new Set((locations.data ?? []).filter((l) => ids.has(l.repository_id)).map((l) => (l.node_id === self ? "local" : l.node_id)))];

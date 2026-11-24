@@ -1,24 +1,25 @@
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import { useGithubWatch } from "../../api/live";
 import { Robot } from "@phosphor-icons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
-import { api, type GithubDetail, type GithubPull } from "../../api/client";
-import { useDictationInProgress } from "../composer/local-dictation";
-import { Badge, Button, Card, Input, ErrorText, Arrow, pill, toggleTask, keepAboveKeyboard, Modal } from "../../components/ui";
-import { StackBar } from "./github";
-import { Avatar, PullStatus } from "./pull-row";
-import { Diff, FullscreenHost } from "./github-diff";
-import { DefineIssueDialog } from "../../pages/define-issue";
-import { ResizeHandle, ThreadChat } from "../thread/thread";
-import { FileRefContext, type FileRef } from "../../components/refs";
-import { useLaunchForm } from "../composer/launch-picker";
-import { GithubMark, Icon, RefContext, RefMd, Tip, icons, MentionArea } from "./github-ui";
+import { useQueryClient } from "@tanstack/react-query";
+import { Link,useParams } from "@tanstack/react-router";
+import { useCallback,useEffect,useImperativeHandle,useRef,useState,type Ref } from "react";
+import { type GithubDetail,type GithubPull } from "../../api/client";
+import { useGithubWatch } from "../../api/live";
+import { useCreatePullReview,useGithubDetail,usePullAgent } from "../../api/queries/github";
 import { qk } from "../../api/queries/keys";
-import { review, thread, useActionQueue } from "./detail-optimistic";
-import { quote, Message, Threads } from "./detail-threads";
-import { ReviewPicker, Assignees, MilestonePicker, PullActions, IssueActions } from "./detail-actions";
-import { labels, reviewStates, canApprove, Act } from "./detail-shared";
+import { FileRefContext,type FileRef } from "../../components/refs";
+import { Arrow,Badge,Button,Card,ErrorText,Input,Modal,keepAboveKeyboard,pill,toggleTask } from "../../components/ui";
+import { DefineIssueDialog } from "../../pages/define-issue";
+import { useLaunchForm } from "../composer/launch-picker";
+import { useDictationInProgress } from "../composer/local-dictation";
+import { ResizeHandle,ThreadChat } from "../thread/thread";
+import { Assignees,IssueActions,MilestonePicker,PullActions,ReviewPicker } from "./detail-actions";
+import { useActionQueue } from "./detail-optimistic";
+import { Act,canApprove,labels,reviewStates } from "./detail-shared";
+import { Message,Threads } from "./detail-threads";
+import { StackBar } from "./github";
+import { Diff,FullscreenHost } from "./github-diff";
+import { GithubMark,Icon,MentionArea,RefContext,RefMd,Tip,icons } from "./github-ui";
+import { Avatar,PullStatus } from "./pull-row";
 
 // Header is the single card of the pull request or issue: what it is on top,
 // its review state and people in the middle, and the actions at the bottom.
@@ -143,7 +144,7 @@ export function GithubView() {
   const [defining, setDefining] = useState(false);
   useGithubWatch();
   const key = qk.githubDetail(full, kind, n);
-  const detail = useQuery({ queryKey: key, queryFn: () => api.githubDetail(full, kind, n), refetchInterval: 60_000 });
+  const detail = useGithubDetail(full, kind, n, { refetchInterval: 60_000 });
   // The floating button hides while the composer area is on screen.
   const bottom = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(false);
@@ -162,10 +163,9 @@ export function GithubView() {
   const open = (d?.pull ?? d?.issue)?.state === "OPEN";
   // A pull request's review thread shows as a chat on the right, 60/40 by
   // default and resizable; asking from the diff always opens it.
-  const agent = useQuery({ queryKey: qk.pullAgent(full, n), queryFn: () => api.pullAgent(full, n), enabled: kind === "pulls" });
+  const agent = usePullAgent(full, n, { enabled: kind === "pulls" });
   const [launchReview, setLaunchReview] = useState(false);
-  const createReview = useMutation({
-    mutationFn: (launch: Parameters<typeof api.createPullReview>[2]) => api.createPullReview(full, n, launch),
+  const createReview = useCreatePullReview(full, n, {
     onSuccess: () => { setLaunchReview(false); setChat(true); qc.invalidateQueries({ queryKey: qk.pullAgent(full, n) }); },
   });
   const [chat, setChat] = useState(true);

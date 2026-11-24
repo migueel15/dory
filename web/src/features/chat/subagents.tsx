@@ -1,16 +1,17 @@
-import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowBendLeftUp,CaretRight,Robot } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowBendLeftUp, CaretRight, Robot } from "@phosphor-icons/react";
-import { api, type Message, type Thread } from "../../api/client";
+import { useState } from "react";
+import { type Message,type Thread } from "../../api/client";
+import { qk } from "../../api/queries/keys";
+import { useInterrupt,useThreadChildren,useThreadRelated,useThreadSummary } from "../../api/queries/threads";
 import { Md } from "../../components/ui";
 import { ProviderIcon } from "../composer/launch-picker";
-import { qk } from "../../api/queries/keys";
 
 // useSubagents lists the children of a thread, archived ones included: they
 // are the finished subagents.
 export function useSubagents(id: string, enabled = true) {
-  return useQuery({ queryKey: qk.threadChildren(id), queryFn: () => api.threads({ parent_id: id }, true), enabled, refetchInterval: enabled ? 3000 : false });
+  return useThreadChildren(id, { enabled, refetchInterval: enabled ? 3000 : false });
 }
 
 type Group = "working" | "action" | "done";
@@ -28,7 +29,7 @@ export function Subagents({ threadId, shown }: { threadId: string; shown: boolea
   const children = useSubagents(threadId, shown);
   const [openDone, setOpenDone] = useState(false);
   const qc = useQueryClient();
-  const stop = useMutation({ mutationFn: (id: string) => api.interrupt(id), onSettled: () => qc.invalidateQueries({ queryKey: qk.threads() }) });
+  const stop = useInterrupt({ onSettled: () => qc.invalidateQueries({ queryKey: qk.threads() }) });
   const list = children.data ?? [];
   if (!list.length) return null;
   const byGroup = (g: Group) => list.filter((t) => groupOf(t) === g).sort((a, b) => (b.last_activity_at ?? b.created_at).localeCompare(a.last_activity_at ?? a.created_at));
@@ -70,7 +71,7 @@ export function Subagents({ threadId, shown }: { threadId: string; shown: boolea
 // Related lists the threads this thread's agent created with thread_create:
 // ordinary threads of the list, linked here only by where they came from.
 export function Related({ threadId, shown }: { threadId: string; shown: boolean }) {
-  const related = useQuery({ queryKey: qk.threadRelated(threadId), queryFn: () => api.threads({ origin_id: threadId }), enabled: shown, refetchInterval: shown ? 5000 : false });
+  const related = useThreadRelated(threadId, { enabled: shown, refetchInterval: shown ? 5000 : false });
   const list = (related.data ?? []).filter((t) => !t.archived_at);
   if (!list.length) return null;
   return (
@@ -90,7 +91,7 @@ export function Related({ threadId, shown }: { threadId: string; shown: boolean 
 // ParentLink shows in a thread's header the thread it came from: the parent
 // that launched a subagent, or the thread whose agent created it.
 export function ParentLink({ parentId, origin = false }: { parentId: string; origin?: boolean }) {
-  const parent = useQuery({ queryKey: qk.threadTitle(parentId), queryFn: () => api.threads({ id: parentId }, true).then((l) => l[0] ?? null), staleTime: 60_000 });
+  const parent = useThreadSummary(parentId, { staleTime: 60_000 });
   return (
     <Link to="/threads/$threadId" params={{ threadId: parentId }} title={origin ? "Hilo desde el que se creó" : "Hilo que lanzó este subagente"}
       className="flex min-w-0 max-w-[40%] shrink items-center gap-1 truncate rounded px-1.5 py-0.5 text-xs text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">
@@ -101,7 +102,7 @@ export function ParentLink({ parentId, origin = false }: { parentId: string; ori
 
 // useThreadTitle reads the title of any thread, archived ones included.
 function useThreadTitle(id: string) {
-  return useQuery({ queryKey: qk.threadTitle(id), queryFn: () => api.threads({ id }, true).then((l) => l[0] ?? null), staleTime: 60_000 }).data?.title;
+  return useThreadSummary(id, { staleTime: 60_000 }).data?.title;
 }
 
 // The header Dory writes on messages between agents: a subagent handing its

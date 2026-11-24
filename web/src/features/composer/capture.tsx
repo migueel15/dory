@@ -1,13 +1,14 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { useEffect,useLayoutEffect,useRef,useState } from "react";
 import { api } from "../../api/client";
-import { Button, ErrorText, Modal, Select, Textarea, uuid } from "../../components/ui";
-import { useProject } from "../../project";
-import { useDictationInProgress, useLocalDictation } from "./local-dictation";
-import { DictationMic, DictationPreview, useEnterFinishesDictation } from "./dictation-ui";
-import { qk } from "../../api/queries/keys";
 import { useProjects } from "../../api/queries/hooks";
+import { qk } from "../../api/queries/keys";
+import { useCreateIdea } from "../../api/queries/tasks";
+import { Button,ErrorText,Modal,Select,Textarea,uuid } from "../../components/ui";
+import { useProject } from "../../project";
+import { DictationMic,DictationPreview,useEnterFinishesDictation } from "./dictation-ui";
+import { useDictationInProgress,useLocalDictation } from "./local-dictation";
 
 // createIdea saves raw text as an inbox task. The server gives it a
 // provisional title and may replace it with one written by the title model.
@@ -33,8 +34,7 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
   const showingDictation = !!dictation.preview;
   const picker = useRef<HTMLButtonElement>(null);
   const projects = useProjects();
-  const save = useMutation({
-    mutationFn: ({ id, raw }: { id: string; raw: string; define: boolean }) => createIdea(id, raw, project),
+  const save = useCreateIdea<{ id: string; raw: string; define: boolean }>(project, {
     onSuccess: (item, { define }) => {
       setText("");
       qc.invalidateQueries({ queryKey: qk.board() });

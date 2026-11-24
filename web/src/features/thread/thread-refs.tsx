@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { CheckCircle, CircleDashed, GitMerge, GitPullRequest, RadioButton, XCircle, type Icon } from "@phosphor-icons/react";
-import { api, type Card } from "../../api/client";
-import { HoverCard } from "../../components/tooltip";
-import { qk } from "../../api/queries/keys";
+import { CheckCircle,CircleDashed,GitMerge,GitPullRequest,RadioButton,XCircle,type Icon } from "@phosphor-icons/react";
+import { useEffect,useRef,useState } from "react";
+import { type Card } from "../../api/client";
+import { useGithubDetail,useGithubOverview } from "../../api/queries/github";
 import { useBoard } from "../../api/queries/hooks";
+import { HoverCard } from "../../components/tooltip";
 
 // A pull request or issue tied to a thread through its task, with its state.
 export type GhRef = { kind: "pull" | "issue"; number: number; title: string; state: string; repo?: string };
@@ -25,7 +24,7 @@ const look = (r: GhRef) => LOOK[`${r.kind}:${r.state}`] ?? { icon: CircleDashed,
 // from the board and titles from the open GitHub items (closed ones may lack it).
 export function useThreadRefs() {
   const board = useBoard("", { refetchInterval: 30_000 });
-  const gh = useQuery({ queryKey: qk.github(), queryFn: () => api.github(), staleTime: 60_000, retry: false });
+  const gh = useGithubOverview({ staleTime: 60_000, retry: false });
   const byTask = new Map<string, GhRef[]>();
   for (const c of board.data?.cards ?? []) {
     const refs: GhRef[] = [];
@@ -73,9 +72,7 @@ export function RefChip({ r, listVisible }: { r: GhRef; listVisible: boolean }) 
     return () => observer.disconnect();
   }, [listVisible, needsTitle]);
 
-  const detail = useQuery({
-    queryKey: qk.githubDetail(repo, kind, r.number),
-    queryFn: () => api.githubDetail(repo, kind, r.number),
+  const detail = useGithubDetail(repo, kind, r.number, {
     enabled: needsTitle && (Boolean(anchor) || (listVisible && inView)),
     staleTime: 60_000,
     retry: false,

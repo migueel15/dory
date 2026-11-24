@@ -1,18 +1,19 @@
-import { createContext, memo, useCallback, useContext, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowsIn,ArrowsOut,Columns,Rows,TreeView } from "@phosphor-icons/react";
+import { useMutation,useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { createContext,memo,useCallback,useContext,useDeferredValue,useEffect,useMemo,useRef,useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowsIn, ArrowsOut, Columns, Rows, TreeView } from "@phosphor-icons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../../api/client";
-import { ErrorText, Input } from "../../components/ui";
 import type { LaunchChoice } from "../../api/client";
-import type { FileRef } from "../../components/refs";
-import { highlight, languageOf, loadLanguage } from "../../highlight";
+import { api } from "../../api/client";
+import { useAskPullAgent,useGithubAct,useGithubDiff,usePullAgent,usePullReviewMark,usePullReviews } from "../../api/queries/github";
 import { qk } from "../../api/queries/keys";
-import { storage, storageKeys } from "../../lib/storage";
+import type { FileRef } from "../../components/refs";
+import { ErrorText,Input } from "../../components/ui";
+import { highlight,languageOf,loadLanguage } from "../../highlight";
+import { storage,storageKeys } from "../../lib/storage";
+import { File,Pick,Review,Row,parseDiff,patchHash,splitRows,tree } from "./diff-parse";
+import { Choose,CommentForm,Extend,FileHead,Hl,SplitRow,Suggestion,Tree,UnifiedRow,number,panel,side } from "./diff-parts";
 import { ReviewLaunch } from "./diff-review";
-import { Tree, side, number, panel, Suggestion, Choose, Extend, Hl, UnifiedRow, SplitRow, FileHead, CommentForm } from "./diff-parts";
-import { File, Pick, patchHash, parseDiff, Row, splitRows, tree, Review } from "./diff-parse";
 
 type Item =
   | { key: string; kind: "head"; fi: number }
@@ -34,7 +35,7 @@ export const FullscreenHost = createContext<HTMLElement | null>(null);
 export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, steerable = true, onAsked, focus, fill = false, toolsHost }: { repo?: string; pr?: number; text?: string; onSuggest?: (s: Suggestion) => Promise<void>; steerable?: boolean; onAsked?: () => void; focus?: FileRef & { seq: number }; fill?: boolean; toolsHost?: HTMLElement | null }) {
   const qc = useQueryClient();
   const gh = !onSuggest && !!repo && !!pr;
-  const diff = useQuery({ queryKey: qk.githubDiff(repo, pr), queryFn: () => api.githubDiff(repo, pr), enabled: text === undefined });
+  const diff = useGithubDiff(repo, pr, { enabled: text === undefined });
   const source = text ?? diff.data?.diff ?? "";
   const files = useMemo(() => parseDiff(source), [source]);
   const [filter, setFilter] = useState("");
@@ -93,10 +94,9 @@ export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, ste
     Promise.all(files.map(async (f) => [f.path, await patchHash(f)] as const)).then((h) => live && setHashes(new Map(h)));
     return () => { live = false; };
   }, [files]);
-  const reviews = useQuery({ queryKey: qk.pullReviews(repo, pr), queryFn: () => api.pullReviews(repo, pr), enabled: gh });
+  const reviews = usePullReviews(repo, pr, { enabled: gh });
   const reviewed = useMemo(() => new Set((reviews.data ?? []).filter((v) => v.patch_hash === hashes.get(v.path)).map((v) => v.path)), [reviews.data, hashes]);
-  const mark = useMutation({
-    mutationFn: ({ path, on }: { path: string; on: boolean }) => (on ? api.markPullReview(repo, pr, path, hashes.get(path)!) : api.unmarkPullReview(repo, pr, path)),
+  const mark = usePullReviewMark(repo, pr, (path) => hashes.get(path)!, {
     onSettled: () => qc.invalidateQueries({ queryKey: qk.pullReviews(repo, pr) }),
   });
   // Reviewed files fold unless the user opens them.
@@ -132,19 +132,18 @@ export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, ste
   }, []);
   const toggleFold = useCallback((path: string) => setFolded((m) => new Map(m).set(path, !(m.get(path) ?? now.current.reviewed.has(path)))), []);
   const commentFile = useCallback((path: string) => { setPick({ file: path, start: -1, end: -1 }); setOpen(true); }, []);
-  const agent = useQuery({ queryKey: qk.pullAgent(repo, pr), queryFn: () => api.pullAgent(repo, pr), enabled: gh });
+  const agent = usePullAgent(repo, pr, { enabled: gh });
   // The first question creates the review thread: it waits in launching while
   // the user picks the machine and model.
   const [launching, setLaunching] = useState<{ f: File; p: Pick; body: string }>();
   const done = () => { setPick(undefined); draft.current = ""; };
-  const ask = useMutation({
-    mutationFn: ({ f, p, body, launch }: { f: File; p: Pick; body: string; launch?: LaunchChoice }) => {
-      // A whole-file question goes with lines 0–0 and no snippet.
-      if (p.start < 0) return api.askPullAgent(repo, pr, { path: f.path, start: 0, end: 0, snippet: "", question: body.trim(), launch });
-      const lines = f.lines.slice(p.start, p.end + 1).filter((l) => l.kind !== "hunk");
-      const nums = lines.map(number);
-      return api.askPullAgent(repo, pr, { path: f.path, start: Math.min(...nums), end: Math.max(...nums), snippet: lines.map((l) => l.text).join("\n"), question: body.trim(), launch });
-    },
+  const ask = useAskPullAgent(repo, pr, ({ f, p, body, launch }: { f: File; p: Pick; body: string; launch?: LaunchChoice }) => {
+    // A whole-file question goes with lines 0–0 and no snippet.
+    if (p.start < 0) return { path: f.path, start: 0, end: 0, snippet: "", question: body.trim(), launch };
+    const lines = f.lines.slice(p.start, p.end + 1).filter((l) => l.kind !== "hunk");
+    const nums = lines.map(number);
+    return { path: f.path, start: Math.min(...nums), end: Math.max(...nums), snippet: lines.map((l) => l.text).join("\n"), question: body.trim(), launch };
+  }, {
     onSuccess: () => { done(); setLaunching(undefined); qc.invalidateQueries({ queryKey: qk.pullAgent(repo, pr) }); onAsked?.(); },
   });
   const askOrLaunch = (f: File, p: Pick, body: string) => (agent.data?.available ? ask.mutate({ f, p, body }) : setLaunching({ f, p, body }));
@@ -156,8 +155,7 @@ export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, ste
     },
     onSuccess: done,
   });
-  const comment = useMutation({
-    mutationFn: (a: Parameters<typeof api.githubAct>[3]) => api.githubAct(repo, "pulls", pr, a),
+  const comment = useGithubAct(repo, "pulls", pr, (a: Parameters<typeof api.githubAct>[3]) => a, {
     onSuccess: () => {
       done();
       qc.invalidateQueries({ queryKey: qk.githubDetail(repo, "pulls", pr) });

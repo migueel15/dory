@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  AppleLogo, Briefcase, Cloud, Code, Cpu, Database, Desktop, Flask, GameController, Globe, HardDrives,
-  House, Laptop, LinuxLogo, Lightning, Planet, Rocket, Terminal, WindowsLogo, type Icon,
+AppleLogo,Briefcase,Cloud,Code,Cpu,Database,Desktop,Flask,GameController,Globe,HardDrives,
+House,Laptop,
+Lightning,
+LinuxLogo,
+Planet,Rocket,Terminal,WindowsLogo,type Icon,
 } from "@phosphor-icons/react";
-import { api } from "../api/client";
-import { ErrorText } from "./ui";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect,useState } from "react";
 import { qk } from "../api/queries/keys";
+import { useSetNodeIcon } from "../api/queries/settings";
+import { ErrorText } from "./ui";
 
 // The icons an environment can take; the id is what the node stores.
 export const ENV_ICONS: Record<string, Icon> = {
@@ -34,11 +37,10 @@ export function EnvIconPicker({ node, icon, os, name }: { node: string; icon?: s
   // shows at once and holds until the node reports it.
   const [chosen, setChosen] = useState<string>();
   useEffect(() => { if (chosen && chosen === icon) setChosen(undefined); }, [icon, chosen]);
-  const save = useMutation({
-    mutationFn: (id: string) => api.setNodeIcon(node, id),
+  const save = useSetNodeIcon(node, {
     onMutate: (id) => { setChosen(id); setOpen(false); },
     onError: () => { setChosen(undefined); setOpen(true); },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: qk.node() }); qc.invalidateQueries({ queryKey: qk.mesh() }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: qk.node() }); qc.invalidateQueries({ queryKey: qk.mesh() }); }
   });
   const shown = chosen ?? icon;
   const Current = envIcon(shown, os);

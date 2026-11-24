@@ -1,9 +1,10 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { api, type Card, type Stage } from "../../api/client";
-import { askConfirm } from "../../components/confirm";
-import { ContextMenu, type ContextAction } from "../../components/context-menu";
+import { type Card } from "../../api/client";
 import { qk } from "../../api/queries/keys";
+import { useArchiveTask,useTaskStage } from "../../api/queries/tasks";
+import { askConfirm } from "../../components/confirm";
+import { ContextMenu,type ContextAction } from "../../components/context-menu";
 
 export type QuickLaunch = "define" | "implement";
 
@@ -13,8 +14,8 @@ export function TaskQuickMenu({ c, x, y, onClose, onOpen, onError }: { c: Card; 
   const qc = useQueryClient();
   const navigate = useNavigate();
   const refresh = () => { qc.invalidateQueries({ queryKey: qk.board() }); qc.invalidateQueries({ queryKey: qk.card(c.id) }); };
-  const stage = useMutation({ mutationFn: (s: Stage) => api.tasks.update(c.id, { stage: s }), onSuccess: refresh, onError: onError });
-  const archive = useMutation({ mutationFn: () => api.tasks.archive(c.id), onSuccess: refresh, onError: onError });
+  const stage = useTaskStage(c.id, { onSuccess: refresh, onError: onError });
+  const archive = useArchiveTask(c.id, { onSuccess: refresh, onError: onError });
   const latest = c.threads.length ? c.threads.reduce((a, b) => ((b.last_activity_at ?? b.updated_at) >= (a.last_activity_at ?? a.updated_at) ? b : a)) : undefined;
   const pullUrl = c.pull?.url ?? (c.repo && c.pr_number && /^[\w.-]+\/[\w.-]+$/.test(c.repo) ? `https://github.com/${c.repo}/pull/${c.pr_number}` : undefined);
   const a: ContextAction[] = [{ label: "Abrir", run: () => onOpen() }];

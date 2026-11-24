@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowUp, File as FileIcon, Lightning, TerminalWindow } from "@phosphor-icons/react";
+import { File as FileIcon,Lightning,TerminalWindow } from "@phosphor-icons/react";
+import { useEffect,useState } from "react";
 import { api } from "../../api/client";
+import { useCommandCatalog,useFileSuggestions,type SuggestSource } from "../../api/queries/suggest";
 import { type Token } from "./composer-tokens";
-import { qk } from "../../api/queries/keys";
 
 export type Suggestion = { key: string; label: string; hint?: string; insert: string; icon: React.ReactNode; token: Token };
 export const titles = { "/": "Comandos", $: "Skills", "@": "Ficheros" } as const;
@@ -13,15 +12,14 @@ export const titles = { "/": "Comandos", $: "Skills", "@": "Ficheros" } as const
 // word with how the harness invokes it.
 // Source is where the menu reads from: a thread, or the harness and project of
 // a thread not created yet (no files, and no /clear: there is no session).
-export type SuggestSource = { key: unknown[]; commands: () => Promise<{ commands: CatalogEntry[]; skills: CatalogEntry[] }>; files?: (q: string) => Promise<string[]> };
-export type CatalogEntry = { name: string; description: string; insert: string };
+export type { CatalogEntry,SuggestSource } from "../../api/queries/suggest";
 export const threadSource = (threadId: string, provider: string): SuggestSource => ({ key: [threadId, provider], commands: () => api.threadCommands(threadId), files: (q) => api.threadFiles(threadId, q) });
 
 export function useSuggest(source: SuggestSource, text: string, area: React.RefObject<HTMLTextAreaElement | null>, setText: (t: string) => void, onToken: (insert: string, t: Token) => string = (insert) => insert) {
   const [word, setWord] = useState<{ start: number; sigil: "/" | "$" | "@"; q: string } | null>(null);
   const [index, setIndex] = useState(0);
-  const catalog = useQuery({ queryKey: qk.commands(...source.key), queryFn: source.commands, enabled: word?.sigil === "/" || word?.sigil === "$", staleTime: 60_000 });
-  const files = useQuery({ queryKey: qk.files(...source.key, word?.q), queryFn: () => source.files!(word!.q), enabled: word?.sigil === "@" && !!source.files, staleTime: 30_000 });
+  const catalog = useCommandCatalog(source, { enabled: word?.sigil === "/" || word?.sigil === "$", staleTime: 60_000 });
+  const files = useFileSuggestions(source, word?.q, { enabled: word?.sigil === "@" && !!source.files, staleTime: 30_000 });
   const q = word?.q.toLowerCase() ?? "";
   const hit = (e: { name: string; description: string }) => !q || e.name.toLowerCase().includes(q) || e.description.toLowerCase().includes(q);
   const entry = (e: { name: string; description: string; insert: string }, icon: React.ReactNode, kind: "command" | "skill"): Suggestion => ({ key: e.insert, label: e.insert, hint: e.description, insert: e.insert, icon, token: { kind, value: e.name, title: e.description } });

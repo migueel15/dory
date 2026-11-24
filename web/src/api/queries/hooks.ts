@@ -1,12 +1,19 @@
 // Hooks of the shared resources: one place with each key and its fetcher.
 // They take the options of useQuery (staleTime, refetchInterval, select...) so
 // each screen keeps its own refresh rhythm.
-import { useQuery, type UseQueryOptions } from "@tanstack/react-query";
+import { useMutation,useQuery,type UseMutationOptions,type UseQueryOptions } from "@tanstack/react-query";
 import { api } from "../client";
 import { qk } from "./keys";
 
-type Opts<D, S = D> = Omit<UseQueryOptions<D, Error, S>, "queryKey" | "queryFn">;
-type Of<F extends (...a: never[]) => Promise<unknown>> = Awaited<ReturnType<F>>;
+export type Opts<D, S = D> = Omit<UseQueryOptions<D, Error, S>, "queryKey" | "queryFn">;
+export type Of<F extends (...a: never[]) => Promise<unknown>> = Awaited<ReturnType<F>>;
+// MOpts are the options of a mutation hook: the screen keeps its own effects
+// (onSuccess, onSettled...), the hook owns the call.
+export type MOpts<D, V> = Omit<UseMutationOptions<D, Error, V>, "mutationFn">;
+
+// useCall is the base of the mutation hooks: a call to the API with the
+// screen's options.
+export const useCall = <D, V = void>(fn: (v: V) => Promise<D>, o?: MOpts<D, V>) => useMutation({ mutationFn: fn, ...o });
 
 export const useNode = <S = Of<typeof api.node>>(o?: Opts<Of<typeof api.node>, S>) =>
   useQuery({ queryKey: qk.node(), queryFn: api.node, ...o });

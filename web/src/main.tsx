@@ -1,31 +1,32 @@
-import { Threads, ThreadsHome } from "./pages/threads";
-import { WindowClose, hasWindowClose } from "./lib/window-close";
-import { UsageQuick } from "./components/usage-quick";
-import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ChartBar, ChatsCircle, Gear, GithubLogo, House, DotsThreeCircle, IconContext, Kanban, Moon, SidebarSimple, SignOut, Sun, X } from "@phosphor-icons/react";
+import { ChartBar,ChatsCircle,DotsThreeCircle,Gear,GithubLogo,House,IconContext,Kanban,Moon,SidebarSimple,SignOut,Sun,X } from "@phosphor-icons/react";
+import { QueryClient,QueryClientProvider,useQueryClient } from "@tanstack/react-query";
+import { Link,Outlet,RouterProvider,createRootRoute,createRoute,createRouter,lazyRouteComponent,redirect,useLocation,useNavigate } from "@tanstack/react-router";
+import { StrictMode,useEffect,useLayoutEffect,useRef,useState } from "react";
 import { createRoot } from "react-dom/client";
-import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Outlet, useLocation, useNavigate, RouterProvider, createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect } from "@tanstack/react-router";
-import { ApiError, api } from "./api/client";
+import { ApiError } from "./api/client";
 import { useLiveUpdates } from "./api/live";
-import { Button, Input, Label, errMsg } from "./components/ui";
-import { Environments, Memories, memorySearch } from "./pages/crud";
-import { listenShortcuts, useCommand } from "./components/shortcuts";
-import { CommandPalette, CommandsButton } from "./components/commands";
-import { TooltipHost } from "./components/tooltip";
+import { useLogin,useLogout,useMe,useSetupNeeded,useVersion } from "./api/queries/session";
+import { useThreadsAttention } from "./api/queries/threads";
+import { CommandPalette,CommandsButton } from "./components/commands";
 import { MeshUpdateButton } from "./components/mesh-update";
-import { SettingsModal } from "./features/settings/settings-modal";
+import { NoticeAlerts,NoticeInbox,NoticesToggle } from "./components/notices";
 import { ProjectSwitcher } from "./components/project-switcher";
-import { NoticeAlerts, NoticeInbox, NoticesToggle } from "./components/notices";
-import { Home } from "./pages/home";
-import { Github } from "./features/github/github";
+import { listenShortcuts,useCommand } from "./components/shortcuts";
+import { TooltipHost } from "./components/tooltip";
+import { Button,Input,Label,errMsg } from "./components/ui";
+import { UsageQuick } from "./components/usage-quick";
 import { Tasks } from "./features/board/tasks";
-import { applyTheme, useTheme } from "./theme";
-import { applyScale, listenZoomKeys } from "./scale";
+import { Github } from "./features/github/github";
+import { SettingsModal } from "./features/settings/settings-modal";
 import "./index.css";
-import { qk } from "./api/queries/keys";
+import { storage,storageKeys } from "./lib/storage";
 import { events } from "./lib/store";
-import { storage, storageKeys } from "./lib/storage";
+import { WindowClose,hasWindowClose } from "./lib/window-close";
+import { Environments,Memories,memorySearch } from "./pages/crud";
+import { Home } from "./pages/home";
+import { Threads,ThreadsHome } from "./pages/threads";
+import { applyScale,listenZoomKeys } from "./scale";
+import { applyTheme,useTheme } from "./theme";
 
 applyTheme();
 applyScale();
@@ -44,12 +45,11 @@ function Login() {
   const [confirmation, setConfirmation] = useState("");
   const [validationError, setValidationError] = useState<"short" | "mismatch" | null>(null);
   // A new node has no account: the first one is created from this machine.
-  const setup = useQuery({ queryKey: qk.setup(), queryFn: api.setupNeeded, retry: false });
+  const setup = useSetupNeeded({ retry: false });
   const first = !!setup.data?.needed;
   const minimumLength = 8;
   const action = first ? "Crear cuenta" : "Iniciar sesión";
-  const login = useMutation({
-    mutationFn: () => (first ? api.setup(username, password) : api.login(username, password)),
+  const login = useLogin(first, username, password, {
     onSuccess: (u) => {
       qc.setQueryData(["setup"], { needed: false });
       qc.setQueryData(["me"], u);
@@ -145,7 +145,7 @@ function SettingsLink() {
 }
 
 function VersionBadge() {
-  const v = useQuery({ queryKey: qk.version(), queryFn: api.version, staleTime: Infinity });
+  const v = useVersion({ staleTime: Infinity });
   if (!v.data) return null;
   const { revision, short, time, modified } = v.data;
   const cls = "font-mono text-xs text-slate-400 dark:text-muted hover:underline";
@@ -156,13 +156,13 @@ function VersionBadge() {
 
 function Layout() {
   const qc = useQueryClient();
-  const me = useQuery({ queryKey: qk.me(), queryFn: api.me, retry: false });
-  const logout = useMutation({ mutationFn: api.logout, onSuccess: () => qc.clear() });
+  const me = useMe({ retry: false });
+  const logout = useLogout({ onSuccess: () => qc.clear() });
   useLiveUpdates(!!me.data);
   // The board, threads and pull requests need the full width.
   const wide = useLocation({ select: (l) => l.pathname.startsWith("/threads") || /^\/github\/[^/]+\/[^/]+\/(pulls|issues)\//.test(l.pathname) || l.pathname === "/tasks" });
   // Threads that wait for the user show as a count on their link.
-  const threads = useQuery({ queryKey: qk.threadsAttention(), queryFn: () => api.threads(), enabled: !!me.data, refetchInterval: 30_000 });
+  const threads = useThreadsAttention({ enabled: !!me.data, refetchInterval: 30_000 });
   const attention = (threads.data ?? []).filter((t) => t.status === "waiting" || t.status === "error").length;
 
   const path = useLocation({ select: (l) => l.pathname });

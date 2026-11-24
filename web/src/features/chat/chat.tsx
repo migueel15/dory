@@ -1,18 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowCounterClockwise, CaretDown, Check, Copy, ListChecks, Stop, WarningCircle } from "@phosphor-icons/react";
-import { api, type Message } from "../../api/client";
-import { copyText, Md } from "../../components/ui";
-import { rehypeFade, useSmoothText } from "./stream";
-import { isAsk, TodoCard, ToolCard } from "./tool-card";
-import { HtmlCard, htmlRef } from "./html-card";
-import { TurnChanges } from "./turn-changes";
-import { NativeQuestionCard, QuestionCard } from "./question-card";
-import { AgentMessage, agentNote } from "./subagents";
-import { messageText, t } from "../../i18n/es";
+import { ArrowCounterClockwise,CaretDown,Check,Copy,ListChecks,Stop,WarningCircle } from "@phosphor-icons/react";
+import { useCallback,useEffect,useMemo,useRef,useState } from "react";
+import { api,type Message } from "../../api/client";
+import { Md,copyText } from "../../components/ui";
+import { messageText,t } from "../../i18n/es";
 import { events } from "../../lib/store";
-import { running, failed, StepLine, Worked, Changes, layout, WorkedBlock, Reasoning } from "./steps";
-import { readModelChange, ModelChangeDivider } from "./model-change";
-import { UserMessageBody, SentFiles } from "./user-message";
+import { HtmlCard,htmlRef } from "./html-card";
+import { ModelChangeDivider,readModelChange } from "./model-change";
+import { NativeQuestionCard,QuestionCard } from "./question-card";
+import { Changes,Reasoning,StepLine,Worked,WorkedBlock,layout } from "./steps";
+import { rehypeFade,useSmoothText } from "./stream";
+import { AgentMessage,agentNote } from "./subagents";
+import { TodoCard,ToolCard,isAsk } from "./tool-card";
+import { TurnChanges } from "./turn-changes";
+import { SentFiles,UserMessageBody } from "./user-message";
 
 // The look of the conversation, kept from Dory v1: user
 // bubbles, answers as plain markdown, and each finished turn's work folded
@@ -21,14 +21,6 @@ import { UserMessageBody, SentFiles } from "./user-message";
 // msgBtn is a message action: on hover only the icon changes colour, no round background.
 const msgBtn = "grid size-7 place-items-center text-slate-400 hover:text-slate-900 disabled:opacity-30 dark:hover:text-white";
 export const iconBtn = "grid size-7 place-items-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 dark:hover:bg-raised dark:hover:text-white";
-
-// elapsed writes a duration the short way: "45s", "1m 59s", "1h 3m".
-export const elapsed = (secs: number) => {
-  const s = Math.max(0, Math.round(secs));
-  if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
-  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
-};
 
 export const fullDate = new Intl.DateTimeFormat("es-ES", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 export const shortTime = new Intl.DateTimeFormat("es-ES", { hour: "2-digit", minute: "2-digit" });
@@ -82,7 +74,7 @@ export function Messages({ threadId, messages: all, running }: { threadId: strin
   // the reader must stay on the same message.
   let turn = 0, at = 0;
   const place = (m: Message | Worked | Changes) => { if ("role" in m && m.role === "user") { turn++; at = 0; } return `${turn}:${at++}`; };
-  return <>{layout(messages, running).map((m) => <div key={m.id} data-anchor={place(m)} ref={prepaint} style={offscreen}>{"changes" in m ? <TurnChanges threadId={threadId} turn={m.turn} /> : "worked" in m ? <WorkedBlock items={m.items} secs={m.secs} live={m.live} since={m.since} />
+  return <>{layout(messages, running).map((m) => <div key={m.id} data-anchor={place(m)} ref={prepaint} style={offscreen}>{"changes" in m ? <TurnChanges threadId={threadId} turn={m.turn} /> : "worked" in m ? <WorkedBlock Entry={Entry} items={m.items} secs={m.secs} live={m.live} since={m.since} />
     : <Entry m={m} threadId={threadId} fresh={!initial.current?.has(m.id)} openQuestion={m.id === openQuestion} />}</div>)}</>;
 }
 

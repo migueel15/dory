@@ -1,16 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../../api/client";
-import { askConfirm } from "../../components/confirm";
-import { Button, ErrorText } from "../../components/ui";
+import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "../../api/queries/keys";
+import { useKeptWorktrees,useRemoveThreadWorktree } from "../../api/queries/threads";
+import { askConfirm } from "../../components/confirm";
+import { Button,ErrorText } from "../../components/ui";
 
 // KeptWorktrees warns about the worktrees of archived threads that were not
 // deleted because they have uncommitted changes, and deletes them on request.
 export function KeptWorktrees() {
   const qc = useQueryClient();
-  const kept = useQuery({ queryKey: qk.keptWorktrees(), queryFn: () => api.keptWorktrees(), refetchInterval: 30_000 });
-  const remove = useMutation({
-    mutationFn: (id: string) => api.removeThreadWorktree(id),
+  const kept = useKeptWorktrees({ refetchInterval: 30_000 });
+  const remove = useRemoveThreadWorktree({
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.keptWorktrees() }),
   });
   const dirty = (kept.data ?? []).filter((k) => k.dirty);

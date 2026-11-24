@@ -1,9 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { req } from "../../api/client";
-import { ErrorText, Select } from "../../components/ui";
+import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "../../api/queries/keys";
+import { useNoticeSettings,useSaveNoticeSetting,type NoticeSetting } from "../../api/queries/settings";
+import { ErrorText,Select } from "../../components/ui";
 
-type Setting = { kind: string; title: string; mode: string };
+type Setting = NoticeSetting;
 
 const MODES = [
   { value: "auto", label: "Automático" },
@@ -16,9 +16,8 @@ const MODES = [
 // choice is shared by every device of the mesh.
 export function NoticesSettings() {
   const qc = useQueryClient();
-  const list = useQuery({ queryKey: qk.noticeSettings(), queryFn: () => req<Setting[]>("GET", "/notice-settings") });
-  const save = useMutation({
-    mutationFn: (s: { kind: string; mode: string }) => req("PUT", "/notice-settings", s),
+  const list = useNoticeSettings();
+  const save = useSaveNoticeSetting({
     onSettled: () => qc.invalidateQueries({ queryKey: qk.noticeSettings() }),
   });
   return (

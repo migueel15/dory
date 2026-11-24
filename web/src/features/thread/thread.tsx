@@ -1,40 +1,41 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
-import { useCommand } from "../../components/shortcuts";
-import { hasWindowClose } from "../../lib/window-close";
-import { PlanDoc } from "../../components/plan-doc";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "@tanstack/react-router";
-import { Circle, CircleNotch, ClockCounterClockwise, GitDiff, Kanban, WarningCircle, XCircle } from "@phosphor-icons/react";
-import { api, type Message } from "../../api/client";
-import { setTurnFilter, useTurnFilter } from "../chat/turn-changes";
-import { turnDiff } from "../../lib/turn-changes";
+import { Circle,CircleNotch,ClockCounterClockwise,GitDiff,Kanban,WarningCircle,XCircle } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate,useParams } from "@tanstack/react-router";
+import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type MouseEvent as ReactMouseEvent,type RefObject } from "react";
+import { type Message } from "../../api/client";
 import { useThreadLive } from "../../api/live";
-import { Button, ErrorText, uuid } from "../../components/ui";
+import { useNodeProviders,usePlan,useProjects,useThreadView } from "../../api/queries/hooks";
+import { qk } from "../../api/queries/keys";
+import { useAdoptSession,useExternalSession,useThreadAction,useThreadDiff } from "../../api/queries/threads";
+import { PlanDoc } from "../../components/plan-doc";
+import { useCommand } from "../../components/shortcuts";
+import { Button,ErrorText,uuid } from "../../components/ui";
+import { setDiffBase,useDiffBase } from "../../lib/diff-base";
+import { addDraftQuote,removeDraftQuotes,useDraftQuotes } from "../../lib/draft-quotes";
+import { storage,storageKeys } from "../../lib/storage";
+import { events } from "../../lib/store";
+import { useThreadsFold } from "../../lib/threads-fold";
+import { turnDiff } from "../../lib/turn-changes";
+import { hasWindowClose } from "../../lib/window-close";
+import { TaskDetail } from "../board/task-detail";
 import { Messages } from "../chat/chat";
-import { changeTurns } from "../chat/steps";
+import { ToEnd,useFollow } from "../chat/follow";
 import { ModelChangeDivider } from "../chat/model-change";
-import { ToEnd, useFollow } from "../chat/follow";
+import { QuoteSelection } from "../chat/quote-selection";
+import { changeTurns } from "../chat/steps";
+import { ParentLink } from "../chat/subagents";
+import { setTurnFilter,useTurnFilter } from "../chat/turn-changes";
 import { Composer } from "../composer/composer";
+import { ProviderIcon } from "../composer/launch-picker";
 import { Chip } from "../composer/model-picker";
 import { Queue } from "../composer/queue";
-import { QuoteSelection } from "../chat/quote-selection";
-import { ProviderIcon } from "../composer/launch-picker";
-import { Diff } from "../github/github-diff";
 import { type Suggestion } from "../github/diff-parts";
-import { setDiffBase, useDiffBase } from "../../lib/diff-base";
-import { addDraftQuote, removeDraftQuotes, useDraftQuotes } from "../../lib/draft-quotes";
-import { headerButton, ThreadInfo } from "./thread-info";
-import { ParentLink } from "../chat/subagents";
-import { TaskDetail } from "../board/task-detail";
-import { useThreadMenu } from "./thread-menu";
-import { useThreadsFold } from "../../lib/threads-fold";
+import { Diff } from "../github/github-diff";
 import { BrowserPanel } from "./browser-panel";
-import { DevicePanel, FloatingWindow } from "./device-panel";
-import { kindOf, SidePanel, SidePanelToggle, useSidePanel, type SidePanelState } from "./side-panel";
-import { qk } from "../../api/queries/keys";
-import { usePlan, useProjects, useNodeProviders, useThreadView } from "../../api/queries/hooks";
-import { events } from "../../lib/store";
-import { storage, storageKeys } from "../../lib/storage";
+import { DevicePanel,FloatingWindow } from "./device-panel";
+import { SidePanel,SidePanelToggle,kindOf,useSidePanel,type SidePanelState } from "./side-panel";
+import { ThreadInfo,headerButton } from "./thread-info";
+import { useThreadMenu } from "./thread-menu";
 
 // ThreadView is a whole thread page: header, chat and, on demand, its changes
 // and the plan of its task.
@@ -135,12 +136,11 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
   const t = useThread(threadId).data;
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState("");
-  const act = useMutation({
-    mutationFn: (body: Parameters<typeof api.threadAction>[1]) => api.threadAction(threadId, body),
+  const act = useThreadAction(threadId, {
     onSuccess: (_, body) => {
       qc.invalidateQueries({ queryKey: qk.thread(threadId) });
       qc.invalidateQueries({ queryKey: qk.threads() });
-    },
+    }
   });
   const menu = useThreadMenu(t);
   const projects = useProjects();
@@ -258,7 +258,7 @@ function Changes({ threadId, messages }: { threadId: string; messages?: Message[
   const comment = useCallback(async (s: Suggestion) => {
     addDraftQuote(threadId, { id: uuid(), text: s.snippet, reply: s.question, code: { path: s.path, start: s.start, end: s.end } });
   }, [threadId]);
-  const diff = useQuery({ queryKey: qk.threadDiff(threadId, base), queryFn: () => api.threadDiff(threadId, base), refetchInterval: 5000 });
+  const diff = useThreadDiff(threadId, base, { refetchInterval: 5000 });
   return (
     <>
       {diff.data?.branch && <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-1.5 text-xs text-slate-500 dark:border-border">
@@ -317,10 +317,9 @@ export function ExternalView() {
   const qc = useQueryClient();
   const providers = useNodeProviders(node);
   const providerName = providers.data?.find((p) => p.id === provider)?.name ?? provider;
-  const view = useQuery({ queryKey: qk.external(node, provider, id), queryFn: () => api.externalSession(node, provider, id) });
-  const adopt = useMutation({
-    mutationFn: () => api.adoptSession(node, provider, id),
-    onSuccess: (r) => { qc.invalidateQueries({ queryKey: qk.threads() }); qc.invalidateQueries({ queryKey: qk.external() }); navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } }); },
+  const view = useExternalSession(node, provider, id);
+  const adopt = useAdoptSession(node, provider, id, {
+    onSuccess: (r) => { qc.invalidateQueries({ queryKey: qk.threads() }); qc.invalidateQueries({ queryKey: qk.external() }); navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } }); }
   });
   const s = view.data?.session;
   return (

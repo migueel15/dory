@@ -1,8 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../../api/client";
-import { GithubLogin } from "../github/github-login";
-import { Button, ErrorText } from "../../components/ui";
+import { useQueryClient } from "@tanstack/react-query";
+import { useGithubAuth,useGithubLogout } from "../../api/queries/github";
 import { qk } from "../../api/queries/keys";
+import { Button,ErrorText } from "../../components/ui";
+import { GithubLogin } from "../github/github-login";
 
 const sources = { env: "la variable DORY_GITHUB_TOKEN", ui: "el inicio de sesión de Dory", gh: "la CLI gh", none: "" };
 
@@ -10,9 +10,8 @@ const sources = { env: "la variable DORY_GITHUB_TOKEN", ui: "el inicio de sesió
 // unlinks it. The token never reaches the interface.
 export function GithubSettings() {
   const qc = useQueryClient();
-  const auth = useQuery({ queryKey: qk.githubAuth(), queryFn: api.githubAuth });
-  const logout = useMutation({
-    mutationFn: api.githubLogout,
+  const auth = useGithubAuth();
+  const logout = useGithubLogout({
     onSuccess: () => { qc.invalidateQueries({ queryKey: qk.githubAuth() }); qc.invalidateQueries({ queryKey: qk.github() }); },
   });
   const a = auth.data;

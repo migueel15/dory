@@ -1,18 +1,19 @@
-import { PaceMark } from "../../components/pace-mark";
-import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useDiffBase } from "../../lib/diff-base";
-import { Copy, Database, Folder, GitBranch, GitDiff, GitPullRequest, Globe, Info } from "@phosphor-icons/react";
+import { Copy,Database,Folder,GitBranch,GitDiff,GitPullRequest,Globe,Info } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { api, type ThreadService, type ThreadView, type UsageWindow } from "../../api/client";
-import { expectedRemaining, windowLabel, windowMinutes, windowReset } from "../../lib/usage-pace";
-import { HoverCard } from "../../components/tooltip";
-import { EnvIcon } from "../../components/env-icon";
-import { copyText } from "../../components/ui";
-import { Related, Subagents } from "../chat/subagents";
+import { useEffect,useRef,useState } from "react";
+import { type ThreadService,type ThreadView,type UsageWindow } from "../../api/client";
+import { useCard,useMesh,useNode,useProjects } from "../../api/queries/hooks";
 import { qk } from "../../api/queries/keys";
-import { useCard, useMesh, useNode, useProjects } from "../../api/queries/hooks";
-import { storage, storageKeys } from "../../lib/storage";
+import { useStopThreadService,useThreadDiff,useThreadServices } from "../../api/queries/threads";
+import { EnvIcon } from "../../components/env-icon";
+import { PaceMark } from "../../components/pace-mark";
+import { HoverCard } from "../../components/tooltip";
+import { copyText } from "../../components/ui";
+import { useDiffBase } from "../../lib/diff-base";
+import { storage,storageKeys } from "../../lib/storage";
+import { expectedRemaining,windowLabel,windowMinutes,windowReset } from "../../lib/usage-pace";
+import { Related,Subagents } from "../chat/subagents";
 
 // diffStat counts added and removed lines of a unified diff.
 function diffStat(diff: string) {
@@ -59,7 +60,7 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false, hi
   useEffect(() => { if (hidden) { setPop(false); setOpen(false); } }, [hidden]); // eslint-disable-line react-hooks/exhaustive-deps
   const shown = !hidden && (popup ? pop : open);
   const qc = useQueryClient();
-  const services = useQuery({ queryKey: qk.threadServices(t.id), queryFn: () => api.threadServices(t.id), enabled: shown, refetchInterval: 3000 });
+  const services = useThreadServices(t.id, { enabled: shown, refetchInterval: 3000 });
   const [serviceRows, setServiceRows] = useState<{ service: ThreadService; leaving: boolean }[]>([]);
   useEffect(() => {
     const next = services.data ?? [];
@@ -69,7 +70,9 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false, hi
     const timer = setTimeout(() => setServiceRows((rows) => rows.filter((row) => !row.leaving)), 180);
     return () => clearTimeout(timer);
   }, [services.data]);
-  const stopService = useMutation({ mutationFn: (pid: number) => api.stopThreadService(t.id, pid), onSettled: () => qc.invalidateQueries({ queryKey: qk.threadServices(t.id) }) });
+  const stopService = useStopThreadService(t.id, {
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.threadServices(t.id) })
+  });
   const toggle = () => {
     if (hidden) { onOpen?.(); return popup ? setPop(true) : setOpen(true); }
     return popup ? setPop(!pop) : setOpen(!open);
@@ -88,7 +91,7 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false, hi
   const card = useCard(t.task_id, { enabled: shown && !!t.task_id, staleTime: 30_000 });
   const pr = card.data?.repo && card.data.pr_number ? { repo: card.data.repo, number: card.data.pr_number, title: card.data.pull?.title, state: card.data.pr_state } : undefined;
   const base = useDiffBase(t.id);
-  const diff = useQuery({ queryKey: qk.threadDiff(t.id, base), queryFn: () => api.threadDiff(t.id, base), enabled: shown && t.local, refetchInterval: shown ? 5000 : false });
+  const diff = useThreadDiff(t.id, base, { enabled: shown && t.local, refetchInterval: shown ? 5000 : false });
   // The environment the thread runs in, which may be a peer of this node.
   const mesh = useMesh({ staleTime: 60_000, enabled: shown });
   const self = node.data?.node;

@@ -1,23 +1,21 @@
-import { KeptWorktrees } from "../features/settings/kept-worktrees";
-import { useCommand } from "../components/shortcuts";
-import { ThreadsFold } from "../lib/threads-fold";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
-import { Check, FunnelSimple, MagnifyingGlass, Plus, PushPin, SidebarSimple } from "@phosphor-icons/react";
-import { api, repoName, type Thread } from "../api/client";
-import { ErrorText } from "../components/ui";
-import { useProject } from "../project";
-import { ProviderIcon } from "../features/composer/launch-picker";
-import { StatusDot } from "../features/thread/thread";
-import { NewThread } from "./home";
-import { RefChip, useThreadRefs, type GhRef } from "../features/thread/thread-refs";
-import { useThreadMenu } from "../features/thread/thread-menu";
+import { Check,FunnelSimple,MagnifyingGlass,Plus,PushPin,SidebarSimple } from "@phosphor-icons/react";
+import { Link,Outlet,useNavigate,useParams } from "@tanstack/react-router";
+import { useMemo,useRef,useState,type CSSProperties,type ReactNode,type PointerEvent as ReactPointerEvent } from "react";
+import { repoName,type Thread } from "../api/client";
+import { useMesh,useNode,useRepositories } from "../api/queries/hooks";
+import { useExternalSessions,useThreadList } from "../api/queries/threads";
 import { EnvIcon } from "../components/env-icon";
-import { qk } from "../api/queries/keys";
-import { useMesh, useNode, useRepositories } from "../api/queries/hooks";
-import { events, useEmitter } from "../lib/store";
-import { storage, storageKeys } from "../lib/storage";
+import { useCommand } from "../components/shortcuts";
+import { ErrorText } from "../components/ui";
+import { ProviderIcon } from "../features/composer/launch-picker";
+import { KeptWorktrees } from "../features/settings/kept-worktrees";
+import { useThreadMenu } from "../features/thread/thread-menu";
+import { RefChip,useThreadRefs,type GhRef } from "../features/thread/thread-refs";
+import { storage,storageKeys } from "../lib/storage";
+import { events,useEmitter } from "../lib/store";
+import { ThreadsFold } from "../lib/threads-fold";
+import { useProject } from "../project";
+import { NewThread } from "./home";
 
 // Filters of the single inbox of threads (requirement RF-19).
 const FILTERS = { active: "Activos", needs: "Te necesitan", working: "Trabajando", archived: "Archivados", external: "En los agentes" } as const;
@@ -57,14 +55,10 @@ export function Threads() {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
-  const threads = useQuery({
-    queryKey: qk.threads(filter),
-    queryFn: () => api.threads(undefined, filter === "archived"),
-    refetchInterval: 15_000,
-  });
+  const threads = useThreadList(filter, { refetchInterval: 15_000 });
   const nodes = useNode({ staleTime: 60_000 });
   // Conversations started in the harnesses of this node, outside Dory.
-  const external = useQuery({ queryKey: qk.external("local"), queryFn: () => api.externalSessions("local"), enabled: filter === "external", refetchInterval: 30_000 });
+  const external = useExternalSessions("local", { enabled: filter === "external", refetchInterval: 30_000 });
   const local = nodes.data?.node.id;
   const mesh = useMesh({ staleTime: 30_000 });
   // The environment a thread runs in, to show its icon in the list.

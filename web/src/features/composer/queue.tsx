@@ -1,24 +1,24 @@
-import { useEffect, useRef, useState } from "react";
+import { Lightning,PencilSimple,Trash } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect,useRef,useState } from "react";
+import { type Attachment,type ThreadView } from "../../api/client";
+import { qk } from "../../api/queries/keys";
+import { useQueueAction } from "../../api/queries/threads";
+import { HoverCard } from "../../components/tooltip";
+import { Button,ErrorText } from "../../components/ui";
+import { iconBtn } from "../chat/chat";
+import { CodeRefCard } from "../chat/code-ref";
+import { MessageParts } from "../chat/message-parts";
+import type { DraftQuote } from "../chat/quote-selection";
 import { agentNote } from "../chat/subagents";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Lightning, PencilSimple, Trash } from "@phosphor-icons/react";
-import { api, type Attachment, type ThreadView } from "../../api/client";
-import { Button, ErrorText } from "../../components/ui";
 import { DictationField } from "./dictation-field";
 import { useDictationInProgress } from "./local-dictation";
-import { iconBtn } from "../chat/chat";
-import { MessageParts } from "../chat/message-parts";
-import { HoverCard } from "../../components/tooltip";
-import { CodeRefCard } from "../chat/code-ref";
-import type { DraftQuote } from "../chat/quote-selection";
-import { qk } from "../../api/queries/keys";
 
 // Queue shows the messages waiting for the running turn as outlined bubbles,
 // each with its actions underneath.
 export function Queue({ t }: { t: ThreadView }) {
   const qc = useQueryClient();
-  const act = useMutation({
-    mutationFn: ({ run, action, text }: { run: string; action: "edit" | "cancel" | "steer"; text?: string }) => api.queue(t.id, run, action, text),
+  const act = useQueueAction(t.id, {
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.thread(t.id) }),
   });
   if (!t.queue.length) return null;

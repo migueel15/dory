@@ -1,14 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { CaretUpDown,Check,FolderSimple,MagnifyingGlass,SquaresFour } from "@phosphor-icons/react";
+import { useEffect,useLayoutEffect,useRef,useState,type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { CaretUpDown, Check, FolderSimple, MagnifyingGlass, SquaresFour } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "../api/client";
-import { setProject, useProject } from "../project";
-import { Input } from "./ui";
-import { useCommand, useShortcuts } from "./shortcuts";
-import { formatChord } from "../features/composer/dictation-shortcut";
-import { qk } from "../api/queries/keys";
 import { useProjects } from "../api/queries/hooks";
+import { formatChord } from "../features/composer/dictation-shortcut";
+import { setProject,useProject } from "../project";
+import { useCommand,useShortcuts } from "./shortcuts";
+import { Input } from "./ui";
 
 // ProjectSwitcher picks the global project. It looks like a sidebar link and opens a
 // searchable menu; "compact" fits the phone top bar.

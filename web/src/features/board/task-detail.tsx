@@ -1,22 +1,24 @@
-import { DictationField } from "../composer/dictation-field";
-import { PlanDoc } from "../../components/plan-doc";
-import { useDictationInProgress } from "../composer/local-dictation";
-import { useEffect, useId, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { Check, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, ClipboardText, DotsThree, GitBranch, GitPullRequest, Rocket, X } from "@phosphor-icons/react";
-import { api, COLUMN_LABELS, repoName, type Column, type Pull, type Stage } from "../../api/client";
-import { Button, ErrorText, iconButton, Input, Label, Md, Modal, Select } from "../../components/ui";
-import { useLaunchForm } from "../composer/launch-picker";
-import { ModelLogo } from "../../components/model-logo";
-import { askConfirm } from "../../components/confirm";
-import { type QuickLaunch } from "./task-quick-menu";
-import { githubRoute } from "../../components/refs";
-import { planMessage } from "../../lib/auto-message";
+import { CaretDown,CaretRight,Chats,Check,ClipboardText,DotsThree,GitBranch,GitPullRequest,GithubLogo,LinkSimple,PencilSimple,Rocket,X } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Link,useNavigate } from "@tanstack/react-router";
+import { useEffect,useId,useRef,useState } from "react";
+import { COLUMN_LABELS,repoName,type Column } from "../../api/client";
+import { useBoard,useCard,usePlan,useRepositories } from "../../api/queries/hooks";
 import { qk } from "../../api/queries/keys";
-import { useBoard, useCard, usePlan, useRepositories } from "../../api/queries/hooks";
+import { useArchiveTask,useDependencies,useLaunchTask,usePlans,useTaskDependency,useTaskStage,useUpdateTask } from "../../api/queries/tasks";
+import { useCreateThread } from "../../api/queries/threads";
+import { askConfirm } from "../../components/confirm";
+import { ModelLogo } from "../../components/model-logo";
+import { PlanDoc } from "../../components/plan-doc";
+import { githubRoute } from "../../components/refs";
+import { Button,ErrorText,Input,Label,Md,Modal,Select,iconButton } from "../../components/ui";
+import { planMessage } from "../../lib/auto-message";
+import { DictationField } from "../composer/dictation-field";
+import { useLaunchForm } from "../composer/launch-picker";
+import { useDictationInProgress } from "../composer/local-dictation";
 import { slot } from "./card-status";
 import { ThreadDot } from "./task-card";
+import { type QuickLaunch } from "./task-quick-menu";
 
 export const COLUMN_TONE: Record<Column, string> = {
   inbox: "bg-slate-100 text-slate-700 dark:bg-raised dark:text-text-secondary",
@@ -37,9 +39,9 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
   const dictating = useDictationInProgress();
   const navigate = useNavigate();
   const card = useCard(id);
-  const plans = useQuery({ queryKey: qk.plans(id), queryFn: () => api.plans(id) });
+  const plans = usePlans(id);
   const planDoc = usePlan(id);
-  const deps = useQuery({ queryKey: qk.dependencies(id), queryFn: () => api.dependencies(id) });
+  const deps = useDependencies(id);
   const board = useBoard();
   const repos = useRepositories();
   const [draft, setDraft] = useState<{ title: string; description: string; issue: string; pr: string; repo: string }>();
@@ -93,16 +95,14 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
   const c = card.data;
   useEffect(() => { if (c && !draft) setDraft({ title: c.title, description: c.description, issue: c.issue_number?.toString() ?? "", pr: c.pr_number?.toString() ?? "", repo: c.repository_id ?? "" }); }, [c]); // eslint-disable-line react-hooks/exhaustive-deps
   const refresh = () => { qc.invalidateQueries({ queryKey: qk.card(id) }); qc.invalidateQueries({ queryKey: qk.board() }); };
-  const save = useMutation({
-    mutationFn: () => api.tasks.update(id, { title: draft!.title, description: draft!.description, issue_number: draft!.issue ? Number(draft!.issue) : null, pr_number: draft!.pr ? Number(draft!.pr) : null, repository_id: draft!.repo || null }),
+  const save = useUpdateTask(id, () => ({ title: draft!.title, description: draft!.description, issue_number: draft!.issue ? Number(draft!.issue) : null, pr_number: draft!.pr ? Number(draft!.pr) : null, repository_id: draft!.repo || null }), {
     onSuccess: () => { refresh(); setEditing(false); },
   });
-  const stage = useMutation({ mutationFn: (s: Stage) => api.tasks.update(id, { stage: s }), onSuccess: refresh });
-  const dep = useMutation({
-    mutationFn: ({ other, add }: { other: string; add: boolean }) => (add ? api.addDependency(id, other) : api.removeDependency(id, other)).then(() => undefined),
+  const stage = useTaskStage(id, { onSuccess: refresh });
+  const dep = useTaskDependency(id, {
     onSuccess: () => { qc.invalidateQueries({ queryKey: qk.dependencies(id) }); refresh(); },
   });
-  const archive = useMutation({ mutationFn: () => api.tasks.archive(id), onSuccess: () => { refresh(); onClose(); } });
+  const archive = useArchiveTask(id, { onSuccess: () => { refresh(); onClose(); } });
   const form = useLaunchForm({ section: "task", project: c?.project_id, borderless: true });
   // Sending opens the thread in the background; with go it also moves to it.
   const sent = (r: { thread_id: string }, go: boolean) => {
@@ -111,16 +111,14 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
     refresh();
     qc.invalidateQueries({ queryKey: qk.threads() });
   };
-  const launch = useMutation({
-    mutationFn: (_go: boolean) => { form.remember(); return api.launch(id, form.value); },
+  const launch = useLaunchTask(id, (_go: boolean) => { form.remember(); return form.value; }, {
     onSuccess: (r, go) => sent(r, go),
   });
-  const define = useMutation({
-    mutationFn: (_go: boolean) => {
-      form.remember();
-      const text = planMessage({ id, title: c!.title, description: c!.description });
-      return api.createThread({ ...form.value, project_id: c!.project_id, task_id: id, title: `Definir: ${c!.title}`, text });
-    },
+  const define = useCreateThread((_go: boolean) => {
+    form.remember();
+    const text = planMessage({ id, title: c!.title, description: c!.description });
+    return { ...form.value, project_id: c!.project_id, task_id: id, title: `Definir: ${c!.title}`, text };
+  }, {
     onSuccess: (r, go) => sent(r, go),
   });
   // A quick action from the board opens the detail with the launch popover ready.

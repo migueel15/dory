@@ -1,14 +1,15 @@
-import { useId, useLayoutEffect, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { CircleDashed,CircleNotch,GitBranch,GitMerge,GitPullRequest } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { CircleNotch, GitBranch, GitMerge, GitPullRequest, CircleDashed } from "@phosphor-icons/react";
-import { api, type Card, type Pull, type Thread } from "../../api/client";
+import { useId,useLayoutEffect,useRef,useState } from "react";
 import { useThreadActivity } from "../../api/activity";
-import { useArm } from "../github/github-ui";
-import { EnvIcon } from "../../components/env-icon";
+import { type Card,type Pull,type Thread } from "../../api/client";
+import { useGithubAct } from "../../api/queries/github";
+import { useMesh,useNode } from "../../api/queries/hooks";
 import { qk } from "../../api/queries/keys";
-import { useMesh, useNode } from "../../api/queries/hooks";
-import { PAD, GAP, MORE_H, ago, lastActivity, status } from "./card-layout";
+import { EnvIcon } from "../../components/env-icon";
+import { useArm } from "../github/github-ui";
+import { GAP,MORE_H,PAD,ago,lastActivity,status } from "./card-layout";
 import { slot } from "./card-status";
 
 // ColumnCards shows the cards that fit in the visible height. It measures the real height of each card in a hidden copy,
@@ -60,8 +61,7 @@ export function ColumnCards({ list, all, onExpand, card }: { list: Card[]; all: 
 // MergeButton squash-merges the card's pull request with the existing GitHub action, asking for a second click first.
 export function MergeButton({ c, pull }: { c: Card; pull: Pull }) {
   const qc = useQueryClient();
-  const merge = useMutation({
-    mutationFn: () => api.githubAct(pull.repo, "pulls", pull.number, { type: "merge", method: "SQUASH" }),
+  const merge = useGithubAct<void>(pull.repo, "pulls", pull.number, () => ({ type: "merge", method: "SQUASH" }), {
     onSettled: () => qc.invalidateQueries({ queryKey: qk.board() }),
   });
   const [armed, click] = useArm(() => merge.mutate());

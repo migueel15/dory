@@ -1,16 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../../api/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { useSetTitleModel,useTitleModel } from "../../api/queries/settings";
+import { ErrorText,Select } from "../../components/ui";
 import { useProviders } from "../composer/launch-picker";
-import { ErrorText, Select } from "../../components/ui";
-import { qk } from "../../api/queries/keys";
 
 // IdeasSettings picks the provider and model that write the titles of the
 // ideas saved in «Nueva idea». Without one, ideas keep their first sentence.
 export function IdeasSettings() {
   const qc = useQueryClient();
   const providers = useProviders();
-  const current = useQuery({ queryKey: qk.titleModel(), queryFn: api.titleModel });
-  const save = useMutation({ mutationFn: api.setTitleModel, onSuccess: (data) => qc.setQueryData(["title-model"], data) });
+  const current = useTitleModel();
+  const save = useSetTitleModel({ onSuccess: (data) => qc.setQueryData(["title-model"], data) });
   const value = current.data?.provider ? `${current.data.provider}\t${current.data.model}` : "";
   const options = [{ value: "", label: "Sin títulos automáticos" },
     ...(providers.data ?? []).flatMap((p) => p.models.map((m) => ({ value: `${p.id}\t${m.slug}`, label: `${p.name} · ${m.name}` })))];

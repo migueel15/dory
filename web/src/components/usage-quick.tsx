@@ -1,17 +1,15 @@
-import { PaceMark } from "./pace-mark";
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { createPortal } from "react-dom";
-import { ArrowClockwise, PushPin } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
+import { ArrowClockwise,PushPin } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
-import { api, type UsageWindow } from "../api/client";
-import { expectedRemaining, paceTitle, windowLabel, windowMinutes, windowReset } from "../lib/usage-pace";
+import { Fragment,useEffect,useLayoutEffect,useRef,useState,type CSSProperties } from "react";
+import { createPortal } from "react-dom";
+import { type UsageWindow } from "../api/client";
+import { useNode } from "../api/queries/hooks";
 import { ProviderIcon } from "../features/composer/launch-picker";
+import { storage,storageKeys } from "../lib/storage";
+import { expectedRemaining,paceTitle,windowLabel,windowMinutes,windowReset } from "../lib/usage-pace";
+import { PaceMark } from "./pace-mark";
 import { HoverCard } from "./tooltip";
 import { Arrow } from "./ui";
-import { qk } from "../api/queries/keys";
-import { useNode } from "../api/queries/hooks";
-import { storage, storageKeys } from "../lib/storage";
 
 const pinKey = storageKeys.usageProvider;
 const readPin = () => { try { return storage.get(pinKey) ?? ""; } catch { return ""; } };

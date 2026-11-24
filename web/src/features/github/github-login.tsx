@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy } from "@phosphor-icons/react";
-import { api, type GithubDeviceCode } from "../../api/client";
-import { Button, ErrorText } from "../../components/ui";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect,useState } from "react";
+import { type GithubDeviceCode } from "../../api/client";
+import { useGithubDevice,useGithubDeviceStart } from "../../api/queries/github";
 import { qk } from "../../api/queries/keys";
+import { Button,ErrorText } from "../../components/ui";
 import { t } from "../../i18n/es";
 
 // GithubLogin links this node to a GitHub account with the device flow: it
@@ -13,11 +14,10 @@ export function GithubLogin() {
   const qc = useQueryClient();
   const [code, setCode] = useState<GithubDeviceCode | null>(null);
   const [copied, setCopied] = useState(false);
-  const start = useMutation({
-    mutationFn: api.githubDeviceStart,
+  const start = useGithubDeviceStart({
     onSuccess: (c) => { setCode(c); window.open(c.verification_uri, "_blank", "noopener"); },
   });
-  const state = useQuery({ queryKey: qk.githubDevice(), queryFn: api.githubDeviceState, enabled: !!code, refetchInterval: (q) => (q.state.data?.state === "pending" || !q.state.data ? 2_000 : false), gcTime: 0 });
+  const state = useGithubDevice({ enabled: !!code, refetchInterval: (q) => (q.state.data?.state === "pending" || !q.state.data ? 2_000 : false), gcTime: 0 });
   const done = state.data?.state === "done";
   useEffect(() => {
     if (!done) return;

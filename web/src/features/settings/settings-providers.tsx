@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
-import { api, type Job, type Provider } from "../../api/client";
-import { ProviderIcon, useNodes } from "../composer/launch-picker";
-import { ALL_NODES, useNodeDefault, type SectionProps } from "./settings-node";
-import { Button, ErrorText, Input, Select } from "../../components/ui";
-import { qk } from "../../api/queries/keys";
+import { useQueries,useQueryClient } from "@tanstack/react-query";
+import { useEffect,useState } from "react";
+import { api,type Provider } from "../../api/client";
 import { useNodeProviders } from "../../api/queries/hooks";
+import { qk } from "../../api/queries/keys";
+import { useAddAccount,useJob,useProviderJob,useRemoveAccount,useSetProviderEnabled,useUpdateAccount } from "../../api/queries/settings";
+import { Button,ErrorText,Input,Select } from "../../components/ui";
+import { ProviderIcon,useNodes } from "../composer/launch-picker";
+import { ALL_NODES,useNodeDefault,type SectionProps } from "./settings-node";
 
 // Providers are unique per node: they need a login there. With "all" this
 // shows what every node has and asks to pick one to manage.
@@ -45,8 +46,7 @@ function NodeProviders({ node, onBack }: { node: string; onBack?: () => void }) 
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string>();
   const list = useNodeProviders(node);
-  const toggle = useMutation({
-    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => api.setProviderEnabled(node, id, enabled),
+  const toggle = useSetProviderEnabled(node, {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.providers() });
       qc.invalidateQueries({ queryKey: qk.node() });
@@ -118,12 +118,11 @@ function Switch({ checked, onChange, label, disabled }: { checked: boolean; onCh
 function ProviderDetail({ node, provider: p }: { node: string; provider: Provider }) {
   const qc = useQueryClient();
   const [job, setJob] = useState<string>();
-  const start = useMutation({
-    mutationFn: (kind: Job["kind"]) => api.providerJob(node, p.id, kind),
+  const start = useProviderJob(node, p.id, {
     onSuccess: (j) => setJob(j.id),
   });
-  const state = useQuery({
-    queryKey: qk.job(job), queryFn: () => api.job(node, job!), enabled: !!job,
+  const state = useJob(node, job, {
+    enabled: !!job,
     refetchInterval: (q) => (q.state.data?.done ? false : 1000),
   });
   useEffect(() => {
@@ -230,8 +229,7 @@ function AddAccount({ node, providers, onAdded }: { node: string; providers: Pro
   const drv = selectedProvider?.id ?? "";
   const [name, setName] = useState("");
   const [home, setHome] = useState("");
-  const add = useMutation({
-    mutationFn: () => api.addAccount(node, { driver: drv, name, home }),
+  const add = useAddAccount(node, { driver: drv, name, home }, {
     onSuccess: (a) => {
       qc.invalidateQueries({ queryKey: qk.providers() });
       qc.invalidateQueries({ queryKey: qk.node() });
@@ -268,8 +266,8 @@ function AccountForm({ node, provider: p }: { node: string; provider: Provider }
   const [home, setHome] = useState(p.home ?? "");
   const harnessHome = p.default_home ?? "";
   const done = () => { qc.invalidateQueries({ queryKey: qk.providers() }); qc.invalidateQueries({ queryKey: qk.node() }); };
-  const save = useMutation({ mutationFn: () => api.updateAccount(node, p.id, { name, home }), onSuccess: done });
-  const remove = useMutation({ mutationFn: () => api.removeAccount(node, p.id), onSuccess: done });
+  const save = useUpdateAccount(node, p.id, { name, home }, { onSuccess: done });
+  const remove = useRemoveAccount(node, p.id, { onSuccess: done });
   return (
     <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
       <label className="block space-y-1 text-sm">

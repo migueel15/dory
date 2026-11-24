@@ -1,17 +1,19 @@
-import { useGithubWatch } from "../../api/live";
-import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Plus } from "@phosphor-icons/react";
-import { api, COLUMN_LABELS, type Card, type Column, type Stage } from "../../api/client";
-import { Button, ErrorText } from "../../components/ui";
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate,useSearch } from "@tanstack/react-router";
+import { useEffect,useRef,useState } from "react";
+import { COLUMN_LABELS,type Card,type Column,type Stage } from "../../api/client";
+import { useGithubWatch } from "../../api/live";
+import { useBoard } from "../../api/queries/hooks";
+import { qk } from "../../api/queries/keys";
+import { useMoveTask } from "../../api/queries/tasks";
+import { Button,ErrorText } from "../../components/ui";
 import { useProject } from "../../project";
 import { IdeaModal } from "../composer/capture";
-import { TaskQuickMenu, type QuickLaunch } from "./task-quick-menu";
-import { qk } from "../../api/queries/keys";
-import { TaskDetail } from "./task-detail";
-import { ColumnCards, TaskCard } from "./task-card";
 import { lastActivity } from "./card-layout";
+import { ColumnCards,TaskCard } from "./task-card";
+import { TaskDetail } from "./task-detail";
+import { TaskQuickMenu,type QuickLaunch } from "./task-quick-menu";
 
 // Only these columns can be chosen by hand; the rest come from threads and pull requests.
 const MANUAL: Partial<Record<Column, Stage>> = { inbox: "inbox", ready: "ready", cancelled: "cancelled" };
@@ -31,7 +33,7 @@ export function Tasks() {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { task?: string; launch?: QuickLaunch };
   useGithubWatch();
-  const board = useQuery({ queryKey: qk.board(project), queryFn: () => api.board(project || undefined), // Faster while a pull request has checks running, so CI progress shows up soon.
+  const board = useBoard(project, { // Faster while a pull request has checks running, so CI progress shows up soon.
     refetchInterval: (q) => (q.state.data?.cards.some((c) => c.pull && ((c.pull.ci_pending ?? 0) > 0 || c.pull.ci === "PENDING")) ? 15_000 : 30_000) });
   const [adding, setAdding] = useState(false);
   const [drag, setDrag] = useState<string>();
@@ -41,8 +43,7 @@ export function Tasks() {
   const [expanded, setExpanded] = useState<Column>();
   const [panel, setPanel] = useState<Column>();
   const footer = useRef<HTMLDivElement>(null);
-  const move = useMutation({
-    mutationFn: ({ id, stage }: { id: string; stage: Stage }) => api.tasks.update(id, { stage }),
+  const move = useMoveTask({
     onSettled: () => qc.invalidateQueries({ queryKey: qk.board() }),
   });
   // Newest activity first, in every column.

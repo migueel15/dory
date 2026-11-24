@@ -1,23 +1,23 @@
-import { useLayoutEffect, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { ArrowUp,ClipboardText,Desktop,Folder,FolderOpen,GitBranch,GitFork } from "@phosphor-icons/react";
+import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowUp, ClipboardText, Desktop, Folder, FolderOpen, GitBranch, GitFork } from "@phosphor-icons/react";
+import { useLayoutEffect,useRef,useState } from "react";
 import { api } from "../api/client";
-import { useLocalDictation } from "../features/composer/local-dictation";
-import { DictationMic, DictationPreview } from "../features/composer/dictation-ui";
-import { ErrorText, iconButton } from "../components/ui";
-import { useLaunchForm, ProviderIcon } from "../features/composer/launch-picker";
-import { modelEffort, modelId } from "../effort";
-import { useProject } from "../project";
-import { composerArea, composerFrame } from "../features/composer/composer";
-import { Chip, ModelPicker } from "../features/composer/model-picker";
-import { useSuggest } from "../features/composer/suggest";
-import { useCommand, useShortcuts } from "../components/shortcuts";
-import { formatChord } from "../features/composer/dictation-shortcut";
-import { useComposerFiles } from "../features/composer/composer-files";
-import { planMessage } from "../lib/auto-message";
-import { qk } from "../api/queries/keys";
 import { useProjects } from "../api/queries/hooks";
+import { useProjectBranches,useProjectWorktrees } from "../api/queries/threads";
+import { useCommand,useShortcuts } from "../components/shortcuts";
+import { ErrorText,iconButton } from "../components/ui";
+import { modelEffort,modelId } from "../effort";
+import { composerArea,composerFrame } from "../features/composer/composer";
+import { useComposerFiles } from "../features/composer/composer-files";
+import { formatChord } from "../features/composer/dictation-shortcut";
+import { DictationMic,DictationPreview } from "../features/composer/dictation-ui";
+import { ProviderIcon,useLaunchForm } from "../features/composer/launch-picker";
+import { useLocalDictation } from "../features/composer/local-dictation";
+import { Chip,ModelPicker } from "../features/composer/model-picker";
+import { useSuggest } from "../features/composer/suggest";
+import { planMessage } from "../lib/auto-message";
+import { useProject } from "../project";
 
 
 // NewThread is the chat box of the start screen (requirement 13.2): the
@@ -44,16 +44,10 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
   const mode = pickedMode ?? form.defaultWorkspace;
   const worktree = mode === "worktree";
   const [existing, setExisting] = useState("");
-  const worktreeList = useQuery({
-    queryKey: qk.projectWorktrees(form.value.node, project), queryFn: () => api.projectWorktrees(form.value.node, project!),
-    enabled: !!project && mode === "existing", retry: false,
-  });
+  const worktreeList = useProjectWorktrees(form.value.node, project, { enabled: !!project && mode === "existing", retry: false });
   const chosen = worktreeList.data?.find((w) => w.path === existing) ?? worktreeList.data?.[0];
   const [base, setBase] = useState("");
-  const branchList = useQuery({
-    queryKey: qk.projectBranches(form.value.node, project), queryFn: () => api.projectBranches(form.value.node, project!),
-    enabled: !!project, retry: false,
-  });
+  const branchList = useProjectBranches(form.value.node, project, { enabled: !!project, retry: false });
   const checkoutBranch = branchList.data?.current ?? "";
   const branch = base && branchList.data?.branches.includes(base) ? base : checkoutBranch;
   // workspace is where the first message starts the thread: the checkout,

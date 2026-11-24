@@ -1,15 +1,16 @@
-import { useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowCircleUp, ArrowsClockwise, DeviceMobile, DotsThree, Plus, WifiHigh } from "@phosphor-icons/react";
-import { api, type NodeUpdate, type Provider } from "../../api/client";
-import { EnvIconPicker } from "../../components/env-icon";
-import { ProviderIcon } from "../composer/launch-picker";
-import { useMeshUpdates } from "../../components/mesh-update";
-import { askConfirm } from "../../components/confirm";
-import { Button, ErrorText, Input } from "../../components/ui";
-import type { SectionProps } from "./settings-node";
+import { ArrowCircleUp,ArrowsClockwise,DeviceMobile,DotsThree,Plus,WifiHigh } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRef,useState } from "react";
+import { type NodeUpdate,type Provider } from "../../api/client";
+import { useMesh,useNode,useNodeProviders,usePairedDevices } from "../../api/queries/hooks";
 import { qk } from "../../api/queries/keys";
-import { useMesh, useNode, usePairedDevices, useNodeProviders } from "../../api/queries/hooks";
+import { useCheckMeshUpdates,usePair,usePairCode,useRevokeDevice,useRevokePeer,useSetPeerEnabled,useUpdateMesh,useUpdateNode } from "../../api/queries/settings";
+import { askConfirm } from "../../components/confirm";
+import { EnvIconPicker } from "../../components/env-icon";
+import { useMeshUpdates } from "../../components/mesh-update";
+import { Button,ErrorText,Input } from "../../components/ui";
+import { ProviderIcon } from "../composer/launch-picker";
+import type { SectionProps } from "./settings-node";
 
 type Row = { id: string; name: string; icon?: string; os?: string; version?: string; local: boolean; state: "on" | "off" | "disabled"; seen?: string; incompatible?: boolean };
 
@@ -21,8 +22,8 @@ export function ConnectionsSettings(_: SectionProps) {
   const node = useNode({ refetchInterval: 15_000 });
   const mesh = useMesh({ refetchInterval: 5_000 });
   const updates = useMeshUpdates();
-  const recheck = useMutation({ mutationFn: () => api.meshUpdates(true), onSuccess: (d) => qc.setQueryData(["mesh-update"], d) });
-  const all = useMutation({ mutationFn: () => api.updateMesh({ providers: true, force: false }), onSuccess: (d) => qc.setQueryData(["mesh-update"], d) });
+  const recheck = useCheckMeshUpdates({ onSuccess: (d) => qc.setQueryData(qk.meshUpdate(), d) });
+  const all = useUpdateMesh({ providers: true, force: false }, { onSuccess: (d) => qc.setQueryData(qk.meshUpdate(), d) });
   const rows: Row[] = [];
   if (node.data) rows.push({ id: node.data.node.id, name: node.data.node.name, icon: node.data.node.icon, os: node.data.node.os, version: node.data.node.version, local: true, state: "on" });
   for (const p of mesh.data?.peers ?? []) if (!p.revoked) rows.push({ id: p.id, name: p.name, icon: p.info.node?.icon, os: p.info.node?.os, version: p.info.node?.version, local: false, state: p.disabled ? "disabled" : p.connected ? "on" : "off", seen: p.last_seen, incompatible: p.incompatible });
@@ -67,12 +68,11 @@ function NodeCard({ row: r, update }: { row: Row; update?: NodeUpdate }) {
   const st = update?.status;
   const core = !!st?.available;
   const provUpdates = st?.providers.filter((p) => p.available) ?? [];
-  const run = useMutation({
-    mutationFn: (force: boolean) => api.updateNode(r.local ? "local" : r.id, { providers: provUpdates.length > 0, force }),
+  const run = useUpdateNode(r.local ? "local" : r.id, provUpdates.length > 0, {
     onSettled: () => qc.invalidateQueries({ queryKey: qk.meshUpdate() }),
   });
-  const toggle = useMutation({ mutationFn: () => api.setPeerEnabled(r.id, r.state === "disabled"), onSuccess: () => qc.invalidateQueries({ queryKey: qk.mesh() }) });
-  const remove = useMutation({ mutationFn: () => api.revokePeer(r.id), onSuccess: () => qc.invalidateQueries({ queryKey: qk.mesh() }) });
+  const toggle = useSetPeerEnabled({ onSuccess: () => qc.invalidateQueries({ queryKey: qk.mesh() }) });
+  const remove = useRevokePeer({ onSuccess: () => qc.invalidateQueries({ queryKey: qk.mesh() }) });
   const failure = (run.error as Error | null)?.message || update?.error;
   const updating = st?.state === "updating" || run.isPending;
   const s = STATE[r.state];
@@ -105,9 +105,9 @@ function NodeCard({ row: r, update }: { row: Row; update?: NodeUpdate }) {
               </button>
               {menu && (
                 <div className="absolute right-0 z-10 mt-1 w-40 rounded-lg border border-slate-200 bg-white p-1 text-sm shadow-lg dark:border-border dark:bg-raised">
-                  <button type="button" className="w-full rounded px-2 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-hover" onMouseDown={() => toggle.mutate()}>{r.state === "disabled" ? "Activar" : "Desactivar"}</button>
+                  <button type="button" className="w-full rounded px-2 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-hover" onMouseDown={() => toggle.mutate({ id: r.id, enabled: r.state === "disabled" })}>{r.state === "disabled" ? "Activar" : "Desactivar"}</button>
                   <button type="button" className="w-full rounded px-2 py-1.5 text-left text-red-600 hover:bg-slate-100 dark:text-red-400 dark:hover:bg-hover"
-                    onMouseDown={() => askConfirm(`¿Eliminar ${r.name}? Habrá que emparejarlo de nuevo.`, "Eliminar").then((ok) => ok && remove.mutate())}>Eliminar</button>
+                    onMouseDown={() => askConfirm(`¿Eliminar ${r.name}? Habrá que emparejarlo de nuevo.`, "Eliminar").then((ok) => ok && remove.mutate(r.id))}>Eliminar</button>
                 </div>
               )}
             </div>
@@ -162,9 +162,8 @@ function AddConnection({ discovered }: { discovered: { id: string; name: string;
   const [typed, setTyped] = useState("");
   const codeInput = useRef<HTMLInputElement>(null);
   const [code, setCode] = useState<{ code: string; expires_at: string }>();
-  const show = useMutation({ mutationFn: api.pairCode, onSuccess: setCode });
-  const pair = useMutation({
-    mutationFn: () => api.pair(target!.address.trim(), typed.trim()),
+  const show = usePairCode({ onSuccess: setCode });
+  const pair = usePair(target?.address.trim() ?? "", typed.trim(), {
     onSuccess: () => { setTarget(null); setTyped(""); setManual(false); qc.invalidateQueries({ queryKey: qk.mesh() }); },
   });
   const pick = (address: string, name?: string) => { setTarget({ address, name }); setTimeout(() => codeInput.current?.focus(), 0); };
@@ -212,7 +211,7 @@ function AddConnection({ discovered }: { discovered: { id: string; name: string;
 function Phones() {
   const qc = useQueryClient();
   const devices = usePairedDevices({ refetchInterval: 15_000 });
-  const revoke = useMutation({ mutationFn: api.revokeDevice, onSuccess: () => qc.invalidateQueries({ queryKey: qk.devices() }) });
+  const revoke = useRevokeDevice({ onSuccess: () => qc.invalidateQueries({ queryKey: qk.devices() }) });
   if (!devices.data?.length) return null;
   return (
     <div className="space-y-2">

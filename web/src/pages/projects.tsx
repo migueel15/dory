@@ -1,15 +1,16 @@
+import { ArrowUp,Desktop,FolderSimple,GitBranch,GithubLogo,HardDrive,House,Plus } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Link,useParams } from "@tanstack/react-router";
+import { useState } from "react";
+import { repoName,type Project } from "../api/client";
+import { useMesh,useNode,useProjects,useRepositories,useRepositoryLocations } from "../api/queries/hooks";
+import { qk } from "../api/queries/keys";
+import { useAddProject,useArchiveProject,useCheckout,useCreateRepository,useFolders,useProject,useProjectRepositories,useRepositoryPaths,useSaveProject,useSetRepositoryPath } from "../api/queries/projects";
+import { askConfirm } from "../components/confirm";
+import { Arrow,Button,Card,ErrorText,Input,Label,Modal,PageHeader,pill } from "../components/ui";
 import { DictationField } from "../features/composer/dictation-field";
 import { useDictationInProgress } from "../features/composer/local-dictation";
-import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
-import { ArrowUp, Desktop, FolderSimple, GitBranch, GithubLogo, HardDrive, House, Plus } from "@phosphor-icons/react";
-import { api, repoName, type Project } from "../api/client";
-import { Arrow, Button, Card, ErrorText, Input, Label, Modal, PageHeader, pill } from "../components/ui";
 import { setProject } from "../project";
-import { askConfirm } from "../components/confirm";
-import { qk } from "../api/queries/keys";
-import { useMesh, useNode, useProjects, useRepositories, useRepositoryLocations } from "../api/queries/hooks";
 
 const slugify = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -29,21 +30,13 @@ function NewProject({ onClose }: { onClose: () => void }) {
     ...(node.data ? [{ id: "local", name: node.data.node.name, online: true }] : []),
     ...(mesh.data?.peers ?? []).filter((p) => !p.revoked).map((p) => ({ id: p.id, name: p.name, online: p.connected })),
   ];
-  const folders = useQuery({ queryKey: qk.folders(env?.id, dir, hidden), queryFn: () => api.folders(env!.id, dir, hidden), enabled: !!env && !picked });
-  const found = useQuery({ queryKey: qk.checkout(env?.id, picked), queryFn: () => api.checkout(env!.id, picked!), enabled: !!env && !!picked });
+  const folders = useFolders(env?.id, dir, hidden, { enabled: !!env && !picked });
+  const found = useCheckout(env?.id, picked, { enabled: !!env && !!picked });
   const [form, setForm] = useState<{ name: string; slug: string; description: string; remote: string; branch: string }>();
   const c = found.data;
   const existing = c?.remote ? repos.data?.find((r) => repoName(r.remote_url).toLowerCase() === repoName(c.remote).toLowerCase()) : undefined;
   if (c && !form) setForm({ name: c.name, slug: slugify(c.name), description: "", remote: c.remote, branch: c.default_branch || "main" });
-  const save = useMutation({
-    mutationFn: async () => {
-      const fields = { name: form!.name.trim(), slug: form!.slug || slugify(form!.name), description: form!.description };
-      if (!form!.remote.trim()) return (await api.projects.create(fields)).id;
-      // One project per repository, whatever environment adds it.
-      const r = await api.projectFromRepository({ ...fields, remote_url: form!.remote.trim(), default_branch: form!.branch || "main" });
-      await api.setNodeRepositoryPath(env!.id, r.id, c!.path);
-      return r.project_id;
-    },
+  const save = useAddProject(() => ({ name: form!.name.trim(), slug: form!.slug || slugify(form!.name), description: form!.description, remote: form!.remote.trim(), branch: form!.branch, node: env?.id ?? "", path: c?.path ?? "" }), {
     onSuccess: (id) => { qc.invalidateQueries({ queryKey: qk.projects() }); qc.invalidateQueries({ queryKey: qk.repositories() }); qc.invalidateQueries({ queryKey: qk.repositoryLocations() }); setProject(id); onClose(); },
   });
   const row = "flex w-full min-h-11 sm:min-h-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised";
@@ -154,16 +147,7 @@ function ProjectForm({ project, onClose }: { project?: Project; onClose: () => v
   const [description, setDescription] = useState(project?.description ?? "");
   const [remote, setRemote] = useState("");
   const [path, setPath] = useState("");
-  const save = useMutation({
-    mutationFn: async () => {
-      const auto = slug || name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-      const p = project ? await api.projects.update(project.id, { name, slug: auto, description }) : await api.projects.create({ name, slug: auto, description });
-      if (remote.trim()) {
-        const r = await api.repositories.create({ project_id: p.id, remote_url: remote.trim() });
-        if (path.trim()) await api.setRepositoryPath(r.id, path.trim());
-      }
-      return p;
-    },
+  const save = useSaveProject(project?.id, { name, slug: slug || slugify(name), description }, remote.trim(), path.trim(), {
     onSuccess: (p) => { qc.invalidateQueries({ queryKey: qk.projects() }); qc.invalidateQueries({ queryKey: qk.repositories() }); setProject(p.id); onClose(); },
   });
   return (
@@ -188,17 +172,18 @@ function ProjectForm({ project, onClose }: { project?: Project; onClose: () => v
 export function ProjectDetail() {
   const { id } = useParams({ strict: false }) as { id: string };
   const qc = useQueryClient();
-  const project = useQuery({ queryKey: qk.project(id), queryFn: () => api.projects.get(id) });
-  const repos = useQuery({ queryKey: qk.repositoriesOf(id), queryFn: () => api.repositories.list({ project_id: id }) });
-  const paths = useQuery({ queryKey: qk.repositoryPaths(), queryFn: api.repositoryPaths });
+  const project = useProject(id);
+  const repos = useProjectRepositories(id);
+  const paths = useRepositoryPaths();
   const envs = useEnvironments();
   const [editing, setEditing] = useState(false);
   const [remote, setRemote] = useState("");
-  const add = useMutation({
-    mutationFn: () => api.repositories.create({ project_id: id, remote_url: remote.trim() }),
-    onSuccess: () => { setRemote(""); qc.invalidateQueries({ queryKey: qk.repositories() }); },
+  const add = useCreateRepository(id, remote.trim(), {
+    onSuccess: () => { setRemote(""); qc.invalidateQueries({ queryKey: qk.repositories() }); }
   });
-  const archive = useMutation({ mutationFn: () => api.projects.archive(id), onSuccess: () => { qc.invalidateQueries({ queryKey: qk.projects() }); history.back(); } });
+  const archive = useArchiveProject(id, {
+    onSuccess: () => { qc.invalidateQueries({ queryKey: qk.projects() }); history.back(); }
+  });
   const p = project.data;
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -232,7 +217,7 @@ export function ProjectDetail() {
 function RepoRow({ id, remote, branch, path, envs }: { id: string; remote: string; branch: string; path: string; envs: { node: string; name: string; path: string }[] }) {
   const qc = useQueryClient();
   const [value, setValue] = useState(path);
-  const save = useMutation({ mutationFn: () => api.setRepositoryPath(id, value.trim()), onSuccess: () => { qc.invalidateQueries({ queryKey: qk.repositoryPaths() }); qc.invalidateQueries({ queryKey: qk.repositoryLocations() }); } });
+  const save = useSetRepositoryPath(id, value.trim(), { onSuccess: () => { qc.invalidateQueries({ queryKey: qk.repositoryPaths() }); qc.invalidateQueries({ queryKey: qk.repositoryLocations() }); } });
   return (
     <div className="space-y-1 border-t border-slate-200 py-2 first:border-t-0 dark:border-border">
       <p className="flex items-center gap-2 text-sm"><GithubLogo className="size-4" /><span className="font-mono">{repoName(remote)}</span><span className="text-xs text-slate-500">· {branch}</span></p>

@@ -1,9 +1,10 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, DownloadSimple } from "@phosphor-icons/react";
-import { downloadSpeechModel, pickSpeechModel, speechKey, useSpeechModels } from "../composer/speech-models";
-import { emptyInput, ValueDiff } from "./input-settings";
-import { useNodeSettings, type SectionProps } from "./settings-node";
-import { Button, ErrorText } from "../../components/ui";
+import { Check,DownloadSimple } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useDownloadSpeechModel } from "../../api/queries/dictation";
+import { Button,ErrorText } from "../../components/ui";
+import { pickSpeechModel,speechKey,useSpeechModels } from "../composer/speech-models";
+import { ValueDiff,emptyInput } from "./input-settings";
+import { useNodeSettings,type SectionProps } from "./settings-node";
 
 // DictationSettings is the Dictado section of the settings: which speech model
 // each node uses. The models are downloaded on this node, whose list is shown.
@@ -14,7 +15,7 @@ export function DictationSettings({ node }: SectionProps) {
   const input = settings.get("input") ?? emptyInput;
   const active = pickSpeechModel(catalog.data, input.dictation.model);
   const nameOf = (id?: string) => pickSpeechModel(catalog.data, id)?.name ?? "automático";
-  const download = useMutation({ mutationFn: downloadSpeechModel, onSuccess: (data) => qc.setQueryData(speechKey, data) });
+  const download = useDownloadSpeechModel({ onSuccess: (data) => qc.setQueryData(speechKey, data) });
   return (
     <div className="space-y-6">
       <section aria-labelledby="dictation-title" className="space-y-3">

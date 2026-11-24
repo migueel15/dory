@@ -1,11 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { api, type UsageBreakdownRow, type UsageRange, type UsageTurnCall } from "../api/client";
-import { Card, ErrorText, Select } from "../components/ui";
-import { compact, percent, usd } from "../components/usage-charts";
-import { qk } from "../api/queries/keys";
-import { type Kind, KINDS, TYPE_LABELS, date, PROVIDER_NAMES, cx } from "./usage-shared";
+import { useState } from "react";
+import { type UsageBreakdownRow,type UsageRange,type UsageTurnCall } from "../api/client";
+import { useUsageTurns } from "../api/queries/threads";
+import { Card,ErrorText,Select } from "../components/ui";
+import { compact,percent,usd } from "../components/usage-charts";
+import { KINDS,PROVIDER_NAMES,TYPE_LABELS,date,type Kind } from "./usage-shared";
 
 export const CATEGORY_LABELS: Record<string, string> = {
   base: "Contexto sin atribuir", system: "Instrucciones de Dory", user: "Mensajes del usuario", history: "Conversación",
@@ -109,10 +108,7 @@ export const signed = new Intl.NumberFormat("es-ES", { signDisplay: "exceptZero"
 export const CALL_COLUMNS = ["Llamada", "Modelo", "Entrada total", "Cambio de entrada", "Sin caché", "Caché leída", "Caché escrita", "Salida", "Razonamiento"];
 
 export function ThreadUsage({ thread, range, node, provider }: { thread: string; range: UsageRange; node: string; provider: string }) {
-  const { data, error, isPending } = useQuery({
-    queryKey: qk.usageTurns(node, thread, range),
-    queryFn: () => api.threadUsageTurns(thread, range, node),
-  });
+  const { data, error, isPending } = useUsageTurns(node, thread, range);
   const turns = (data ?? []).filter((turn) => !provider || turn.provider === provider);
 
   return <Card>

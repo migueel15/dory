@@ -1,23 +1,23 @@
-import { DefineIssueDialog } from "../../pages/define-issue";
-import { useGithubWatch } from "../../api/live";
-import { ArrowClockwise, MagnifyingGlass } from "@phosphor-icons/react";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowClockwise,MagnifyingGlass,type Icon as PhosphorIcon } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ApiError, api, type GithubIssue, type GithubPull } from "../../api/client";
-import { Arrow, Card, ErrorText, Input, Select, pill } from "../../components/ui";
-import { GithubMark, Icon, PrRefChip, Tip, icons } from "./github-ui";
-import { type Icon as PhosphorIcon } from "@phosphor-icons/react";
-import { useProject } from "../../project";
-import { GithubLogin } from "./github-login";
-import { buildStacks, groupByStack, pullKey } from "../../stack";
+import { useLayoutEffect,useMemo,useRef,useState } from "react";
+import { ApiError,api,type GithubIssue,type GithubPull } from "../../api/client";
+import { useGithubWatch } from "../../api/live";
+import { useGithubClosed,useGithubOverview } from "../../api/queries/github";
 import { qk } from "../../api/queries/keys";
-import { storage, storageKeys } from "../../lib/storage";
-import { PullStatus, ago, Meta, Row, linked } from "./pull-row";
+import { Arrow,Card,ErrorText,Input,Select,pill } from "../../components/ui";
+import { storage,storageKeys } from "../../lib/storage";
+import { DefineIssueDialog } from "../../pages/define-issue";
+import { useProject } from "../../project";
+import { buildStacks,groupByStack,pullKey } from "../../stack";
+import { GithubLogin } from "./github-login";
+import { GithubMark,Icon,PrRefChip,Tip,icons } from "./github-ui";
+import { Meta,PullStatus,Row,ago,linked } from "./pull-row";
 
 // The server answers from its cache and refreshes in the background; while it
 // does, poll every second so each repository shows up as soon as it is ready.
-export const useGithubOpen = () => useQuery({ queryKey: qk.github(), queryFn: () => api.github(), refetchInterval: (q) => (q.state.data?.refreshing ? 1_000 : 60_000), retry: false });
+export const useGithubOpen = () => useGithubOverview({ refetchInterval: (q) => (q.state.data?.refreshing ? 1_000 : 60_000), retry: false });
 
 type Tab = "pulls" | "issues";
 type State = "open" | "closed" | "all";
@@ -94,14 +94,7 @@ export function Github() {
   const project = useProject();
   const me = data.data?.viewer ?? "";
   // Closed items are read from GitHub only when asked for, one page per repository at a time.
-  const closed = useInfiniteQuery({
-    queryKey: qk.githubClosed(tab, project),
-    queryFn: ({ pageParam }) => api.githubClosed(tab, project, pageParam),
-    initialPageParam: "",
-    getNextPageParam: (last) => last.cursor || undefined,
-    enabled: state !== "open",
-    staleTime: 60_000,
-  });
+  const closed = useGithubClosed(tab, project, { enabled: state !== "open", staleTime: 60_000 });
   const closedPulls = tab === "pulls" ? closed.data?.pages.flatMap((p) => p.pulls) ?? [] : [];
   const closedIssues = tab === "issues" ? closed.data?.pages.flatMap((p) => p.issues) ?? [] : [];
   const byUpdated = <T extends { updated_at: string }>(l: T[]) => [...l].sort((a, b) => b.updated_at.localeCompare(a.updated_at));

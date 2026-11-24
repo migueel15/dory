@@ -1,13 +1,12 @@
-import { useEffect, useState } from "react";
-import { Brain, ChatText, Question as QuestionIcon, CaretDown, CaretRight, TerminalWindow, Wrench } from "@phosphor-icons/react";
+import { Brain,CaretDown,CaretRight,ChatText,Question as QuestionIcon,TerminalWindow,Wrench } from "@phosphor-icons/react";
+import { useEffect,useState } from "react";
 import { type Message } from "../../api/client";
 import { Md } from "../../components/ui";
-import { askQuestions, GroupCard, isAsk, ToolCard } from "./tool-card";
-import { htmlRef } from "./html-card";
-import { turnFiles, type Turn } from "./turn-changes";
-import { NativeQuestionCard, QuestionCard } from "./question-card";
 import { t } from "../../i18n/es";
-import { elapsed, Entry } from "./chat";
+import { htmlRef } from "./html-card";
+import { NativeQuestionCard,QuestionCard } from "./question-card";
+import { GroupCard,ToolCard,askQuestions,isAsk } from "./tool-card";
+import { turnFiles,type Turn } from "./turn-changes";
 
 export const running = (m: Message) => m.streaming || (m.role === "tool" && !["completed", "failed", "error", "declined", "interrupted", "cancelled"].includes(m.status ?? ""));
 export const failed = (m: Message) => m.status === "failed" || m.status === "error";
@@ -153,9 +152,17 @@ export function layout(ms: Message[], live: boolean): (Message | Worked | Change
   return out;
 }
 
+// elapsed writes a duration the short way: "45s", "1m 59s", "1h 3m".
+const elapsed = (secs: number) => {
+  const s = Math.max(0, Math.round(secs));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+};
+
 // WorkedBlock is a turn's work: while it runs, a ticking "Working for 12s"
 // line and its steps; once it ends, a folded "Worked for 1m 59s".
-export function WorkedBlock({ items, secs, live = false, since }: { items: Message[]; secs: number; live?: boolean; since?: string }) {
+export function WorkedBlock({ Entry, items, secs, live = false, since }: { Entry: React.ComponentType<{ m: Message }>; items: Message[]; secs: number; live?: boolean; since?: string }) {
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {

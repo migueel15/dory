@@ -1,19 +1,20 @@
-import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, HandPointing, Circle, CircleNotch, Cpu, DeviceMobile, PictureInPicture, Plugs, Power, SidebarSimple, X, Sliders, Square, SpeakerHigh, SpeakerLow, WifiHigh } from "@phosphor-icons/react";
-import { devicesApi, type Device, type DeviceList } from "../../api/client";
-import { DeviceStream, Key, keyFor, webCodecsProblem, type StreamStatus } from "../../lib/scrcpy";
-import { askConfirm } from "../../components/confirm";
-import { Button, ErrorText, Input, Select, iconButton } from "../../components/ui";
+import { ArrowLeft,Circle,CircleNotch,Cpu,DeviceMobile,HandPointing,PictureInPicture,Plugs,Power,SidebarSimple,Sliders,SpeakerHigh,SpeakerLow,Square,WifiHigh,X } from "@phosphor-icons/react";
+import { useMutation,useQueryClient } from "@tanstack/react-query";
+import { useEffect,useRef,useState } from "react";
+import { devicesApi,type Device,type DeviceList } from "../../api/client";
+import { useDeviceAction,useDeviceList,useDeviceQuery } from "../../api/queries/devices";
 import { qk } from "../../api/queries/keys";
-import { storage, storageKeys } from "../../lib/storage";
+import { askConfirm } from "../../components/confirm";
+import { Button,ErrorText,Input,Select,iconButton } from "../../components/ui";
 import { t } from "../../i18n/es";
+import { DeviceStream,Key,keyFor,webCodecsProblem,type StreamStatus } from "../../lib/scrcpy";
+import { storage,storageKeys } from "../../lib/storage";
 
 // DevicePanel shows an Android device or emulator of the thread's node live.
 // Only the visible tab streams: it connects on mount and closes on unmount.
 // The chosen device is kept by the tab; if it drops, the tab waits for it.
 export function DevicePanel({ node, serial, onSerial, floating = false, onFloat }: { node: string; serial: string | null; onSerial: (serial: string | null, name: string) => void; floating?: boolean; onFloat?: (v: boolean) => void }) {
-  const list = useQuery({ queryKey: qk.devices(node), queryFn: () => devicesApi.list(node), refetchInterval: 4000 });
+  const list = useDeviceList(node, { refetchInterval: 4000 });
   const problem = webCodecsProblem();
   if (problem) return <Notice title="Vídeo no disponible">{problem}</Notice>;
   if (list.error) return <div className="p-4"><ErrorText error={list.error} /></div>;
@@ -240,10 +241,9 @@ function useDeviceInput(canvas: React.RefObject<HTMLCanvasElement | null>, strea
 function Tools({ node, device, onClose }: { node: string; device: Device; onClose: () => void }) {
   const qc = useQueryClient();
   const key = qk.deviceState(node, device.serial);
-  const state = useQuery({ queryKey: key, queryFn: () => devicesApi.action(device.serial, { action: "state" }, node), refetchInterval: 8000 });
-  const apply = useMutation({
-    mutationFn: (body: Record<string, unknown>) => devicesApi.action(device.serial, body, node),
-    onSuccess: (out) => qc.setQueryData(key, (old: Record<string, string> | undefined) => ({ ...old, ...out })),
+  const state = useDeviceQuery(key, node, device.serial, "state", { refetchInterval: 8000 });
+  const apply = useDeviceAction(node, device.serial, {
+    onSuccess: (out) => qc.setQueryData(key, (old: Record<string, string> | undefined) => ({ ...old, ...out }))
   });
   const st = state.data ?? {};
   const [pkg, setPkg] = useState("");
@@ -318,7 +318,7 @@ const touchHelp = `Para controlar el móvil con el ratón y el teclado desde Dor
 // TouchStatus shows whether the device lets Dory inject touches and keys: lit
 // when it does, dimmed with the steps to enable it when it refuses.
 function TouchStatus({ node, device }: { node: string; device: Device }) {
-  const check = useQuery({ queryKey: qk.deviceInput(node, device.serial), queryFn: () => devicesApi.action(device.serial, { action: "input_check" }, node), refetchInterval: 6000 });
+  const check = useDeviceQuery(qk.deviceInput(node, device.serial), node, device.serial, "input_check", { refetchInterval: 6000 });
   const on = check.data?.input === "ok";
   const blocked = check.data?.input === "blocked";
   const title = on ? "Control táctil activado" : blocked ? touchHelp : check.isLoading ? "Comprobando el control táctil…" : "No se pudo comprobar el control táctil";

@@ -1,15 +1,14 @@
-import { useEffect, useRef, useState, type ComponentType } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { api, type Task } from "../api/client";
+import { Brain,ChartBar,Command as CommandIcon,FolderSimple,GithubLogo,HardDrives,House,Kanban,Lightbulb,MagnifyingGlass,Robot,type IconProps } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
-import { Brain, ChartBar, Command as CommandIcon, FolderSimple, GithubLogo, HardDrives, House, Kanban, Lightbulb, MagnifyingGlass, Robot, type IconProps } from "@phosphor-icons/react";
+import { useEffect,useRef,useState,type ComponentType } from "react";
+import { type Task } from "../api/client";
+import { useSearchGithub,useSearchTasks } from "../api/queries/github";
+import { useMesh,useNode,useProjects } from "../api/queries/hooks";
 import { IdeaModal } from "../features/composer/capture";
-import { Input } from "./ui";
-import { commands as shortcutCommands, useCommand, useShortcuts, available, runCommand } from "./shortcuts";
 import { formatChord } from "../features/composer/dictation-shortcut";
-import { qk } from "../api/queries/keys";
-import { useMesh, useNode, useProjects } from "../api/queries/hooks";
-import { events, useEmitter } from "../lib/store";
+import { events,useEmitter } from "../lib/store";
+import { available,runCommand,commands as shortcutCommands,useCommand,useShortcuts } from "./shortcuts";
+import { Input } from "./ui";
 
 type Command = { id: string; group: string; label: string; icon: ComponentType<IconProps>; hint?: string; run: () => void };
 
@@ -74,8 +73,8 @@ function Palette({ commands, go, onClose }: { commands: Command[]; go: (path: st
   const [debounced, setDebounced] = useState("");
   useEffect(() => { const timer = window.setTimeout(() => setDebounced(query.trim()), 250); return () => clearTimeout(timer); }, [query]);
   const active = !!debounced && debounced === query.trim();
-  const tasks = useQuery({ queryKey: qk.paletteTasks(debounced), queryFn: ({ signal }) => api.searchTasks(debounced, signal), enabled: active, retry: false });
-  const github = useQuery({ queryKey: qk.paletteGithub(debounced), queryFn: ({ signal }) => api.searchGithub(debounced, signal), enabled: active, retry: false });
+  const tasks = useSearchTasks(debounced, { enabled: active, retry: false });
+  const github = useSearchGithub(debounced, { enabled: active, retry: false });
   const projects = useProjects({ enabled: !!query.trim(), retry: false });
   const node = useNode({ enabled: !!query.trim(), retry: false });
   const mesh = useMesh({ enabled: !!query.trim(), retry: false });

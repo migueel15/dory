@@ -1,28 +1,28 @@
-import { useLayoutEffect, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, ClipboardText, Code, ListBullets, Quotes, Stop, X } from "@phosphor-icons/react";
-import { api, usable, type ThreadView } from "../../api/client";
-import { ErrorText, iconButton } from "../../components/ui";
-import { useDictationInProgress, useLocalDictation } from "./local-dictation";
-import { DictationMic, DictationPreview } from "./dictation-ui";
-import { ProviderIcon } from "./launch-picker";
-import { explicitModels, findModel, modelEffort, modelId as concreteModelId, rememberModel } from "../../effort";
+import { ArrowUp,ClipboardText,Code,ListBullets,Quotes,Stop,X } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useLayoutEffect,useRef,useState } from "react";
+import { api,usable,type ThreadView } from "../../api/client";
+import { useNodeProviders } from "../../api/queries/hooks";
+import { qk } from "../../api/queries/keys";
+import { useAnswerQuestion,useAnswerSecret,useInterruptThread,useSendMessage,useSendText,useThreadSettings } from "../../api/queries/threads";
+import { useCommand,useShortcuts } from "../../components/shortcuts";
+import { ErrorText,iconButton } from "../../components/ui";
+import { modelId as concreteModelId,explicitModels,findModel,modelEffort,rememberModel } from "../../effort";
+import { autoMessage } from "../../lib/auto-message";
+import { events,useEmitter } from "../../lib/store";
 import { codeRefText } from "../chat/code-ref";
+import { QuestionPanel,askAnswerText,openAsk,useQuestionFlow } from "../chat/question-card";
 import type { DraftQuote } from "../chat/quote-selection";
 import { SecretPanel } from "../chat/secret-card";
-import { askAnswerText, openAsk, QuestionPanel, useQuestionFlow } from "../chat/question-card";
-import { useCommand, useShortcuts } from "../../components/shortcuts";
-import { formatChord } from "./dictation-shortcut";
-import { autoMessage } from "../../lib/auto-message";
 import { useComposerFiles } from "./composer-files";
-import { paintTokens, quoteBlock, quoteLabel, tokenRanges, type Token, type Tokens } from "./composer-tokens";
-import { qk } from "../../api/queries/keys";
-import { useNodeProviders } from "../../api/queries/hooks";
-import { events } from "../../lib/store";
-import { useEmitter } from "../../lib/store";
+import { paintTokens,quoteBlock,quoteLabel,tokenRanges,type Token,type Tokens } from "./composer-tokens";
+import { formatChord } from "./dictation-shortcut";
+import { DictationMic,DictationPreview } from "./dictation-ui";
+import { ProviderIcon } from "./launch-picker";
+import { useDictationInProgress,useLocalDictation } from "./local-dictation";
+import { ModelPicker,ModelProvider } from "./model-picker";
 import { useCodeTip } from "./queue";
-import { threadSource, useSuggest } from "./suggest";
-import { ModelProvider, ModelPicker } from "./model-picker";
+import { threadSource,useSuggest } from "./suggest";
 
 // The composer of a thread, kept from Dory v1: attachments, @ mentions of
 // files, model, effort and permissions, and send, queue or stop.
@@ -141,8 +141,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   const pickerProviders: ModelProvider[] = availableProviders.map((p) => ({
     id: p.id, name: p.name, disabled: t.running && p.id !== t.provider,
   }));
-  const send = useMutation({
-    mutationFn: ({ message, fileIds }: { message: string; fileIds: string[]; quoteIds: string[] }) => api.send(t.id, message, fileIds),
+  const send = useSendMessage<{ message: string; fileIds: string[]; quoteIds: string[] }>(t.id, {
     onSuccess: (_, { quoteIds }) => {
       setText("");
       setTokens({});
@@ -152,38 +151,32 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
       qc.invalidateQueries({ queryKey: key });
     },
   });
-  const planning = useMutation({
-    mutationFn: () => api.send(t.id, autoMessage("plan", { thread: t.id },
-      "Planifica lo conversado sin implementar código. Usa ensure_thread_task para reutilizar la tarea vinculada o crearla y vincularla; después lee el plan con plan_read y crea o modifica el documento con plan_write o plan_edit. Haz las preguntas necesarias y usa el contexto de este hilo y su entorno. Solo el usuario acepta el plan.",
-      "Planifica lo que hemos hablado en este hilo.")),
+  const planning = useSendText(t.id, autoMessage("plan", { thread: t.id },
+    "Planifica lo conversado sin implementar código. Usa ensure_thread_task para reutilizar la tarea vinculada o crearla y vincularla; después lee el plan con plan_read y crea o modifica el documento con plan_write o plan_edit. Haz las preguntas necesarias y usa el contexto de este hilo y su entorno. Solo el usuario acepta el plan.",
+    "Planifica lo que hemos hablado en este hilo."), {
     onSuccess: () => { onSent(); return qc.invalidateQueries({ queryKey: key }); },
   });
-  const stop = useMutation({ mutationFn: () => api.interrupt(t.id) });
+  const stop = useInterruptThread(t.id);
   // A question the agent waits for sits on top of the box; the box writes the
   // free answer of the current question instead of a new message. A harness
   // question resolves its tool call; an ask_user one is answered by message.
   const native = t.requests?.find((r) => r.questions?.length);
   const ask = native ? undefined : openAsk(t.messages);
   const question = native ?? ask;
-  const reply = useMutation({
-    mutationFn: ({ answers, files }: { answers: string[][]; files: string[][] }) => native
-      ? api.answer(t.id, native.id, answers, files)
-      : api.send(t.id, askAnswerText(ask!.questions, answers), files.flat()),
+  const reply = useAnswerQuestion(t.id, native?.id, (answers) => askAnswerText(ask!.questions, answers), {
     onSuccess: () => { onSent(); return qc.invalidateQueries({ queryKey: key }); },
   });
   const flow = useQuestionFlow(question?.id ?? "", question?.questions ?? [], (answers, files) => reply.mutate({ answers, files }));
   const secret = t.requests?.find((r) => r.kind === "secret" && r.secret);
-  const answerSecret = useMutation({
-    mutationFn: (body: { values: Record<string, string> } | { decline: true }) => api.answerSecret(t.id, secret!.id, body),
+  const answerSecret = useAnswerSecret(t.id, secret?.id, {
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
   });
   const asking = !!question && !!flow.q;
   const planQueued = t.queue.some((item) => item.text.includes(`<dory-context kind="plan" thread="${t.id}">`));
   const canPlan = t.local && !asking && !dictating && !planning.isPending && !send.isPending && !planQueued;
   useCommand("plan", () => { if (canPlan) planning.mutate(); }, canPlan);
-  const settings = useMutation({
+  const settings = useThreadSettings(t.id, {
     scope: { id: `thread-settings:${t.id}` },
-    mutationFn: (body: Parameters<typeof api.threadSettings>[1]) => api.threadSettings(t.id, body),
     onSuccess: (updated, change) => {
       if (change.model) rememberModel(updated);
       qc.setQueryData<ThreadView>(key, (current) => current && {
