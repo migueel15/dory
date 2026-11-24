@@ -60,11 +60,11 @@ type ToolDone struct {
 	Update *ToolUpdated
 }
 type PlanUpdated struct {
-	ItemID      string
-	Todos       []Todo
-	Text, Title string
-	Call        *ToolCall
-	Meta        ItemMeta
+	ItemID              string
+	Todos               []Todo
+	Text, Title, Detail string
+	Call                *ToolCall
+	Meta                ItemMeta
 }
 
 type RequestOpened struct{ Request Request }
@@ -164,7 +164,7 @@ func Upgrade(in <-chan LegacyEvent) <-chan Event {
 					if m.Tool != nil {
 						todos = m.Tool.Todos
 					}
-					out <- PlanUpdated{m.ID, todos, m.Text, m.Title, m.Tool, meta}
+					out <- PlanUpdated{ItemID: m.ID, Todos: todos, Text: m.Text, Title: m.Title, Detail: m.Detail, Call: m.Tool, Meta: meta}
 				default:
 					out <- MessageReported{m}
 				}

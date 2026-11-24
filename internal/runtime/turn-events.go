@@ -58,7 +58,7 @@ func (t *turnMessages) apply(event harness.Event) (Message, bool) {
 		msg.Text, msg.Status, msg.ResultChars, msg.Streaming = e.Result, e.Status, e.ResultChars, false
 	case harness.PlanUpdated:
 		msg = t.item(e.ItemID, "plan", e.Meta)
-		msg.Text, msg.Title, msg.Tool = e.Text, e.Title, e.Call
+		msg.Text, msg.Title, msg.Detail, msg.Tool = e.Text, e.Title, e.Detail, e.Call
 		if msg.Tool == nil {
 			msg.Tool = &ToolCall{Kind: "plan", Name: "plan", Todos: e.Todos}
 		}
