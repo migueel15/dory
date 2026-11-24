@@ -9,13 +9,12 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"github.com/migueel15/dory/internal/apperr"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/oplog"
 	"github.com/migueel15/dory/internal/schema"
 )

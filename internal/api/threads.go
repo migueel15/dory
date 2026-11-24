@@ -522,5 +522,5 @@ func (s *Server) ThreadAction(ctx context.Context, id, action, title, until, tas
 	default:
 		return t, data.ErrInvalid.Msgf("unknown action %s", action)
 	}
-	return s.Store.PatchThread(ctx, id, fields)
+	return s.Store.Threads().Patch(ctx, id, fields)
 }

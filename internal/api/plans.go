@@ -114,7 +114,16 @@ func (s *Server) writePlan(ctx context.Context, taskID, body string, base int64,
 		}
 	}
 	cur.BodyMD, cur.Revision, cur.Author, cur.AcceptedAt = body, cur.Revision+1, author, nil
-	return s.Store.Plans().Put(ctx, cur)
+	if cur.ID == "" {
+		return s.Store.Plans().Create(ctx, cur)
+	}
+	out, err := s.Store.Plans().PatchIf(ctx, cur.ID, cur.UpdatedAt, data.Fields{
+		"body_md": body, "revision": cur.Revision, "author": author, "accepted_at": nil,
+	})
+	if errors.Is(err, data.ErrRevisionConflict) {
+		return cur, ErrPlanConflict
+	}
+	return out, err
 }
 
 // EditPlan replaces one exact piece of the plan document. The piece must

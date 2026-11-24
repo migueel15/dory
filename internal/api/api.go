@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/auth"
@@ -77,7 +78,7 @@ type Server struct {
 func (s *Server) Register(mux *http.ServeMux) {
 	mountResource(mux, "projects", s.Store.Projects())
 	mountResource(mux, "repositories", s.Store.Repositories())
-	mountResource(mux, "tasks", s.Store.Tasks(), s.SaveTask)
+	mountResource(mux, "tasks", s.Store.Tasks(), resourceWrites[data.Task]{s.CreateTask, s.PatchTask})
 	mountResource(mux, "memories", s.Store.Memories())
 	mux.HandleFunc("GET /api/version", version.Handler())
 	mux.HandleFunc("GET /api/node", s.node)
@@ -178,9 +179,26 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 
 func actor(r *http.Request) string { return auth.Actor(r.Context()) }
 
-// mountResource registers list/get/create/replace/archive for one entity.
-func mountResource[T any](mux *http.ServeMux, path string, res data.Resource[T], save ...func(context.Context, T) (T, error)) {
+type resourceWrites[T any] struct {
+	create func(context.Context, T) (T, error)
+	patch  func(context.Context, string, *string, data.Fields) (T, error)
+}
+
+// mountResource registers list/get/create/patch/archive for one entity.
+func mountResource[T any](mux *http.ServeMux, path string, res data.Resource[T], custom ...resourceWrites[T]) {
 	base := "/api/" + path
+	writes := resourceWrites[T]{
+		create: res.Create,
+		patch: func(ctx context.Context, id string, expected *string, fields data.Fields) (T, error) {
+			if expected != nil {
+				return res.PatchIf(ctx, id, *expected, fields)
+			}
+			return res.Patch(ctx, id, fields)
+		},
+	}
+	if len(custom) > 0 {
+		writes = custom[0]
+	}
 	mux.HandleFunc("GET "+base, func(w http.ResponseWriter, r *http.Request) {
 		f, err := parseFilter(r)
 		if err != nil {
@@ -202,47 +220,46 @@ func mountResource[T any](mux *http.ServeMux, path string, res data.Resource[T],
 		}
 		writeJSON(w, http.StatusOK, v)
 	})
-	put := func(w http.ResponseWriter, r *http.Request, id string) {
-		var body map[string]any
-		if !decode(w, r, &body) {
+	mux.HandleFunc("POST "+base, func(w http.ResponseWriter, r *http.Request) {
+		body, ok := decodeResource(w, r)
+		if !ok {
 			return
 		}
-		if id != "" {
-			// Fields left out keep their stored value.
-			if current, err := res.Get(r.Context(), id); err == nil {
-				raw, _ := json.Marshal(current)
-				merged := map[string]any{}
-				json.Unmarshal(raw, &merged)
-				for k, v := range body {
-					merged[k] = v
-				}
-				body = merged
-			}
-			body["id"] = id
-		}
-		// Server-owned fields are never taken from the client.
-		delete(body, "created_at")
 		delete(body, "updated_at")
-		delete(body, "archived_at")
 		raw, _ := json.Marshal(body)
 		var v T
 		if err := json.Unmarshal(raw, &v); err != nil {
 			writeErr(w, r, apperr.Wrap(apperr.Invalid, err, "invalid body"))
 			return
 		}
-		put := res.Put
-		if len(save) > 0 {
-			put = save[0]
+		out, err := writes.create(r.Context(), v)
+		if err != nil {
+			writeErr(w, r, err)
+			return
 		}
-		out, err := put(r.Context(), v)
+		writeJSON(w, http.StatusOK, out)
+	})
+	patch := func(w http.ResponseWriter, r *http.Request) {
+		body, ok := decodeResource(w, r)
+		if !ok {
+			return
+		}
+		expected, err := resourceVersion(r, body)
+		if err != nil {
+			writeErr(w, r, err)
+			return
+		}
+		delete(body, "id")
+		delete(body, "updated_at")
+		out, err := writes.patch(r.Context(), r.PathValue("id"), expected, body)
 		if err != nil {
 			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
 	}
-	mux.HandleFunc("POST "+base, func(w http.ResponseWriter, r *http.Request) { put(w, r, "") })
-	mux.HandleFunc("PUT "+base+"/{id}", func(w http.ResponseWriter, r *http.Request) { put(w, r, r.PathValue("id")) })
+	mux.HandleFunc("PUT "+base+"/{id}", patch)
+	mux.HandleFunc("PATCH "+base+"/{id}", patch)
 	mux.HandleFunc("DELETE "+base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if err := res.Archive(r.Context(), r.PathValue("id")); err != nil {
 			writeErr(w, r, err)
@@ -250,6 +267,40 @@ func mountResource[T any](mux *http.ServeMux, path string, res data.Resource[T],
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+func decodeResource(w http.ResponseWriter, r *http.Request) (data.Fields, bool) {
+	var body data.Fields
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
+	dec.UseNumber()
+	if err := dec.Decode(&body); err != nil || body == nil {
+		writeErr(w, r, apperr.New(apperr.Invalid, "expected a JSON object"))
+		return nil, false
+	}
+	delete(body, "created_at")
+	delete(body, "archived_at")
+	return body, true
+}
+
+func resourceVersion(r *http.Request, body data.Fields) (*string, error) {
+	if match := strings.TrimSpace(r.Header.Get("If-Match")); match != "" && match != "*" {
+		if strings.HasPrefix(match, `"`) {
+			value, err := strconv.Unquote(match)
+			if err != nil {
+				return nil, data.ErrInvalid.Msgf("invalid If-Match")
+			}
+			match = value
+		}
+		return &match, nil
+	}
+	if v, present := body["updated_at"]; present {
+		version, ok := v.(string)
+		if !ok {
+			return nil, data.ErrInvalid.Msgf("updated_at must be a string")
+		}
+		return &version, nil
+	}
+	return nil, nil
 }
 
 func parseFilter(r *http.Request) (data.Filter, error) {

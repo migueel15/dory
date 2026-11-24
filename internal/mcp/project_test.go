@@ -21,8 +21,8 @@ func TestSetTaskProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := data.New(db, log)
-	p, _ := store.Projects().Put(ctx, data.Project{Slug: "x", Name: "X"})
-	task, _ := store.Tasks().Put(ctx, data.Task{Title: "Suelta"})
+	p, _ := store.Projects().Create(ctx, data.Project{Slug: "x", Name: "X"})
+	task, _ := store.Tasks().Create(ctx, data.Task{Title: "Suelta"})
 	got, err := setTaskProject(ctx, store, task.ID, "x")
 	if err != nil || got.ProjectID == nil || *got.ProjectID != p.ID {
 		t.Fatalf("link by slug: %+v, %v", got, err)

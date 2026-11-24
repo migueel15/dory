@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/github"
@@ -57,7 +56,7 @@ func (s *Server) mountTasks(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, deps)
 	})
 	mux.HandleFunc("PUT /api/tasks/{id}/dependencies/{dep}", func(w http.ResponseWriter, r *http.Request) {
-		d, err := s.Store.Dependencies().Put(r.Context(), data.Dependency{TaskID: r.PathValue("id"), DependsOnID: r.PathValue("dep")})
+		d, err := s.Store.Dependencies().Upsert(r.Context(), data.Dependency{TaskID: r.PathValue("id"), DependsOnID: r.PathValue("dep")})
 		if err != nil {
 			writeErr(w, r, err)
 			return
@@ -109,33 +108,16 @@ func (s *Server) planPending(ctx context.Context, taskID string) (bool, error) {
 
 // acceptPlan marks the latest plan accepted and the task ready.
 func (s *Server) acceptPlan(ctx context.Context, taskID string) (data.Task, data.Plan, error) {
-	plans, err := s.Store.Plans().List(ctx, data.Filter{Fields: map[string]any{"task_id": taskID}, Limit: 1000})
+	planMu.Lock()
+	defer planMu.Unlock()
+	latest, ok, err := s.latestPlan(ctx, taskID)
 	if err != nil {
 		return data.Task{}, data.Plan{}, err
 	}
-	if len(plans) == 0 {
+	if !ok {
 		return data.Task{}, data.Plan{}, data.ErrInvalid.Msgf("the task has no plan")
 	}
-	latest := plans[0]
-	for _, p := range plans {
-		if p.Version > latest.Version {
-			latest = p
-		}
-	}
-	at := time.Now().UTC().Format(time.RFC3339Nano)
-	latest.AcceptedAt = &at
-	if latest, err = s.Store.Plans().Put(ctx, latest); err != nil {
-		return data.Task{}, data.Plan{}, err
-	}
-	t, err := s.Store.Tasks().Get(ctx, taskID)
-	if err != nil {
-		return t, latest, err
-	}
-	if t.Stage == "inbox" {
-		t.Stage = "ready"
-		t, err = s.Store.Tasks().Put(ctx, t)
-	}
-	return t, latest, err
+	return s.Store.AcceptPlan(ctx, latest)
 }
 
 func (s *Server) board(w http.ResponseWriter, r *http.Request) {
@@ -382,10 +364,12 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var repoPath string
+	fields := data.Fields{}
 	if t.RepositoryID == nil && t.ProjectID != nil {
 		repos, _ := s.Store.Repositories().List(ctx, data.Filter{Fields: map[string]any{"project_id": *t.ProjectID}})
 		if len(repos) == 1 {
 			t.RepositoryID = &repos[0].ID
+			fields["repository_id"] = repos[0].ID
 		}
 	}
 	if t.RepositoryID != nil {
@@ -401,12 +385,13 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 	}
 	if t.Branch == "" {
 		t.Branch = branchName(t)
+		fields["branch"] = t.Branch
 	}
 	if body.BaseBranch == "" {
 		repo, _ := s.Store.Repositories().Get(ctx, *t.RepositoryID)
 		body.BaseBranch = repo.DefaultBranch
 	}
-	if t, err = s.Store.Tasks().Put(ctx, t); err != nil {
+	if t, err = s.Store.Tasks().PatchIf(ctx, t.ID, t.UpdatedAt, fields); err != nil {
 		writeErr(w, r, err)
 		return
 	}
