@@ -146,7 +146,7 @@ func TestCompleteIsIdempotentByDeliveryID(t *testing.T) {
 	ctx := context.Background()
 	m, store := manager(t, 0)
 	claude := capturedProvider{"claude", make(chan Turn, 4), make(chan chan Event, 4)}
-	m.providers[claude.id] = claude
+	m.registry.Register(claude)
 	parent, err := m.Create(ctx, NewThread{Provider: claude.id, Model: "opus"})
 	if err != nil {
 		t.Fatal(err)
