@@ -70,6 +70,12 @@ function FontPicker({ id, label, kind, fonts, fallback }: { id: string; label: s
   const chosen = chosenFont(kind);
   const value = chosen || fallbackName;
   const size = fontSize(kind);
+  // The field keeps what is typed, even empty or out of range; the size applies when it is valid
+  // and, on leaving the field, it is clamped to the range.
+  const [draft, setDraft] = useState(String(size));
+  useEffect(() => setDraft(String(size)), [size]);
+  const [min, max] = SIZE_RANGE[kind];
+  const commit = () => { const n = Number(draft); if (draft.trim() === "" || Number.isNaN(n)) setDraft(String(size)); else { chooseSize(kind, n); setDraft(String(fontSize(kind))); } bump((x) => x + 1); };
   const names = [...new Set([value, ...(fonts ?? [])])].sort((a, b) => a.localeCompare(b));
   const options = names.map((f) => ({ value: f, label: f === chosen && !fonts?.includes(f) ? `${f} (no instalada)` : f }));
   return (
@@ -77,8 +83,9 @@ function FontPicker({ id, label, kind, fonts, fallback }: { id: string; label: s
       <span id={id} className="block text-sm font-medium">{label}</span>
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1"><Select value={value} options={options} placeholder={value} onChange={(v) => { chooseFont(kind, v === fallbackName ? "" : v); bump((n) => n + 1); }} /></div>
-        <input type="number" aria-label={`Tamaño de ${label.toLowerCase()}`} title="Tamaño en px" min={SIZE_RANGE[kind][0]} max={SIZE_RANGE[kind][1]} step={1} value={size} placeholder={String(DEFAULT_SIZE[kind])}
-          onChange={(e) => { if (e.target.value !== "") { chooseSize(kind, Number(e.target.value)); bump((n) => n + 1); } }}
+        <input type="number" aria-label={`Tamaño de ${label.toLowerCase()}`} title="Tamaño en px" min={min} max={max} step={1} value={draft} placeholder={String(DEFAULT_SIZE[kind])}
+          onChange={(e) => { setDraft(e.target.value); const n = Number(e.target.value); if (e.target.value !== "" && n >= min && n <= max) { chooseSize(kind, n); bump((x) => x + 1); } }}
+          onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") commit(); }}
           className="w-16 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-border-strong dark:bg-surface" />
         <span className="text-xs text-slate-500 dark:text-muted">px</span>
         <button type="button" disabled={size === DEFAULT_SIZE[kind]} onClick={() => { chooseSize(kind, DEFAULT_SIZE[kind]); bump((n) => n + 1); }} className="text-xs text-slate-500 hover:text-slate-900 disabled:invisible dark:text-muted dark:hover:text-white">Restablecer</button>
