@@ -199,6 +199,13 @@ function ThreadConversation({ threadId }: { threadId: string }) {
   const { scroller, onScroll, follow, away } = useFollow([t?.messages, t?.queue, t?.running, quotes.length]);
   // Opening another thread starts at its end, wherever the last one was left.
   useLayoutEffect(() => { follow(); }, [threadId, !!t]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Opening a thread, as after sending the first message from home, leaves
+  // the keyboard in its box unless something else holds it; not on phones,
+  // where it would pop the keyboard up.
+  useEffect(() => {
+    const current = document.activeElement;
+    if (t && (!current || current === document.body) && window.matchMedia("(min-width: 640px)").matches) composerInput.current?.focus({ preventScroll: true });
+  }, [threadId, !!t]); // eslint-disable-line react-hooks/exhaustive-deps
   // A new quote, from the chat or from the diff, takes the focus to the box.
   const quoteCount = useRef(quotes.length);
   useEffect(() => {
