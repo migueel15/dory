@@ -126,6 +126,9 @@ export function useThreadLive(threadId: string | undefined) {
         if (u.last_turn_model) next.last_turn_model = u.last_turn_model;
         return next;
       });
+      // A fetch started before the turn ended may still answer running: the
+      // final state is read again, cancelling that stale fetch.
+      if (u.status && u.status !== "working") qc.invalidateQueries({ queryKey: key });
     });
     // Whatever changed while the stream was down is reloaded on every (re)open.
     source.addEventListener("open", () => { qc.invalidateQueries({ queryKey: key }); });

@@ -1226,8 +1226,16 @@ func (m *Manager) resync(ctx context.Context, thread string, e External) error {
 	if err != nil {
 		return err
 	}
+	// The file holds only the session after the last /clear: what came
+	// before it stays as saved.
+	kept := 0
+	for i, msg := range saved {
+		if msg.Role == "clear" {
+			kept = i + 1
+		}
+	}
 	var markers []Message
-	for _, msg := range saved {
+	for _, msg := range saved[kept:] {
 		if msg.Role == "model-change" {
 			markers = append(markers, msg)
 		}
@@ -1238,7 +1246,12 @@ func (m *Manager) resync(ctx context.Context, thread string, e External) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, `DELETE FROM thread_messages WHERE thread_id = ?`, thread); err != nil {
+	if kept > 0 {
+		_, err = tx.ExecContext(ctx, `DELETE FROM thread_messages WHERE thread_id = ? AND seq > (SELECT seq FROM thread_messages WHERE id = ?)`, thread, saved[kept-1].ID)
+	} else {
+		_, err = tx.ExecContext(ctx, `DELETE FROM thread_messages WHERE thread_id = ?`, thread)
+	}
+	if err != nil {
 		return err
 	}
 	at := now()
