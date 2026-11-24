@@ -19,7 +19,7 @@ import { setDiffBase, useDiffBase } from "../../lib/diff-base";
 import { addDraftQuote, removeDraftQuotes, useDraftQuotes } from "../../lib/draft-quotes";
 import { headerButton, ThreadInfo } from "./thread-info";
 import { ParentLink } from "../chat/subagents";
-import { TaskDetail } from "../board/tasks";
+import { TaskDetail } from "../board/task-detail";
 import { useThreadMenu } from "./thread-menu";
 import { useThreadsFold } from "../../lib/threads-fold";
 import { BrowserPanel } from "./browser-panel";
