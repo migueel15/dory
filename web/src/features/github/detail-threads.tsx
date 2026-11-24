@@ -3,7 +3,7 @@ import { type GithubDetail, type GithubThread } from "../../api/client";
 import { DictationField } from "../composer/dictation-field";
 import { useDictationInProgress } from "../composer/local-dictation";
 import { Badge, Button, Card, toggleTask } from "../../components/ui";
-import { Avatar } from "./github";
+import { Avatar } from "./pull-row";
 import { Icon, RefMd, Tip, icons, MentionArea } from "./github-ui";
 
 export type ThreadAct = (a: { type: string; thread_id?: string; body?: string; comment_id?: string }) => Promise<unknown>;
