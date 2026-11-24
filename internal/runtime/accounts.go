@@ -11,9 +11,6 @@ import (
 type Account = harness.Account
 type Paths = harness.Paths
 
-func accountID(driver, slug string) string { return harness.AccountID(driver, slug) }
-func driverOf(id string) string            { return harness.DriverOf(id) }
-
 func (m *Manager) Paths(home string) Paths {
 	return Paths{Home: home, Config: func(driver string) string {
 		if p, ok := m.registry.Get(driver); ok && p.Accounts != nil {
