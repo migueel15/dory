@@ -182,3 +182,6 @@ func deltaPayload(msg Message, delta string, replace bool) json.RawMessage {
 	raw, _ := json.Marshal(map[string]any{"id": msg.ID, "role": msg.Role, "run_id": msg.RunID, "created_at": msg.CreatedAt, "text": delta, "replace": replace})
 	return raw
 }
+
+// Save stores a message and records its event; for tools outside the runtime.
+func (m *Manager) Save(ctx context.Context, msg Message) { m.save(ctx, msg) }
