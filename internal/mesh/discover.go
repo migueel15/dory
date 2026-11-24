@@ -97,6 +97,9 @@ func (m *Mesh) tailscale(ctx context.Context) {
 	if json.Unmarshal(out, &status) != nil {
 		return
 	}
+	c := m.probeClient("", nil)
+	c.Timeout = 3 * time.Second
+	defer c.CloseIdleConnections()
 	var wg sync.WaitGroup
 	for _, p := range status.Peer {
 		if !p.Online || len(p.TailscaleIPs) == 0 {
@@ -110,8 +113,6 @@ func (m *Mesh) tailscale(ctx context.Context) {
 				NodeID string `json:"node_id"`
 				Name   string `json:"name"`
 			}
-			c := m.client("", nil)
-			c.Timeout = 3 * time.Second
 			if getJSON(ctx, c, "https://"+address+"/peer/v2/hello", &hello) == nil && hello.NodeID != "" {
 				m.spotted(ctx, hello.NodeID, hello.Name, address)
 			}
@@ -123,25 +124,27 @@ func (m *Mesh) tailscale(ctx context.Context) {
 // spotted records where a node was seen: the address of a paired node is
 // updated, an unknown one is offered for pairing.
 func (m *Mesh) spotted(ctx context.Context, node, name, address string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var current string
 	err := m.db.QueryRowContext(ctx, `SELECT address FROM peers WHERE node_id = ? AND revoked_at IS NULL`, node).Scan(&current)
 	if err == nil {
 		if current != address {
-			m.db.ExecContext(ctx, `UPDATE peers SET address = ? WHERE node_id = ?`, address, node)
-			m.mu.Lock()
+			if _, err := m.db.ExecContext(ctx, `UPDATE peers SET address = ? WHERE node_id = ?`, address, node); err != nil {
+				log.Printf("mesh: address of %s: %v", node, err)
+				return
+			}
+			m.invalidateTransport(node)
 			if ch, ok := m.wake[node]; ok {
 				select {
 				case ch <- struct{}{}:
 				default:
 				}
 			}
-			m.mu.Unlock()
 		}
 		return
 	}
-	m.mu.Lock()
 	m.found[node] = Found{ID: node, Name: name, Address: address, Seen: time.Now()}
-	m.mu.Unlock()
 }
 
 // Discovered lists unpaired nodes seen in the last few minutes.

@@ -17,8 +17,6 @@ import (
 	"maps"
 	"net"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -74,14 +72,15 @@ type Mesh struct {
 	// DeviceSession trades the token of a phone for a session cookie.
 	DeviceSession http.HandlerFunc
 
-	mu        sync.Mutex
-	pairCode  string
-	pairExp   time.Time
-	pairFails int
-	wake      map[string]chan struct{}
-	stop      map[string]context.CancelFunc
-	found     map[string]Found
-	streams   map[chan struct{}]struct{}
+	mu         sync.Mutex
+	pairCode   string
+	pairExp    time.Time
+	pairFails  int
+	wake       map[string]chan struct{}
+	stop       map[string]context.CancelFunc
+	found      map[string]Found
+	streams    map[chan struct{}]struct{}
+	transports map[string]peerTransport
 }
 
 // Found is a node seen on the network that is not paired yet.
@@ -93,7 +92,7 @@ type Found struct {
 }
 
 func New(db *sql.DB, log *oplog.Log, id Identity, name string, port int) *Mesh {
-	return &Mesh{db: db, log: log, id: id, name: name, port: port, wake: map[string]chan struct{}{}, stop: map[string]context.CancelFunc{}, found: map[string]Found{}, streams: map[chan struct{}]struct{}{}}
+	return &Mesh{db: db, log: log, id: id, name: name, port: port, wake: map[string]chan struct{}{}, stop: map[string]context.CancelFunc{}, found: map[string]Found{}, streams: map[chan struct{}]struct{}{}, transports: map[string]peerTransport{}}
 }
 
 // Changed is called after every local write: peers syncing with this node
@@ -229,9 +228,10 @@ func (m *Mesh) Serve(ctx context.Context) error {
 		}
 	}))
 	// proxy runs an API call of a peer's client here, for threads this node owns.
-	mux.HandleFunc("/peer/v2/proxy/", m.members(func(w http.ResponseWriter, r *http.Request, node string) {
+	mux.HandleFunc(proxyPrefix+"/", m.members(func(w http.ResponseWriter, r *http.Request, node string) {
 		r2 := r.Clone(auth.AsPeer(r.Context(), node))
-		r2.URL.Path = strings.TrimPrefix(r.URL.Path, "/peer/v2/proxy")
+		r2.URL.Path = strings.TrimPrefix(r.URL.Path, proxyPrefix)
+		r2.URL.RawPath = strings.TrimPrefix(r.URL.RawPath, proxyPrefix)
 		r2.RequestURI = ""
 		m.API.ServeHTTP(w, r2)
 	}))
@@ -388,9 +388,14 @@ func (m *Mesh) acceptPair(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Mesh) addPeer(ctx context.Context, node, name, key, address string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	_, err := m.db.ExecContext(ctx, `INSERT INTO peers(node_id, name, public_key, address, paired_at) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(node_id) DO UPDATE SET name = excluded.name, public_key = excluded.public_key, address = excluded.address, revoked_at = NULL, disabled_at = NULL, protocol = 0, last_error = ''`,
 		node, name, key, address, time.Now().UTC().Format(time.RFC3339Nano))
+	if err == nil {
+		m.invalidateTransport(node)
+	}
 	return err
 }
 
@@ -400,14 +405,21 @@ func (m *Mesh) Pair(ctx context.Context, address, code string) (Peer, error) {
 		address = net.JoinHostPort(address, fmt.Sprint(DefaultPort))
 	}
 	var theirKey string
-	hello := m.client("", &theirKey)
-	resp, err := hello.Get("https://" + address + "/peer/v2/hello")
-	if err != nil {
+	hello := m.probeClient("", &theirKey)
+	defer hello.CloseIdleConnections()
+	var info json.RawMessage
+	if err := getJSON(ctx, hello, "https://"+address+"/peer/v2/hello", &info); err != nil {
 		return Peer{}, fmt.Errorf("no se pudo conectar con %s: %w", address, err)
 	}
-	resp.Body.Close()
 	body, _ := json.Marshal(pairRequest{NodeID: m.log.Node(), Name: m.name, Address: fmt.Sprintf(":%d", m.port), Proof: proof(code, m.id.PublicKey(), theirKey)})
-	resp, err = m.client(theirKey, nil).Post("https://"+address+"/peer/v2/pair", "application/json", strings.NewReader(string(body)))
+	client := m.probeClient(theirKey, nil)
+	defer client.CloseIdleConnections()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+address+"/peer/v2/pair", strings.NewReader(string(body)))
+	if err != nil {
+		return Peer{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
 	if err != nil {
 		return Peer{}, err
 	}
@@ -432,14 +444,20 @@ func (m *Mesh) Pair(ctx context.Context, address, code string) (Peer, error) {
 
 // Revoke stops trusting a peer and forgets it. Pairing again adds it back.
 func (m *Mesh) Revoke(ctx context.Context, node string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	_, err := m.db.ExecContext(ctx, `DELETE FROM peers WHERE node_id = ?`, node)
-	m.halt(node)
+	if err == nil {
+		m.halt(node)
+	}
 	return err
 }
 
 // SetEnabled pauses or resumes the sync with a paired node, keeping the
 // pairing. A paused node is neither synced with nor accepted.
 func (m *Mesh) SetEnabled(ctx context.Context, node string, enabled bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var at any
 	if !enabled {
 		at = time.Now().UTC().Format(time.RFC3339Nano)
@@ -459,9 +477,9 @@ func (m *Mesh) SetEnabled(ctx context.Context, node string, enabled bool) error 
 	return nil
 }
 
+// halt stops following a peer. The caller holds m.mu.
 func (m *Mesh) halt(node string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.invalidateTransport(node)
 	if cancel, ok := m.stop[node]; ok {
 		cancel()
 		delete(m.stop, node)
@@ -507,15 +525,6 @@ func (m *Mesh) pairDevice(w http.ResponseWriter, r *http.Request) {
 }
 
 // --- client side ------------------------------------------------------------
-
-func (m *Mesh) client(want string, got *string) *http.Client {
-	return &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{TLSClientConfig: m.id.clientTLS(want, got), ResponseHeaderTimeout: 15 * time.Second}}
-}
-
-func (m *Mesh) peer(ctx context.Context, node string) (address, key string, err error) {
-	err = m.db.QueryRowContext(ctx, `SELECT address, public_key FROM peers WHERE node_id = ? AND revoked_at IS NULL AND disabled_at IS NULL`, node).Scan(&address, &key)
-	return address, key, err
-}
 
 // Run keeps every paired node in sync until ctx ends.
 func (m *Mesh) Run(ctx context.Context) {
@@ -563,14 +572,17 @@ func (m *Mesh) Start(ctx context.Context, node string) {
 // each change.
 func (m *Mesh) listen(ctx context.Context, node string, wake chan struct{}) {
 	for ctx.Err() == nil {
-		address, key, err := m.peer(ctx, node)
+		peer, err := m.peer(ctx, node)
 		if err != nil {
 			return
 		}
-		if address != "" {
-			c := m.client(key, nil)
+		if peer.address != "" {
+			c := peer.client()
 			c.Timeout = 0
-			req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+address+"/peer/v2/stream", nil)
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+peer.address+"/peer/v2/stream", nil)
+			if err != nil {
+				return
+			}
 			if resp, err := c.Do(req); err == nil {
 				buf := make([]byte, 512)
 				for {
@@ -598,13 +610,13 @@ func (m *Mesh) listen(ctx context.Context, node string, wake chan struct{}) {
 // sync exchanges what each side is missing: it pulls the peer's new ops and
 // pushes its own, so one reachable direction is enough.
 func (m *Mesh) sync(ctx context.Context, node string) error {
-	address, key, err := m.peer(ctx, node)
-	if err != nil || address == "" {
+	peer, err := m.peer(ctx, node)
+	if err != nil || peer.address == "" {
 		return err
 	}
-	c := m.client(key, nil)
-	base := "https://" + address + "/peer/v2"
-	compatible, err := m.checkProtocol(ctx, c, base, node, address, key)
+	c := peer.client()
+	base := "https://" + peer.address + "/peer/v2"
+	compatible, err := m.checkProtocol(ctx, c, base, node, peer.address, peer.key)
 	if err != nil || !compatible {
 		return err
 	}
@@ -646,7 +658,10 @@ func (m *Mesh) sync(ctx context.Context, node string) error {
 }
 
 func getJSON(ctx context.Context, c *http.Client, url string, out any) error {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
 	return do(c, req, out)
 }
 
@@ -655,7 +670,10 @@ func postJSON(ctx context.Context, c *http.Client, url string, in, out any) erro
 	if err != nil {
 		return err
 	}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(string(body)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
 	req.Header.Set("Content-Type", "application/json")
 	return do(c, req, out)
 }
@@ -670,44 +688,11 @@ func do(c *http.Client, req *http.Request, out any) error {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return fmt.Errorf("%s: %d %s", req.URL.Path, resp.StatusCode, strings.TrimSpace(string(msg)))
 	}
-	if out == nil {
-		return nil
+	if out != nil {
+		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+			return err
+		}
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
-}
-
-// Forward sends an API call to the node that owns it and copies the answer,
-// streams included. It reports false when that node cannot be reached.
-func (m *Mesh) Forward(w http.ResponseWriter, r *http.Request, node string) bool {
-	address, key, err := m.peer(r.Context(), node)
-	if err != nil || address == "" {
-		return false
-	}
-	target := &url.URL{Scheme: "https", Host: address}
-	failed := false
-	proxy := &httputil.ReverseProxy{
-		Rewrite: func(pr *httputil.ProxyRequest) {
-			pr.SetURL(target)
-			pr.Out.URL.Path = "/peer/v2/proxy" + r.URL.Path
-			pr.Out.Header.Del("Cookie")
-			pr.Out.Header.Del("Authorization")
-		},
-		// The TLS dial is ours: for WebSocket upgrades the transport would
-		// offer only http/1.1, and the peer would answer with the device
-		// certificate instead of the node's.
-		Transport: &http.Transport{
-			DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				d := &tls.Dialer{Config: m.id.clientTLS(key, nil)}
-				return d.DialContext(ctx, network, addr)
-			},
-			ResponseHeaderTimeout: 15 * time.Second,
-		},
-		FlushInterval: -1,
-		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
-			failed = true
-			log.Printf("mesh: forward to %s: %v", node, err)
-		},
-	}
-	proxy.ServeHTTP(w, r)
-	return !failed
+	_, err = io.Copy(io.Discard, resp.Body)
+	return err
 }
