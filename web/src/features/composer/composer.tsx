@@ -141,7 +141,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   const pickerProviders: ModelProvider[] = availableProviders.map((p) => ({
     id: p.id, name: p.name, disabled: t.running && p.id !== t.provider,
   }));
-  const send = useSendMessage<{ message: string; fileIds: string[]; quoteIds: string[] }>(t.id, {
+  const send = useSendMessage<{ message: string; fileIds: string[]; quoteIds: string[]; steer?: boolean }>(t.id, {
     onSuccess: (_, { quoteIds }) => {
       setText("");
       setTokens({});
@@ -202,18 +202,18 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
     setTokens({});
     attach.clear();
   };
-  const sendDraft = (draft: string) => {
+  const sendDraft = (draft: string, steer = false) => {
     if (asking) { answerDraft(draft); return; }
     const message = payload(draft);
     const fileIds = files.flatMap((file) => file.done ? [file.done.id] : []);
-    if (readyToSend && (message || fileIds.length)) send.mutate({ message, fileIds, quoteIds: quotes.map(({ id }) => id) });
+    if (readyToSend && (message || fileIds.length)) send.mutate({ message, fileIds, quoteIds: quotes.map(({ id }) => id), steer });
   };
   const latestSendDraft = useRef(sendDraft);
   useLayoutEffect(() => { latestSendDraft.current = sendDraft; });
-  const submit = () => {
+  const submit = (steer = false) => {
     if (dictation.active) { dictation.finishAndSubmit((draft) => latestSendDraft.current(draft)); return; }
     if (asking) { answerDraft(text); return; }
-    if (canSend) sendDraft(text);
+    if (canSend) sendDraft(text, steer);
   };
   if (!t.local) return null;
   const busy = t.running;
@@ -271,7 +271,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
               if (suggest.onKeyDown(e) || deleteToken(e)) return;
               if (e.key === "Enter" && !e.shiftKey && window.matchMedia("(min-width: 640px)").matches) {
                 e.preventDefault();
-                if (!e.repeat) submit();
+                if (!e.repeat) submit(e.ctrlKey || e.metaKey);
               }
             }}
             className={showingDictation ? "sr-only" : `${composerArea} ${ranges.length ? "text-transparent caret-slate-900 dark:caret-white" : ""}`} />
@@ -304,7 +304,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
               <Stop weight="fill" className="size-3.5" />
             </button>
           ) : (
-            <button type="submit" disabled={asking ? (!text.trim() && !files.some((file) => file.done) && !dictation.active) || reply.isPending || uploading || (dictating && !dictation.active) || dictation.phase === "finishing" : !canSend} title={asking ? "Responder (Enter)" : busy ? "Encolar (Enter)" : "Enviar (Enter)"} aria-label={asking ? "Responder" : "Enviar"}
+            <button type="submit" disabled={asking ? (!text.trim() && !files.some((file) => file.done) && !dictation.active) || reply.isPending || uploading || (dictating && !dictation.active) || dictation.phase === "finishing" : !canSend} title={asking ? "Responder (Enter)" : busy ? "Encolar (Enter) · Mandar ya (Ctrl+Enter)" : "Enviar (Enter)"} aria-label={asking ? "Responder" : "Enviar"}
               className={iconButton}>
               {send.isPending || reply.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : busy && !asking ? <ListBullets weight="regular" className="block size-4" /> : <ArrowUp weight="regular" className="block size-4" />}
             </button>

@@ -45,8 +45,8 @@ export const useRemoveThreadWorktree = (o?: MOpts<Of<typeof api.removeThreadWork
   useCall((id: string) => api.removeThreadWorktree(id), o);
 export const useQueueAction = (thread: string, o?: MOpts<Of<typeof api.queue>, { run: string; action: "edit" | "cancel" | "steer"; text?: string }>) =>
   useCall(({ run, action, text }: { run: string; action: "edit" | "cancel" | "steer"; text?: string }) => api.queue(thread, run, action, text), o);
-export const useSendMessage = <V extends { message: string; fileIds?: string[] }>(thread: string, o?: MOpts<void, V>) =>
-  useCall((v: V) => api.send(thread, v.message, v.fileIds), o);
+export const useSendMessage = <V extends { message: string; fileIds?: string[]; steer?: boolean }>(thread: string, o?: MOpts<void, V>) =>
+  useCall((v: V) => api.send(thread, v.message, v.fileIds, v.steer), o);
 export const useSendText = (thread: string, text: string, o?: MOpts<void, void>) => useCall(() => api.send(thread, text), o);
 // useAnswerQuestion answers a question of the harness, or, for Dory's own
 // ask_user, sends the answers as a message.

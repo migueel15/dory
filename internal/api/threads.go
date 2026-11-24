@@ -114,7 +114,11 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 			}
 			files = append(files, a)
 		}
-		if err := s.Runtime.SendFrom(r.Context(), t.ID, body.SenderThreadID, body.Text, files...); err != nil {
+		send := func() error { return s.Runtime.SendFrom(r.Context(), t.ID, body.SenderThreadID, body.Text, files...) }
+		if body.Steer && body.SenderThreadID == "" {
+			send = func() error { return s.Runtime.SendSteer(r.Context(), t.ID, body.Text, files...) }
+		}
+		if err := send(); err != nil {
 			writeErr(w, r, err)
 			return
 		}

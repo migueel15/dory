@@ -17,7 +17,7 @@ export const threadsApi = {
   projectWorktrees: (node: string, project: string) => get<{ path: string; branch: string; threads: number; working: number }[]>(`/nodes/${node || "local"}/projects/${project}/worktrees`),
   projectBranches: (node: string, project: string) => get<{ current: string; branches: string[] }>(`/nodes/${node || "local"}/projects/${project}/branches`),
   createThread: ({ node, ...body }: NewThread) => post<CreateThreadResponse>(`/nodes/${node || "local"}/threads`, body),
-  send: (id: string, text: string, files: string[] = []) => post<void>(`/threads/${id}/messages`, { text, files }),
+  send: (id: string, text: string, files: string[] = [], steer = false) => post<void>(`/threads/${id}/messages`, { text, files, steer }),
   upload: (id: string, file: File) => {
     const form = new FormData();
     form.append("file", file);
