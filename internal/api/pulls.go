@@ -3,15 +3,16 @@ package api
 import (
 	"context"
 	"fmt"
-	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/migueel15/dory/internal/app"
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/github"
-	"github.com/migueel15/dory/internal/runtime"
+	"github.com/migueel15/dory/internal/mesh/peerapi"
 )
 
 // mountPulls serves the review aids of a pull request: files marked as
@@ -137,14 +138,6 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 				writeErr(w, r, apperr.New(apperr.NoThread, "the pull request has no review thread yet: send launch"))
 				return
 			}
-			project, path := s.repoLocation(ctx, repo)
-			created, err := s.Runtime.Create(ctx, runtime.NewThread{ProjectID: project, Provider: body.Launch.Provider, Model: body.Launch.Model,
-				Effort: body.Launch.Effort, RuntimeMode: body.Launch.RuntimeMode, Title: pullTitle(repo, n), RepoPath: path})
-			if err != nil {
-				writeErr(w, r, err)
-				return
-			}
-			t = &created
 			first = fmt.Sprintf("Revisas la pull request #%d de %s. Léela con `gh pr view %d --repo %s` y `gh pr diff %d --repo %s`. No modifiques nada salvo que te lo pida. Responde a mis preguntas sobre ella.\n\n", n, repo, n, repo, n, repo)
 		}
 		var b strings.Builder
@@ -174,7 +167,19 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 			}
 			text = autoMessage(kind, attrs, context, body.Question)
 		}
-		if strings.TrimSpace(text) != "" {
+		if t == nil {
+			project, repository := s.reviewRepository(ctx, repo)
+			worktree := false
+			created, err := s.Threads.Create(ctx, app.CreateThread{CreateThreadRequest: peerapi.CreateThreadRequest{
+				ProjectID: project, RepositoryID: repository, Provider: body.Launch.Provider, Model: body.Launch.Model,
+				Effort: body.Launch.Effort, RuntimeMode: body.Launch.RuntimeMode, Title: pullTitle(repo, n), Text: text, Worktree: &worktree,
+			}})
+			if err != nil {
+				writeErr(w, r, err)
+				return
+			}
+			t = &created
+		} else if strings.TrimSpace(text) != "" {
 			if err = s.Runtime.Send(ctx, t.ID, text); err != nil {
 				writeErr(w, r, err)
 				return
@@ -197,15 +202,13 @@ func (s *Server) pullThread(ctx context.Context, repo string, n int) (*data.Thre
 	return &threads[0], nil
 }
 
-// repoLocation returns the project of a GitHub repository and where this
-// node keeps it.
-func (s *Server) repoLocation(ctx context.Context, repo string) (*string, string) {
+// reviewRepository matches a GitHub repository with its project and id.
+func (s *Server) reviewRepository(ctx context.Context, repo string) (*string, string) {
 	repos, _ := s.Store.Repositories().List(ctx, data.Filter{Limit: 1000})
 	for _, r := range repos {
 		if name, ok := github.ParseRemote(r.RemoteURL); ok && strings.EqualFold(name, repo) {
-			path, _ := s.Store.RepositoryPath(ctx, r.ID)
 			project := r.ProjectID
-			return &project, path
+			return &project, r.ID
 		}
 	}
 	return nil, ""

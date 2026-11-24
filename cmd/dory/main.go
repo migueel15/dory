@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/api"
+	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/browser"
 	"github.com/migueel15/dory/internal/cmdexec"
@@ -39,6 +40,7 @@ import (
 	"github.com/migueel15/dory/internal/skills"
 	"github.com/migueel15/dory/internal/update"
 	"github.com/migueel15/dory/internal/version"
+	"github.com/migueel15/dory/internal/workspace"
 	"github.com/migueel15/dory/web"
 )
 
@@ -175,14 +177,18 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	srv.Devices = devices.NewManager()
 	srv.Skills = reconciler
 	srv.Settings = api.NewSettingsStore(state, api.Settings{ArchiveThreadsOnFinish: cfg.Tasks.ArchiveThreadsOnFinish, RemoveWorktreeOnArchive: cfg.Threads.RemoveWorktreeOnArchive, AgentsUseDevices: true, SourceControl: api.SourceControlSettings{AutoPull: true}})
+	srv.Remote = net
+	srv.PeerClient = net.Client()
+	srv.Threads = &app.Threads{
+		Store: store, Runtime: rt, Workspace: workspace.Git{}, Settings: srv.Settings, Peers: srv.PeerClient,
+		Namer: app.ModelBranchNamer{Runtime: rt}, Node: log_.Node(), DataDir: cfg.DataDir,
+	}
 	go gh.Watch(ctx, func() {
 		events.Changed("github", "")
 		notices.Github()
 		srv.FinishTasks(ctx)
 	})
 	srv.StartWorktreeMaintenance(ctx)
-	srv.Remote = net
-	srv.PeerClient = net.Client()
 	// What this node owes other nodes waits here until they are connected.
 	out := outbox.New(store.LocalDB(), srv.PeerClient)
 	rt.Outbox = out

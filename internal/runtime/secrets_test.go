@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"github.com/migueel15/dory/internal/data"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,7 +26,7 @@ func pendingSecret(t *testing.T, m *Manager, thread string) Request {
 func TestRequestSecretSavesFilesByField(t *testing.T) {
 	m, _ := manager(t, 0)
 	ctx := context.Background()
-	th, err := m.Create(ctx, NewThread{Provider: "replay", Title: "Secreto"})
+	th, err := registerTestThread(ctx, m, data.Thread{Provider: "replay", Title: "Secreto"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +90,7 @@ func TestRequestSecretSavesFilesByField(t *testing.T) {
 func TestRequestSecretDeclineAndTimeoutWriteNothing(t *testing.T) {
 	m, _ := manager(t, 0)
 	ctx := context.Background()
-	th, _ := m.Create(ctx, NewThread{Provider: "replay", Title: "Secreto"})
+	th, _ := registerTestThread(ctx, m, data.Thread{Provider: "replay", Title: "Secreto"})
 	p := SecretPrompt{Label: "sudo", Reason: "Instalar"}
 	got := make(chan SecretResult, 1)
 	go func() { r, _ := m.RequestSecret(ctx, th.ID, p, time.Minute); got <- r }()

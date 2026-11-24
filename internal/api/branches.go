@@ -6,36 +6,18 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/migueel15/dory/internal/apperr"
-	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/workspace"
 )
 
-// errNotCloned says the repository of a project has no checkout on this node.
-var errNotCloned = apperr.New(apperr.RepositoryNotClone, "the repository is not cloned on this node")
-
-// projectCheckout finds the repository a thread of the project works in and
-// where this node keeps it. With several repositories, the first one is used.
 func (s *Server) projectCheckout(ctx context.Context, projectID string) (repositoryID, path string, err error) {
-	repos, err := s.Store.Repositories().List(ctx, data.Filter{Fields: map[string]any{"project_id": projectID}})
-	if err != nil || len(repos) == 0 {
-		return "", "", err
-	}
-	path, err = s.Store.RepositoryPath(ctx, repos[0].ID)
-	if errors.Is(err, data.ErrNotFound) {
-		return repos[0].ID, "", errNotCloned
-	}
-	return repos[0].ID, path, err
+	return app.RepositoryCheckout(ctx, s.Store, &projectID, "")
 }
 
 // mountBranches lists the local branches of a project's checkout on any node.
 func (s *Server) mountBranches(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/nodes/{node}/projects/{id}/branches", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		_, path, err := s.projectCheckout(r.Context(), r.PathValue("id"))
-		if errors.Is(err, errNotCloned) {
-			writeErr(w, r, err)
-			return
-		}
 		if err != nil {
 			writeErr(w, r, err)
 			return
@@ -55,7 +37,7 @@ func (s *Server) mountNewThreadCommands(mux *http.ServeMux) {
 		var dir string
 		if id := r.URL.Query().Get("project"); id != "" {
 			_, path, err := s.projectCheckout(r.Context(), id)
-			if err != nil && !errors.Is(err, errNotCloned) {
+			if err != nil && !errors.Is(err, app.ErrRepositoryNotCloned) {
 				writeErr(w, r, err)
 				return
 			}
@@ -74,10 +56,6 @@ func (s *Server) mountNewThreadCommands(mux *http.ServeMux) {
 func (s *Server) mountWorktrees(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/nodes/{node}/projects/{id}/worktrees", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		_, path, err := s.projectCheckout(r.Context(), r.PathValue("id"))
-		if errors.Is(err, errNotCloned) {
-			writeErr(w, r, err)
-			return
-		}
 		if err != nil {
 			writeErr(w, r, err)
 			return
@@ -93,11 +71,4 @@ func (s *Server) mountWorktrees(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, out)
 	}))
-}
-
-// ProjectDir is the local checkout of a project's first repository, or "" for
-// a project without repositories.
-func (s *Server) ProjectDir(ctx context.Context, projectID string) (string, error) {
-	_, path, err := s.projectCheckout(ctx, projectID)
-	return path, err
 }

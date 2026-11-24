@@ -367,3 +367,20 @@ func dictationFailure(err error) error {
 	}
 	return upstream(err)
 }
+
+func shortTitle(text string) string {
+	r := []rune(text)
+	for i, c := range r {
+		if c == '\n' {
+			r = r[:i]
+			break
+		}
+	}
+	if len(r) > 60 {
+		r = append(r[:59], '…')
+	}
+	if len(r) == 0 {
+		return "Nuevo hilo"
+	}
+	return string(r)
+}

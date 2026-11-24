@@ -3,15 +3,13 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log"
 	"net/http"
 
+	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/github"
-	"github.com/migueel15/dory/internal/runtime"
-	"github.com/migueel15/dory/internal/workspace"
 )
 
 var stages = map[string]bool{"inbox": true, "ready": true, "done": true, "cancelled": true}
@@ -115,7 +113,7 @@ func (s *Server) finishTask(ctx context.Context, taskID string) {
 		if t.NodeID != s.Node.ID {
 			continue
 		}
-		if err := s.archiveThread(ctx, t); err != nil {
+		if err := s.Threads.Archive(ctx, t.ID, app.ArchiveOptions{}); err != nil {
 			log.Printf("api: archive thread %s: %v", t.ID, err)
 		}
 	}
@@ -151,25 +149,6 @@ func (s *Server) FinishTasks(ctx context.Context) {
 			s.finishTask(ctx, c.ID)
 		}
 	}
-}
-
-// archiveThread stops a thread of this node, deletes its worktree when the
-// node is set to and it is clean, and archives it. A worktree with
-// uncommitted changes is kept; the thread shows it so the user can delete it.
-func (s *Server) archiveThread(ctx context.Context, t data.Thread) error {
-	if t.NodeID == s.Node.ID {
-		_ = s.Runtime.Interrupt(ctx, t.ID)
-		s.Runtime.CloseLive(t.ID)
-		runtime.StopThreadServices(t.ID)
-		s.Runtime.DropSnapshots(ctx, t.ID)
-		if s.Settings.Get().RemoveWorktreeOnArchive {
-			err := s.Runtime.Remove(ctx, t.ID, false)
-			if err != nil && !errors.Is(err, workspace.ErrDirtyWorktree) && !errors.Is(err, runtime.ErrNotFound) {
-				return err
-			}
-		}
-	}
-	return s.Store.Threads().Archive(ctx, t.ID)
 }
 
 // mountWorktreeState lets the interface warn about the worktree an archived

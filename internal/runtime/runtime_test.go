@@ -145,7 +145,7 @@ func TestManagerRunsAndQueues(t *testing.T) {
 	m, store := manager(t, 2*time.Millisecond)
 	updates, stop := m.Subscribe("")
 	defer stop()
-	th, err := m.Create(ctx, NewThread{Provider: "replay", Title: "Prueba"})
+	th, err := registerTestThread(ctx, m, data.Thread{Provider: "replay", Title: "Prueba"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestManagerRunsAndQueues(t *testing.T) {
 func TestManagerInterrupt(t *testing.T) {
 	ctx := context.Background()
 	m, store := manager(t, 50*time.Millisecond)
-	th, _ := m.Create(ctx, NewThread{Provider: "replay"})
+	th, _ := registerTestThread(ctx, m, data.Thread{Provider: "replay"})
 	m.Send(ctx, th.ID, "larga")
 	time.Sleep(20 * time.Millisecond)
 	if err := m.Interrupt(ctx, th.ID); err != nil {
@@ -216,7 +216,7 @@ func TestManagerInterrupt(t *testing.T) {
 func TestRecoverMarksDeadTurns(t *testing.T) {
 	ctx := context.Background()
 	m, store := manager(t, 0)
-	th, _ := m.Create(ctx, NewThread{Provider: "replay"})
+	th, _ := registerTestThread(ctx, m, data.Thread{Provider: "replay"})
 	if err := store.SetThreadState(ctx, th.ID, "working", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -237,11 +237,16 @@ func TestWorktreePerThread(t *testing.T) {
 			t.Fatalf("%s %v", out, err)
 		}
 	}
-	th, err := m.Create(ctx, NewThread{Provider: "replay", Worktree: true, RepoPath: repo, Branch: "feat/1-prueba", BaseBranch: "main"})
+	th := data.Thread{ID: data.NewThreadID(), NodeID: m.node, Provider: "replay", Branch: "feat/1-prueba"}
+	dir := filepath.Join(m.dataDir, "worktrees", th.ID)
+	if err := workspace.AddWorktree(ctx, repo, dir, th.Branch, "main"); err != nil {
+		t.Fatal(err)
+	}
+	th, err := m.Register(ctx, th, dir, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir, _ := m.Dir(ctx, th.ID)
+	dir, _ = m.Dir(ctx, th.ID)
 	os.WriteFile(filepath.Join(dir, "nuevo.txt"), []byte("hola\n"), 0o644)
 	workspace.Run(ctx, dir, "add", "nuevo.txt")
 	diff, err := m.Diff(ctx, th.ID)
@@ -256,7 +261,7 @@ func TestWorktreePerThread(t *testing.T) {
 func TestAskWaitsForTheAnswer(t *testing.T) {
 	m, _ := manager(t, 0)
 	ctx := context.Background()
-	th, err := m.Create(ctx, NewThread{Provider: "replay", Title: "Pregunta"})
+	th, err := registerTestThread(ctx, m, data.Thread{Provider: "replay", Title: "Pregunta"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,4 +327,9 @@ func testNodeState(t *testing.T) *nodestate.Store {
 	}
 	t.Cleanup(func() { db.Close() })
 	return nodestate.New(db)
+}
+
+func registerTestThread(ctx context.Context, m *Manager, thread data.Thread) (data.Thread, error) {
+	thread.ID, thread.NodeID = data.NewThreadID(), m.node
+	return m.Register(ctx, thread, "", "")
 }

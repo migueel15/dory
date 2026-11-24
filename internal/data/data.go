@@ -257,6 +257,9 @@ func mustJSON(v any) []byte {
 	return b
 }
 
+// NewThreadID reserves an identifier before its workspace is prepared.
+func NewThreadID() string { return newID() }
+
 func newID() string {
 	b := make([]byte, 16)
 	rand.Read(b)

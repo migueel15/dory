@@ -68,7 +68,7 @@ func (m *Manager) ResolveSettings(ctx context.Context, t data.Thread, s *ThreadS
 		return ErrProvider.Msgf("%s; use list_models", provider)
 	}
 	if !status.Enabled {
-		return data.ErrInvalid.Msgf("%s is turned off on this node", provider)
+		return ErrProvider.Msgf("%s is turned off on this node", provider)
 	}
 	model := t.Model
 	if s.Model != nil {

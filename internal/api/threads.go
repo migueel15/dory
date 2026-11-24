@@ -2,16 +2,13 @@ package api
 
 import (
 	"context"
-	"crypto/rand"
-	"errors"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
+	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/data"
@@ -19,7 +16,6 @@ import (
 	"github.com/migueel15/dory/internal/mesh"
 	"github.com/migueel15/dory/internal/mesh/peerapi"
 	"github.com/migueel15/dory/internal/runtime"
-	"github.com/migueel15/dory/internal/workspace"
 )
 
 // ThreadView is a thread with its conversation, as the chat shows it.
@@ -75,9 +71,9 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, threads)
 	})
-	mux.HandleFunc("POST /api/threads", s.createThread)
+	mux.HandleFunc("POST /api/threads", s.postThread)
 	// A thread runs where it is created: the mesh forwards it to the chosen node.
-	mux.HandleFunc("POST /api/nodes/{node}/threads", s.onNode(s.createThread))
+	mux.HandleFunc("POST /api/nodes/{node}/threads", s.postThread)
 	mux.HandleFunc("GET /api/threads/{id}", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		msgs, err := s.Runtime.Messages(r.Context(), t.ID)
 		if err != nil {
@@ -328,15 +324,16 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 	// Organisation of a thread replicates, so any node can change it.
 	mux.HandleFunc("POST /api/threads/{id}/actions", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Action string `json:"action"`
-			Title  string `json:"title"`
-			Until  string `json:"until"`
-			TaskID string `json:"task_id"`
+			Action       string `json:"action"`
+			Title        string `json:"title"`
+			Until        string `json:"until"`
+			TaskID       string `json:"task_id"`
+			KeepWorktree bool   `json:"keep_worktree"`
 		}
 		if !decode(w, r, &body) {
 			return
 		}
-		t, err := s.ThreadAction(r.Context(), r.PathValue("id"), body.Action, body.Title, body.Until, body.TaskID)
+		t, err := s.ThreadAction(r.Context(), r.PathValue("id"), body.Action, body.Title, body.Until, body.TaskID, app.ArchiveOptions{KeepWorktree: body.KeepWorktree})
 		if err != nil {
 			writeErr(w, r, err)
 			return
@@ -365,122 +362,20 @@ func (s *Server) owned(h func(http.ResponseWriter, *http.Request, data.Thread)) 
 	}
 }
 
-func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
+func (s *Server) postThread(w http.ResponseWriter, r *http.Request) {
 	var body peerapi.CreateThreadRequest
 	if !decode(w, r, &body) {
 		return
 	}
-	ctx := r.Context()
-	var path string
-	if body.RepositoryID == "" && body.ProjectID != nil {
-		var err error
-		body.RepositoryID, path, err = s.projectCheckout(ctx, *body.ProjectID)
-		if err != nil {
-			writeErr(w, r, err)
-			return
-		}
-	} else if body.RepositoryID != "" {
-		var err error
-		if path, err = s.Store.RepositoryPath(ctx, body.RepositoryID); errors.Is(err, data.ErrNotFound) {
-			writeErr(w, r, apperr.New(apperr.RepositoryNotClone, "the repository is not cloned on this node"))
-			return
-		} else if err != nil {
-			writeErr(w, r, err)
-			return
-		}
-	}
-	if body.Title == "" {
-		body.Title = shortTitle(body.Text)
-	}
-	if body.WorktreePath != "" {
-		// Only a worktree git knows for the project's repository is accepted.
-		var found *workspace.Worktree
-		if path != "" {
-			for _, wt := range workspace.Worktrees(ctx, path) {
-				if wt.Path == body.WorktreePath {
-					found = &wt
-					break
-				}
-			}
-		}
-		if found == nil {
-			writeErr(w, r, apperr.New(apperr.UnknownWorktree, "the worktree does not belong to the project's repository"))
-			return
-		}
-		body.Worktree, body.Branch = false, found.Branch
-		body.BaseBranch = workspace.DefaultBranch(ctx, path)
-		if u, err := s.Runtime.WorktreeUse(ctx, found.Path, ""); err == nil && u.BaseBranch != "" {
-			body.BaseBranch = u.BaseBranch
-		}
-	} else if !body.Worktree && body.Branch != "" && path != "" {
-		// The current checkout runs on the branch the user picked.
-		if err := workspace.SwitchBranch(ctx, path, body.Branch); err != nil {
-			writeErr(w, r, err)
-			return
-		}
-	}
-	defaults := s.Settings.Get().Threads
-	if body.Provider == "" && defaults.DefaultModel.Provider != "" {
-		body.Provider, body.Model, body.Effort = defaults.DefaultModel.Provider, defaults.DefaultModel.Model, defaults.DefaultModel.Effort
-	}
-	if body.WorktreePath == "" && body.Branch == "" && body.BaseBranch == "" && path != "" && defaults.DefaultWorkspace == "worktree" {
-		body.Worktree = true
-	}
-	if body.Worktree && body.Branch == "" {
-		// A new worktree gets its own branch; the agent may rename it later.
-		if name := s.worktreeBranch(ctx, body.Title, body.Text); name != "" && !workspace.BranchExists(ctx, path, name) {
-			body.Branch = name
-		} else {
-			body.Branch = "dory/" + strings.ToLower(rand.Text()[:8])
-		}
-	}
-	nt := runtime.NewThread{ProjectID: body.ProjectID, TaskID: body.TaskID, ParentID: body.ParentID, OriginID: body.OriginID, Provider: body.Provider, Model: body.Model,
-		Effort: body.Effort, RuntimeMode: body.RuntimeMode, Title: body.Title, Worktree: body.Worktree, RepoPath: path, Branch: body.Branch, BaseBranch: body.BaseBranch, ExistingDir: body.WorktreePath}
-	t, err := s.Runtime.Create(ctx, nt)
-	if fb := defaults.FallbackModel; err != nil && fb.Provider != "" && fb.Provider != nt.Provider {
-		// The chosen model could not start: retry once with the node's fallback.
-		nt.Provider, nt.Model, nt.Effort = fb.Provider, fb.Model, fb.Effort
-		t, err = s.Runtime.Create(ctx, nt)
-	}
+	t, err := s.Threads.Create(r.Context(), app.CreateThread{Node: r.PathValue("node"), CreateThreadRequest: body})
 	if err != nil {
 		writeErr(w, r, err)
 		return
 	}
-	if body.Branch != "" && s.Settings.Get().SourceControl.AutoPull {
-		// Start the thread on the latest commits of its branch.
-		if dir, derr := s.Runtime.Dir(ctx, t.ID); derr == nil {
-			if perr := workspace.Pull(ctx, dir, body.Branch); perr != nil {
-				log.Printf("api: auto-pull %s: %v", body.Branch, perr)
-			}
-		}
-	}
-	if body.Text != "" {
-		if err = s.Runtime.Send(ctx, t.ID, body.Text); err != nil {
-			writeErr(w, r, err)
-			return
-		}
-	}
-	writeJSON(w, http.StatusOK, peerapi.CreateThreadResponse{ThreadID: t.ID})
+	writeJSON(w, http.StatusOK, peerapi.CreateThreadResponse{ThreadID: t.ID, Thread: &t})
 }
 
-func shortTitle(text string) string {
-	r := []rune(text)
-	for i, c := range r {
-		if c == '\n' {
-			r = r[:i]
-			break
-		}
-	}
-	if len(r) > 60 {
-		r = append(r[:59], '…')
-	}
-	if len(r) == 0 {
-		return "Nuevo hilo"
-	}
-	return string(r)
-}
-
-func (s *Server) ThreadAction(ctx context.Context, id, action, title, until, taskID string) (data.Thread, error) {
+func (s *Server) ThreadAction(ctx context.Context, id, action, title, until, taskID string, archive app.ArchiveOptions) (data.Thread, error) {
 	t, err := s.Store.Threads().Get(ctx, id)
 	if err != nil {
 		return t, err
@@ -530,7 +425,7 @@ func (s *Server) ThreadAction(ctx context.Context, id, action, title, until, tas
 			fields["task_linked_at"] = now
 		}
 	case "archive":
-		return t, s.archiveThread(ctx, t)
+		return t, s.Threads.Archive(ctx, t.ID, archive)
 	default:
 		return t, data.ErrInvalid.Msgf("unknown action %s", action)
 	}
