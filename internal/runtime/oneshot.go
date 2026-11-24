@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -32,7 +31,7 @@ func (m *Manager) TitleModel() TitleModel {
 func (m *Manager) SetTitleModel(t TitleModel) error {
 	if t.Provider != "" {
 		if _, ok := m.provider(t.Provider); !ok {
-			return fmt.Errorf("%w: %s", ErrProvider, t.Provider)
+			return ErrProvider.Msgf("%s", t.Provider)
 		}
 	}
 	raw, _ := json.Marshal(t)
@@ -45,7 +44,7 @@ func (m *Manager) SetTitleModel(t TitleModel) error {
 func (m *Manager) OneShot(ctx context.Context, provider, model, prompt string) (string, error) {
 	p, ok := m.provider(provider)
 	if !ok || !m.Enabled(provider) {
-		return "", fmt.Errorf("%w: %s", ErrProvider, provider)
+		return "", ErrProvider.Msgf("%s", provider)
 	}
 	dir, err := os.MkdirTemp("", "dory-oneshot-")
 	if err != nil {
@@ -68,7 +67,7 @@ func (m *Manager) OneShot(ctx context.Context, provider, model, prompt string) (
 			return "", err
 		}
 	default:
-		return "", fmt.Errorf("%w: %s cannot run turns", ErrProvider, provider)
+		return "", ErrProvider.Msgf("%s cannot run turns", provider)
 	}
 	var answer, failure string
 	for e := range events {

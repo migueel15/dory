@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"io"
 	"net"
 	"net/http"
@@ -19,7 +20,7 @@ import (
 	"github.com/migueel15/dory/internal/cmdexec"
 )
 
-var ErrModelMissing = errors.New("descarga el modelo de dictado antes de usarlo")
+var ErrModelMissing = apperr.New(apperr.ModelMissing, "download the dictation model before using it")
 
 type localModel struct {
 	ID, Name, Revision, SHA string

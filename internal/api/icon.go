@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -40,7 +41,7 @@ func (s *Server) setIcon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.Icon != "" && !iconID.MatchString(body.Icon) {
-		writeError(w, http.StatusBadRequest, "invalid_icon", "icono no válido")
+		writeErr(w, r, apperr.New(apperr.InvalidIcon, "invalid icon"))
 		return
 	}
 	raw, _ := json.Marshal(map[string]string{"icon": body.Icon})
@@ -48,7 +49,7 @@ func (s *Server) setIcon(w http.ResponseWriter, r *http.Request) {
 	err := os.WriteFile(s.iconFile(), raw, 0o600)
 	iconMu.Unlock()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "write_failed", err.Error())
+		writeErr(w, r, err)
 		return
 	}
 	if s.InfoChanged != nil {

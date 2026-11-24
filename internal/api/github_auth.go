@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 
 	"github.com/migueel15/dory/internal/github"
@@ -16,7 +17,7 @@ func (s *Server) mountGitHubAuth(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("DELETE /api/github/auth", func(w http.ResponseWriter, r *http.Request) {
 		if err := gh.Auth.Logout(r.Context()); err != nil {
-			writeError(w, http.StatusInternalServerError, "internal", err.Error())
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -24,7 +25,7 @@ func (s *Server) mountGitHubAuth(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/github/auth/device", func(w http.ResponseWriter, r *http.Request) {
 		code, err := gh.Auth.StartDevice(r.Context())
 		if err != nil {
-			writeError(w, http.StatusBadGateway, "upstream", "No se pudo contactar con GitHub para iniciar sesión.")
+			writeErr(w, r, apperr.Wrap(apperr.Upstream, err, "could not reach GitHub to start the login").With("reason", "github_login"))
 			return
 		}
 		writeJSON(w, http.StatusOK, code)

@@ -35,13 +35,13 @@ func (m *Manager) configureLocked(ctx context.Context, id string, settings Threa
 	if settings.Provider != nil && *settings.Provider != t.Provider {
 		target := *settings.Provider
 		if _, ok := m.provider(target); !ok {
-			return t, fmt.Errorf("%w: %s", ErrProvider, target)
+			return t, ErrProvider.Msgf("%s", target)
 		}
 		if _, busy := m.running[id]; busy && idle {
 			return t, ErrBusy
 		}
 		if settings.Model == nil || strings.TrimSpace(*settings.Model) == "" {
-			return t, fmt.Errorf("%w: selecciona un modelo para el proveedor de destino", data.ErrInvalid)
+			return t, data.ErrInvalid.Msgf("choose a model for the target provider").With("reason", "model_required")
 		}
 		fields["provider"], fields["effort"] = target, ""
 	}
@@ -53,7 +53,7 @@ func (m *Manager) configureLocked(ctx context.Context, id string, settings Threa
 	}
 	if settings.RuntimeMode != nil {
 		if *settings.RuntimeMode != "full-access" && *settings.RuntimeMode != "approval-required" {
-			return t, fmt.Errorf("%w: runtime_mode must be full-access or approval-required", data.ErrInvalid)
+			return t, data.ErrInvalid.Msgf("runtime_mode must be full-access or approval-required")
 		}
 		fields["runtime_mode"] = *settings.RuntimeMode
 	}

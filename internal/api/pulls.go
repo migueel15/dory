@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"strconv"
 	"strings"
@@ -20,7 +21,7 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 	target := func(w http.ResponseWriter, r *http.Request) (string, int, bool) {
 		n, err := strconv.Atoi(r.PathValue("number"))
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_argument", "invalid number")
+			writeErr(w, r, apperr.New(apperr.Invalid, "invalid number"))
 			return "", 0, false
 		}
 		return r.PathValue("owner") + "/" + r.PathValue("repo"), n, true
@@ -33,7 +34,7 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 		}
 		rows, err := db.QueryContext(r.Context(), `SELECT path, patch_hash, reviewed_at FROM pr_file_reviews WHERE repo = ? AND number = ?`, repo, n)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		defer rows.Close()
@@ -46,7 +47,7 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 		for rows.Next() {
 			var m mark
 			if err = rows.Scan(&m.Path, &m.PatchHash, &m.ReviewedAt); err != nil {
-				writeDataError(w, err)
+				writeErr(w, r, err)
 				return
 			}
 			out = append(out, m)
@@ -69,7 +70,7 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 			ON CONFLICT(repo, number, path) DO UPDATE SET patch_hash = excluded.patch_hash, reviewed_at = excluded.reviewed_at`,
 			repo, n, body.Path, body.PatchHash, time.Now().UTC().Format(time.RFC3339))
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -80,7 +81,7 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 			return
 		}
 		if _, err := db.ExecContext(r.Context(), `DELETE FROM pr_file_reviews WHERE repo = ? AND number = ? AND path = ?`, repo, n, r.URL.Query().Get("path")); err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -92,7 +93,7 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 		}
 		t, err := s.pullThread(r.Context(), repo, n)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		if t == nil {
@@ -127,20 +128,20 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 		ctx := r.Context()
 		t, err := s.pullThread(ctx, repo, n)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		var first string
 		if t == nil {
 			if body.Launch == nil {
-				writeError(w, http.StatusConflict, "no_thread", "the pull request has no review thread yet: send launch")
+				writeErr(w, r, apperr.New(apperr.NoThread, "the pull request has no review thread yet: send launch"))
 				return
 			}
 			project, path := s.repoLocation(ctx, repo)
 			created, err := s.Runtime.Create(ctx, runtime.NewThread{ProjectID: project, Provider: body.Launch.Provider, Model: body.Launch.Model,
 				Effort: body.Launch.Effort, RuntimeMode: body.Launch.RuntimeMode, Title: pullTitle(repo, n), RepoPath: path})
 			if err != nil {
-				writeDataError(w, err)
+				writeErr(w, r, err)
 				return
 			}
 			t = &created
@@ -175,7 +176,7 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 		}
 		if strings.TrimSpace(text) != "" {
 			if err = s.Runtime.Send(ctx, t.ID, text); err != nil {
-				writeDataError(w, err)
+				writeErr(w, r, err)
 				return
 			}
 		}

@@ -4,7 +4,7 @@ import { createDictationMeter, DictationMic, reserveDictation, useDictationInPro
 import { playDictationSound, prepareDictationSound } from "./dictation-sound";
 import { openDictationMicrophone } from "./dictation-microphone";
 import { wav } from "./audio-wav";
-import { ApiError } from "../api/client";
+import { apiError } from "../api/client";
 import { Button, ErrorText, Textarea } from "./ui";
 
 type DictationState = { id: string; status: string; text: string; error?: string };
@@ -24,8 +24,7 @@ const KEEP_GAP = 3; // ... are shortened to 0.3 s
 async function call<T>(method: string, path: string, body?: BodyInit, json = true): Promise<T> {
   const res = await fetch(`/api/dictation${path}`, { method, credentials: "same-origin", body, headers: body && json ? { "Content-Type": "application/json" } : body ? { "Content-Type": "audio/wav" } : undefined });
   if (!res.ok) {
-    const e = await res.json().catch(() => null);
-    throw new ApiError(res.status, e?.error?.message ?? res.statusText);
+    throw await apiError(res);
   }
   return res.json();
 }

@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"errors"
-	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"log"
 	"net/http"
 
@@ -25,7 +25,7 @@ func (s *Server) SaveTask(ctx context.Context, t data.Task) (data.Task, error) {
 		}
 	}
 	if t.Stage != "" && !stages[t.Stage] {
-		return t, fmt.Errorf("%w: stage must be inbox, ready, done or cancelled", data.ErrInvalid)
+		return t, data.ErrInvalid.Msgf("stage must be inbox, ready, done or cancelled")
 	}
 	changed := prev == nil || prev.Stage != t.Stage
 	if t.Stage == "done" && changed {
@@ -54,7 +54,7 @@ func (s *Server) checkDone(ctx context.Context, t data.Task) error {
 	if c.PRNumber == nil || c.PRState == "merged" {
 		return nil
 	}
-	return fmt.Errorf("%w: La tarea tiene una pull request sin mergear (#%d); no se puede marcar como hecha", data.ErrInvalid, *c.PRNumber)
+	return data.ErrInvalid.Msgf("the task has an unmerged pull request (#%d); it cannot be marked done", *c.PRNumber).With("reason", "open_pull_request").With("number", *c.PRNumber)
 }
 
 // finishTask archives the threads of a task that is done or cancelled, when
@@ -136,14 +136,14 @@ func (s *Server) mountWorktreeState(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/nodes/{node}/kept-worktrees", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		kept, err := s.Runtime.KeptWorktrees(r.Context())
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, kept)
 	}))
 	mux.HandleFunc("DELETE /api/threads/{id}/worktree", s.ownedArchived(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		if err := s.Runtime.Remove(r.Context(), t.ID, true); err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -155,11 +155,11 @@ func (s *Server) ownedArchived(h func(http.ResponseWriter, *http.Request, data.T
 	return func(w http.ResponseWriter, r *http.Request) {
 		found, err := s.Store.Threads().List(r.Context(), data.Filter{Fields: map[string]any{"id": r.PathValue("id")}, IncludeArchived: true, Limit: 1})
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		if len(found) == 0 {
-			writeDataError(w, data.ErrNotFound)
+			writeErr(w, r, data.ErrNotFound)
 			return
 		}
 		t := found[0]
@@ -167,7 +167,7 @@ func (s *Server) ownedArchived(h func(http.ResponseWriter, *http.Request, data.T
 			if s.Remote != nil && s.Remote.Forward(w, r, t.NodeID) {
 				return
 			}
-			writeError(w, http.StatusServiceUnavailable, "node_offline", "el nodo que ejecuta este hilo no está conectado")
+			writeErr(w, r, apperr.New(apperr.NodeOffline, "the node that runs this thread is not connected").With("thread", true))
 			return
 		}
 		h(w, r, t)

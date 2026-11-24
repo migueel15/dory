@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"github.com/migueel15/dory/internal/apperr"
 	"context"
 	"errors"
 	"fmt"
@@ -49,12 +50,12 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 			}
 		}
 		if serial != "" {
-			return "", fmt.Errorf("el dispositivo %q no está listo; usa device_list", serial)
+			return "", apperr.Newf(apperr.Unavailable, "device %q is not ready; use device_list", serial)
 		}
 		if len(ready) == 1 {
 			return ready[0], nil
 		}
-		return "", errors.New("indica el serial del dispositivo (device_list)")
+		return "", apperr.New(apperr.Invalid, "pass the device serial (see device_list)")
 	}
 	note := func(ctx context.Context, action, serial, detail string) {
 		// Tool calls already appear as cards in the thread; the log keeps a trace on the node too.
@@ -116,7 +117,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 				}
 				if serial == "" {
 					if time.Now().After(deadline) {
-						return nil, errors.New("el emulador no terminó de arrancar; vuelve a intentarlo")
+						return nil, apperr.New(apperr.Unavailable, "the emulator did not finish booting; try again")
 					}
 					select {
 					case <-ctx.Done():
@@ -147,7 +148,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		}
 		if in.Stop {
 			if !strings.HasPrefix(serial, "emulator-") {
-				return nil, errors.New("los agentes solo pueden apagar emuladores")
+				return nil, apperr.New(apperr.Forbidden, "agents can only power off emulators")
 			}
 			if err := m.Stop(ctx, serial); err != nil {
 				return nil, err
@@ -164,15 +165,15 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 	sdk.AddTool(srv, &sdk.Tool{Name: "device_screenshot", Description: "Capture a device screen (up to 900 px). Use it when device_ui fails; secure screens come out black."},
 		func(ctx context.Context, _ *sdk.CallToolRequest, in deviceRef) (*sdk.CallToolResult, any, error) {
 			if !auth.Allowed(ctx, "write") {
-				return nil, nil, errors.New(`permiso "write" requerido`)
+				return toolError(apperr.New(apperr.Forbidden, "the write scope is required")), nil, nil
 			}
 			serial, err := pick(ctx, in.Serial)
 			if err != nil {
-				return nil, nil, err
+				return toolError(err), nil, nil
 			}
 			png, w, h, err := m.Screenshot(ctx, serial, 900)
 			if err != nil {
-				return nil, nil, err
+				return toolError(err), nil, nil
 			}
 			note(ctx, "device_screenshot", serial, "")
 			return &sdk.CallToolResult{Content: []sdk.Content{
@@ -260,7 +261,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		}
 		query := firstOf(in.Name, in.Package)
 		if query == "" {
-			return nil, errors.New("indica name o package")
+			return nil, apperr.New(apperr.Invalid, "pass name or package")
 		}
 		app, err := m.LaunchByName(ctx, serial, query)
 		if err != nil {
@@ -433,7 +434,7 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 			return nil, err
 		}
 		if in.Action.Name == "state" || in.Action.Name == "" {
-			return nil, errors.New("indica una acción; para leer el estado usa device_state")
+			return nil, apperr.New(apperr.Invalid, "pass an action; to read the state use device_state")
 		}
 		out, err := m.Apply(ctx, serial, in.Action)
 		if err != nil {

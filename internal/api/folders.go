@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -40,7 +41,7 @@ func (s *Server) mountFolders(mux *http.ServeMux) {
 		dir = filepath.Clean(dir)
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+			writeErr(w, r, apperr.Wrap(apperr.Invalid, err, "the folder cannot be read"))
 			return
 		}
 		folders := []Folder{}
@@ -80,7 +81,7 @@ func (s *Server) mountFolders(mux *http.ServeMux) {
 			time.Sleep(250 * time.Millisecond)
 		}
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -126,7 +127,7 @@ func (s *Server) onNode(h http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if s.Remote == nil || !s.Remote.Forward(w, r, node) {
-			writeError(w, http.StatusServiceUnavailable, "node_offline", "el nodo no está conectado")
+			writeErr(w, r, apperr.New(apperr.NodeOffline, "the node is not connected"))
 		}
 	}
 }

@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -42,10 +42,8 @@ func (s *Server) mountUpdate(mux *http.ServeMux) {
 			return
 		}
 		switch err := s.Updater.Start(opts); {
-		case errors.Is(err, update.ErrBusy), errors.Is(err, update.ErrRunning), errors.Is(err, update.ErrDev):
-			writeError(w, http.StatusConflict, "update_refused", err.Error())
 		case err != nil:
-			writeError(w, http.StatusInternalServerError, "internal", err.Error())
+			writeErr(w, r, updateFailure(err))
 		default:
 			writeJSON(w, http.StatusAccepted, s.Updater.Status(r.Context()))
 		}
@@ -141,8 +139,17 @@ func (s *Server) local(w http.ResponseWriter, r *http.Request, method string) {
 	var opts update.Options
 	_ = json.NewDecoder(r.Body).Decode(&opts)
 	if err := s.Updater.Start(opts); err != nil {
-		writeError(w, http.StatusConflict, "update_refused", err.Error())
+		writeErr(w, r, updateFailure(err))
 		return
 	}
 	writeJSON(w, http.StatusAccepted, s.Updater.Status(r.Context()))
+}
+
+// updateFailure keeps the refusals of the update package and turns any other
+// failure into update_refused; its text is written for the user.
+func updateFailure(err error) error {
+	if apperr.As(err) != nil {
+		return err
+	}
+	return apperr.Wrap(apperr.UpdateRefused, err, "the update could not start").With("detail", err.Error())
 }

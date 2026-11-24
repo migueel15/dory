@@ -3,8 +3,8 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"strings"
 	"sync"
@@ -13,7 +13,7 @@ import (
 )
 
 // ErrPlanConflict refuses a save based on an older revision of the plan.
-var ErrPlanConflict = errors.New("the plan changed since it was read; read it again")
+var ErrPlanConflict = apperr.New(apperr.RevisionConflict, "the plan changed since it was read; read it again")
 
 // planMu serializes the saves of plans on this node, so a read-modify-write
 // of the agent and one of the user cannot interleave.
@@ -96,7 +96,7 @@ func (s *Server) writePlan(ctx context.Context, taskID, body string, base int64,
 		return cur, err
 	}
 	if base >= 0 && base != cur.Revision {
-		return cur, fmt.Errorf("%w (now at revision %d)", ErrPlanConflict, cur.Revision)
+		return cur, ErrPlanConflict.Msgf("now at revision %d", cur.Revision).With("revision", cur.Revision)
 	}
 	body = strings.TrimSpace(body)
 	if cur.ID != "" && body == cur.BodyMD {
@@ -127,17 +127,17 @@ func (s *Server) EditPlan(ctx context.Context, taskID, old, replacement string, 
 		return cur, err
 	}
 	if base >= 0 && base != cur.Revision {
-		return cur, fmt.Errorf("%w (now at revision %d)", ErrPlanConflict, cur.Revision)
+		return cur, ErrPlanConflict.Msgf("now at revision %d", cur.Revision).With("revision", cur.Revision)
 	}
 	if old == "" {
-		return cur, fmt.Errorf("%w: old_text is empty; use plan_write to write the whole plan", data.ErrInvalid)
+		return cur, data.ErrInvalid.Msgf("old_text is empty; use plan_write to write the whole plan")
 	}
 	switch n := strings.Count(cur.BodyMD, old); n {
 	case 0:
-		return cur, fmt.Errorf("%w: old_text is not in the plan; read it again", data.ErrInvalid)
+		return cur, data.ErrInvalid.Msgf("old_text is not in the plan; read it again")
 	case 1:
 	default:
-		return cur, fmt.Errorf("%w: old_text appears %d times; include more context", data.ErrInvalid, n)
+		return cur, data.ErrInvalid.Msgf("old_text appears %d times; include more context", n)
 	}
 	return s.writePlan(ctx, taskID, strings.Replace(cur.BodyMD, old, replacement, 1), cur.Revision, author)
 }
@@ -146,7 +146,7 @@ func (s *Server) planRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/tasks/{id}/plan", func(w http.ResponseWriter, r *http.Request) {
 		p, err := s.PlanDocument(r.Context(), r.PathValue("id"))
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, p)
@@ -160,12 +160,8 @@ func (s *Server) planRoutes(mux *http.ServeMux) {
 			return
 		}
 		p, err := s.WritePlan(r.Context(), r.PathValue("id"), body.BodyMD, body.Revision, "user")
-		if errors.Is(err, ErrPlanConflict) {
-			writeError(w, http.StatusConflict, "plan_conflict", err.Error())
-			return
-		}
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, p)

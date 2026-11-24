@@ -392,6 +392,9 @@ func pair(base, dataDir string, args []string) error {
 	json.NewDecoder(resp.Body).Decode(&out)
 	if resp.StatusCode >= 300 {
 		if e, ok := out["error"].(map[string]any); ok {
+			if p, ok := e["params"].(map[string]any); ok && p["detail"] != nil {
+				return fmt.Errorf("no se pudo emparejar: %v", p["detail"])
+			}
 			return fmt.Errorf("no se pudo emparejar: %v", e["message"])
 		}
 		return fmt.Errorf("no se pudo emparejar: %s", resp.Status)

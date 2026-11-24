@@ -6,6 +6,7 @@ import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, Keyboard
 import Markdown, { defaultUrlTransform, type Options } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { RefCode, RefImg, RefLink } from "./refs";
+import { errorText } from "../lib/errors";
 export { defaultUrlTransform };
 
 export const iconButton = "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-md text-slate-500 enabled:hover:bg-slate-100 enabled:hover:text-slate-900 disabled:opacity-40 dark:text-text-secondary dark:enabled:hover:bg-raised dark:enabled:hover:text-white";
@@ -313,7 +314,7 @@ export const uuid = () =>
     : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (+c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (+c / 4)))).toString(16));
 
 export const csv = (s: string) => s.split(",").map((t) => t.trim()).filter(Boolean);
-export const errMsg = (e: unknown) => (e instanceof Error ? e.message : "");
+export const errMsg = errorText;
 export const ErrorText = ({ error }: { error: unknown }) => (error ? <p className="text-sm text-red-600 dark:text-red-400">{errMsg(error)}</p> : null);
 
 // copyText copies to the clipboard. The Clipboard API exists only on HTTPS or

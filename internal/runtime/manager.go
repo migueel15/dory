@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"log"
 	"os"
 	"path/filepath"
@@ -20,10 +21,10 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("thread not found")
-	ErrRemote   = errors.New("thread runs on another node")
-	ErrProvider = errors.New("provider not available")
-	ErrBusy     = errors.New("espera a que termine el turno antes de cambiar de proveedor")
+	ErrNotFound = apperr.New(apperr.NotFound, "thread not found")
+	ErrRemote   = apperr.New(apperr.Remote, "thread runs on another node")
+	ErrProvider = apperr.New(apperr.Invalid, "provider not available")
+	ErrBusy     = apperr.New(apperr.Busy, "wait for the running turn to end before switching provider")
 )
 
 // Update is pushed to subscribers when a thread changes: a message upsert, a
@@ -314,7 +315,7 @@ type NewThread struct {
 // Create registers a thread on this node and prepares its working directory.
 func (m *Manager) Create(ctx context.Context, n NewThread) (data.Thread, error) {
 	if _, ok := m.provider(n.Provider); !ok {
-		return data.Thread{}, fmt.Errorf("%w: %s", ErrProvider, n.Provider)
+		return data.Thread{}, ErrProvider.Msgf("%s", n.Provider)
 	}
 	t := data.Thread{NodeID: m.node, ProjectID: n.ProjectID, TaskID: n.TaskID, ParentID: n.ParentID, OriginID: n.OriginID, Provider: n.Provider, Model: n.Model,
 		Effort: n.Effort, RuntimeMode: n.RuntimeMode, Title: n.Title, Branch: n.Branch}
@@ -331,7 +332,7 @@ func (m *Manager) Create(ctx context.Context, n NewThread) (data.Thread, error) 
 		dir = n.ExistingDir
 	} else if n.Worktree {
 		if n.RepoPath == "" || n.Branch == "" {
-			return t, fmt.Errorf("%w: worktree needs a repository path and a branch", data.ErrInvalid)
+			return t, data.ErrInvalid.Msgf("worktree needs a repository path and a branch")
 		}
 		dir = m.newWorktreeDir(t.ID)
 		if err := workspace.AddWorktree(ctx, n.RepoPath, dir, n.Branch, n.BaseBranch); err != nil {
@@ -508,7 +509,7 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
 	run, text, files := q.RunID, q.Text, q.Files
 	p, ok := m.provider(t.Provider)
 	if !ok {
-		return fmt.Errorf("%w: %s", ErrProvider, t.Provider)
+		return ErrProvider.Msgf("%s", t.Provider)
 	}
 	var session, dir, sessionProvider, lastModel string
 	err := m.db.QueryRowContext(ctx, `SELECT session_id, worktree_path, session_provider, last_turn_model FROM thread_runtime WHERE thread_id = ?`, t.ID).Scan(&session, &dir, &sessionProvider, &lastModel)
@@ -565,7 +566,7 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
 			return err
 		}
 	default:
-		return fmt.Errorf("%w: %s cannot run turns", ErrProvider, t.Provider)
+		return ErrProvider.Msgf("%s cannot run turns", t.Provider)
 	}
 	var previous TurnModel
 	_ = json.Unmarshal([]byte(lastModel), &previous)
@@ -1047,7 +1048,7 @@ func (m *Manager) Adopt(ctx context.Context, e External, projectID *string) (dat
 		return m.store.Threads().Get(ctx, adopted[e.ID])
 	}
 	if _, ok := m.provider(e.Provider); !ok {
-		return data.Thread{}, fmt.Errorf("%w: %s", ErrProvider, e.Provider)
+		return data.Thread{}, ErrProvider.Msgf("%s", e.Provider)
 	}
 	msgs, err := m.ReadExternal(ctx, e)
 	if err != nil {

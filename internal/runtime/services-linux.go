@@ -5,8 +5,8 @@ package runtime
 import (
 	"bufio"
 	"encoding/hex"
-	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"net"
 	"os"
 	"path/filepath"
@@ -35,7 +35,7 @@ type procInfo struct {
 	service bool
 }
 
-var ErrSharedProcessGroup = errors.New("el servicio comparte grupo con Dory, el agente o una shell")
+var ErrSharedProcessGroup = apperr.New(apperr.SharedProcessGroup, "the service shares a process group with Dory, the agent or a shell")
 
 // safeProcessGroup examines every process, not only those with a thread tag.
 // A shell or provider in the same group must never receive a service signal.

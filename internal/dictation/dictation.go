@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"github.com/migueel15/dory/internal/apperr"
 	"log"
 	"math"
 	"strings"
@@ -24,11 +25,11 @@ const TTL = 30 * time.Minute
 const MaxPending = 32
 
 var (
-	ErrNotFound    = errors.New("dictation session not found")
-	ErrFinished    = errors.New("dictation session already finished")
-	ErrOutOfOrder  = errors.New("chunk seq out of order")
-	ErrQueueFull   = errors.New("too many pending chunks")
-	ErrUnavailable = errors.New("dictation engine not configured")
+	ErrNotFound    = apperr.New(apperr.NotFound, "dictation session not found")
+	ErrFinished    = apperr.New(apperr.Conflict, "dictation session already finished")
+	ErrOutOfOrder  = apperr.New(apperr.Conflict, "chunk seq out of order")
+	ErrQueueFull   = apperr.New(apperr.TooManyRequests, "too many pending chunks")
+	ErrUnavailable = apperr.New(apperr.Unavailable, "dictation engine not configured")
 )
 
 // Engine transcribes one self-contained WAV batch. prompt is the end of the

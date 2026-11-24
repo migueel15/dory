@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"regexp"
 	"strings"
@@ -37,12 +38,12 @@ func (s *Server) mountTasks(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/tasks/{id}/card", func(w http.ResponseWriter, r *http.Request) {
 		t, err := s.Store.Tasks().Get(r.Context(), r.PathValue("id"))
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		cards, err := s.Cards(r.Context(), []data.Task{t})
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, cards[0])
@@ -50,7 +51,7 @@ func (s *Server) mountTasks(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/tasks/{id}/dependencies", func(w http.ResponseWriter, r *http.Request) {
 		deps, err := s.Store.Dependencies().List(r.Context(), data.Filter{Fields: map[string]any{"task_id": r.PathValue("id")}, Limit: 1000})
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, deps)
@@ -58,14 +59,14 @@ func (s *Server) mountTasks(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/tasks/{id}/dependencies/{dep}", func(w http.ResponseWriter, r *http.Request) {
 		d, err := s.Store.Dependencies().Put(r.Context(), data.Dependency{TaskID: r.PathValue("id"), DependsOnID: r.PathValue("dep")})
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, d)
 	})
 	mux.HandleFunc("DELETE /api/tasks/{id}/dependencies/{dep}", func(w http.ResponseWriter, r *http.Request) {
 		if err := s.Store.Dependencies().Archive(r.Context(), r.PathValue("id")+"/"+r.PathValue("dep")); err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -74,7 +75,7 @@ func (s *Server) mountTasks(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/tasks/{id}/plans", func(w http.ResponseWriter, r *http.Request) {
 		plans, err := s.Store.Plans().List(r.Context(), data.Filter{Fields: map[string]any{"task_id": r.PathValue("id")}, Limit: 1000})
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, plans)
@@ -82,7 +83,7 @@ func (s *Server) mountTasks(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/tasks/{id}/plan/accept", func(w http.ResponseWriter, r *http.Request) {
 		t, p, err := s.acceptPlan(r.Context(), r.PathValue("id"))
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"task": t, "plan": p})
@@ -113,7 +114,7 @@ func (s *Server) acceptPlan(ctx context.Context, taskID string) (data.Task, data
 		return data.Task{}, data.Plan{}, err
 	}
 	if len(plans) == 0 {
-		return data.Task{}, data.Plan{}, fmt.Errorf("%w: the task has no plan", data.ErrInvalid)
+		return data.Task{}, data.Plan{}, data.ErrInvalid.Msgf("the task has no plan")
 	}
 	latest := plans[0]
 	for _, p := range plans {
@@ -144,12 +145,12 @@ func (s *Server) board(w http.ResponseWriter, r *http.Request) {
 	}
 	tasks, err := s.Store.Tasks().List(r.Context(), f)
 	if err != nil {
-		writeDataError(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	cards, err := s.Cards(r.Context(), tasks)
 	if err != nil {
-		writeDataError(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"columns": Columns, "cards": cards})
@@ -370,14 +371,14 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	t, err := s.Store.Tasks().Get(ctx, r.PathValue("id"))
 	if err != nil {
-		writeDataError(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	if pending, err := s.planPending(ctx, t.ID); err != nil {
-		writeDataError(w, err)
+		writeErr(w, r, err)
 		return
 	} else if pending {
-		writeError(w, http.StatusConflict, "plan_not_accepted", "acepta el plan de la tarea antes de implementarla")
+		writeErr(w, r, apperr.New(apperr.PlanNotAccepted, "accept the task plan before implementing it"))
 		return
 	}
 	var repoPath string
@@ -390,12 +391,12 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 	if t.RepositoryID != nil {
 		repoPath, err = s.Store.RepositoryPath(ctx, *t.RepositoryID)
 		if err != nil && !errors.Is(err, data.ErrNotFound) {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 	}
 	if repoPath == "" {
-		writeError(w, http.StatusConflict, "no_repository", "this node has no local path for the task's repository")
+		writeErr(w, r, apperr.New(apperr.NoRepository, "this node has no local path for the task's repository"))
 		return
 	}
 	if t.Branch == "" {
@@ -406,13 +407,13 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 		body.BaseBranch = repo.DefaultBranch
 	}
 	if t, err = s.Store.Tasks().Put(ctx, t); err != nil {
-		writeDataError(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	th, err := s.Runtime.Create(ctx, runtime.NewThread{ProjectID: t.ProjectID, TaskID: &t.ID, Provider: body.Provider, Model: body.Model,
 		Effort: body.Effort, RuntimeMode: body.RuntimeMode, Title: t.Title, Worktree: true, RepoPath: repoPath, Branch: t.Branch, BaseBranch: body.BaseBranch})
 	if err != nil {
-		writeDataError(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	prompt := body.Text
@@ -420,7 +421,7 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 		prompt = s.taskPrompt(ctx, t)
 	}
 	if err = s.Runtime.Send(ctx, th.ID, prompt); err != nil {
-		writeDataError(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"thread_id": th.ID, "branch": t.Branch})

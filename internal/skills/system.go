@@ -186,7 +186,7 @@ func SetEnabled(ctx context.Context, store *data.Store, id string, enabled bool)
 		}
 		for _, f := range forks {
 			if f.DisabledAt == nil {
-				return s, fmt.Errorf("%w: desactiva antes el fork %s", data.ErrInvalid, f.Name)
+				return s, data.ErrInvalid.Msgf("turn off fork %s first", f.Name).With("reason", "fork_enabled").With("name", f.Name)
 			}
 		}
 	}
@@ -206,7 +206,7 @@ func Fork(ctx context.Context, store *data.Store, id, name string) (data.Skill, 
 		return orig, err
 	}
 	if orig.Source != "system" {
-		return orig, fmt.Errorf("%w: solo se puede hacer fork de una skill del sistema", data.ErrInvalid)
+		return orig, data.ErrInvalid.Msgf("only a system skill can be forked").With("reason", "fork_not_system")
 	}
 	if name == "" {
 		name = orig.Name + "-custom"

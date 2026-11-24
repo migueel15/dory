@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"net/url"
 	"strings"
@@ -129,7 +130,8 @@ func reply(w http.ResponseWriter, status int, value any) {
 	}
 }
 func failure(w http.ResponseWriter, status int) {
-	reply(w, status, map[string]any{"error": map[string]string{"code": http.StatusText(status), "message": http.StatusText(status)}})
+	w.Header().Set("Cache-Control", "no-store")
+	apperr.WriteHTTP(w, nil, apperr.New(apperr.ForStatus(status), strings.ToLower(http.StatusText(status))))
 }
 func publicUser(u User) any {
 	return struct {
