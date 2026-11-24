@@ -23,6 +23,7 @@ import (
 
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/oplog"
+	"github.com/migueel15/dory/internal/schema"
 )
 
 const (
@@ -167,7 +168,7 @@ func (m *Mesh) Serve(ctx context.Context) error {
 			maps.Copy(info, m.Info(r.Context()))
 		}
 		info["protocol"] = ProtocolVersion
-		info["schema"] = "" // TODO(task 21): publish the schema hash.
+		info["schema"] = schema.Hash()
 		reply(w, info)
 	}))
 	mux.HandleFunc("GET "+peerPrefix+"/vector", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
