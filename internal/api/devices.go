@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -23,7 +24,7 @@ func (s *Server) mountDevices(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/nodes/{node}/devices", s.onNode(s.listDevices))
 	mux.HandleFunc("GET /api/nodes/{node}/devices/{serial}/stream", s.onNode(s.streamDevice))
 	mux.HandleFunc("POST /api/nodes/{node}/devices/avd/{name}/start", s.onNode(func(w http.ResponseWriter, r *http.Request) {
-		s.deviceDone(w, nil, s.Devices.StartAVD(r.PathValue("name")))
+		s.deviceDone(w, r, nil, s.Devices.StartAVD(r.PathValue("name")))
 	}))
 	mux.HandleFunc("POST /api/nodes/{node}/devices/{serial}/stop", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		serial, _ := url.PathUnescape(r.PathValue("serial"))
@@ -35,10 +36,10 @@ func (s *Server) mountDevices(mux *http.ServeMux) {
 		}
 		// Powering off a real phone is not undone from here: the interface asks first.
 		if !strings.HasPrefix(serial, "emulator-") && !body.Confirm {
-			writeError(w, http.StatusBadRequest, "confirm_required", "apagar un móvil físico necesita confirmación")
+			writeErr(w, r, apperr.New(apperr.ConfirmRequired, "powering off a physical phone needs confirmation"))
 			return
 		}
-		s.deviceDone(w, nil, s.Devices.Stop(r.Context(), serial))
+		s.deviceDone(w, r, nil, s.Devices.Stop(r.Context(), serial))
 	}))
 	mux.HandleFunc("POST /api/nodes/{node}/devices/pair", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -49,7 +50,7 @@ func (s *Server) mountDevices(mux *http.ServeMux) {
 			return
 		}
 		out, err := s.Devices.Pair(r.Context(), body.Address, body.Code)
-		s.deviceDone(w, out, err)
+		s.deviceDone(w, r, out, err)
 	}))
 	mux.HandleFunc("POST /api/nodes/{node}/devices/connect", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -59,7 +60,7 @@ func (s *Server) mountDevices(mux *http.ServeMux) {
 			return
 		}
 		out, err := s.Devices.Connect(r.Context(), body.Address)
-		s.deviceDone(w, out, err)
+		s.deviceDone(w, r, out, err)
 	}))
 	mux.HandleFunc("POST /api/nodes/{node}/devices/{serial}/action", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		serial, _ := url.PathUnescape(r.PathValue("serial"))
@@ -69,20 +70,30 @@ func (s *Server) mountDevices(mux *http.ServeMux) {
 		}
 		out, err := s.Devices.Apply(r.Context(), serial, a)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "device_error", err.Error())
+			writeErr(w, r, deviceFailure(err))
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
 	}))
 	mux.HandleFunc("POST /api/nodes/{node}/devices/{serial}/disconnect", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		serial, _ := url.PathUnescape(r.PathValue("serial"))
-		s.deviceDone(w, nil, s.Devices.Disconnect(r.Context(), serial))
+		s.deviceDone(w, r, nil, s.Devices.Disconnect(r.Context(), serial))
 	}))
 }
 
-func (s *Server) deviceDone(w http.ResponseWriter, out any, err error) {
+// deviceFailure keeps the domain errors and turns any other failure of a
+// device operation into device_error. Its text is a diagnostic written for the
+// user (adb output is never included), so it travels as the detail parameter.
+func deviceFailure(err error) error {
+	if apperr.As(err) != nil {
+		return err
+	}
+	return apperr.Wrap(apperr.DeviceError, err, "device operation failed").With("detail", err.Error())
+}
+
+func (s *Server) deviceDone(w http.ResponseWriter, r *http.Request, out any, err error) {
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "device_error", err.Error())
+		writeErr(w, r, deviceFailure(err))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": out})
@@ -114,11 +125,11 @@ func (s *Server) listDevices(w http.ResponseWriter, r *http.Request) {
 func (s *Server) streamDevice(w http.ResponseWriter, r *http.Request) {
 	serial, _ := url.PathUnescape(r.PathValue("serial"))
 	if serial == "" || !sameSite(r) {
-		writeError(w, http.StatusForbidden, "forbidden", "origen no permitido")
+		writeErr(w, r, apperr.New(apperr.Forbidden, "origin not allowed"))
 		return
 	}
 	if s.Devices.Tools.ADB == "" {
-		writeError(w, http.StatusFailedDependency, "no_adb", devices.ErrNoADB.Error())
+		writeErr(w, r, devices.ErrNoADB)
 		return
 	}
 	q := r.URL.Query()
@@ -127,7 +138,7 @@ func (s *Server) streamDevice(w http.ResponseWriter, r *http.Request) {
 	opts.Bitrate, _ = strconv.Atoi(q.Get("bitrate"))
 	ws, err := upgradeWS(w, r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+		writeErr(w, r, apperr.Wrap(apperr.Invalid, err, "a WebSocket is required").With("reason", "websocket_required"))
 		return
 	}
 	defer ws.close()

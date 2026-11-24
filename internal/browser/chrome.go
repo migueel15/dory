@@ -4,8 +4,8 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"os"
 	"os/exec"
 	"regexp"
@@ -15,7 +15,7 @@ import (
 )
 
 // ErrNoChromium tells the agent that this node cannot run a browser.
-var ErrNoChromium = errors.New("no hay Chromium en este nodo: instala chromium (o google-chrome) o define DORY_CHROMIUM con su ruta")
+var ErrNoChromium = apperr.New(apperr.NoChromium, "no Chromium on this node: install chromium (or google-chrome) or set DORY_CHROMIUM to its path")
 
 var devtoolsLine = regexp.MustCompile(`DevTools listening on (ws://\S+)`)
 

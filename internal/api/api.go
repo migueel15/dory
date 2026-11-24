@@ -4,7 +4,7 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"github.com/migueel15/dory/internal/apperr"
 	"log"
 	"net/http"
 	"os"
@@ -114,7 +114,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	s.mountDevices(mux)
 	s.mountBrowser(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
-		writeError(w, http.StatusNotFound, "not_found", "route not found")
+		writeErr(w, r, apperr.New(apperr.NotFound, "route not found"))
 	})
 }
 
@@ -136,20 +136,13 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 		hits, err = s.Store.Search(r.Context(), r.URL.Query().Get("q"), limit)
 	}
 	if err != nil {
-		writeDataError(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	if hits == nil {
 		hits = []data.Hit{}
 	}
 	writeJSON(w, http.StatusOK, hits)
-}
-
-type errorBody struct {
-	Error struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -160,33 +153,20 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
-func writeError(w http.ResponseWriter, status int, code, message string) {
-	var b errorBody
-	b.Error.Code, b.Error.Message = code, message
-	writeJSON(w, status, b)
-}
+// writeErr answers with the status and envelope of a domain error. An error
+// that is not a domain error is an internal one: its text only goes to the log.
+func writeErr(w http.ResponseWriter, r *http.Request, err error) { apperr.WriteHTTP(w, r, err) }
 
-// writeDataError maps store and runtime errors to the JSON error envelope.
-func writeDataError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, data.ErrNotFound), errors.Is(err, runtime.ErrNotFound):
-		writeError(w, http.StatusNotFound, "not_found", err.Error())
-	case errors.Is(err, data.ErrInvalid), errors.Is(err, runtime.ErrProvider):
-		writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
-	case errors.Is(err, runtime.ErrBusy):
-		writeError(w, http.StatusConflict, "thread_busy", err.Error())
-	case errors.Is(err, runtime.ErrRemote):
-		writeError(w, http.StatusConflict, "remote", err.Error())
-	default:
-		log.Printf("api: %v", err)
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-	}
+// upstream wraps the failure of a service Dory calls (GitHub, a peer). Its text
+// is meant for the user, so it travels as a parameter.
+func upstream(err error) *apperr.Error {
+	return apperr.Wrap(apperr.Upstream, err, "upstream request failed").With("detail", err.Error())
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
 	if err := dec.Decode(v); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_argument", "invalid JSON body: "+err.Error())
+		writeErr(w, r, apperr.Wrap(apperr.Invalid, err, "invalid JSON body"))
 		return false
 	}
 	return true
@@ -200,12 +180,12 @@ func mountResource[T any](mux *http.ServeMux, path string, res data.Resource[T],
 	mux.HandleFunc("GET "+base, func(w http.ResponseWriter, r *http.Request) {
 		f, err := parseFilter(r)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+			writeErr(w, r, err)
 			return
 		}
 		items, err := res.List(r.Context(), f)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, items)
@@ -213,7 +193,7 @@ func mountResource[T any](mux *http.ServeMux, path string, res data.Resource[T],
 	mux.HandleFunc("GET "+base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
 		v, err := res.Get(r.Context(), r.PathValue("id"))
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, v)
@@ -243,7 +223,7 @@ func mountResource[T any](mux *http.ServeMux, path string, res data.Resource[T],
 		raw, _ := json.Marshal(body)
 		var v T
 		if err := json.Unmarshal(raw, &v); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+			writeErr(w, r, apperr.Wrap(apperr.Invalid, err, "invalid body"))
 			return
 		}
 		put := res.Put
@@ -252,7 +232,7 @@ func mountResource[T any](mux *http.ServeMux, path string, res data.Resource[T],
 		}
 		out, err := put(r.Context(), v)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
@@ -261,7 +241,7 @@ func mountResource[T any](mux *http.ServeMux, path string, res data.Resource[T],
 	mux.HandleFunc("PUT "+base+"/{id}", func(w http.ResponseWriter, r *http.Request) { put(w, r, r.PathValue("id")) })
 	mux.HandleFunc("DELETE "+base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if err := res.Archive(r.Context(), r.PathValue("id")); err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -275,7 +255,7 @@ func parseFilter(r *http.Request) (data.Filter, error) {
 		if s := q.Get(name); s != "" {
 			n, err := strconv.Atoi(s)
 			if err != nil || n < 0 {
-				return f, errors.New(name + " is out of range")
+				return f, apperr.Newf(apperr.Invalid, "%s is out of range", name)
 			}
 			*dst = n
 		}
@@ -283,7 +263,7 @@ func parseFilter(r *http.Request) (data.Filter, error) {
 	f.IncludeArchived = q.Get("include_archived") == "true"
 	if s := q.Get("filter"); s != "" {
 		if err := json.Unmarshal([]byte(s), &f.Fields); err != nil {
-			return f, errors.New("filter must be a JSON object")
+			return f, apperr.New(apperr.Invalid, "filter must be a JSON object")
 		}
 	}
 	return f, nil

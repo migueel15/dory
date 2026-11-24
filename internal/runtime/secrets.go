@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"log"
 	"os"
 	"path/filepath"
@@ -57,7 +58,7 @@ type secretReply struct {
 var (
 	fieldName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,31}$`)
 	// ErrSecretFields is a reply whose fields do not match the request.
-	ErrSecretFields = errors.New("the values do not match the requested fields")
+	ErrSecretFields = apperr.New(apperr.Invalid, "the values do not match the requested fields")
 )
 
 // Validate checks the prompt before asking.

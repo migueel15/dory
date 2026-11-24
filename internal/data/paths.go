@@ -55,7 +55,7 @@ func (s *Store) SetRepositoryPath(ctx context.Context, repositoryID, path string
 	}
 	path = filepath.Clean(path)
 	if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
-		return errors.Join(ErrInvalid, errors.New("not a git checkout: "+path))
+		return ErrInvalid.Msgf("not a git checkout: %s", path)
 	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO repository_paths(repository_id, path, updated_at) VALUES (?, ?, ?)
 		ON CONFLICT(repository_id) DO UPDATE SET path = excluded.path, updated_at = excluded.updated_at`,

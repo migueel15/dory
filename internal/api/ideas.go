@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"github.com/migueel15/dory/internal/apperr"
 	"log"
 	"net/http"
 	"strings"
@@ -33,7 +34,7 @@ func (s *Server) mountIdeas(mux *http.ServeMux) {
 			return
 		}
 		if err := s.Runtime.SetTitleModel(body); err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, body)
@@ -54,12 +55,12 @@ func (s *Server) createIdea(w http.ResponseWriter, r *http.Request) {
 	}
 	text := strings.TrimSpace(body.Text)
 	if body.ID == "" || text == "" {
-		writeError(w, http.StatusBadRequest, "invalid_argument", "la idea necesita un id y texto")
+		writeErr(w, r, apperr.New(apperr.Invalid, "the idea needs an id and text").With("reason", "idea_incomplete"))
 		return
 	}
 	ctx := r.Context()
 	if _, busy := ideasInFlight.LoadOrStore(body.ID, true); busy {
-		writeError(w, http.StatusConflict, "in_progress", "la idea ya se está guardando")
+		writeErr(w, r, apperr.New(apperr.InProgress, "the idea is already being saved"))
 		return
 	}
 	defer ideasInFlight.Delete(body.ID)
@@ -67,7 +68,7 @@ func (s *Server) createIdea(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, t)
 		return
 	} else if !errors.Is(err, data.ErrNotFound) {
-		writeDataError(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	if body.ProjectID != nil && *body.ProjectID == "" {
@@ -75,7 +76,7 @@ func (s *Server) createIdea(w http.ResponseWriter, r *http.Request) {
 	}
 	t, err := s.Store.Tasks().Put(ctx, data.Task{ID: body.ID, ProjectID: body.ProjectID, Title: provisionalTitle(text), Description: text, Stage: "inbox"})
 	if err != nil {
-		writeDataError(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	if m := s.Runtime.TitleModel(); m.Provider != "" {

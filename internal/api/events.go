@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"sync"
 	"time"
@@ -60,7 +61,7 @@ func (e *Events) Notify(c Change) {
 func (e *Events) serve(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeError(w, http.StatusInternalServerError, "internal", "streaming unsupported")
+		writeErr(w, r, apperr.New(apperr.Internal, "streaming unsupported"))
 		return
 	}
 	changes := make(chan Change, 256)

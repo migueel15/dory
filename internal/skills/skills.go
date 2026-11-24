@@ -46,11 +46,11 @@ func Dirs(home string, config func(driver string) string) map[string]string {
 // Save creates or updates a skill, bumping its version when its content changes.
 func Save(ctx context.Context, store *data.Store, s data.Skill) (data.Skill, error) {
 	if !namePattern.MatchString(s.Name) {
-		return s, fmt.Errorf("%w: the name must be kebab-case", data.ErrInvalid)
+		return s, data.ErrInvalid.Msgf("the name must be kebab-case")
 	}
 	for path := range s.Files {
 		if path == "SKILL.md" || filepath.IsAbs(path) || strings.Contains(filepath.Clean(path), "..") {
-			return s, fmt.Errorf("%w: bad file path %q", data.ErrInvalid, path)
+			return s, data.ErrInvalid.Msgf("bad file path %q", path)
 		}
 	}
 	shipped, err := System()
@@ -59,14 +59,14 @@ func Save(ctx context.Context, store *data.Store, s data.Skill) (data.Skill, err
 	}
 	for _, sys := range shipped {
 		if sys.Name == s.Name && s.ID != sys.ID {
-			return s, fmt.Errorf("%w: %s es una skill del sistema; haz un fork con otro nombre", data.ErrInvalid, s.Name)
+			return s, data.ErrInvalid.Msgf("%s is a system skill; fork it under another name", s.Name).With("reason", "system_skill_name").With("name", s.Name)
 		}
 	}
 	s.Version, s.Source, s.SystemVersion = 1, "", 0
 	if s.ID != "" {
 		if old, err := store.Skills().Get(ctx, s.ID); err == nil {
 			if old.Source == "system" {
-				return old, fmt.Errorf("%w: las skills del sistema no se pueden editar; haz un fork", data.ErrInvalid)
+				return old, data.ErrInvalid.Msgf("system skills cannot be edited; fork it").With("reason", "system_skill_readonly")
 			}
 			// Activation and the fork link change only through SetEnabled and Fork.
 			s.ForkedFrom, s.DisabledAt = old.ForkedFrom, old.DisabledAt

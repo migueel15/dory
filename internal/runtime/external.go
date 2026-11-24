@@ -199,7 +199,7 @@ func ExternalSession(p Paths, provider, id string) (External, error) {
 			return e, nil
 		}
 	}
-	return External{}, fmt.Errorf("%w: %s session %s", ErrNotFound, provider, id)
+	return External{}, ErrNotFound.Msgf("%s session %s", provider, id)
 }
 
 // ExternalMessages reads the conversation of a session as Dory messages.

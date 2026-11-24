@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -167,7 +168,7 @@ func (s *Server) mountSettings(mux *http.ServeMux) {
 			v.Input = prev
 		}
 		if s.Settings == nil {
-			writeError(w, http.StatusServiceUnavailable, "unavailable", "settings are not available")
+			writeErr(w, r, apperr.New(apperr.Unavailable, "settings are not available"))
 			return
 		}
 		if v.Input != nil {
@@ -175,16 +176,16 @@ func (s *Server) mountSettings(mux *http.ServeMux) {
 				v.Input.Shortcuts = map[string]Chord{}
 			}
 			if err := v.Input.validate(); err != nil {
-				writeError(w, http.StatusBadRequest, "invalid", err.Error())
+				writeErr(w, r, apperr.New(apperr.Invalid, err.Error()))
 				return
 			}
 		}
 		if loc := v.Worktrees.Location; loc != "" && !filepath.IsAbs(loc) {
-			writeError(w, http.StatusBadRequest, "invalid", "la ubicación de los worktrees debe ser una ruta absoluta")
+			writeErr(w, r, apperr.New(apperr.Invalid, "the worktree location must be an absolute path").With("reason", "worktree_root_not_absolute"))
 			return
 		}
 		if err := s.Settings.Set(v); err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, v)

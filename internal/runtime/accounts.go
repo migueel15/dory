@@ -3,8 +3,8 @@ package runtime
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,7 +18,7 @@ import (
 // is "claude@work". Accounts belong to the node and are not replicated.
 
 // ErrAccount reports an account that cannot be created or changed.
-var ErrAccount = errors.New("runtime: invalid account")
+var ErrAccount = apperr.New(apperr.InvalidAccount, "invalid account")
 
 // Account is the saved configuration of one account of a harness. An empty
 // Slug is the default account, whose directory is the harness default unless
@@ -191,7 +191,7 @@ func cleanHome(home string) (string, error) {
 		home = filepath.Join(h, home[2:])
 	}
 	if home != "" && !filepath.IsAbs(home) {
-		return "", fmt.Errorf("%w: la carpeta debe ser una ruta absoluta", ErrAccount)
+		return "", ErrAccount.Msgf("the folder must be an absolute path").With("reason", "folder_not_absolute")
 	}
 	return filepath.Clean(home), nil
 }
@@ -225,10 +225,10 @@ func (m *Manager) homeTaken(driver, home, except string) bool {
 func (m *Manager) AddAccount(ctx context.Context, driver, name, home string) (Account, error) {
 	name = strings.TrimSpace(name)
 	if driver != "claude" && driver != "codex" {
-		return Account{}, fmt.Errorf("%w: %s no admite varias cuentas", ErrAccount, driver)
+		return Account{}, ErrAccount.Msgf("%s does not support several accounts", driver).With("reason", "multiple_accounts_unsupported").With("driver", driver)
 	}
 	if name == "" {
-		return Account{}, fmt.Errorf("%w: falta el nombre", ErrAccount)
+		return Account{}, ErrAccount.Msgf("the name is missing").With("reason", "name_missing")
 	}
 	home, err := cleanHome(home)
 	if err != nil {
@@ -249,7 +249,7 @@ func (m *Manager) AddAccount(ctx context.Context, driver, name, home string) (Ac
 		home = filepath.Join(m.dataDir, "accounts", driver+"-"+slug)
 	}
 	if m.homeTaken(driver, home, "") {
-		return Account{}, fmt.Errorf("%w: otra cuenta ya usa esa carpeta", ErrAccount)
+		return Account{}, ErrAccount.Msgf("another account already uses that folder").With("reason", "folder_in_use")
 	}
 	a := Account{Driver: driver, Slug: slug, Name: name, Home: home}
 	p := buildAccount(a, m.providers[driver])
@@ -283,14 +283,14 @@ func (m *Manager) UpdateAccount(ctx context.Context, id, name, home string) erro
 	defer m.provMu.Unlock()
 	cur, ok := m.providers[id]
 	if !ok {
-		return fmt.Errorf("%w: %s", ErrProvider, id)
+		return ErrProvider.Msgf("%s", id)
 	}
 	driver := driverOf(id)
 	if home == "" && id != driver {
-		return fmt.Errorf("%w: falta la carpeta", ErrAccount)
+		return ErrAccount.Msgf("the folder is missing").With("reason", "folder_missing")
 	}
 	if home != "" && m.homeTaken(driver, home, id) {
-		return fmt.Errorf("%w: otra cuenta ya usa esa carpeta", ErrAccount)
+		return ErrAccount.Msgf("another account already uses that folder").With("reason", "folder_in_use")
 	}
 	_, slug, _ := strings.Cut(id, "@")
 	a := Account{Driver: driver, Slug: slug, Name: strings.TrimSpace(name), Home: home}
@@ -323,12 +323,12 @@ func (m *Manager) UpdateAccount(ctx context.Context, id, name, home string) erro
 // RemoveAccount forgets an extra account. Its directory and credentials stay on disk.
 func (m *Manager) RemoveAccount(id string) error {
 	if id == driverOf(id) {
-		return fmt.Errorf("%w: la cuenta predeterminada no se elimina", ErrAccount)
+		return ErrAccount.Msgf("the default account cannot be removed").With("reason", "default_account_locked")
 	}
 	m.provMu.Lock()
 	defer m.provMu.Unlock()
 	if m.providers[id] == nil {
-		return fmt.Errorf("%w: %s", ErrProvider, id)
+		return ErrProvider.Msgf("%s", id)
 	}
 	delete(m.providers, id)
 	kept := m.accounts[:0]

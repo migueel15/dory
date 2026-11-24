@@ -2,12 +2,12 @@ package runtime
 
 import (
 	"context"
-	"errors"
+	"github.com/migueel15/dory/internal/apperr"
 )
 
 // ErrNoRequest means the request is not pending: it was answered already or
 // its turn ended.
-var ErrNoRequest = errors.New("la petición ya no está pendiente")
+var ErrNoRequest = apperr.New(apperr.NoRequest, "the request is no longer pending")
 
 // Runner is a provider that runs each turn as one process that cannot be
 // spoken to while it works.

@@ -3,7 +3,6 @@ package runtime
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -45,7 +44,7 @@ func (m *Manager) Enabled(id string) bool {
 // SetEnabled turns a provider on or off on this node and saves the choice.
 func (m *Manager) SetEnabled(ctx context.Context, id string, enabled bool) error {
 	if m.provider0(id) == nil {
-		return fmt.Errorf("%w: %s", ErrProvider, id)
+		return ErrProvider.Msgf("%s", id)
 	}
 	m.disabledMu.Lock()
 	if enabled {

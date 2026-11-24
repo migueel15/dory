@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"io"
 	"net/http"
 	"regexp"
@@ -30,8 +30,8 @@ const (
 )
 
 var (
-	ErrUnconfigured = errors.New("github: not logged in")
-	ErrUnknownRepo  = errors.New("github: repository is not registered")
+	ErrUnconfigured = apperr.New(apperr.Unavailable, "github: not logged in")
+	ErrUnknownRepo  = apperr.New(apperr.NotFound, "github: repository is not registered")
 	remotePattern   = regexp.MustCompile(`github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?/?$`)
 )
 

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"slices"
 	"strings"
 	"time"
@@ -19,8 +20,12 @@ import (
 	"github.com/migueel15/dory/internal/schema"
 )
 
-var ErrNotFound = errors.New("resource not found")
-var ErrInvalid = errors.New("invalid argument")
+// ErrNotFound and ErrInvalid are the domain errors of the store; details are
+// added with Msgf.
+var (
+	ErrNotFound = apperr.New(apperr.NotFound, "resource not found")
+	ErrInvalid  = apperr.New(apperr.Invalid, "invalid argument")
+)
 
 // Store gives typed access to the replicated tables.
 type Store struct {
@@ -71,7 +76,7 @@ func (s *Store) PatchThread(ctx context.Context, id string, fields map[string]an
 	}
 	fields["updated_at"] = s.now().UTC().Format(time.RFC3339Nano)
 	if _, err = s.log.Write(ctx, "thread", id, fields); err != nil {
-		return t, fmt.Errorf("%w: %v", ErrInvalid, err)
+		return t, ErrInvalid.Msgf("%v", err)
 	}
 	return s.Threads().Get(ctx, id)
 }
@@ -166,7 +171,7 @@ func (r Resource[T]) Put(ctx context.Context, v T) (T, error) {
 		changed["updated_at"] = now
 	}
 	if _, err = r.s.log.Write(ctx, r.entity, id, changed); err != nil {
-		return zero, fmt.Errorf("%w: %v", ErrInvalid, err)
+		return zero, ErrInvalid.Msgf("%v", err)
 	}
 	return r.getAny(ctx, id)
 }
@@ -200,7 +205,7 @@ func (r Resource[T]) identity(row map[string]any, key []string) (string, error) 
 	if r.entity == "repository" {
 		remote, _ := row["remote_url"].(string)
 		if remote == "" {
-			return "", fmt.Errorf("%w: remote_url required", ErrInvalid)
+			return "", ErrInvalid.Msgf("remote_url required")
 		}
 		row["id"] = oplog.RepositoryID(remote)
 	}
@@ -215,7 +220,7 @@ func (r Resource[T]) identity(row map[string]any, key []string) (string, error) 
 	for i, k := range key {
 		parts[i], _ = row[k].(string)
 		if parts[i] == "" || strings.Contains(parts[i], "/") {
-			return "", fmt.Errorf("%w: %s required", ErrInvalid, k)
+			return "", ErrInvalid.Msgf("%s required", k)
 		}
 	}
 	return strings.Join(parts, "/"), nil
@@ -261,7 +266,7 @@ func (s *Store) query(ctx context.Context, entity string, f Filter) ([]json.RawM
 	}
 	for col, v := range f.Fields {
 		if !slices.Contains(all, col) {
-			return nil, fmt.Errorf("%w: unknown field %q", ErrInvalid, col)
+			return nil, ErrInvalid.Msgf("unknown field %q", col)
 		}
 		where = append(where, col+" = ?")
 		args = append(args, v)

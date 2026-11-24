@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"os"
 
@@ -12,7 +13,7 @@ import (
 )
 
 // errNotCloned says the repository of a project has no checkout on this node.
-var errNotCloned = errors.New("el repositorio no está clonado en este nodo")
+var errNotCloned = apperr.New(apperr.RepositoryNotClone, "the repository is not cloned on this node")
 
 // projectCheckout finds the repository a thread of the project works in and
 // where this node keeps it. With several repositories, the first one is used.
@@ -33,11 +34,11 @@ func (s *Server) mountBranches(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/nodes/{node}/projects/{id}/branches", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		_, path, err := s.projectCheckout(r.Context(), r.PathValue("id"))
 		if errors.Is(err, errNotCloned) {
-			writeError(w, http.StatusBadRequest, "repository_not_cloned", err.Error())
+			writeErr(w, r, err)
 			return
 		}
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		out := workspace.Branches{Branches: []string{}}
@@ -56,7 +57,7 @@ func (s *Server) mountNewThreadCommands(mux *http.ServeMux) {
 		if id := r.URL.Query().Get("project"); id != "" {
 			_, path, err := s.projectCheckout(r.Context(), id)
 			if err != nil && !errors.Is(err, errNotCloned) {
-				writeDataError(w, err)
+				writeErr(w, r, err)
 				return
 			}
 			dir = path
@@ -75,11 +76,11 @@ func (s *Server) mountWorktrees(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/nodes/{node}/projects/{id}/worktrees", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		_, path, err := s.projectCheckout(r.Context(), r.PathValue("id"))
 		if errors.Is(err, errNotCloned) {
-			writeError(w, http.StatusBadRequest, "repository_not_cloned", err.Error())
+			writeErr(w, r, err)
 			return
 		}
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		out := []workspace.Worktree{}

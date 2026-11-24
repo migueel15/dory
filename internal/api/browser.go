@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"github.com/migueel15/dory/internal/apperr"
 	"net"
 	"net/http"
 	"strconv"
@@ -16,12 +17,12 @@ import (
 func (s *Server) mountBrowser(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/threads/{id}/browser", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		if s.Browser == nil {
-			writeError(w, http.StatusServiceUnavailable, "unavailable", "este nodo no tiene navegador")
+			writeErr(w, r, apperr.New(apperr.Unavailable, "this node has no browser"))
 			return
 		}
 		st, err := s.Browser.State(r.Context(), t.ID)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, st)
@@ -34,19 +35,19 @@ func (s *Server) mountBrowser(mux *http.ServeMux) {
 			return
 		}
 		if s.Browser == nil {
-			writeError(w, http.StatusServiceUnavailable, "unavailable", "este nodo no tiene navegador")
+			writeErr(w, r, apperr.New(apperr.Unavailable, "this node has no browser"))
 			return
 		}
 		tab, err := s.Browser.Add(r.Context(), t.ID, body.URL)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, tab)
 	}))
 	mux.HandleFunc("GET /api/threads/{id}/browser/ws", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		if s.Browser == nil {
-			writeError(w, http.StatusServiceUnavailable, "unavailable", "este nodo no tiene navegador")
+			writeErr(w, r, apperr.New(apperr.Unavailable, "this node has no browser"))
 			return
 		}
 		// The auth middleware already refuses cross-origin sessions; behind
@@ -61,20 +62,20 @@ func (s *Server) mountBrowser(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/threads/{id}/browser/tunnel", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		port, err := strconv.Atoi(r.URL.Query().Get("port"))
 		if err != nil || port < 1 || port > 65535 {
-			writeError(w, http.StatusBadRequest, "invalid_argument", "port is out of range")
+			writeErr(w, r, apperr.New(apperr.Invalid, "port is out of range"))
 			return
 		}
 		if s.Settings.Get().BrowserTunnelDisabled {
-			writeError(w, http.StatusForbidden, "forbidden", "el túnel del navegador está desactivado en este nodo")
+			writeErr(w, r, apperr.New(apperr.Forbidden, "the browser tunnel is turned off on this node").With("reason", "tunnel_off"))
 			return
 		}
 		if s.ownPort(port) {
-			writeError(w, http.StatusForbidden, "forbidden", "el túnel no llega a los puertos de Dory")
+			writeErr(w, r, apperr.New(apperr.Forbidden, "the tunnel does not reach Dory's ports").With("reason", "tunnel_dory_port"))
 			return
 		}
 		target, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 		if err != nil {
-			writeError(w, http.StatusBadGateway, "unreachable", err.Error())
+			writeErr(w, r, apperr.Wrap(apperr.Unreachable, err, "the port is not reachable on this node"))
 			return
 		}
 		defer target.Close()

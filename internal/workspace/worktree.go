@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,7 +12,7 @@ import (
 )
 
 // ErrDirtyWorktree says a worktree holds changes that are not committed.
-var ErrDirtyWorktree = errors.New("el worktree tiene cambios sin commitear")
+var ErrDirtyWorktree = apperr.New(apperr.DirtyWorktree, "the worktree has uncommitted changes")
 
 // RepoRoot returns the top folder of the repository dir is in, or "".
 func RepoRoot(ctx context.Context, dir string) string {
@@ -119,7 +120,7 @@ func SwitchBranch(ctx context.Context, dir, branch string) error {
 		return nil
 	}
 	if out, err := Run(ctx, dir, "switch", branch); err != nil {
-		return fmt.Errorf("git switch %s: %s", branch, strings.TrimSpace(string(out)))
+		return apperr.Newf(apperr.BranchSwitchFailed, "git switch %s failed", branch).With("branch", branch).With("detail", strings.TrimSpace(string(out)))
 	}
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"io"
 	"mime"
 	"os"
@@ -51,7 +52,7 @@ func (m *Manager) SaveAttachment(threadID, name, mime string, r io.Reader) (Atta
 		err = cerr
 	}
 	if err == nil && n > maxAttachment {
-		err = fmt.Errorf("el fichero pasa de %d MB", maxAttachment>>20)
+		err = apperr.New(apperr.PayloadTooLarge, "the file is larger than the attachment limit").With("reason", "attachment").With("mb", maxAttachment>>20)
 	}
 	if err != nil {
 		os.Remove(a.Path)

@@ -3,15 +3,15 @@ package devices
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"os/exec"
 	"strings"
 	"time"
 )
 
 // ErrNoADB means adb is not installed on this node.
-var ErrNoADB = errors.New("adb no está instalado en este nodo")
+var ErrNoADB = apperr.New(apperr.NoADB, "adb is not installed on this node")
 
 // Device is one entry of `adb devices -l`.
 type Device struct {

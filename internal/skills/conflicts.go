@@ -3,7 +3,6 @@ package skills
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -140,23 +139,23 @@ func (r *Reconciler) Resolve(ctx context.Context, id, action, harness string) (s
 		return "", err
 	}
 	if len(conflicts) == 0 {
-		return "", fmt.Errorf("%w: la skill no tiene conflictos en este nodo", data.ErrInvalid)
+		return "", data.ErrInvalid.Msgf("the skill has no conflicts on this node").With("reason", "skill_no_conflict")
 	}
 	switch action {
 	case "restore":
 	case "adopt":
 		if !r.wanted(s) {
-			return "", fmt.Errorf("%w: la skill no debe estar en este nodo; solo se puede retirar su copia", data.ErrInvalid)
+			return "", data.ErrInvalid.Msgf("the skill must not be on this node; only its copy can be removed").With("reason", "skill_not_on_node")
 		}
 		i := slices.IndexFunc(conflicts, func(c Conflict) bool { return c.Harness == harness })
 		if i < 0 {
-			return "", fmt.Errorf("%w: no hay conflicto en %s", data.ErrInvalid, harness)
+			return "", data.ErrInvalid.Msgf("no conflict in %s", harness).With("reason", "no_conflict_in").With("harness", harness)
 		}
 		if err = r.adopt(ctx, s, conflicts[i].Path); err != nil {
 			return "", err
 		}
 	default:
-		return "", fmt.Errorf("%w: action must be restore or adopt", data.ErrInvalid)
+		return "", data.ErrInvalid.Msgf("action must be restore or adopt")
 	}
 	r.run.Lock()
 	defer r.run.Unlock()
@@ -193,7 +192,7 @@ func (r *Reconciler) adopt(ctx context.Context, s data.Skill, dir string) error 
 	}
 	s.Description, s.BodyMD, s.Files = node.Description, node.BodyMD, node.Files
 	if s.Description == "" {
-		return fmt.Errorf("%w: el SKILL.md del nodo no tiene descripción", data.ErrInvalid)
+		return data.ErrInvalid.Msgf("the node SKILL.md has no description").With("reason", "node_skill_no_description")
 	}
 	_, err = Save(ctx, r.Store, s)
 	return err
@@ -207,7 +206,7 @@ func readDir(dir string) (data.Skill, error) {
 	}
 	s, err := parseSkillMD(string(raw))
 	if err != nil {
-		return s, fmt.Errorf("%w: %v", data.ErrInvalid, err)
+		return s, data.ErrInvalid.Msgf("%v", err)
 	}
 	size := len(raw)
 	root, err := filepath.EvalSymlinks(dir)
@@ -233,7 +232,7 @@ func readDir(dir string) (data.Skill, error) {
 			return err
 		}
 		if size += len(content); size > maxAdopt {
-			return fmt.Errorf("%w: la skill del nodo ocupa más de 1 MB", data.ErrInvalid)
+			return data.ErrInvalid.Msgf("the node skill is larger than 1 MB").With("reason", "node_skill_too_large")
 		}
 		s.Files[filepath.ToSlash(rel)] = string(content)
 		return nil

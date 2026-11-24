@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,7 +14,7 @@ import (
 )
 
 // ErrUnreachable is returned when the mesh cannot reach a node.
-var ErrUnreachable = errors.New("the environment is not reachable")
+var ErrUnreachable = apperr.New(apperr.Unreachable, "the environment is not reachable")
 
 // PeerCall sends a JSON request to the API of another node through the mesh
 // and decodes its JSON answer into out, when out is not nil.

@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -34,7 +33,7 @@ func (m *Manager) Spawn(ctx context.Context, parentID string, sub Subagent) (dat
 		return parent, err
 	}
 	if strings.TrimSpace(sub.Prompt) == "" {
-		return data.Thread{}, fmt.Errorf("%w: the subagent needs a prompt", data.ErrInvalid)
+		return data.Thread{}, data.ErrInvalid.Msgf("the subagent needs a prompt")
 	}
 	if err = m.CanSpawn(ctx, parent); err != nil {
 		return data.Thread{}, err
@@ -43,7 +42,7 @@ func (m *Manager) Spawn(ctx context.Context, parentID string, sub Subagent) (dat
 	var settings ThreadSettings
 	if sub.Provider != "" && !strings.EqualFold(sub.Provider, parent.Provider) {
 		if sub.Model == "" {
-			return data.Thread{}, fmt.Errorf("%w: choose a model for provider %s; use list_models", data.ErrInvalid, sub.Provider)
+			return data.Thread{}, data.ErrInvalid.Msgf("choose a model for provider %s; use list_models", sub.Provider)
 		}
 		settings.Provider = &sub.Provider
 	}
@@ -92,14 +91,14 @@ func (m *Manager) Spawn(ctx context.Context, parentID string, sub Subagent) (dat
 // cannot launch its own, and at most MaxActiveChildren work at once.
 func (m *Manager) CanSpawn(ctx context.Context, parent data.Thread) error {
 	if parent.ParentID != nil {
-		return fmt.Errorf("%w: a subagent cannot launch subagents", data.ErrInvalid)
+		return data.ErrInvalid.Msgf("a subagent cannot launch subagents")
 	}
 	working, err := m.store.Threads().List(ctx, data.Filter{Fields: map[string]any{"parent_id": parent.ID, "status": "working"}, Limit: MaxActiveChildren + 1})
 	if err != nil {
 		return err
 	}
 	if len(working) >= MaxActiveChildren {
-		return fmt.Errorf("%w: %d subagents are already working; wait for one or stop it", data.ErrInvalid, MaxActiveChildren)
+		return data.ErrInvalid.Msgf("%d subagents are already working; wait for one or stop it", MaxActiveChildren)
 	}
 	return nil
 }

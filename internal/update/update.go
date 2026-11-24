@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"io"
 	"log"
 	"net/http"
@@ -38,11 +39,11 @@ const (
 
 var (
 	// ErrDev is returned for local builds, which follow no channel.
-	ErrDev = errors.New("esta compilación es local y no sigue ningún canal")
+	ErrDev = apperr.New(apperr.UpdateRefused, "this build is local and follows no channel").With("reason", "dev")
 	// ErrBusy is returned when turns run here and the update is not forced.
-	ErrBusy = errors.New("hay turnos en marcha en este nodo")
+	ErrBusy = apperr.New(apperr.UpdateRefused, "turns are running on this node").With("reason", "busy")
 	// ErrRunning is returned while an update is already in progress.
-	ErrRunning = errors.New("ya se está actualizando")
+	ErrRunning = apperr.New(apperr.UpdateRefused, "an update is already running").With("reason", "running")
 )
 
 // Status is what this node runs and what its channel offers.

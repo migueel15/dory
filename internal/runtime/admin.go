@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"github.com/migueel15/dory/internal/apperr"
 	"os"
 	"strings"
 	"sync"
@@ -157,7 +158,7 @@ func (m *Manager) StartJob(provider, kind string) (*Job, error) {
 	return &snapshot, nil
 }
 
-var ErrJobInputClosed = errors.New("el intento ya no admite códigos")
+var ErrJobInputClosed = apperr.New(apperr.JobInputClosed, "the login attempt no longer accepts codes")
 
 // SubmitLoginCode writes a single authorization code to the active CLI.
 func (m *Manager) SubmitLoginCode(id, code string) error {

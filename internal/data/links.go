@@ -17,23 +17,23 @@ func (s *Store) LinkThread(ctx context.Context, threadID, taskID string, replace
 		return th, err
 	}
 	if taskID == "" {
-		return th, fmt.Errorf("%w: task_id is required", ErrInvalid)
+		return th, ErrInvalid.Msgf("task_id is required")
 	}
 	task, err := s.Tasks().Get(ctx, taskID)
 	if errors.Is(err, ErrNotFound) {
-		return th, fmt.Errorf("%w: task %s does not exist or is archived", ErrInvalid, taskID)
+		return th, ErrInvalid.Msgf("task %s does not exist or is archived", taskID)
 	} else if err != nil {
 		return th, err
 	}
 	if th.ProjectID != nil && (task.ProjectID == nil || *task.ProjectID != *th.ProjectID) {
-		return th, fmt.Errorf("%w: task %s belongs to another project", ErrInvalid, taskID)
+		return th, ErrInvalid.Msgf("task %s belongs to another project", taskID)
 	}
 	if th.TaskID != nil {
 		if *th.TaskID == taskID {
 			return th, nil
 		}
 		if !replace {
-			return th, fmt.Errorf("%w: thread is linked to task %s; pass replace to move it", ErrInvalid, *th.TaskID)
+			return th, ErrInvalid.Msgf("thread is linked to task %s; pass replace to move it", *th.TaskID)
 		}
 	}
 	return s.PatchThread(ctx, threadID, map[string]any{"task_id": taskID, "task_linked_at": s.now().UTC().Format(time.RFC3339Nano)})
@@ -52,10 +52,10 @@ func (s *Store) UnlinkThread(ctx context.Context, threadID string) (Thread, erro
 // that depends on itself and any dependency that would close a cycle.
 func (s *Store) AddDependency(ctx context.Context, taskID, dependsOnID string) (Dependency, error) {
 	if taskID == "" || dependsOnID == "" {
-		return Dependency{}, fmt.Errorf("%w: task_id and depends_on_id are required", ErrInvalid)
+		return Dependency{}, ErrInvalid.Msgf("task_id and depends_on_id are required")
 	}
 	if taskID == dependsOnID {
-		return Dependency{}, fmt.Errorf("%w: a task cannot depend on itself", ErrInvalid)
+		return Dependency{}, ErrInvalid.Msgf("a task cannot depend on itself")
 	}
 	for _, id := range []string{taskID, dependsOnID} {
 		if _, err := s.Tasks().Get(ctx, id); err != nil {
@@ -69,7 +69,7 @@ func (s *Store) AddDependency(ctx context.Context, taskID, dependsOnID string) (
 		id := next[0]
 		next = next[1:]
 		if id == taskID {
-			return Dependency{}, fmt.Errorf("%w: the dependency would create a cycle", ErrInvalid)
+			return Dependency{}, ErrInvalid.Msgf("the dependency would create a cycle")
 		}
 		if seen[id] {
 			continue

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -62,7 +61,7 @@ func (c *Client) ClosedPage(ctx context.Context, kind, project, cursor string) (
 	if cursor != "" {
 		raw, err := base64.RawURLEncoding.DecodeString(cursor)
 		if err != nil || json.Unmarshal(raw, &after) != nil {
-			return nil, fmt.Errorf("%w: bad cursor", ErrInvalid)
+			return nil, ErrInvalid.Msgf("bad cursor")
 		}
 		for repo := range repos {
 			if _, ok := after[repo]; !ok {

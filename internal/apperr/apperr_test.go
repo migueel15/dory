@@ -16,6 +16,9 @@ func TestIsMatchesCodeAndMessage(t *testing.T) {
 	if !errors.Is(copyOf, busy) {
 		t.Fatal("a copy with params must match its sentinel")
 	}
+	if m := busy.Msgf("wait %d", 2); !errors.Is(m, busy) || m.Message != "wait: wait 2" {
+		t.Fatalf("Msgf copy must match its sentinel and extend its message: %q", m.Message)
+	}
 	if errors.Is(New(Busy, "other"), busy) {
 		t.Fatal("different message must not match a sentinel with message")
 	}

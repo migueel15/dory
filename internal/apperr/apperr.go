@@ -66,6 +66,9 @@ type Error struct {
 	Message string
 	Params  map[string]any
 	Err     error
+
+	// base is the sentinel this error was derived from by With or Msgf.
+	base *Error
 }
 
 func (e *Error) Error() string {
@@ -80,14 +83,25 @@ func (e *Error) Error() string {
 
 func (e *Error) Unwrap() error { return e.Err }
 
-// Is matches an *Error with the same code and, when the target names a message,
-// the same message. That keeps errors.Is working on copies made by With.
+// Is matches the sentinel an error was derived from, and any *Error with the
+// same code and, when the target names a message, the same message. That keeps
+// errors.Is working on the copies made by With and Msgf.
 func (e *Error) Is(target error) bool {
 	t, ok := target.(*Error)
 	if !ok {
 		return false
 	}
+	if e.base != nil && e.base == t {
+		return true
+	}
 	return e.Code == t.Code && (t.Message == "" || e.Message == t.Message)
+}
+
+func (e *Error) origin() *Error {
+	if e.base != nil {
+		return e.base
+	}
+	return e
 }
 
 func New(code Code, msg string) *Error { return &Error{Code: code, Message: msg} }
@@ -104,16 +118,19 @@ func Wrap(code Code, err error, msg string) *Error {
 // With returns a copy that also carries the parameter.
 func (e *Error) With(key string, v any) *Error {
 	c := *e
+	c.base = e.origin()
 	c.Params = make(map[string]any, len(e.Params)+1)
 	maps.Copy(c.Params, e.Params)
 	c.Params[key] = v
 	return &c
 }
 
-// Msg returns a copy with another message, for a sentinel that needs context.
-func (e *Error) Msg(msg string) *Error {
+// Msgf returns a copy whose message is the sentinel's followed by the detail:
+// "invalid argument: title is required". errors.Is still matches the sentinel.
+func (e *Error) Msgf(format string, a ...any) *Error {
 	c := *e
-	c.Message = msg
+	c.base = e.origin()
+	c.Message = e.origin().Message + ": " + fmt.Sprintf(format, a...)
 	return &c
 }
 

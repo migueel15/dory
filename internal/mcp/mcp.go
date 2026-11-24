@@ -644,7 +644,7 @@ func saveTask(ctx context.Context, s *api.Server, in taskInput) (data.Task, erro
 			return t, err
 		}
 	} else if in.Title == "" {
-		return t, fmt.Errorf("%w: title is required", data.ErrInvalid)
+		return t, data.ErrInvalid.Msgf("title is required")
 	}
 	set := func(dst **string, v string) {
 		if v != "" {
@@ -709,7 +709,7 @@ func setTaskProject(ctx context.Context, store *data.Store, taskID, project stri
 			return t, err
 		}
 		if p.ID == "" {
-			return t, fmt.Errorf("%w: project %s does not exist", data.ErrInvalid, project)
+			return t, data.ErrInvalid.Msgf("project %s does not exist", project)
 		}
 		next = &p.ID
 	}
@@ -761,7 +761,7 @@ func remember(ctx context.Context, store *data.Store, in memoryInput) (data.Memo
 		m.Labels = in.Labels
 	}
 	if m.Content == "" {
-		return m, fmt.Errorf("%w: content is required", data.ErrInvalid)
+		return m, data.ErrInvalid.Msgf("content is required")
 	}
 	return store.Memories().Put(ctx, m)
 }

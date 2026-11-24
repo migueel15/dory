@@ -3,14 +3,14 @@ package github
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"slices"
 	"strings"
 )
 
 // ErrInvalid reports a kind or action that does not exist.
-var ErrInvalid = errors.New("github: invalid request")
+var ErrInvalid = apperr.New(apperr.Invalid, "github: invalid request")
 
 // Event is one entry of the conversation and activity of an issue or pull request.
 type Event struct {
@@ -480,32 +480,32 @@ func validate(kind string, a Action) error {
 		return ErrInvalid
 	}
 	if strings.HasSuffix(a.Type, "_thread") && a.ThreadID == "" {
-		return fmt.Errorf("%w: thread_id is required", ErrInvalid)
+		return ErrInvalid.Msgf("thread_id is required")
 	}
 	sides := []string{"LEFT", "RIGHT"}
 	if a.Type == "comment_lines" && (a.Path == "" || a.Line < 1 || !slices.Contains(sides, a.Side) || (a.StartLine != 0 && !slices.Contains(sides, a.StartSide))) {
-		return fmt.Errorf("%w: path, line and side are required", ErrInvalid)
+		return ErrInvalid.Msgf("path, line and side are required")
 	}
 	if (a.Type == "request_review" || a.Type == "assign" || a.Type == "unassign") && len(a.UserIDs) == 0 {
-		return fmt.Errorf("%w: user_ids is required", ErrInvalid)
+		return ErrInvalid.Msgf("user_ids is required")
 	}
 	if strings.HasPrefix(a.Type, "edit_") && a.Type != "edit_pull" && a.Type != "edit_issue" && (a.CommentID == "" || strings.TrimSpace(a.Body) == "") {
-		return fmt.Errorf("%w: comment_id and text are required", ErrInvalid)
+		return ErrInvalid.Msgf("comment_id and text are required")
 	}
 	if (a.Type == "edit_pull" || a.Type == "edit_issue") && strings.TrimSpace(a.Title) == "" {
-		return fmt.Errorf("%w: title is required", ErrInvalid)
+		return ErrInvalid.Msgf("title is required")
 	}
 	if a.Type == "comment_file" && a.Path == "" {
-		return fmt.Errorf("%w: path is required", ErrInvalid)
+		return ErrInvalid.Msgf("path is required")
 	}
 	if (a.Type == "comment" || a.Type == "request_changes" || a.Type == "reply_thread" || a.Type == "comment_lines" || a.Type == "comment_file") && strings.TrimSpace(a.Body) == "" {
-		return fmt.Errorf("%w: text is required", ErrInvalid)
+		return ErrInvalid.Msgf("text is required")
 	}
 	if a.Type == "close_issue" && a.Method != "" && a.Method != "COMPLETED" && a.Method != "NOT_PLANNED" {
-		return fmt.Errorf("%w: unknown close reason", ErrInvalid)
+		return ErrInvalid.Msgf("unknown close reason")
 	}
 	if a.Type == "merge" && !slices.Contains([]string{"MERGE", "SQUASH", "REBASE"}, a.Method) {
-		return fmt.Errorf("%w: unknown merge method", ErrInvalid)
+		return ErrInvalid.Msgf("unknown merge method")
 	}
 	return nil
 }

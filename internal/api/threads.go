@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"github.com/migueel15/dory/internal/apperr"
 	"log"
 	"net/http"
 	"os"
@@ -45,14 +46,11 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/threads/{id}/processes/{pid}/stop", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		pid, err := strconv.Atoi(r.PathValue("pid"))
 		if err != nil || pid < 2 {
-			writeError(w, http.StatusBadRequest, "invalid_argument", "PID inválido")
+			writeErr(w, r, apperr.New(apperr.Invalid, "invalid PID"))
 			return
 		}
-		if err := runtime.StopService(t.ID, pid); errors.Is(err, runtime.ErrSharedProcessGroup) {
-			writeError(w, http.StatusConflict, "shared_process_group", err.Error())
-			return
-		} else if err != nil {
-			writeDataError(w, err)
+		if err := runtime.StopService(t.ID, pid); err != nil {
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -60,7 +58,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/threads", func(w http.ResponseWriter, r *http.Request) {
 		f, err := parseFilter(r)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+			writeErr(w, r, err)
 			return
 		}
 		if f.Limit == 0 {
@@ -68,7 +66,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 		}
 		threads, err := s.Store.Threads().List(r.Context(), f)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, threads)
@@ -79,12 +77,12 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/threads/{id}", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		msgs, err := s.Runtime.Messages(r.Context(), t.ID)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		requests, err := s.Runtime.Requests(r.Context(), t.ID)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		dir, _ := s.Runtime.Dir(r.Context(), t.ID)
@@ -101,20 +99,20 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 			return
 		}
 		if body.Text == "" && len(body.Files) == 0 {
-			writeError(w, http.StatusBadRequest, "invalid_argument", "text is required")
+			writeErr(w, r, apperr.New(apperr.Invalid, "text is required"))
 			return
 		}
 		var files []runtime.Attachment
 		for _, id := range body.Files {
 			a, err := s.Runtime.Attachment(t.ID, id)
 			if err != nil {
-				writeDataError(w, err)
+				writeErr(w, r, err)
 				return
 			}
 			files = append(files, a)
 		}
 		if err := s.Runtime.SendFrom(r.Context(), t.ID, body.SenderThreadID, body.Text, files...); err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -128,7 +126,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 		}
 		o.ParentThreadID = t.ID
 		if err := s.Runtime.Complete(r.Context(), o); err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -136,7 +134,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/threads/{id}/delegations", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		out, err := s.Runtime.Delegations(r.Context(), t.ID)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
@@ -151,14 +149,14 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 		}
 		out, err := s.Runtime.Revert(r.Context(), t.ID, body.MessageID)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
 	}))
 	mux.HandleFunc("POST /api/threads/{id}/interrupt", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		if err := s.Runtime.Interrupt(r.Context(), t.ID); err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -181,7 +179,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 			for _, id := range ids {
 				a, err := s.Runtime.Attachment(t.ID, id)
 				if err != nil {
-					writeDataError(w, err)
+					writeErr(w, r, err)
 					return
 				}
 				files = append(files, a)
@@ -195,12 +193,8 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 			body.Answers[i] = a
 		}
 		err := s.Runtime.Answer(r.Context(), t.ID, r.PathValue("req"), body.Answers)
-		if errors.Is(err, runtime.ErrNoRequest) {
-			writeError(w, http.StatusConflict, "conflict", err.Error())
-			return
-		}
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -216,27 +210,22 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 		}
 		err := s.Runtime.AnswerSecret(r.Context(), t.ID, r.PathValue("req"), body.Values, body.Decline)
 		clear(body.Values)
-		switch {
-		case errors.Is(err, runtime.ErrNoRequest):
-			writeError(w, http.StatusConflict, "conflict", err.Error())
-		case errors.Is(err, runtime.ErrSecretFields):
-			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
-		case err != nil:
-			writeDataError(w, err)
-		default:
-			w.WriteHeader(http.StatusNoContent)
+		if err != nil {
+			writeErr(w, r, err)
+			return
 		}
+		w.WriteHeader(http.StatusNoContent)
 	}))
 	mux.HandleFunc("POST /api/threads/{id}/attachments", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		f, h, err := r.FormFile("file")
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_argument", "file is required")
+			writeErr(w, r, apperr.New(apperr.Invalid, "file is required"))
 			return
 		}
 		defer f.Close()
 		a, err := s.Runtime.SaveAttachment(t.ID, h.Filename, h.Header.Get("Content-Type"), f)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, a)
@@ -244,7 +233,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/threads/{id}/attachments/{file}", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		path, err := s.Runtime.AttachmentPath(t.ID, r.PathValue("file"))
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.Header().Set("Cache-Control", "private, max-age=86400")
@@ -255,12 +244,12 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/threads/{id}/renders/{file}", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		path, err := s.Runtime.AttachmentPath(t.ID, r.PathValue("file"))
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		page, err := os.ReadFile(path)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -287,11 +276,11 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 		case "steer":
 			err = s.Runtime.SteerQueued(r.Context(), t.ID, run)
 		default:
-			writeError(w, http.StatusBadRequest, "invalid_argument", "action must be edit, cancel or steer")
+			writeErr(w, r, apperr.New(apperr.Invalid, "action must be edit, cancel or steer"))
 			return
 		}
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -304,7 +293,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 		}
 		out, err := s.Runtime.Configure(r.Context(), t.ID, body)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
@@ -313,7 +302,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/threads/{id}/commands", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		dir, err := s.Runtime.Dir(r.Context(), t.ID)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		home, _ := os.UserHomeDir()
@@ -324,7 +313,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/threads/{id}/files", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		dir, err := s.Runtime.Dir(r.Context(), t.ID)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, runtime.Files(r.Context(), dir, r.URL.Query().Get("q"), 30))
@@ -332,7 +321,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/threads/{id}/diff", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		d, err := s.Runtime.DiffAgainst(r.Context(), t.ID, r.URL.Query().Get("base"))
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"diff": d.Diff, "branch": t.Branch, "base": d.Base, "branches": d.Branches})
@@ -350,7 +339,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 		}
 		t, err := s.ThreadAction(r.Context(), r.PathValue("id"), body.Action, body.Title, body.Until, body.TaskID)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, t)
@@ -363,14 +352,14 @@ func (s *Server) owned(h func(http.ResponseWriter, *http.Request, data.Thread)) 
 	return func(w http.ResponseWriter, r *http.Request) {
 		t, err := s.Store.Threads().Get(r.Context(), r.PathValue("id"))
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		if t.NodeID != s.Node.ID {
 			if s.Remote != nil && s.Remote.Forward(w, r, t.NodeID) {
 				return
 			}
-			writeError(w, http.StatusServiceUnavailable, "node_offline", "el nodo que ejecuta este hilo no está conectado")
+			writeErr(w, r, apperr.New(apperr.NodeOffline, "the node that runs this thread is not connected").With("thread", true))
 			return
 		}
 		h(w, r, t)
@@ -403,20 +392,17 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 	if body.RepositoryID == "" && body.ProjectID != nil {
 		var err error
 		body.RepositoryID, path, err = s.projectCheckout(ctx, *body.ProjectID)
-		if errors.Is(err, errNotCloned) {
-			writeError(w, http.StatusBadRequest, "repository_not_cloned", err.Error())
-			return
-		} else if err != nil {
-			writeDataError(w, err)
+		if err != nil {
+			writeErr(w, r, err)
 			return
 		}
 	} else if body.RepositoryID != "" {
 		var err error
 		if path, err = s.Store.RepositoryPath(ctx, body.RepositoryID); errors.Is(err, data.ErrNotFound) {
-			writeError(w, http.StatusBadRequest, "repository_not_cloned", "el repositorio no está clonado en este nodo")
+			writeErr(w, r, apperr.New(apperr.RepositoryNotClone, "the repository is not cloned on this node"))
 			return
 		} else if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 	}
@@ -435,7 +421,7 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if found == nil {
-			writeError(w, http.StatusBadRequest, "unknown_worktree", "el worktree no pertenece al repositorio del proyecto")
+			writeErr(w, r, apperr.New(apperr.UnknownWorktree, "the worktree does not belong to the project's repository"))
 			return
 		}
 		body.Worktree, body.Branch = false, found.Branch
@@ -446,7 +432,7 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 	} else if !body.Worktree && body.Branch != "" && path != "" {
 		// The current checkout runs on the branch the user picked.
 		if err := workspace.SwitchBranch(ctx, path, body.Branch); err != nil {
-			writeError(w, http.StatusConflict, "branch_switch_failed", err.Error())
+			writeErr(w, r, err)
 			return
 		}
 	}
@@ -474,7 +460,7 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 		t, err = s.Runtime.Create(ctx, nt)
 	}
 	if err != nil {
-		writeDataError(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	if body.Branch != "" && s.Settings.Get().SourceControl.AutoPull {
@@ -487,7 +473,7 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Text != "" {
 		if err = s.Runtime.Send(ctx, t.ID, body.Text); err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 	}
@@ -521,7 +507,7 @@ func (s *Server) ThreadAction(ctx context.Context, id, action, title, until, tas
 	switch action {
 	case "rename":
 		if title == "" {
-			return t, errors.Join(data.ErrInvalid, errors.New("title is required"))
+			return t, data.ErrInvalid.Msgf("title is required")
 		}
 		fields["title"] = title
 	case "pin":
@@ -538,7 +524,7 @@ func (s *Server) ThreadAction(ctx context.Context, id, action, title, until, tas
 		fields["settled_at"] = nil
 	case "snooze":
 		if _, err := time.Parse(time.RFC3339, until); err != nil {
-			return t, errors.Join(data.ErrInvalid, errors.New("until must be an RFC 3339 time"))
+			return t, data.ErrInvalid.Msgf("until must be an RFC 3339 time")
 		}
 		fields["snoozed_until"] = until
 	case "unsnooze":
@@ -554,7 +540,7 @@ func (s *Server) ThreadAction(ctx context.Context, id, action, title, until, tas
 	case "archive":
 		return t, s.archiveThread(ctx, t)
 	default:
-		return t, errors.Join(data.ErrInvalid, errors.New("unknown action "+action))
+		return t, data.ErrInvalid.Msgf("unknown action %s", action)
 	}
 	return s.Store.PatchThread(ctx, id, fields)
 }

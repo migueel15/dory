@@ -5,9 +5,10 @@ package runtime
 import (
 	"context"
 	"errors"
+	"github.com/migueel15/dory/internal/apperr"
 )
 
-var ErrSharedProcessGroup = errors.New("el servicio comparte grupo con Dory, el agente o una shell")
+var ErrSharedProcessGroup = apperr.New(apperr.SharedProcessGroup, "the service shares a process group with Dory, the agent or a shell")
 
 type Service struct {
 	PID     int    `json:"pid"`
