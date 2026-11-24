@@ -10,8 +10,13 @@ import { showPanelTab } from "./side-panel";
 
 export type Turn = { id: string; files: TurnFile[] };
 
-// turnFiles gathers the files every edit call of a turn reported.
-export const turnFiles = (ms: Message[]) => mergeTurnFiles(ms.flatMap((m) => (m.tool?.kind === "edit" ? m.tool.files ?? [] : [])));
+// turnFiles reads a turn's changes: the git diff the runtime saves when the
+// turn ends, or, for turns from before it, the files its edit calls reported.
+export const turnFiles = (ms: Message[]) => {
+  const diff = ms.find((m) => m.role === "changes");
+  if (diff) return mergeTurnFiles(diff.tool?.files ?? []);
+  return mergeTurnFiles(ms.flatMap((m) => (m.tool?.kind === "edit" ? m.tool.files ?? [] : [])));
+};
 
 // The filter is per thread and per viewer; the panel listens for its changes.
 export type TurnFilter = { turn: string | null; path?: string; seq: number };

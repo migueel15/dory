@@ -561,6 +561,8 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
 		key := liveKey(t.ID, t.Provider)
 		closeAll(take(func(candidate string) bool { return candidate == key }))
 	}
+	// The snapshot the turn's changes are diffed against when it ends.
+	base := snapshot(ctx, dir)
 	var events <-chan Event
 	switch p := p.(type) {
 	case Interactive:
@@ -598,7 +600,7 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
 	}
 	m.save(ctx, Message{ID: run + ":user", ThreadID: t.ID, RunID: run, Role: "user", Text: text, Detail: attachmentsDetail(files), CreatedAt: startedAt, SenderThreadID: q.Sender})
 	m.setStatus(ctx, t.ID, "working", "")
-	go m.follow(ctx, t, events, marker, change, newLedger(userPrompt, len(turn.Text)-len(prompt), historyChars), run)
+	go m.follow(ctx, t, events, marker, change, newLedger(userPrompt, len(turn.Text)-len(prompt), historyChars), run, dir, base)
 	return nil
 }
 
@@ -622,7 +624,7 @@ func (m *Manager) ReportedSettings(ctx context.Context, t data.Thread) ReportedS
 
 // follow stores what a turn emits until it ends, then starts the next
 // queued message, if any.
-func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event, marker Message, change modelChange, usage *ledger, run string) {
+func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event, marker Message, change modelChange, usage *ledger, run, dir, base string) {
 	bg := context.WithoutCancel(ctx)
 	status, failure := "idle", ""
 	settings := turnSettings{Provider: t.Provider, Configured: ReportedSettings{Model: t.Model, Effort: t.Effort}}
@@ -689,6 +691,9 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 	// The process is gone: nothing can answer its requests any more.
 	if _, err := m.db.ExecContext(bg, `DELETE FROM thread_requests WHERE thread_id = ?`, t.ID); err != nil {
 		log.Printf("runtime: drop requests: %v", err)
+	}
+	if files := treeChanges(bg, dir, base, snapshot(bg, dir)); len(files) > 0 {
+		m.save(bg, Message{ID: run + ":changes", ThreadID: t.ID, RunID: run, Role: "changes", Tool: &ToolCall{Kind: "changes", Name: "changes", Files: files}, CreatedAt: now()})
 	}
 	m.syncBranch(bg, t.ID)
 	m.mu.Lock()

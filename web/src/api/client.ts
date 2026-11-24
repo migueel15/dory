@@ -39,7 +39,7 @@ export type Thread = {
   pinned_at: string | null; read_at: string | null; last_activity_at: string | null; snoozed_until: string | null; settled_at: string | null;
   created_at: string; updated_at: string; archived_at: string | null;
 };
-export type Role = "user" | "assistant" | "reasoning" | "tool" | "plan" | "question" | "system" | "interrupt" | "clear" | "model-change";
+export type Role = "user" | "assistant" | "reasoning" | "tool" | "plan" | "question" | "system" | "interrupt" | "clear" | "model-change" | "changes";
 // ToolCall is a tool call in Dory's own terms (runtime.ToolCall): every harness
 // maps its tools onto these kinds, and the chat draws one card per kind.
 export type ToolKind = "edit" | "command" | "todo" | "plan" | "read" | "search" | "web" | "agent" | "mcp" | "question" | "other";

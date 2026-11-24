@@ -506,7 +506,8 @@ function layout(ms: Message[], live: boolean): (Message | Worked | Changes)[] {
   const isWork = (m: Message) => m.role === "reasoning" || (m.role === "tool" && !htmlRef(m)) || m.role === "question" || m.role === "assistant";
   let start = 0;
   const flush = (end: number, last: boolean) => {
-    const seg = ms.slice(start, end);
+    // The turn's git diff is only read by the box of its changes.
+    const seg = ms.slice(start, end).filter((m) => m.role !== "changes");
     if (!seg.length && !(last && live)) return;
     let head: Message | undefined;
     if (seg[0]?.role === "user") { head = seg[0]; out.push(seg.shift()!); }
@@ -518,7 +519,7 @@ function layout(ms: Message[], live: boolean): (Message | Worked | Changes)[] {
       return;
     }
     // A finished turn that edited files ends with the box of its changes.
-    const files = turnFiles(seg);
+    const files = turnFiles(ms.slice(start, end));
     const box = () => { if (files.length) { const id = head?.id ?? seg[0].id; out.push({ changes: true, id: `changes:${id}`, turn: { id, files } }); } };
     let answer = -1;
     for (let i = seg.length - 1; i >= 0; i--) if (seg[i].role === "assistant") { answer = i; break; }
