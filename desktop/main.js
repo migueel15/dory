@@ -152,11 +152,12 @@ let coreURL;
 let win;
 
 // The core downloads the desktop release of its channel when the mesh updates
-// (ADR-016); the app installs it from there and restarts.
+// (ADR-016); the app installs it from there as soon as it lands and restarts.
 async function followUpdates(url) {
   if (!app.isPackaged) return;
+  let dataDir;
   try {
-    const { data_dir: dataDir } = await (await fetch(`${url}/api/health`)).json();
+    ({ data_dir: dataDir } = await (await fetch(`${url}/api/health`)).json());
     const token = fs.readFileSync(path.join(dataDir, "control.token"), "utf8").trim();
     autoUpdater.requestHeaders = { Authorization: `Bearer ${token}` };
   } catch {
@@ -175,7 +176,16 @@ async function followUpdates(url) {
   autoUpdater.on("error", () => {});
   const check = () => autoUpdater.checkForUpdates().catch(() => {});
   check();
-  setInterval(check, 2 * 60_000);
+  // The core moves the finished download into updates/desktop in one rename:
+  // install as soon as it lands instead of polling.
+  const updates = path.join(dataDir, "updates");
+  fs.mkdirSync(updates, { recursive: true });
+  let pending;
+  fs.watch(updates, (_, name) => {
+    if (name !== "desktop") return;
+    clearTimeout(pending);
+    pending = setTimeout(check, 500);
+  });
 }
 
 async function open() {
