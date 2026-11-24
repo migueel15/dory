@@ -106,8 +106,8 @@ export function SidePanel({ panel, threadId, render, available, onRename, onClos
   const focusView = (e: React.PointerEvent) => {
     if (e.buttons !== 0 || document.querySelector('[role="menu"], dialog[open]')) return;
     const at = document.activeElement as HTMLElement | null;
-    // A field in use (renaming a tab, say) keeps the focus; the terminal's own input does not count.
-    if (at && /^(INPUT|TEXTAREA|SELECT)$/.test(at.tagName) && !at.hasAttribute("data-panel-focus")) return;
+    // A field in use (renaming a tab, say) keeps the focus; neither the terminal's own input nor the message box does.
+    if (at && /^(INPUT|TEXTAREA|SELECT)$/.test(at.tagName) && !at.hasAttribute("data-panel-focus") && at.getAttribute("aria-label") !== "Mensaje") return;
     if (at?.isContentEditable && !aside.current?.contains(at)) return;
     const sel = window.getSelection();
     if (sel && !sel.isCollapsed && !aside.current?.contains(sel.anchorNode)) return;
