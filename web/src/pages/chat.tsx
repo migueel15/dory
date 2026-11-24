@@ -21,6 +21,8 @@ import { AgentMessage, agentNote } from "../components/subagents";
 // bubbles, answers as plain markdown, and each finished turn's work folded
 // into one "Worked for…" line.
 
+// msgBtn is a message action: on hover only the icon changes colour, no round background.
+const msgBtn = "grid size-7 place-items-center text-slate-400 hover:text-slate-900 disabled:opacity-30 dark:hover:text-white";
 export const iconBtn = "grid size-7 place-items-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 dark:hover:bg-raised dark:hover:text-white";
 
 // elapsed writes a duration the short way: "45s", "1m 59s", "1h 3m".
@@ -372,11 +374,11 @@ export function MessageMeta({ m, threadId = "" }: { m: Message; threadId?: strin
   return (
     <div className="mt-1 flex items-center gap-1 text-[0.6875rem] text-slate-400 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
       {valid && <time dateTime={m.created_at} title={fullDate.format(at)} className="cursor-default tabular-nums">{shortTime.format(at)}</time>}
-      <button type="button" onClick={copy} title={copied ? "Copiado" : "Copiar mensaje"} aria-label="Copiar mensaje" className={iconBtn}>
+      <button type="button" onClick={copy} title={copied ? "Copiado" : "Copiar mensaje"} aria-label="Copiar mensaje" className={msgBtn}>
         {copied ? <Check weight="regular" className="size-3.5" /> : <Copy className="size-3.5" />}
       </button>
       {threadId && m.role === "user" && (
-        <button type="button" onClick={revert} disabled={reverting} title="Volver a antes de este mensaje" aria-label="Volver a antes de este mensaje" className={iconBtn}>
+        <button type="button" onClick={revert} disabled={reverting} title="Volver a antes de este mensaje" aria-label="Volver a antes de este mensaje" className={msgBtn}>
           <ArrowCounterClockwise className="size-3.5" />
         </button>
       )}
@@ -629,14 +631,15 @@ export function useFollow(deps: unknown[]) {
   // True while "Ir al final" glides down, so its own steps do not unpin.
   const chasing = useRef(false);
   const [away, setAway] = useState(false);
+  const anchor = useRef<{ id: string; offset: number } | null>(null);
   const toEnd = () => {
     const el = scroller.current;
     if (el) { el.scrollTop = el.scrollHeight; lastTop.current = el.scrollTop; }
+    anchor.current = null; // an anchor from an earlier visit up would jump the view back there
   };
   // Away from the end, the message under the top of the view is the anchor:
   // whatever grows or shrinks around it (a step list collapsing, the answer
   // ending, heights painted late), the view keeps it at the same place.
-  const anchor = useRef<{ id: string; offset: number } | null>(null);
   const mark = () => {
     const el = scroller.current;
     if (!el) return;
@@ -683,7 +686,9 @@ export function useFollow(deps: unknown[]) {
     const touch = () => { touched.current = Date.now(); chasing.current = false; };
     // A gesture up leaves the end at once, before content growing in the same
     // frame can pull the view back down and make it flicker.
-    const leave = () => { touch(); pinned.current = false; };
+    // Mark the anchor now: content may grow before the scroll event arrives,
+    // and holding with no anchor or an old one moves the view.
+    const leave = () => { touch(); if (pinned.current) { pinned.current = false; mark(); } };
     const wheel = (e: WheelEvent) => { if (e.deltaY < 0) leave(); };
     const key = (e: KeyboardEvent) => { if (["ArrowUp", "PageUp", "Home"].includes(e.key)) leave(); };
     const pointer = (e: PointerEvent) => { if (e.target === el) { held.current = true; touch(); } }; // the scrollbar
@@ -701,8 +706,11 @@ export function useFollow(deps: unknown[]) {
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     const up = el.scrollTop < lastTop.current - 1;
     lastTop.current = el.scrollTop;
-    if (distance < 40) { pinned.current = true; chasing.current = false; }
-    else if (up && !chasing.current && (held.current || Date.now() - touched.current < 1000)) pinned.current = false;
+    // A move up by the user leaves the end even within the last pixels: re-pinning
+    // there let the next growth pull the view back down, so small wheel or touch
+    // steps could never get out.
+    if (up && !chasing.current && (held.current || Date.now() - touched.current < 1000)) { if (pinned.current) anchor.current = null; pinned.current = false; }
+    else if (distance < 40 && !up) { pinned.current = true; chasing.current = false; }
     else if (pinned.current) toEnd(); // the browser moved the view; go back to the end
     if (!pinned.current) mark();
     setAway(!pinned.current && distance > 200);

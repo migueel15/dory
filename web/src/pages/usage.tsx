@@ -6,6 +6,7 @@ import { Card, ErrorText, Select, iconButton } from "../components/ui";
 import { AreaChart, StackedBar, compact, percent, providerColor, usd } from "../components/usage-charts";
 import { ProviderIcon, useNodes } from "../components/launch-picker";
 import { expectedRemaining, paceTitle, windowLabel, windowMinutes, windowReset } from "../lib/usage-pace";
+import { PaceMark } from "../components/pace-mark";
 
 
 const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(" ");
@@ -23,7 +24,7 @@ export function Limit({ w }: { w: UsageWindow }) {
       <div className="flex justify-between gap-3"><span>{windowLabel(w)}</span><span>Queda {100 - used} %</span></div>
       <div className="relative h-2 rounded bg-slate-200 dark:bg-hover">
         <div className={`h-full rounded ${tone}`} style={{ width: `${Math.max(0, 100 - used)}%` }} />
-        {pace !== null && <div aria-hidden="true" className="absolute -bottom-0.5 -top-0.5 w-0.5 -translate-x-1/2 bg-slate-900 dark:bg-white" style={{ left: `${pace}%` }} />}
+        {pace !== null && <PaceMark pace={pace} />}
       </div>
       {resetLabel && <p className="text-xs text-slate-500 dark:text-muted">{resetLabel}</p>}
     </div>

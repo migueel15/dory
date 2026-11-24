@@ -1,3 +1,4 @@
+import { PaceMark } from "./pace-mark";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDiffBase } from "../lib/diff-base";
@@ -143,14 +144,15 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false, hi
           </div>}
           <Subagents threadId={t.id} shown={shown} />
           <Related threadId={t.id} shown={shown} />
-          {usage.length > 0 && <div className="space-y-1 px-2.5 py-2">
+          {usage.length > 0 && <div className="grid grid-cols-[auto_1fr_auto] gap-y-1 px-2.5 py-2">
             {usage.map((w) => {
               const left = Math.max(0, 100 - Math.round(w.utilization * 100));
+              const pace = expectedRemaining({ resets_at: windowReset(w), window_minutes: windowMinutes(w) || null });
               return (
-                <div key={w.kind} className={`grid grid-cols-[5.5rem_1fr_2.5rem] items-center gap-3 rounded-md px-1.5 py-1.5 text-xs transition-colors hover:bg-slate-100 dark:hover:bg-raised`}
+                <div key={w.kind} className={`col-span-3 grid grid-cols-subgrid items-center gap-x-3 rounded-md px-1.5 py-1.5 text-xs transition-colors hover:bg-slate-100 dark:hover:bg-raised`}
                   onMouseEnter={(e) => setHover({ el: e.currentTarget, w })} onMouseLeave={() => setHover(null)}>
-                  <span className="truncate text-slate-500 dark:text-muted">{windowLabel(w)}</span>
-                  <div className="h-1 rounded bg-slate-200 dark:bg-hover"><div className="h-full rounded bg-slate-700 dark:bg-slate-200" style={{ width: `${left}%` }} /></div>
+                  <span className="truncate pl-0.5 text-slate-500 dark:text-muted">{windowLabel(w)}</span>
+                  <div className="relative h-1 rounded bg-slate-200 dark:bg-hover"><div className="h-full rounded bg-slate-700 dark:bg-slate-200" style={{ width: `${left}%` }} />{pace !== null && <PaceMark pace={pace} className="bg-white" />}</div>
                   <span className="text-right tabular-nums">{left} %</span>
                 </div>
               );
