@@ -915,7 +915,12 @@ func (m *Manager) DiffAgainst(ctx context.Context, id, against string) (WorkDiff
 			ref = strings.TrimSpace(string(mb))
 		}
 	}
-	diff, err := cmdexec.CommandContext(ctx, "git", "-C", dir, "diff", ref).Output()
+	// Against a snapshot of the folder, so new files not yet added count too.
+	args := []string{"-C", dir, "diff", ref}
+	if tree := snapshot(ctx, repoRoot(ctx, dir)); tree != "" {
+		args = append(args, tree)
+	}
+	diff, err := cmdexec.CommandContext(ctx, "git", args...).Output()
 	out.Diff = string(diff)
 	return out, err
 }
