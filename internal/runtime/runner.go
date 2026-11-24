@@ -108,7 +108,9 @@ type command struct {
 	ctx  context.Context
 
 	queued Queued
-	run    string
+	// steer sends queued ahead of the open turn, which stops for it.
+	steer bool
+	run   string
 	text   string
 
 	req     string
@@ -390,7 +392,14 @@ func (m *Manager) saveQueue(id string, queue []Queued) error {
 func (r *threadRunner) enqueue(c *command) result {
 	r.queue = append(r.queue, c.queued)
 	r.persist()
-	return result{}
+	if !c.steer {
+		return result{}
+	}
+	c.run = c.queued.RunID
+	if r.state == stateStopping {
+		return r.steerStopping(c)
+	}
+	return r.steer(c)
 }
 
 func (r *threadRunner) index(run string) int {

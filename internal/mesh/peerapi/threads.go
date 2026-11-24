@@ -32,4 +32,6 @@ type SendMessageRequest struct {
 	Files []string `json:"files"`
 	// SenderThreadID marks a message an agent of that thread wrote.
 	SenderThreadID string `json:"sender_thread_id"`
+	// Steer stops a running turn for this message instead of queueing it.
+	Steer bool `json:"steer,omitempty"`
 }

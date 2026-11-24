@@ -279,13 +279,23 @@ func (m *Manager) Send(ctx context.Context, id, text string, files ...Attachment
 
 // SendFrom is Send for a message an agent of the sender thread writes.
 func (m *Manager) SendFrom(ctx context.Context, id, sender, text string, files ...Attachment) error {
+	return m.send(ctx, id, sender, text, false, files)
+}
+
+// SendSteer is Send from the user that, on a busy thread, stops the open turn
+// and runs the message next instead of queueing it behind the turn.
+func (m *Manager) SendSteer(ctx context.Context, id, text string, files ...Attachment) error {
+	return m.send(ctx, id, "", text, true, files)
+}
+
+func (m *Manager) send(ctx context.Context, id, sender, text string, steer bool, files []Attachment) error {
 	if strings.TrimSpace(text) == ClearCommand && len(files) == 0 {
 		return m.Clear(ctx, id)
 	}
 	if _, err := m.local(ctx, id); err != nil {
 		return err
 	}
-	return m.do(id, &command{kind: cmdSend, ctx: ctx, queued: Queued{RunID: newRunID(), Text: text, Files: files, Sender: sender}}).err
+	return m.do(id, &command{kind: cmdSend, ctx: ctx, steer: steer, queued: Queued{RunID: newRunID(), Text: text, Files: files, Sender: sender}}).err
 }
 
 // ClearCommand is Dory's own /clear, the same for every harness.
