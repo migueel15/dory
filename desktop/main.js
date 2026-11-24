@@ -114,8 +114,16 @@ function spawnCore() {
 
 // startCore uses a healthy core already on the port, such as a dev one, and
 // otherwise starts the core of the app and waits for it.
+// A core of another version, such as the one an update left behind, is
+// stopped first so the app always runs the core it ships.
 async function startCore(url = coreURL) {
-  if (await healthy(url)) return;
+  if (await healthy(url)) {
+    if (core || !app.isPackaged) return;
+    const mine = (await run(doryBin(), ["version"]).catch(() => "")).split(" ")[0];
+    const running = await fetch(`${url}/api/health`).then((r) => r.json()).then((h) => h.version).catch(() => "");
+    if (!mine || mine === running) return;
+    await run(doryBin(), ["stop"]).catch(() => {});
+  }
   spawnCore();
   for (let i = 0; i < 100; i++) {
     if (await healthy(url)) return;
@@ -126,6 +134,18 @@ async function startCore(url = coreURL) {
 
 function stopCore() {
   if (core) core.kill();
+}
+
+// stopCoreAndWait ends the core and resolves once it has exited, killing it
+// if it does not stop in time.
+function stopCoreAndWait(timeout = 15_000) {
+  if (!core) return Promise.resolve();
+  const child = core;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => { child.kill("SIGKILL"); resolve(); }, timeout);
+    child.once("exit", () => { clearTimeout(timer); resolve(); });
+    child.kill();
+  });
 }
 
 let coreURL;
@@ -145,7 +165,13 @@ async function followUpdates(url) {
   autoUpdater.setFeedURL({ provider: "generic", url: `${url}/api/mesh/desktop` });
   autoUpdater.allowPrerelease = true;
   autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.on("update-downloaded", () => autoUpdater.quitAndInstall(true, true));
+  // The new app starts as soon as it is installed, so the old core must be
+  // gone first: otherwise the new app finds it on the port and keeps it.
+  autoUpdater.on("update-downloaded", async () => {
+    quitting = true;
+    await stopCoreAndWait();
+    autoUpdater.quitAndInstall(true, true);
+  });
   autoUpdater.on("error", () => {});
   const check = () => autoUpdater.checkForUpdates().catch(() => {});
   check();
