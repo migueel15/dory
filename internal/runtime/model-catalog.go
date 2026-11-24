@@ -4,12 +4,12 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"os"
-	"path/filepath"
+	"log"
 	"strings"
 	"time"
 
 	"github.com/migueel15/dory/internal/cmdexec"
+	"github.com/migueel15/dory/internal/nodestate"
 )
 
 // readModelCatalog keeps stdin open until the harness replies to the metadata
@@ -125,17 +125,20 @@ func (m *Manager) rememberCatalog(id string, st Status) []Model {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.catalogs == nil {
-		m.catalogs = map[string][]Model{}
-		if raw, err := os.ReadFile(m.catalogFile()); err == nil {
-			_ = json.Unmarshal(raw, &m.catalogs)
+		var saved map[string][]Model
+		if _, err := m.state.Get(context.Background(), nodestate.KeyModelCatalog, &saved); err != nil {
+			log.Printf("runtime: load model catalog: %v", err)
+		} else {
+			m.catalogs = saved
+		}
+		if m.catalogs == nil {
+			m.catalogs = make(map[string][]Model)
 		}
 	}
 	if st.Catalog {
 		m.catalogs[id] = st.Models
-		if m.dataDir != "" {
-			if raw, err := json.Marshal(m.catalogs); err == nil {
-				_ = os.WriteFile(m.catalogFile(), raw, 0o600)
-			}
+		if err := m.state.Put(context.Background(), nodestate.KeyModelCatalog, m.catalogs); err != nil {
+			log.Printf("runtime: save model catalog: %v", err)
 		}
 		return st.Models
 	}
@@ -144,5 +147,3 @@ func (m *Manager) rememberCatalog(id string, st Status) []Model {
 	}
 	return st.Models
 }
-
-func (m *Manager) catalogFile() string { return filepath.Join(m.dataDir, "model-catalog.json") }

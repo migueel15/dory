@@ -31,6 +31,7 @@ import (
 	"github.com/migueel15/dory/internal/localdb"
 	"github.com/migueel15/dory/internal/mcp"
 	"github.com/migueel15/dory/internal/mesh"
+	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/notify"
 	"github.com/migueel15/dory/internal/oplog"
 	"github.com/migueel15/dory/internal/runtime"
@@ -103,11 +104,15 @@ func run() error {
 }
 
 func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplog.Log) error {
+	state := nodestate.New(store.DB())
+	if err := importNodeState(ctx, state, cfg.DataDir); err != nil {
+		return err
+	}
 	if err := store.PublishLocations(ctx); err != nil {
 		log.Printf("publish repository locations: %v", err)
 	}
 	providers := []runtime.Provider{runtime.Claude{}, runtime.Codex{}, runtime.OpenCode{}, runtime.Antigravity{}}
-	rt := runtime.NewManager(store.DB(), store, log_.Node(), cfg.DataDir, providers...)
+	rt := runtime.NewManager(store.DB(), store, log_.Node(), cfg.DataDir, state, providers...)
 	agentToken := auth.Secret()
 	rt.MCPURL = "http://" + loopbackAddr(cfg.Listen) + "/mcp"
 	rt.MCPToken = agentToken

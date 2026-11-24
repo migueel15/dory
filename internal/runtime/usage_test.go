@@ -50,14 +50,15 @@ func TestUsageNotReported(t *testing.T) {
 }
 
 func TestDisabledProvider(t *testing.T) {
-	m := NewManager(nil, nil, "n", t.TempDir(), OpenCode{})
+	state := testNodeState(t)
+	m := NewManager(nil, nil, "n", t.TempDir(), state, OpenCode{})
 	if err := m.SetEnabled(context.Background(), "opencode", false); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := m.provider("opencode"); ok {
 		t.Fatal("disabled provider still usable")
 	}
-	again := NewManager(nil, nil, "n", m.dataDir, OpenCode{})
+	again := NewManager(nil, nil, "n", m.dataDir, state, OpenCode{})
 	if again.Enabled("opencode") {
 		t.Fatal("disabled provider not saved")
 	}

@@ -10,7 +10,8 @@ import (
 
 func TestAccounts(t *testing.T) {
 	dir := t.TempDir()
-	m := NewManager(nil, nil, "n", dir, Claude{Bin: "x"}, Codex{Bin: "x"})
+	state := testNodeState(t)
+	m := NewManager(nil, nil, "n", dir, state, Claude{Bin: "x"}, Codex{Bin: "x"})
 	ctx := context.Background()
 	home := filepath.Join(dir, "work")
 	a, err := m.AddAccount(ctx, "claude", "Trabajo", home)
@@ -29,7 +30,7 @@ func TestAccounts(t *testing.T) {
 	if err = m.UpdateAccount(ctx, "claude", "Personal", ""); err != nil {
 		t.Fatal(err)
 	}
-	m2 := NewManager(nil, nil, "n", dir, Claude{Bin: "x"}, Codex{Bin: "x"})
+	m2 := NewManager(nil, nil, "n", dir, state, Claude{Bin: "x"}, Codex{Bin: "x"})
 	if c := m2.provider0("claude@trabajo"); c == nil || m2.provider0("claude").(Claude).Label != "Personal" {
 		t.Fatal("accounts not reloaded")
 	}

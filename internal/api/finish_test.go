@@ -11,6 +11,7 @@ import (
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/github"
 	"github.com/migueel15/dory/internal/localdb"
+	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/oplog"
 	"github.com/migueel15/dory/internal/runtime"
 )
@@ -35,7 +36,6 @@ func TestColumnDoneByHand(t *testing.T) {
 	}
 }
 
-
 func newFinishServer(t *testing.T, settings Settings) (*Server, string) {
 	t.Helper()
 	ctx := context.Background()
@@ -51,7 +51,7 @@ func newFinishServer(t *testing.T, settings Settings) (*Server, string) {
 	}
 	store := data.New(db, log)
 	s := &Server{Store: store, Node: Node{ID: log.Node()}, Settings: NewSettingsStore(dir, settings)}
-	s.Runtime = runtime.NewManager(db, store, log.Node(), dir)
+	s.Runtime = runtime.NewManager(db, store, log.Node(), dir, nodestate.New(db))
 	return s, dir
 }
 

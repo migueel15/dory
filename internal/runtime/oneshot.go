@@ -2,10 +2,11 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"log"
 	"os"
-	"path/filepath"
+
+	"github.com/migueel15/dory/internal/nodestate"
 )
 
 // TitleModel is the provider and model that write the titles of new ideas.
@@ -15,13 +16,12 @@ type TitleModel struct {
 	Model    string `json:"model"`
 }
 
-func (m *Manager) titleModelFile() string { return filepath.Join(m.dataDir, "title-model.json") }
-
 // TitleModel returns the model chosen in the settings of this node.
 func (m *Manager) TitleModel() TitleModel {
 	var t TitleModel
-	if raw, err := os.ReadFile(m.titleModelFile()); err == nil {
-		_ = json.Unmarshal(raw, &t)
+	if _, err := m.state.Get(context.Background(), nodestate.KeyTitleModel, &t); err != nil {
+		log.Printf("runtime: load title model: %v", err)
+		return TitleModel{}
 	}
 	return t
 }
@@ -34,8 +34,7 @@ func (m *Manager) SetTitleModel(t TitleModel) error {
 			return ErrProvider.Msgf("%s", t.Provider)
 		}
 	}
-	raw, _ := json.Marshal(t)
-	return os.WriteFile(m.titleModelFile(), raw, 0o600)
+	return m.state.Put(context.Background(), nodestate.KeyTitleModel, t)
 }
 
 // OneShot runs a single turn outside any thread: nothing is stored, it runs
