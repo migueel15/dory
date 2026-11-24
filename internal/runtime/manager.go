@@ -18,6 +18,7 @@ import (
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/nodestate"
+	"github.com/migueel15/dory/internal/outbox"
 	"github.com/migueel15/dory/internal/workspace"
 )
 
@@ -87,9 +88,9 @@ type Manager struct {
 	// pending holds the settings an agent chose for a running thread; they
 	// apply when its turn ends, before the next one starts.
 	pending map[string]ThreadSettings
-	// PeerComplete hands the outcome of a subagent turn to its parent on
-	// another node; set by the mesh.
-	PeerComplete func(ctx context.Context, node string, outcome Outcome) error
+	// Outbox carries what this node owes other nodes, such as the outcome of
+	// a subagent turn to its parent; set at start-up.
+	Outbox *outbox.Outbox
 	// detected caches what Providers found.
 	detected []Status
 	// catalogs keeps the last model list each harness reported, so a slow or

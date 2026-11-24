@@ -2,11 +2,14 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/outbox"
 )
 
 func TestSpawnRunsChildAndWakesParent(t *testing.T) {
@@ -82,14 +85,8 @@ func TestChildOnAnotherNodeNotifiesItsParentThroughThePeer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sent := make(chan Outcome, 1)
-	m.PeerComplete = func(_ context.Context, node string, o Outcome) error {
-		if node != "other-node" {
-			t.Errorf("sent to %s", node)
-		}
-		sent <- o
-		return nil
-	}
+	sender := &outboxSender{offline: true}
+	m.Outbox = outbox.New(m.db, sender)
 	child, err := m.Create(ctx, NewThread{Provider: codex.id, ParentID: &parent.ID, Title: "Prueba el binario"})
 	if err != nil {
 		t.Fatal(err)
@@ -102,10 +99,92 @@ func TestChildOnAnotherNodeNotifiesItsParentThroughThePeer(t *testing.T) {
 	events <- Event{Message: &Message{ID: turn.RunID + ":a", Role: "assistant", Text: "Funciona"}}
 	events <- Event{Done: true}
 	close(events)
-	got := <-sent
+	// The parent's node is not connected: the outcome waits in the outbox.
+	var queued []outbox.Delivery
+	for range 200 {
+		if queued, err = m.Outbox.List(ctx, "pending"); err == nil && len(queued) == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(queued) != 1 || queued[0].Node != "other-node" || queued[0].Kind != DelegationComplete {
+		t.Fatalf("queued %+v (%v)", queued, err)
+	}
+	var got Outcome
+	if err = json.Unmarshal(queued[0].Payload, &got); err != nil {
+		t.Fatal(err)
+	}
 	if got.ParentThreadID != parent.ID || got.ChildThreadID != child.ID || got.Status != "completed" || got.Result != "Funciona" {
 		t.Fatalf("peer outcome %+v", got)
 	}
+	// Once the node is back it arrives, and only once.
+	sender.offline = false
+	m.Outbox.KickNode(ctx, "other-node")
+	if err = m.Outbox.Flush(ctx); err != nil || len(sender.delivered) != 1 || sender.delivered[0] != queued[0].ID {
+		t.Fatalf("delivered %v (%v)", sender.delivered, err)
+	}
+	if err = m.Outbox.Flush(ctx); err != nil || len(sender.delivered) != 1 {
+		t.Fatalf("delivered twice: %v (%v)", sender.delivered, err)
+	}
+}
+
+type outboxSender struct {
+	offline   bool
+	delivered []string
+}
+
+func (s *outboxSender) Deliver(_ context.Context, _, _, id string, _ json.RawMessage) error {
+	if s.offline {
+		return errors.New("offline")
+	}
+	s.delivered = append(s.delivered, id)
+	return nil
+}
+
+func TestCompleteIsIdempotentByDeliveryID(t *testing.T) {
+	ctx := context.Background()
+	m, store := manager(t, 0)
+	claude := capturedProvider{"claude", make(chan Turn, 4), make(chan chan Event, 4)}
+	m.providers[claude.id] = claude
+	parent, err := m.Create(ctx, NewThread{Provider: claude.id, Model: "opus"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := Outcome{ParentThreadID: parent.ID, ChildThreadID: "child", ChildNodeID: "other", Title: "Tarea", Status: "completed", Result: "hecho", DeliveryID: "dlv-1"}
+	if err = m.Complete(ctx, o); err != nil {
+		t.Fatal(err)
+	}
+	if err = m.Complete(ctx, o); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err = m.db.QueryRow(`SELECT count(*) FROM thread_delegations WHERE parent_thread_id = ?`, parent.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("delegations %d (%v)", count, err)
+	}
+	msgs, err := m.Messages(ctx, parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	woken := 0
+	for _, msg := range msgs {
+		if msg.Role == "user" && strings.Contains(msg.Text, "hecho") {
+			woken++
+		}
+	}
+	if woken != 1 {
+		t.Fatalf("parent woken %d times: %+v", woken, msgs)
+	}
+	// A failed attempt does not consume the id.
+	bad := Outcome{ParentThreadID: "missing", Status: "completed", DeliveryID: "dlv-2"}
+	if err = m.Complete(ctx, bad); err == nil {
+		t.Fatal("unknown parent accepted")
+	}
+	var applied int
+	m.db.QueryRow(`SELECT count(*) FROM applied_deliveries WHERE id = 'dlv-2'`).Scan(&applied)
+	if applied != 0 {
+		t.Fatal("failed delivery was recorded as applied")
+	}
+	_ = store
 }
 
 func TestDelegationRecordsOutcomeAndFollowUps(t *testing.T) {
