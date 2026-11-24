@@ -3,11 +3,15 @@ package harness
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"time"
 
 	"github.com/migueel15/dory/internal/harness/procpool"
 )
+
+// ErrNoUsage is what Usage returns when a harness does not report its usage.
+var ErrNoUsage = errors.New("runtime: provider does not report usage")
 
 type Driver interface {
 	Info() Info
