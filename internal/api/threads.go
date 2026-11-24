@@ -140,6 +140,21 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, out)
 	}))
+	// Going back to a user message: files, conversation and session.
+	mux.HandleFunc("POST /api/threads/{id}/revert", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
+		var body struct {
+			MessageID string `json:"message_id"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		out, err := s.Runtime.Revert(r.Context(), t.ID, body.MessageID)
+		if err != nil {
+			writeDataError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	}))
 	mux.HandleFunc("POST /api/threads/{id}/interrupt", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		if err := s.Runtime.Interrupt(r.Context(), t.ID); err != nil {
 			writeDataError(w, err)

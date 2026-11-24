@@ -9,7 +9,7 @@ import { DictationMic, DictationPreview, useDictationInProgress, useLocalDictati
 import { claudeModelName } from "../components/model-label";
 import { ProviderIcon } from "../components/launch-picker";
 import { explicitModels, findModel, modelEffort, modelId as concreteModelId, rememberModel } from "../effort";
-import { iconBtn, MessageParts } from "./chat";
+import { FILL_COMPOSER, iconBtn, MessageParts } from "./chat";
 import { HoverCard } from "../components/tooltip";
 import { CodeRefCard, codeRefText } from "../components/code-ref";
 import type { DraftQuote } from "../components/quote-selection";
@@ -280,6 +280,11 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   const key = ["thread", t.id];
   const providers = useQuery({ queryKey: ["node-providers", t.node_id], queryFn: () => api.nodeProviders(t.node_id), staleTime: 60_000 });
   const [text, setText] = useState("");
+  useEffect(() => {
+    const on = (e: Event) => { const d = (e as CustomEvent<{ threadId: string; text: string }>).detail; if (d.threadId === t.id) { setText(d.text); area.current?.focus(); } };
+    window.addEventListener(FILL_COMPOSER, on);
+    return () => window.removeEventListener(FILL_COMPOSER, on);
+  }, [t.id, area]);
   const dictation = useLocalDictation(text, setText, area, { panelShortcut: true, onEnter: (draft) => latestSendDraft.current(draft) });
   const showingDictation = !!dictation.preview;
   const dictating = useDictationInProgress();

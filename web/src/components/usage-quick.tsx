@@ -1,3 +1,4 @@
+import { PaceMark } from "./pace-mark";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { ArrowClockwise, PushPin } from "@phosphor-icons/react";
@@ -113,7 +114,7 @@ export function UsageQuick() {
                 return (
                   <div key={w.kind} className="grid grid-cols-[minmax(0,6rem)_1fr_2.5rem] items-center gap-2 text-xs" title={reset ? `Se reinicia ${time(reset)}${paceTitle(pace)}` : windowLabel(w)}>
                     <span className="truncate text-slate-600 dark:text-text-secondary">{windowLabel(w)}</span>
-                    <div className="relative h-1.5 rounded bg-slate-200 dark:bg-hover"><div className={`h-full rounded ${bar}`} style={{ width: `${Math.max(0, 100 - used)}%` }} />{pace !== null && <div aria-hidden="true" className="absolute -bottom-0.5 -top-0.5 w-0.5 -translate-x-1/2 bg-slate-900 dark:bg-white" style={{ left: `${pace}%` }} />}</div>
+                    <div className="relative h-1.5 rounded bg-slate-200 dark:bg-hover"><div className={`h-full rounded ${bar}`} style={{ width: `${Math.max(0, 100 - used)}%` }} />{pace !== null && <PaceMark pace={pace} />}</div>
                     <span className="text-right tabular-nums">{100 - used} %</span>
                   </div>
                 );

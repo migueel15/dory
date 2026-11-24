@@ -561,6 +561,10 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
 		key := liveKey(t.ID, t.Provider)
 		closeAll(take(func(candidate string) bool { return candidate == key }))
 	}
+	// The snapshot the turn's changes are diffed against when it ends.
+	root := repoRoot(ctx, dir)
+	base := snapshot(ctx, root)
+	keepSnapshot(ctx, root, t.ID, run, base)
 	var events <-chan Event
 	switch p := p.(type) {
 	case Interactive:
@@ -598,7 +602,7 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
 	}
 	m.save(ctx, Message{ID: run + ":user", ThreadID: t.ID, RunID: run, Role: "user", Text: text, Detail: attachmentsDetail(files), CreatedAt: startedAt, SenderThreadID: q.Sender})
 	m.setStatus(ctx, t.ID, "working", "")
-	go m.follow(ctx, t, events, marker, change, newLedger(userPrompt, len(turn.Text)-len(prompt), historyChars), run)
+	go m.follow(ctx, t, events, marker, change, newLedger(userPrompt, len(turn.Text)-len(prompt), historyChars), run, root, base)
 	return nil
 }
 
@@ -622,7 +626,7 @@ func (m *Manager) ReportedSettings(ctx context.Context, t data.Thread) ReportedS
 
 // follow stores what a turn emits until it ends, then starts the next
 // queued message, if any.
-func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event, marker Message, change modelChange, usage *ledger, run string) {
+func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event, marker Message, change modelChange, usage *ledger, run, root, base string) {
 	bg := context.WithoutCancel(ctx)
 	status, failure := "idle", ""
 	settings := turnSettings{Provider: t.Provider, Configured: ReportedSettings{Model: t.Model, Effort: t.Effort}}
@@ -690,6 +694,10 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 	if _, err := m.db.ExecContext(bg, `DELETE FROM thread_requests WHERE thread_id = ?`, t.ID); err != nil {
 		log.Printf("runtime: drop requests: %v", err)
 	}
+	if files := treeChanges(bg, root, base, snapshot(bg, root)); len(files) > 0 {
+		m.save(bg, Message{ID: run + ":changes", ThreadID: t.ID, RunID: run, Role: "changes", Tool: &ToolCall{Kind: "changes", Name: "changes", Files: files}, CreatedAt: now()})
+	}
+	m.syncBranch(bg, t.ID)
 	m.mu.Lock()
 	delete(m.sessions, t.ID)
 	if m.asked[t.ID] && status == "idle" {
@@ -907,7 +915,12 @@ func (m *Manager) DiffAgainst(ctx context.Context, id, against string) (WorkDiff
 			ref = strings.TrimSpace(string(mb))
 		}
 	}
-	diff, err := cmdexec.CommandContext(ctx, "git", "-C", dir, "diff", ref).Output()
+	// Against a snapshot of the folder, so new files not yet added count too.
+	args := []string{"-C", dir, "diff", ref}
+	if tree := snapshot(ctx, repoRoot(ctx, dir)); tree != "" {
+		args = append(args, tree)
+	}
+	diff, err := cmdexec.CommandContext(ctx, "git", args...).Output()
 	out.Diff = string(diff)
 	return out, err
 }
@@ -1057,6 +1070,27 @@ func newRunID() string {
 	return "run-" + strings.ToLower(rand.Text()[:12]) + "-" + fmt.Sprint(time.Now().UnixNano()%1e6)
 }
 
+// syncBranch stores the branch the thread's folder is on when the agent
+// switched it during the turn, so the thread and its task links follow it.
+func (m *Manager) syncBranch(ctx context.Context, id string) {
+	dir, err := m.Dir(ctx, id)
+	if err != nil || dir == "" {
+		return
+	}
+	out, err := gitCmd(ctx, dir, "branch", "--show-current")
+	branch := strings.TrimSpace(string(out))
+	if err != nil || branch == "" {
+		return
+	}
+	t, err := m.store.Threads().Get(ctx, id)
+	if err != nil || t.Branch == branch {
+		return
+	}
+	if _, err := m.store.PatchThread(ctx, id, map[string]any{"branch": branch}); err != nil {
+		log.Printf("runtime: branch of %s: %v", id, err)
+	}
+}
+
 func gitCmd(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	return cmdexec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).CombinedOutput()
 }
@@ -1192,8 +1226,16 @@ func (m *Manager) resync(ctx context.Context, thread string, e External) error {
 	if err != nil {
 		return err
 	}
+	// The file holds only the session after the last /clear: what came
+	// before it stays as saved.
+	kept := 0
+	for i, msg := range saved {
+		if msg.Role == "clear" {
+			kept = i + 1
+		}
+	}
 	var markers []Message
-	for _, msg := range saved {
+	for _, msg := range saved[kept:] {
 		if msg.Role == "model-change" {
 			markers = append(markers, msg)
 		}
@@ -1204,7 +1246,12 @@ func (m *Manager) resync(ctx context.Context, thread string, e External) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, `DELETE FROM thread_messages WHERE thread_id = ?`, thread); err != nil {
+	if kept > 0 {
+		_, err = tx.ExecContext(ctx, `DELETE FROM thread_messages WHERE thread_id = ? AND seq > (SELECT seq FROM thread_messages WHERE id = ?)`, thread, saved[kept-1].ID)
+	} else {
+		_, err = tx.ExecContext(ctx, `DELETE FROM thread_messages WHERE thread_id = ?`, thread)
+	}
+	if err != nil {
 		return err
 	}
 	at := now()

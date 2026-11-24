@@ -118,6 +118,7 @@ func (s *Server) archiveThread(ctx context.Context, t data.Thread) error {
 		_ = s.Runtime.Interrupt(ctx, t.ID)
 		runtime.CloseLive(t.ID)
 		runtime.StopThreadServices(t.ID)
+		s.Runtime.DropSnapshots(ctx, t.ID)
 		if s.Settings.Get().RemoveWorktreeOnArchive {
 			err := s.Runtime.Remove(ctx, t.ID, false)
 			if err != nil && !errors.Is(err, runtime.ErrDirtyWorktree) && !errors.Is(err, runtime.ErrNotFound) {

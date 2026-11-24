@@ -314,6 +314,11 @@ func codexTool(name, args string) *ToolCall {
 				call = c[1]
 			}
 		}
+		if call == "apply_patch" {
+			if patch := scriptPatch(args); patch != "" {
+				return &ToolCall{Kind: "edit", Name: call, Files: patchFiles(patch)}
+			}
+		}
 		if call != "" {
 			t := toolCall(call, nil)
 			if t.Kind == "mcp" || t.Kind == "other" {
@@ -343,6 +348,35 @@ func codexAnswers(qs []Question, output string) ([]Question, bool) {
 		}
 	}
 	return out, true
+}
+
+var scriptPatchLit = regexp.MustCompile(`"\*\*\* Begin Patch(?:[^"\\]|\\.)*"|'\*\*\* Begin Patch(?:[^'\\]|\\.)*'|` + "`" + `\*\*\* Begin Patch[^` + "`" + `]*` + "`")
+
+// scriptPatch reads the apply_patch envelope a code-mode script holds as a
+// JavaScript string literal, or "" if it has none.
+func scriptPatch(script string) string {
+	var in struct {
+		Input string `json:"input"`
+	}
+	if json.Unmarshal([]byte(script), &in) == nil && in.Input != "" {
+		script = in.Input
+	}
+	lit := scriptPatchLit.FindString(script)
+	if lit == "" {
+		return ""
+	}
+	body := lit[1 : len(lit)-1]
+	if lit[0] == '`' {
+		return body
+	}
+	if lit[0] == '\'' {
+		body = strings.ReplaceAll(strings.ReplaceAll(body, `\'`, `'`), `"`, `\"`)
+	}
+	var out string
+	if json.Unmarshal([]byte(`"`+body+`"`), &out) != nil {
+		return ""
+	}
+	return out
 }
 
 // patchFiles reads the files and line changes of an apply_patch envelope.

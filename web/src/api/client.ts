@@ -39,7 +39,7 @@ export type Thread = {
   pinned_at: string | null; read_at: string | null; last_activity_at: string | null; snoozed_until: string | null; settled_at: string | null;
   created_at: string; updated_at: string; archived_at: string | null;
 };
-export type Role = "user" | "assistant" | "reasoning" | "tool" | "plan" | "question" | "system" | "interrupt" | "clear" | "model-change";
+export type Role = "user" | "assistant" | "reasoning" | "tool" | "plan" | "question" | "system" | "interrupt" | "clear" | "model-change" | "changes";
 // ToolCall is a tool call in Dory's own terms (runtime.ToolCall): every harness
 // maps its tools onto these kinds, and the chat draws one card per kind.
 export type ToolKind = "edit" | "command" | "todo" | "plan" | "read" | "search" | "web" | "agent" | "mcp" | "question" | "other";
@@ -237,6 +237,7 @@ export const api = {
   answerSecret: (id: string, request: string, body: { values: Record<string, string> } | { decline: true }) => req<void>("POST", `/threads/${id}/secrets/${encodeURIComponent(request)}`, body),
   answer: (id: string, request: string, answers: string[][], files: string[][] = []) => req<void>("POST", `/threads/${id}/requests/${encodeURIComponent(request)}`, { answers, files }),
   interrupt: (id: string) => req<void>("POST", `/threads/${id}/interrupt`),
+  revert: (id: string, messageId: string) => req<{ text: string; files_restored: boolean }>("POST", `/threads/${id}/revert`, { message_id: messageId }),
   threadDiff: (id: string, base = "") => req<{ diff: string; branch: string; base?: string; branches?: string[] }>("GET", `/threads/${id}/diff${base ? `?base=${encodeURIComponent(base)}` : ""}`),
   threadServices: (id: string) => req<ThreadService[]>("GET", `/threads/${id}/services`),
   stopThreadService: (id: string, pid: number) => req<void>("POST", `/threads/${id}/processes/${pid}/stop`),

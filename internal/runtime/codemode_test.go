@@ -15,3 +15,12 @@ func TestCodexCodeModeExec(t *testing.T) {
 		t.Fatalf("output = %q", out)
 	}
 }
+
+func TestCodexCodeModeApplyPatchIsEdit(t *testing.T) {
+	script := `const patch = "*** Begin Patch\n*** Update File: /r/fib.py\n@@\n def f():\n+    return \"x\"\n*** End Patch";
+text(await tools.apply_patch(patch));`
+	tc := codexTool("exec", script)
+	if tc.Kind != "edit" || tc.Name != "apply_patch" || len(tc.Files) != 1 || tc.Files[0].Path != "/r/fib.py" || tc.Files[0].Added != 1 {
+		t.Fatalf("got %+v", tc)
+	}
+}
