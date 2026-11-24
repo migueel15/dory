@@ -8,6 +8,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -26,6 +29,44 @@ type Config struct {
 	// change on a node.
 	Tasks   TasksConfig   `toml:"tasks"`
 	Threads ThreadsConfig `toml:"threads"`
+	// ACP declares extra harnesses that speak the Agent Client Protocol.
+	ACP []ACPConfig `toml:"acp"`
+}
+
+// ACPConfig is one [[acp]] entry: an agent Dory starts as an ACP server.
+type ACPConfig struct {
+	ID      string   `toml:"id"`
+	Name    string   `toml:"name"`
+	Command string   `toml:"command"`
+	Args    []string `toml:"args"`
+	// Env are extra KEY=VALUE pairs for the process.
+	Env []string `toml:"env"`
+}
+
+var (
+	acpID    = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+	reserved = []string{"claude", "codex", "opencode", "antigravity"}
+)
+
+func validateACP(list []ACPConfig) error {
+	seen := map[string]bool{}
+	for i, a := range list {
+		switch {
+		case !acpID.MatchString(a.ID):
+			return fmt.Errorf("acp[%d]: id must be lowercase letters, digits and hyphens", i)
+		case slices.Contains(reserved, a.ID) || seen[a.ID]:
+			return fmt.Errorf("acp[%d]: id %q is already used", i, a.ID)
+		case a.Command == "":
+			return fmt.Errorf("acp[%d] %q: command is required", i, a.ID)
+		}
+		for _, entry := range a.Env {
+			if k, _, ok := strings.Cut(entry, "="); !ok || k == "" {
+				return fmt.Errorf("acp[%d] %q: env entries must be KEY=VALUE", i, a.ID)
+			}
+		}
+		seen[a.ID] = true
+	}
+	return nil
 }
 
 type TasksConfig struct {
@@ -97,6 +138,9 @@ func Load() (Config, error) {
 	c.SessionTTL, err = time.ParseDuration(c.SessionTTLText)
 	if err != nil || c.SessionTTL <= 0 {
 		return c, fmt.Errorf("session_ttl must be a positive duration")
+	}
+	if err = validateACP(c.ACP); err != nil {
+		return c, err
 	}
 	if c.PublicOrigin != "" {
 		if err = validateOrigin(c.PublicOrigin); err != nil {

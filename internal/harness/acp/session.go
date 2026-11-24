@@ -1,4 +1,4 @@
-package runtime
+package acp
 
 import (
 	"context"
@@ -10,29 +10,37 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/migueel15/dory/internal/apperr"
+	"github.com/migueel15/dory/internal/harness"
 )
 
-type antigravitySession struct {
-	ctx       context.Context
-	conn      *acpConn
-	lv        *acpLive
-	turn      Turn
-	id        string
-	live      bool
-	events    chan Event
-	chunk     Message
-	seq       int
-	tools     map[string]Message
-	mu        sync.Mutex
-	questions map[string]chan [][]string
+type event = harness.LegacyEvent
+
+type session struct {
+	ctx  context.Context
+	conn *conn
+	lv   *liveProc
+	turn harness.Turn
+	// defaultModel is the slug that asks for the agent's own default model.
+	defaultModel string
+	id           string
+	live         bool
+	events       chan event
+	chunk        harness.Message
+	seq          int
+	tools        map[string]harness.Message
+	mu           sync.Mutex
+	questions    map[string]chan [][]string
 }
 
-func newAntigravitySession(ctx context.Context, c *acpConn, t Turn) *antigravitySession {
-	return &antigravitySession{ctx: ctx, conn: c, turn: t, events: make(chan Event, 64), tools: map[string]Message{}, questions: map[string]chan [][]string{}}
+func newSession(ctx context.Context, c *conn, t harness.Turn, defaultModel string) *session {
+	return &session{ctx: ctx, conn: c, turn: t, defaultModel: defaultModel, events: make(chan event, 64), tools: map[string]harness.Message{}, questions: map[string]chan [][]string{}}
 }
 
-func (s *antigravitySession) Events() <-chan Event { return s.events }
-func (s *antigravitySession) Answer(id string, answers [][]string) error {
+func (s *session) Events() <-chan event { return s.events }
+
+func (s *session) Answer(id string, answers [][]string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if pending := s.questions[id]; pending != nil {
@@ -40,17 +48,17 @@ func (s *antigravitySession) Answer(id string, answers [][]string) error {
 		pending <- answers
 		return nil
 	}
-	return ErrNoRequest
+	return apperr.New(apperr.NoRequest, "the request is no longer pending")
 }
 
-func (s *antigravitySession) emit(e Event) {
+func (s *session) emit(e event) {
 	select {
 	case s.events <- e:
 	case <-s.ctx.Done():
 	}
 }
 
-func (s *antigravitySession) handle(frame acpFrame) error {
+func (s *session) handle(frame rpcFrame) error {
 	switch frame.Method {
 	case "session/update":
 		if s.live {
@@ -68,14 +76,14 @@ func (s *antigravitySession) handle(frame acpFrame) error {
 	return nil
 }
 
-type acpLocation struct{ Path string }
-type acpPermissionOption struct{ Kind, OptionID, Name string }
-type acpTool struct {
+type location struct{ Path string }
+type permissionOption struct{ Kind, OptionID, Name string }
+type toolCall struct {
 	ToolCallID string
 	Kind       string
 	Title      string
 	Status     string
-	Locations  []acpLocation
+	Locations  []location
 	RawInput   json.RawMessage
 	RawOutput  json.RawMessage
 	Content    []struct {
@@ -87,19 +95,19 @@ type acpTool struct {
 	}
 }
 
-type acpUpdate struct {
+type updateParams struct {
 	SessionID string
 	Update    struct {
 		Content        json.RawMessage
 		SessionUpdate  string
 		CurrentModelID string
-		ConfigOptions  []acpConfig
+		ConfigOptions  []configOption
 		Entries        []struct{ Content, Status string }
 	}
 }
 
-func (s *antigravitySession) update(raw json.RawMessage) {
-	var e acpUpdate
+func (s *session) update(raw json.RawMessage) {
+	var e updateParams
 	if json.Unmarshal(raw, &e) != nil || (s.id != "" && e.SessionID != s.id) {
 		return
 	}
@@ -114,17 +122,17 @@ func (s *antigravitySession) update(raw json.RawMessage) {
 			if s.chunk.Role != role {
 				s.finishChunk()
 				s.seq++
-				s.chunk = Message{ID: fmt.Sprintf("%s:acp:%d", s.turn.RunID, s.seq), RunID: s.turn.RunID, Role: role, CreatedAt: now(), Streaming: true}
+				s.chunk = harness.Message{ID: fmt.Sprintf("%s:acp:%d", s.turn.RunID, s.seq), RunID: s.turn.RunID, Role: role, CreatedAt: now(), Streaming: true}
 			}
 			s.chunk.Text += content.Text
 			msg := s.chunk
-			s.emit(Event{Message: &msg})
+			s.emit(event{Message: &msg})
 		}
 		return
 	}
 	switch u.SessionUpdate {
 	case "tool_call", "tool_call_update":
-		var params struct{ Update acpTool }
+		var params struct{ Update toolCall }
 		if json.Unmarshal(raw, &params) != nil {
 			return
 		}
@@ -135,7 +143,7 @@ func (s *antigravitySession) update(raw json.RawMessage) {
 		s.finishChunk()
 		msg, ok := s.tools[u.ToolCallID]
 		if !ok {
-			msg = Message{ID: s.turn.RunID + ":tool:" + u.ToolCallID, RunID: s.turn.RunID, Role: "tool", CreatedAt: now(), Tool: &ToolCall{Kind: "other"}}
+			msg = harness.Message{ID: s.turn.RunID + ":tool:" + u.ToolCallID, RunID: s.turn.RunID, Role: "tool", CreatedAt: now(), Tool: &harness.ToolCall{Kind: "other"}}
 		}
 		tool := *msg.Tool
 		if u.Title != "" {
@@ -169,7 +177,7 @@ func (s *antigravitySession) update(raw json.RawMessage) {
 		if len(u.Locations) > 0 {
 			tool.Path = u.Locations[0].Path
 		}
-		var files []FileEdit
+		var files []harness.FileEdit
 		var detail []string
 		for _, c := range u.Content {
 			if c.Type == "diff" {
@@ -182,7 +190,7 @@ func (s *antigravitySession) update(raw json.RawMessage) {
 			tool.Kind, tool.Files = "edit", files
 		} else if tool.Kind == "edit" && len(tool.Files) == 0 {
 			for _, location := range u.Locations {
-				tool.Files = append(tool.Files, FileEdit{Path: location.Path})
+				tool.Files = append(tool.Files, harness.FileEdit{Path: location.Path})
 			}
 		}
 		if len(detail) > 0 {
@@ -213,10 +221,10 @@ func (s *antigravitySession) update(raw json.RawMessage) {
 		}
 		msg.Tool = &tool
 		s.tools[u.ToolCallID] = msg
-		s.emit(Event{Message: &msg})
+		s.emit(event{Message: &msg})
 	case "plan":
 		s.finishChunk()
-		tool := &ToolCall{Kind: "todo", Name: "Plan"}
+		tool := &harness.ToolCall{Kind: "todo", Name: "Plan"}
 		var plan strings.Builder
 		for _, entry := range u.Entries {
 			check := " "
@@ -224,41 +232,41 @@ func (s *antigravitySession) update(raw json.RawMessage) {
 				check = "x"
 			}
 			fmt.Fprintf(&plan, "- [%s] %s\n", check, entry.Content)
-			tool.Todos = append(tool.Todos, Todo{Text: entry.Content, Status: entry.Status})
+			tool.Todos = append(tool.Todos, harness.Todo{Text: entry.Content, Status: entry.Status})
 		}
-		s.emit(Event{Message: &Message{ID: s.turn.RunID + ":acp-plan", RunID: s.turn.RunID, Role: "plan", Title: "Plan", Text: plan.String(), CreatedAt: now(), Tool: tool}})
+		s.emit(event{Message: &harness.Message{ID: s.turn.RunID + ":acp-plan", RunID: s.turn.RunID, Role: "plan", Title: "Plan", Text: plan.String(), CreatedAt: now(), Tool: tool}})
 	case "config_option_update":
-		info := acpSessionInfo{ConfigOptions: u.ConfigOptions}
-		s.emit(Event{Settings: &ReportedSettings{Model: info.option("model").CurrentValue, Effort: info.option("thought_level").CurrentValue}})
+		info := sessionInfo{ConfigOptions: u.ConfigOptions}
+		s.emit(event{Settings: &harness.ReportedSettings{Model: info.option("model").CurrentValue, Effort: info.option("thought_level").CurrentValue}})
 	case "current_model_update":
-		s.emit(Event{Settings: &ReportedSettings{Model: u.CurrentModelID}})
+		s.emit(event{Settings: &harness.ReportedSettings{Model: u.CurrentModelID}})
 	}
 }
 
-func (s *antigravitySession) finishChunk() {
+func (s *session) finishChunk() {
 	if s.chunk.ID == "" {
 		return
 	}
 	msg := s.chunk
 	msg.Streaming = false
-	s.emit(Event{Message: &msg})
-	s.chunk = Message{}
+	s.emit(event{Message: &msg})
+	s.chunk = harness.Message{}
 }
 
-func (s *antigravitySession) permission(frame acpFrame) error {
+func (s *session) permission(frame rpcFrame) error {
 	var p struct {
 		SessionID string
-		ToolCall  acpTool
-		Options   []acpPermissionOption
+		ToolCall  toolCall
+		Options   []permissionOption
 	}
 	if err := json.Unmarshal(frame.Params, &p); err != nil {
 		return err
 	}
-	outcome := acpParams{"outcome": "cancelled"}
+	outcome := params{"outcome": "cancelled"}
 	if s.live && s.id == p.SessionID && strings.HasPrefix(p.ToolCall.ToolCallID, "interaction_") {
 		return s.permissionQuestion(frame, p.ToolCall, p.Options)
 	}
-	allowed := s.live && s.id == p.SessionID && (s.turn.FullAccess || antigravityWorktreeEdit(s.turn.Dir, p.ToolCall))
+	allowed := s.live && s.id == p.SessionID && (s.turn.FullAccess || worktreeEdit(s.turn.Dir, p.ToolCall))
 	kinds := []string{"reject_once", "reject_always"}
 	if allowed {
 		kinds = []string{"allow_once"}
@@ -269,16 +277,16 @@ func (s *antigravitySession) permission(frame acpFrame) error {
 	for _, kind := range kinds {
 		for _, option := range p.Options {
 			if option.Kind == kind && option.OptionID != "" {
-				return s.conn.reply(frame.ID, acpParams{"outcome": acpParams{"outcome": "selected", "optionId": option.OptionID}})
+				return s.conn.reply(frame.ID, params{"outcome": params{"outcome": "selected", "optionId": option.OptionID}})
 			}
 		}
 	}
-	return s.conn.reply(frame.ID, acpParams{"outcome": outcome})
+	return s.conn.reply(frame.ID, params{"outcome": outcome})
 }
 
 // Require concrete targets. An unfamiliar input shape or an unresolved path
 // cannot establish that an edit stays in the worktree.
-func antigravityWorktreeEdit(dir string, tool acpTool) bool {
+func worktreeEdit(dir string, tool toolCall) bool {
 	if tool.Kind != "edit" || dir == "" {
 		return false
 	}
@@ -312,14 +320,14 @@ func antigravityWorktreeEdit(dir string, tool acpTool) bool {
 		return false
 	}
 	for _, path := range paths {
-		if !antigravityInside(root, path) {
+		if !inside(root, path) {
 			return false
 		}
 	}
 	return true
 }
 
-func antigravityInside(root, path string) bool {
+func inside(root, path string) bool {
 	if path == "" || (!filepath.IsAbs(path) && !filepath.IsLocal(path)) {
 		return false
 	}
@@ -353,10 +361,10 @@ func antigravityInside(root, path string) bool {
 	}
 }
 
-func (s *antigravitySession) elicit(frame acpFrame) error {
-	action := func(value acpParams) error {
+func (s *session) elicit(frame rpcFrame) error {
+	action := func(value params) error {
 		if frame.Method == "session/elicitation" {
-			value = acpParams{"action": value}
+			value = params{"action": value}
 		}
 		return s.conn.reply(frame.ID, value)
 	}
@@ -371,20 +379,20 @@ func (s *antigravitySession) elicit(frame acpFrame) error {
 		}
 	}
 	if json.Unmarshal(frame.Params, &p) != nil || !s.live || (p.SessionID != "" && p.SessionID != s.id) || p.Mode != "form" || len(p.RequestedSchema.Properties) == 0 {
-		return action(acpParams{"action": "decline"})
+		return action(params{"action": "decline"})
 	}
 	var ids []string
 	for id, field := range p.RequestedSchema.Properties {
 		if field.Type != "string" && field.Type != "array" {
-			return action(acpParams{"action": "decline"})
+			return action(params{"action": "decline"})
 		}
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	var questions []Question
+	var questions []harness.Question
 	for _, id := range ids {
 		field := p.RequestedSchema.Properties[id]
-		q := Question{ID: id, Header: field.Title, Question: field.Description, MultiSelect: field.Type == "array"}
+		q := harness.Question{ID: id, Header: field.Title, Question: field.Description, MultiSelect: field.Type == "array"}
 		if q.Question == "" {
 			q.Question = field.Title
 		}
@@ -396,7 +404,7 @@ func (s *antigravitySession) elicit(frame acpFrame) error {
 			values = field.Items.Enum
 		}
 		for _, value := range values {
-			q.Options = append(q.Options, Option{Label: value})
+			q.Options = append(q.Options, harness.Option{Label: value})
 		}
 		questions = append(questions, q)
 	}
@@ -404,7 +412,7 @@ func (s *antigravitySession) elicit(frame acpFrame) error {
 	if err != nil {
 		return err
 	}
-	content := acpParams{}
+	content := params{}
 	for i, q := range questions {
 		if i >= len(answers) || len(answers[i]) == 0 {
 			continue
@@ -415,11 +423,11 @@ func (s *antigravitySession) elicit(frame acpFrame) error {
 			content[q.ID] = answers[i][0]
 		}
 	}
-	return action(acpParams{"action": "accept", "content": content})
+	return action(params{"action": "accept", "content": content})
 }
 
-func (s *antigravitySession) permissionQuestion(frame acpFrame, tool acpTool, options []acpPermissionOption) error {
-	q := Question{ID: tool.ToolCallID, Question: tool.Title}
+func (s *session) permissionQuestion(frame rpcFrame, tool toolCall, options []permissionOption) error {
+	q := harness.Question{ID: tool.ToolCallID, Question: tool.Title}
 	if q.Question == "" {
 		q.Question = "Elige una opción"
 	}
@@ -430,25 +438,25 @@ func (s *antigravitySession) permissionQuestion(frame acpFrame, tool acpTool, op
 			label = o.OptionID
 		}
 		if _, exists := ids[label]; exists || label == "" || o.OptionID == "" {
-			return s.conn.reply(frame.ID, acpParams{"outcome": acpParams{"outcome": "cancelled"}})
+			return s.conn.reply(frame.ID, params{"outcome": params{"outcome": "cancelled"}})
 		}
 		ids[label] = o.OptionID
-		q.Options = append(q.Options, Option{Label: label})
+		q.Options = append(q.Options, harness.Option{Label: label})
 	}
-	outcome := acpParams{"outcome": "cancelled"}
+	outcome := params{"outcome": "cancelled"}
 	if len(q.Options) > 0 {
-		answers, err := s.ask(frame, q.Question, []Question{q})
+		answers, err := s.ask(frame, q.Question, []harness.Question{q})
 		if err != nil {
 			return err
 		}
 		if len(answers) == 1 && len(answers[0]) == 1 && ids[answers[0][0]] != "" {
-			outcome = acpParams{"outcome": "selected", "optionId": ids[answers[0][0]]}
+			outcome = params{"outcome": "selected", "optionId": ids[answers[0][0]]}
 		}
 	}
-	return s.conn.reply(frame.ID, acpParams{"outcome": outcome})
+	return s.conn.reply(frame.ID, params{"outcome": outcome})
 }
 
-func (s *antigravitySession) ask(frame acpFrame, title string, questions []Question) ([][]string, error) {
+func (s *session) ask(frame rpcFrame, title string, questions []harness.Question) ([][]string, error) {
 	id := s.turn.RunID + ":acp-question:" + string(frame.ID)
 	pending := make(chan [][]string, 1)
 	s.mu.Lock()
@@ -460,8 +468,8 @@ func (s *antigravitySession) ask(frame acpFrame, title string, questions []Quest
 		s.mu.Unlock()
 	}()
 	s.finishChunk()
-	s.emit(Event{Message: &Message{ID: id, RunID: s.turn.RunID, Role: "tool", Title: title, CreatedAt: now(), Tool: &ToolCall{Kind: "question", Questions: questions}}})
-	s.emit(Event{Request: &Request{ID: id, Kind: "question", MessageID: id, Questions: questions, CreatedAt: now()}})
+	s.emit(event{Message: &harness.Message{ID: id, RunID: s.turn.RunID, Role: "tool", Title: title, CreatedAt: now(), Tool: &harness.ToolCall{Kind: "question", Questions: questions}}})
+	s.emit(event{Request: &harness.Request{ID: id, Kind: "question", MessageID: id, Questions: questions, CreatedAt: now()}})
 	select {
 	case answers := <-pending:
 		return answers, nil

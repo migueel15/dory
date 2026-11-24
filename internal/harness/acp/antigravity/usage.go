@@ -1,4 +1,4 @@
-package runtime
+package antigravity
 
 import (
 	"database/sql"
@@ -9,11 +9,15 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/migueel15/dory/internal/harness"
+	_ "modernc.org/sqlite"
 )
 
-func antigravityDataRoots(goos, home, appData, localAppData, xdgConfig string) []string {
+func dataRoots(goos, home, appData, localAppData, xdgConfig string) []string {
 	if home == "" {
 		return nil
 	}
@@ -40,9 +44,9 @@ func antigravityDataRoots(goos, home, appData, localAppData, xdgConfig string) [
 	return append(roots, filepath.Join(home, ".config", "antigravity"))
 }
 
-func antigravityUsageEvents(home string, from time.Time) []usageEvent {
-	roots := antigravityDataRoots(runtime.GOOS, home, os.Getenv("APPDATA"), os.Getenv("LOCALAPPDATA"), os.Getenv("XDG_CONFIG_HOME"))
-	var events []usageEvent
+func usageEvents(home string, from time.Time) []harness.UsageEvent {
+	roots := dataRoots(runtime.GOOS, home, os.Getenv("APPDATA"), os.Getenv("LOCALAPPDATA"), os.Getenv("XDG_CONFIG_HOME"))
+	var events []harness.UsageEvent
 	seen := map[string]bool{}
 	for _, root := range roots {
 		dir := filepath.Join(root, "conversations")
@@ -63,7 +67,7 @@ func antigravityUsageEvents(home string, from time.Time) []usageEvent {
 				mod = wal.ModTime()
 			}
 			if !mod.Before(from) {
-				events = append(events, readAntigravityUsage(path, mod)...)
+				events = append(events, readUsage(path, mod)...)
 			}
 			return nil
 		})
@@ -71,29 +75,29 @@ func antigravityUsageEvents(home string, from time.Time) []usageEvent {
 	return events
 }
 
-// antigravityTurnUsage reads only the current conversation. The ACP stream
+// sessionUsage reads only the current conversation. The ACP stream
 // supplies the content, while the CLI log supplies the model counters.
-func antigravityTurnUsage(home, session string, start, end time.Time) []StepUsage {
+func sessionUsage(home, session string, start, end time.Time) []harness.StepUsage {
 	if session == "" || filepath.Base(session) != session {
 		return nil
 	}
-	roots := antigravityDataRoots(runtime.GOOS, home, os.Getenv("APPDATA"), os.Getenv("LOCALAPPDATA"), os.Getenv("XDG_CONFIG_HOME"))
+	roots := dataRoots(runtime.GOOS, home, os.Getenv("APPDATA"), os.Getenv("LOCALAPPDATA"), os.Getenv("XDG_CONFIG_HOME"))
 	for _, root := range roots {
 		filename := filepath.Join(root, "conversations", session+".db")
 		if _, err := os.Stat(filename); err != nil {
 			continue
 		}
-		events := readAntigravityUsage(filename, time.Time{})
+		events := readUsage(filename, time.Time{})
 		sort.SliceStable(events, func(i, j int) bool { return events[i].Time.Before(events[j].Time) })
 		seen := map[string]bool{}
-		var out []StepUsage
+		var out []harness.StepUsage
 		for _, e := range events {
 			if e.Time.Before(start) || e.Time.After(end) || (e.Key != "" && seen[e.Key]) {
 				continue
 			}
 			seen[e.Key] = true
 			u := e.Tokens
-			out = append(out, StepUsage{Model: e.Model, Input: u.Input, Output: u.Output, CacheRead: u.CacheRead, CacheWrite: u.CacheWrite, Reasoning: e.Reasoning})
+			out = append(out, harness.StepUsage{Model: e.Model, Input: u.Input, Output: u.Output, CacheRead: u.CacheRead, CacheWrite: u.CacheWrite, Reasoning: e.Reasoning})
 		}
 		if len(out) > 0 {
 			return out
@@ -102,7 +106,7 @@ func antigravityTurnUsage(home, session string, start, end time.Time) []StepUsag
 	return nil
 }
 
-func readAntigravityUsage(path string, mod time.Time) []usageEvent {
+func readUsage(path string, mod time.Time) []harness.UsageEvent {
 	slash := filepath.ToSlash(path)
 	if filepath.VolumeName(path) != "" && !strings.HasPrefix(slash, "/") {
 		slash = "/" + slash
@@ -114,7 +118,7 @@ func readAntigravityUsage(path string, mod time.Time) []usageEvent {
 	}
 	defer db.Close()
 	session := strings.TrimSuffix(filepath.Base(path), ".db")
-	var events []usageEvent
+	var events []harness.UsageEvent
 	generations := map[int64]bool{}
 	for _, source := range []struct {
 		query string
@@ -201,7 +205,7 @@ func (p agyProto) first(tag uint64) agyField {
 	return agyField{}
 }
 
-func agyUsageMetadata(raw []byte, step bool, session string, fallback time.Time) []usageEvent {
+func agyUsageMetadata(raw []byte, step bool, session string, fallback time.Time) []harness.UsageEvent {
 	data := parseAgyProto(raw)
 	if !step {
 		data = parseAgyProto(data.first(1).data)
@@ -226,7 +230,7 @@ func agyUsageMetadata(raw []byte, step bool, session string, fallback time.Time)
 	for _, field := range data[retryTag] {
 		usages = append(usages, parseAgyProto(field.data).first(2).data)
 	}
-	var events []usageEvent
+	var events []harness.UsageEvent
 	for _, raw := range usages {
 		p := parseAgyProto(raw)
 		n := func(tag uint64) int64 {
@@ -236,25 +240,25 @@ func agyUsageMetadata(raw []byte, step bool, session string, fallback time.Time)
 			}
 			return int64(value)
 		}
-		tokens := UsageTokens{Input: n(2), Output: max(n(3), n(9)+n(10)), CacheWrite: n(4), CacheRead: n(5)}
-		if tokens == (UsageTokens{}) {
+		tokens := harness.UsageTokens{Input: n(2), Output: max(n(3), n(9)+n(10)), CacheWrite: n(4), CacheRead: n(5)}
+		if tokens == (harness.UsageTokens{}) {
 			continue
 		}
 		modelName := name
 		if id := n(1); modelName == "" || (id != 0 && uint64(id) != model.first(idTag).n) {
 			modelName = "antigravity"
 			if id != 0 {
-				modelName += "-" + itoa(int(id))
+				modelName += "-" + strconv.Itoa(int(id))
 			}
 		}
 		var key string
 		for _, tag := range []uint64{11, 12, 7} {
 			if id := string(p.first(tag).data); id != "" {
-				key = "antigravity:" + itoa(int(tag)) + ":" + id
+				key = "antigravity:" + strconv.Itoa(int(tag)) + ":" + id
 				break
 			}
 		}
-		events = append(events, usageEvent{Time: at, Provider: antigravityID, Session: session, Model: modelName, Tokens: tokens, Key: key, Reasoning: min(tokens.Output, n(10))})
+		events = append(events, harness.UsageEvent{Time: at, Provider: ID, Session: session, Model: modelName, Tokens: tokens, Key: key, Reasoning: min(tokens.Output, n(10))})
 	}
 	return events
 }

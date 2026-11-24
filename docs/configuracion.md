@@ -21,6 +21,19 @@ Ajustes de limpieza del nodo, en las tablas `[tasks]` y `[threads]`. También se
 
 En **Ajustes → Tareas e hilos**, «Cerrar los servicios de los hilos al reiniciar Dory» está desactivado por defecto. Si se activa, el nodo termina los procesos marcados de sus hilos al recibir la señal de parada. Al archivar un hilo también se detienen sus procesos marcados. El seguimiento de servicios usa `/proc` en Linux; en los demás sistemas no se muestran servicios. En systemd se necesita un gestor de usuario disponible para iniciar el proveedor en un scope separado.
 
+### Arneses ACP propios
+Cada `[[acp]]` de `config.toml` declara un arnés que hable ACP (Agent Client Protocol) por stdio, sin tocar código. Aparece como proveedor si su `command` existe en el equipo.
+
+| Clave | Qué es |
+|---|---|
+| `id` | Identificador del proveedor: minúsculas, números y guiones. No puede ser `claude`, `codex`, `opencode` ni `antigravity` |
+| `name` | Nombre visible; por defecto, el `id` |
+| `command` | Ejecutable que arranca el servidor ACP |
+| `args` | Argumentos del comando (por ejemplo, `["--experimental-acp"]`) |
+| `env` | Variables extra, `KEY=VALUE` |
+
+Un perfil declarado usa el modelo predeterminado del arnés y no tiene cuotas ni catálogo de modelos propios. Antigravity es el primer perfil ACP y ya viene integrado.
+
 Otras variables:
 
 - `DORY_GITHUB_TOKEN`: token de GitHub. Tiene prioridad sobre el inicio de sesión desde la interfaz y sobre la sesión de `gh`. El token no sale del nodo.

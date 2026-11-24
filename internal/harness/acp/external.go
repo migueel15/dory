@@ -1,4 +1,4 @@
-package runtime
+package acp
 
 import (
 	"context"
@@ -7,53 +7,58 @@ import (
 	"strings"
 	"time"
 
+	"github.com/migueel15/dory/internal/harness"
 	"github.com/migueel15/dory/internal/workspace"
 )
 
-func (a Antigravity) list(ctx context.Context, limit int) ([]External, error) {
-	c, err := openACP(ctx, a.bin(), "", false)
+func (d *driver) list(ctx context.Context, limit int) ([]harness.External, error) {
+	c, err := d.open(ctx, "", false, "")
 	if err != nil {
 		return nil, err
 	}
 	defer c.close()
-	if _, err := c.initialize(ctx); err != nil {
+	if _, err := c.initialize(ctx, &d.p); err != nil {
 		return nil, err
 	}
-	var result []External
-	params := acpParams{}
+	var result []harness.External
+	p := params{}
 	for page := 0; page < 10; page++ {
 		var response struct {
 			Sessions   []struct{ SessionID, Cwd, Title, UpdatedAt string }
 			NextCursor string
 		}
-		if err := c.call(ctx, "session/list", params, &response, nil); err != nil {
+		if err := c.call(ctx, "session/list", p, &response, nil); err != nil {
 			return result, err
 		}
 		for _, session := range response.Sessions {
-			if session.SessionID == "" || !filepath.IsAbs(session.Cwd) || strings.HasPrefix(filepath.Base(session.Cwd), "dory-agy-models-") {
+			base := filepath.Base(session.Cwd)
+			if session.SessionID == "" || !filepath.IsAbs(session.Cwd) || strings.HasPrefix(base, probePrefix) || strings.HasPrefix(base, legacyProbePrefix) {
 				continue
 			}
 			title := session.Title
 			if title == "" {
-				title = "Antigravity · " + filepath.Base(session.Cwd)
+				title = d.p.Name + " · " + base
 			}
-			result = append(result, External{Provider: antigravityID, ID: session.SessionID, Title: title, Dir: session.Cwd, UpdatedAt: session.UpdatedAt})
+			result = append(result, harness.External{Provider: d.p.ID, ID: session.SessionID, Title: title, Dir: session.Cwd, UpdatedAt: session.UpdatedAt})
 			if len(result) == limit {
 				return result, nil
 			}
 		}
-		if response.NextCursor == "" || response.NextCursor == params["cursor"] {
+		if response.NextCursor == "" || response.NextCursor == p["cursor"] {
 			break
 		}
-		params["cursor"] = response.NextCursor
+		p["cursor"] = response.NextCursor
 	}
 	return result, nil
 }
 
-func (a Antigravity) List(ctx context.Context, _ Paths) []External {
+func (r rich) List(ctx context.Context, _ harness.Paths) []harness.External {
+	if !r.p.Sessions {
+		return nil
+	}
 	probe, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
-	list, _ := a.list(probe, externalLimit)
+	list, _ := r.list(probe, sessionListLimit)
 	for i := range list {
 		if branch, err := workspace.CurrentBranch(probe, list[i].Dir); err == nil {
 			list[i].Branch = branch
@@ -62,9 +67,13 @@ func (a Antigravity) List(ctx context.Context, _ Paths) []External {
 	return list
 }
 
-func (Antigravity) SessionFile(Paths, string) string { return "" }
+func (rich) SessionFile(harness.Paths, string) string { return "" }
 
-func (a Antigravity) Read(ctx context.Context, e External) ([]Message, error) {
+// Read replays a saved session and returns its messages.
+func (r rich) Read(ctx context.Context, e harness.External) ([]harness.Message, error) {
+	if !r.p.Sessions {
+		return nil, nil
+	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	dir := e.Dir
@@ -73,17 +82,17 @@ func (a Antigravity) Read(ctx context.Context, e External) ([]Message, error) {
 		// replay sessions whose directory was removed.
 		dir = ""
 	}
-	c, err := openACP(ctx, a.bin(), dir, false)
+	c, err := r.open(ctx, dir, false, "")
 	if err != nil {
 		return nil, err
 	}
 	defer c.close()
-	if _, err := c.initialize(ctx); err != nil {
+	if _, err := c.initialize(ctx, &r.p); err != nil {
 		return nil, err
 	}
-	s := newAntigravitySession(ctx, c, Turn{RunID: e.ID, Dir: e.Dir, Session: e.ID})
+	s := newSession(ctx, c, harness.Turn{RunID: e.ID, Dir: e.Dir, Session: e.ID}, r.p.DefaultModel.Slug)
 	s.id = e.ID
-	var result []Message
+	var result []harness.Message
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -99,7 +108,7 @@ func (a Antigravity) Read(ctx context.Context, e External) ([]Message, error) {
 			}
 		}
 	}()
-	err = c.call(ctx, "session/load", acpParams{"sessionId": e.ID, "cwd": e.Dir, "mcpServers": []any{}}, nil, func(f acpFrame) error {
+	err = c.call(ctx, "session/load", params{"sessionId": e.ID, "cwd": e.Dir, "mcpServers": []any{}}, nil, func(f rpcFrame) error {
 		if f.Method == "session/update" {
 			s.update(f.Params)
 			return nil

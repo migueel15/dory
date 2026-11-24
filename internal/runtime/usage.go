@@ -13,11 +13,12 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/cmdexec"
+	"github.com/migueel15/dory/internal/harness"
 )
 
 // ErrNoUsage is what Provider.Usage returns when a harness does not report
 // its usage.
-var ErrNoUsage = errors.New("runtime: provider does not report usage")
+var ErrNoUsage = harness.ErrNoUsage
 
 // usageTimeout bounds one usage query, process start included.
 const usageTimeout = 45 * time.Second
