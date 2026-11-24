@@ -47,6 +47,20 @@ var (
 	ErrRunning = apperr.New(apperr.UpdateRefused, "an update is already running").With("reason", "running")
 )
 
+// Step is one stage of an update in progress.
+type Step struct {
+	ID     string `json:"id"`
+	Label  string `json:"label"`
+	Detail string `json:"detail,omitempty"`
+	Status string `json:"status"`
+}
+
+// Progress reports where an active update is.
+type Progress struct {
+	Percent int    `json:"percent"`
+	Steps   []Step `json:"steps"`
+}
+
 // Status is what this node runs and what its channel offers.
 type Status struct {
 	Channel   string `json:"channel"`
@@ -58,6 +72,8 @@ type Status struct {
 	ActiveTurns int    `json:"active_turns"`
 	State       string `json:"state"`
 	Error       string `json:"error,omitempty"`
+	// Progress reports the current step and percentage while State is updating.
+	Progress *Progress `json:"progress,omitempty"`
 	// Providers are the harnesses of this node and the release npm offers.
 	Providers []ProviderVersion `json:"providers"`
 }
@@ -96,12 +112,50 @@ type Updater struct {
 	// Restart starts the new binary once it is in place.
 	Restart func()
 
-	mu      sync.Mutex
-	state   string
-	err     string
-	latest  string
-	tag     string
-	checked time.Time
+	mu       sync.Mutex
+	state    string
+	err      string
+	latest   string
+	tag      string
+	checked  time.Time
+	progress *Progress
+}
+
+func (u *Updater) setProgress(percent int, steps []Step) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	cp := make([]Step, len(steps))
+	copy(cp, steps)
+	u.progress = &Progress{Percent: percent, Steps: cp}
+}
+
+func (u *Updater) updateStep(id, status, detail string, percent int) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.progress == nil {
+		return
+	}
+	if percent >= 0 {
+		u.progress.Percent = percent
+	}
+	for i := range u.progress.Steps {
+		if u.progress.Steps[i].ID == id {
+			u.progress.Steps[i].Status = status
+			if detail != "" {
+				u.progress.Steps[i].Detail = detail
+			}
+			break
+		}
+	}
+}
+
+func (u *Updater) snapshotProgress() *Progress {
+	if u.progress == nil {
+		return nil
+	}
+	cp := make([]Step, len(u.progress.Steps))
+	copy(cp, u.progress.Steps)
+	return &Progress{Percent: u.progress.Percent, Steps: cp}
 }
 
 // DesktopDir is where the files for the desktop updater are left.
@@ -115,6 +169,9 @@ func (u *Updater) Status(ctx context.Context) Status {
 	st.State, st.Error = u.state, u.err
 	if st.State == "" {
 		st.State = StateIdle
+	}
+	if st.State == StateUpdating {
+		st.Progress = u.snapshotProgress()
 	}
 	fresh := time.Since(u.checked) < checkTTL
 	u.mu.Unlock()
@@ -178,11 +235,12 @@ func (u *Updater) Start(opts Options) error {
 		defer u.mu.Unlock()
 		if err != nil {
 			log.Printf("update: %v", err)
-			u.state, u.err = StateFailed, err.Error()
+			u.state, u.err, u.progress = StateFailed, err.Error(), nil
 			return
 		}
 		// The restart replaces this process; the state only shows if it did not.
 		u.state = StateIdle
+		u.progress = nil
 		u.checked = time.Time{}
 	}()
 	return nil
@@ -207,24 +265,50 @@ func (u *Updater) Apply(ctx context.Context, opts Options) error {
 func (u *Updater) run(ctx context.Context, opts Options) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
+
+	inApp := os.Getenv(DesktopEnv) != ""
+	hasCore := version.Channel != "dev"
+	hasDesktop := inApp || desktopInstalled()
+
+	var steps []Step
+	if opts.Providers && u.Providers != nil {
+		steps = append(steps, Step{ID: "providers", Label: "Actualizando harnesses", Status: "pending"})
+	}
+	if hasCore {
+		steps = append(steps, Step{ID: "check", Label: "Comprobando actualización", Status: "pending"})
+		steps = append(steps, Step{ID: "download", Label: "Descargando actualización", Status: "pending"})
+		if hasDesktop {
+			steps = append(steps, Step{ID: "stage", Label: "Preparando archivos", Status: "pending"})
+			steps = append(steps, Step{ID: "verify", Label: "Verificando paquete", Status: "pending"})
+		}
+		steps = append(steps, Step{ID: "restart", Label: "Reiniciando Dory", Status: "pending"})
+	}
+	u.setProgress(0, steps)
+
 	var notes []string
 	if opts.Providers && u.Providers != nil {
+		u.updateStep("providers", "active", "", 2)
 		for id, msg := range u.Providers(ctx) {
 			notes = append(notes, fmt.Sprintf("%s: %s", id, msg))
 		}
+		u.updateStep("providers", "done", "", 15)
 	}
 	// The core only moves when its channel has another commit.
-	if version.Channel == "dev" {
+	if !hasCore {
 		return providerError(notes)
 	}
+	u.updateStep("check", "active", "", 18)
 	tag, sha, err := latest(ctx, version.Channel)
 	if err != nil {
 		return err
 	}
-	if sha == version.Read().Revision {
+	info := version.Read()
+	if sha == info.Revision {
+		u.updateStep("check", "done", info.Short, 100)
 		return providerError(notes)
 	}
-	inApp := os.Getenv(DesktopEnv) != ""
+	u.updateStep("check", "done", fmt.Sprintf("Dory %s → %s", info.Short, short(sha)), 20)
+
 	dir := filepath.Join(u.DataDir, "updates")
 	if err = os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -233,21 +317,42 @@ func (u *Updater) run(ctx context.Context, opts Options) error {
 	if runtime.GOOS == "windows" {
 		asset += ".exe"
 	}
+
+	dlStart, dlEnd := 20, 75
+	if !hasDesktop {
+		dlEnd = 90
+	}
+	onDownload := func(done, total int64) {
+		if total <= 0 {
+			return
+		}
+		frac := float64(done) / float64(total)
+		if frac > 1 {
+			frac = 1
+		}
+		pct := dlStart + int(frac*float64(dlEnd-dlStart))
+		detail := fmt.Sprintf("%.1f / %.1f MB · %d%%", float64(done)/(1024*1024), float64(total)/(1024*1024), int(frac*100))
+		u.updateStep("download", "active", detail, pct)
+	}
+
+	u.updateStep("download", "active", "", dlStart)
 	if !inApp {
-		if err = download(ctx, tag, dir, asset); err != nil {
+		if err = downloadWithProgress(ctx, tag, dir, onDownload, asset); err != nil {
 			return err
 		}
 	}
-	if inApp || desktopInstalled() {
+	if hasDesktop {
 		desk := u.DesktopDir()
 		stage, stageErr := os.MkdirTemp(dir, "desktop-")
 		if stageErr != nil {
 			return stageErr
 		}
 		defer os.RemoveAll(stage)
-		if err = download(ctx, tag, stage, desktopAssets()...); err != nil {
+		if err = downloadWithProgress(ctx, tag, stage, onDownload, desktopAssets()...); err != nil {
 			return err
 		}
+		u.updateStep("download", "done", "", dlEnd)
+		u.updateStep("stage", "active", "", dlEnd+2)
 		backup := desk + ".previous"
 		if err = os.RemoveAll(backup); err != nil {
 			return err
@@ -260,12 +365,17 @@ func (u *Updater) run(ctx context.Context, opts Options) error {
 			return err
 		}
 		_ = os.RemoveAll(backup)
+		u.updateStep("stage", "done", "", 82)
+	} else {
+		u.updateStep("download", "done", "", dlEnd)
 	}
 	// The core the desktop app runs lives inside the app: the desktop update
 	// brings it, and the app restarts with it.
 	if inApp {
+		u.updateStep("verify", "active", "", 84)
 		return providerError(notes)
 	}
+	u.updateStep("restart", "active", "Aplicando cambios…", 95)
 	if err = replaceCore(filepath.Join(dir, asset)); err != nil {
 		return fmt.Errorf(i18n.Text("update.no_pudo_sustituir_nucleo"), err)
 	}
@@ -319,28 +429,57 @@ func (m *manifestFile) UnmarshalJSON(data []byte) error {
 
 // download saves the assets of a release whose names match the patterns.
 func download(ctx context.Context, tag, dir string, patterns ...string) error {
+	return downloadWithProgress(ctx, tag, dir, nil, patterns...)
+}
+
+func downloadWithProgress(ctx context.Context, tag, dir string, onProgress func(done, total int64), patterns ...string) error {
 	var rel struct {
 		Assets []struct {
 			Name string `json:"name"`
 			URL  string `json:"browser_download_url"`
+			Size int64  `json:"size"`
 		} `json:"assets"`
 	}
 	if err := getJSON(ctx, api+"/releases/tags/"+url.PathEscape(tag), &rel); err != nil {
 		return err
 	}
+	type matched struct {
+		name string
+		url  string
+		size int64
+	}
+	var files []matched
+	var total int64
 	for _, p := range patterns {
 		found := false
 		for _, a := range rel.Assets {
 			if ok, _ := filepath.Match(p, a.Name); ok {
-				if err := fetch(ctx, a.URL, filepath.Join(dir, a.Name)); err != nil {
-					return err
-				}
+				files = append(files, matched{name: a.Name, url: a.URL, size: a.Size})
+				total += a.Size
 				found = true
 			}
 		}
 		if !found {
 			return fmt.Errorf(i18n.Text("update.release_no_tiene"), tag, p)
 		}
+	}
+	var done int64
+	for _, f := range files {
+		base := done
+		err := fetchWithProgress(ctx, f.url, filepath.Join(dir, f.name), func(n, contentLen int64) {
+			if onProgress == nil {
+				return
+			}
+			t := total
+			if t <= 0 && contentLen > 0 {
+				t = base + contentLen
+			}
+			onProgress(base+n, t)
+		})
+		if err != nil {
+			return err
+		}
+		done += f.size
 	}
 	return nil
 }
@@ -379,6 +518,10 @@ func getJSON(ctx context.Context, target string, out any) error {
 // fetch writes a file through a temporary name, so a cut download never
 // replaces a good one.
 func fetch(ctx context.Context, target, path string) error {
+	return fetchWithProgress(ctx, target, path, nil)
+}
+
+func fetchWithProgress(ctx context.Context, target, path string, onProgress func(done, total int64)) error {
 	resp, err := get(ctx, target)
 	if err != nil {
 		return err
@@ -389,7 +532,11 @@ func fetch(ctx context.Context, target, path string) error {
 	if err != nil {
 		return err
 	}
-	if _, err = io.Copy(f, resp.Body); err != nil {
+	var src io.Reader = resp.Body
+	if onProgress != nil {
+		src = &progressReader{r: resp.Body, total: resp.ContentLength, onProgress: onProgress}
+	}
+	if _, err = io.Copy(f, src); err != nil {
 		f.Close()
 		os.Remove(tmp)
 		return err
@@ -398,6 +545,26 @@ func fetch(ctx context.Context, target, path string) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+type progressReader struct {
+	r          io.Reader
+	done       int64
+	total      int64
+	lastReport time.Time
+	onProgress func(done, total int64)
+}
+
+func (p *progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	if n > 0 {
+		p.done += int64(n)
+		if now := time.Now(); err == io.EOF || now.Sub(p.lastReport) >= 150*time.Millisecond {
+			p.lastReport = now
+			p.onProgress(p.done, p.total)
+		}
+	}
+	return n, err
 }
 
 // desktopAssets are the files electron-updater needs on this system.

@@ -168,7 +168,12 @@ async function followUpdates(url) {
   autoUpdater.autoInstallOnAppQuit = true;
   // The new app starts as soon as it is installed, so the old core must be
   // gone first: otherwise the new app finds it on the port and keeps it.
+  const sendUpdate = (payload) => { if (win && !win.isDestroyed()) win.webContents.send("update:progress", payload); };
+  autoUpdater.on("download-progress", (p) => {
+    sendUpdate({ phase: "verify", percent: Math.round(p.percent || 0), transferred: p.transferred || 0, total: p.total || 0 });
+  });
   autoUpdater.on("update-downloaded", async () => {
+    sendUpdate({ phase: "restart", percent: 100 });
     quitting = true;
     await stopCoreAndWait();
     autoUpdater.quitAndInstall(true, true);

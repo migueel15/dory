@@ -418,6 +418,11 @@ export type Plan = {
   "archived_at": string | null;
 };
 
+export type Progress = {
+  "percent": number;
+  "steps": Step[];
+};
+
 export type Project = {
   "id": string;
   "slug": string;
@@ -567,6 +572,13 @@ export type SourceControlSettings = {
 
 export type Stage = "inbox" | "ready" | "done" | "cancelled";
 
+export type Step = {
+  "id": string;
+  "label": string;
+  "detail"?: string;
+  "status": string;
+};
+
 export type Task = {
   "id": string;
   "project_id": string | null;
@@ -711,6 +723,7 @@ export type UpdateStatus = {
   "active_turns": number;
   "state": "idle" | "updating" | "failed";
   "error"?: string;
+  "progress"?: Progress | null;
   "providers": ProviderVersion[];
 };
 
