@@ -243,7 +243,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
                 </>}
                 <button type="button" onClick={() => onRemoveQuotes([quote.id])} aria-label={quote.code ? `Quitar referencia ${quote.code.path}` : `Quitar cita ${quoteLabel(quote.text)}`}
                   className="grid size-6 shrink-0 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
-                  <X weight="thin" className="size-4" />
+                  <X weight="regular" className="size-4" />
                 </button>
               </li>
             ))}

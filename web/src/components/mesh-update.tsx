@@ -49,7 +49,7 @@ export function MeshUpdateButton() {
       <button ref={setAnchor} type="button" disabled={busy} aria-label="Actualizar la malla"
         onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onFocus={() => setHover(true)} onBlur={() => setHover(false)} onClick={start}
         className="relative grid size-8 shrink-0 place-items-center rounded-md hover:bg-slate-200 disabled:opacity-70 dark:hover:bg-raised">
-        {busy ? <ArrowsClockwise className="size-5 animate-spin" aria-hidden="true" /> : <>
+        {busy ? <ArrowsClockwise weight="regular" className="size-5 animate-spin" aria-hidden="true" /> : <>
           <ArrowCircleUp weight="regular" className="size-5" aria-hidden="true" />
           <span className="absolute right-1 top-1 size-2 rounded-full bg-blue-500 ring-2 ring-slate-100 dark:ring-surface" aria-hidden="true" />
         </>}

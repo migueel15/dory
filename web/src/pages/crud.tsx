@@ -243,7 +243,7 @@ function MeshUpdate() {
         <span className="text-xs text-slate-500">Cada nodo conectado instala la última versión de su canal y, si tiene la app de escritorio, la reinstala.</span>
         <button type="button" aria-label="Buscar actualizaciones" title="Buscar actualizaciones" disabled={recheck.isPending} onClick={() => recheck.mutate()}
           className="ml-auto grid size-8 shrink-0 place-items-center rounded-md hover:bg-slate-200 disabled:opacity-70 dark:hover:bg-raised">
-          <ArrowsClockwise className={`size-5 ${recheck.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
+          <ArrowsClockwise weight="regular" className={`size-5 ${recheck.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
         </button>
       </div>
       <ErrorText error={list.error ?? recheck.error ?? run.error} />

@@ -194,7 +194,7 @@ export function MessageMeta({ m, threadId = "" }: { m: Message; threadId?: strin
       </button>
       {threadId && m.role === "user" && (
         <button type="button" onClick={revert} disabled={reverting} title="Volver a antes de este mensaje" aria-label="Volver a antes de este mensaje" className={msgBtn}>
-          <ArrowCounterClockwise className="size-3.5" />
+          <ArrowCounterClockwise weight="regular" className="size-3.5" />
         </button>
       )}
     </div>

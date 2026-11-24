@@ -186,7 +186,7 @@ export function CommentForm({ draft, placeholder, suggest, steerable = true, ran
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); main(); }
           }}
           className={showingDictation ? "sr-only" : "max-h-[7rem] min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1.5 text-sm leading-5 outline-none! focus-visible:outline-none!"} />
-        <button type="button" onClick={onCancel} aria-label="Cancelar" title="Cancelar (Esc)" className="-mr-1 grid size-8 shrink-0 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white"><X weight="light" className="size-4" /></button>
+        <button type="button" onClick={onCancel} aria-label="Cancelar" title="Cancelar (Esc)" className="-mr-1 grid size-8 shrink-0 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white"><X weight="regular" className="size-4" /></button>
       </div>
       <div className="mt-1 flex items-center gap-1 border-t border-slate-100 pt-1 dark:border-border">
         {suggest && steerable && <button type="button" disabled={dictation.active || pending || empty || rangeless} onClick={() => onSuggest(body, true)} className={formAction} title="Inyecta el comentario en el turno en curso"><Lightning weight="light" className="size-4" />Steer</button>}

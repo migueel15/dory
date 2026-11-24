@@ -177,7 +177,7 @@ function QuoteReply({ autoDictate, text, onCancel, onAdd }: { autoDictate: boole
       <div className="mb-2 flex items-start gap-2">
         <blockquote className="line-clamp-2 min-w-0 flex-1 border-l-2 border-slate-300 pl-2 text-sm text-slate-600 dark:border-border-strong dark:text-muted">{text}</blockquote>
         <button type="button" onClick={onCancel} title="Cancelar respuesta" aria-label="Cancelar respuesta" className="grid size-8 shrink-0 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
-          <X weight="thin" className="size-4" />
+          <X weight="regular" className="size-4" />
         </button>
       </div>
       <div className="flex items-end gap-2">
@@ -193,7 +193,7 @@ function QuoteReply({ autoDictate, text, onCancel, onAdd }: { autoDictate: boole
           className={showingDictation ? "sr-only" : "max-h-36 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1.5 text-sm leading-5 outline-none! focus-visible:outline-none!"} />
         <DictationMic dictation={dictation} />
         <button type="submit" disabled={dictation.phase === "finishing"} className={`${quoteAction} disabled:opacity-40`} title={dictation.active ? "Terminar el dictado y añadir" : "Añadir al mensaje"}>
-          <Plus weight="thin" className="size-4" />Añadir
+          <Plus weight="regular" className="size-4" />Añadir
         </button>
       </div>
       <ErrorText error={dictation.error} />
