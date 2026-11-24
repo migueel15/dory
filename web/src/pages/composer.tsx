@@ -404,7 +404,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   // A question the agent waits for sits on top of the box; the box writes the
   // free answer of the current question instead of a new message. A harness
   // question resolves its tool call; an ask_user one is answered by message.
-  const native = t.requests?.find((r) => r.questions.length > 0);
+  const native = t.requests?.find((r) => r.questions?.length);
   const ask = native ? undefined : openAsk(t.messages);
   const question = native ?? ask;
   const reply = useMutation({
@@ -431,7 +431,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
       qc.setQueryData<ThreadView>(key, (current) => current && {
         ...current, provider: updated.provider, model: updated.model, effort: updated.effort, runtime_mode: updated.runtime_mode,
         reported_settings: current.provider === updated.provider && current.model === updated.model && current.effort === updated.effort
-          ? current.reported_settings : undefined,
+          ? current.reported_settings : {},
       });
       return qc.invalidateQueries({ queryKey: key });
     },

@@ -8,29 +8,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/migueel15/dory/internal/hlc"
+	"github.com/migueel15/dory/internal/schema"
 )
-
-// table describes a replicated table. Key columns identify the row; for a
-// single id column the op entity id is the row id, for composite keys the
-// entity id is the key values joined by "/".
-type table struct {
-	name    string
-	key     []string
-	columns []string
-	// unique is a column that must not repeat. When two nodes pick the same
-	// value offline, the row with the smallest id keeps it and the others get
-	// a suffix, the same on every node.
-	unique string
-	// merge is a text column where concurrent edits keep every version: the
-	// winner first, then each text it did not see, so no text is lost.
-	merge string
-}
 
 // EnsureThreadTask creates a task and links it to a thread in the same local
 // transaction. Repeated calls reuse the link, including after a lost response.
@@ -97,30 +81,15 @@ func (l *Log) EnsureThreadTask(ctx context.Context, thread, title, description s
 	return id, nil
 }
 
-var tables = map[string]table{
-	"project":             {"projects", []string{"id"}, []string{"slug", "name", "description", "created_at", "updated_at", "archived_at"}, "slug", ""},
-	"repository":          {"repositories", []string{"id"}, []string{"project_id", "remote_url", "default_branch", "created_at", "updated_at", "archived_at"}, "", ""},
-	"repository_location": {"repository_locations", []string{"repository_id", "node_id"}, []string{"path", "created_at", "updated_at", "archived_at"}, "", ""},
-	"task":                {"tasks", []string{"id"}, []string{"project_id", "repository_id", "title", "description", "stage", "branch", "issue_number", "pr_number", "position", "created_at", "updated_at", "archived_at"}, "", ""},
-	"task_dependency":     {"task_dependencies", []string{"task_id", "depends_on_id"}, []string{"created_at", "archived_at"}, "", ""},
-	"plan":                {"plans", []string{"id"}, []string{"task_id", "version", "sections", "open_questions", "author", "accepted_at", "body_md", "revision", "created_at", "updated_at", "archived_at"}, "", ""},
-	"memory":              {"memories", []string{"id"}, []string{"scope", "scope_id", "kind", "title", "content", "labels", "created_at", "updated_at", "archived_at"}, "", "content"},
-	"skill":               {"skills", []string{"id"}, []string{"name", "description", "body_md", "files", "version", "targets", "source", "system_version", "forked_from", "disabled_at", "created_at", "updated_at", "archived_at"}, "name", ""},
-	"skill_state":         {"skill_states", []string{"skill_id", "node_id"}, []string{"status", "version", "message", "created_at", "updated_at", "archived_at"}, "", ""},
-	"notice":              {"notices", []string{"id"}, []string{"kind", "title", "body", "url", "read_at", "created_at", "updated_at", "archived_at"}, "", ""},
-	"setting":             {"settings", []string{"id"}, []string{"value", "created_at", "updated_at", "archived_at"}, "", ""},
-	"thread":              {"threads", []string{"id"}, []string{"node_id", "project_id", "task_id", "task_linked_at", "parent_id", "origin_id", "provider", "model", "effort", "runtime_mode", "title", "branch", "status", "pinned_at", "read_at", "last_activity_at", "snoozed_until", "settled_at", "created_at", "updated_at", "archived_at"}, "", ""},
-}
-
 // Write records a local change and applies it to its table in one
 // transaction. Unknown entities or columns are refused.
 func (l *Log) Write(ctx context.Context, entity, id string, fields map[string]any) (Op, error) {
-	t, ok := tables[entity]
+	t, ok := schema.Lookup(entity)
 	if !ok {
 		return Op{}, fmt.Errorf("oplog: unknown entity %q", entity)
 	}
 	for name := range fields {
-		if !slices.Contains(t.columns, name) {
+		if _, ok := t.Column(name); !ok {
 			return Op{}, fmt.Errorf("oplog: %s has no column %q", entity, name)
 		}
 	}
@@ -156,7 +125,7 @@ func (l *Log) Apply(ctx context.Context, ops []Op) error {
 	touched := map[[2]string]bool{}
 	var latest hlc.Timestamp
 	for _, op := range ops {
-		if _, ok := tables[op.Entity]; !ok {
+		if _, ok := schema.Lookup(op.Entity); !ok {
 			return fmt.Errorf("oplog: unknown entity %q", op.Entity)
 		}
 		ts, err := hlc.Parse(op.HLC)
@@ -215,7 +184,7 @@ func (l *Log) begin(ctx context.Context) (*sql.Tx, error) {
 // materialize rebuilds a row from all its operations: each column takes the
 // value of the latest operation, by clock, that set it.
 func materialize(ctx context.Context, tx *sql.Tx, entity, id string) error {
-	t := tables[entity]
+	t, _ := schema.Lookup(entity)
 	rows, err := tx.QueryContext(ctx, `SELECT fields, hlc, base FROM ops WHERE entity = ? AND entity_id = ? ORDER BY hlc`, entity, id)
 	if err != nil {
 		return err
@@ -239,7 +208,7 @@ func materialize(ctx context.Context, tx *sql.Tx, entity, id string) error {
 		for name, v := range fields {
 			values[name] = v
 		}
-		if text, ok := fields[t.merge].(string); ok && t.merge != "" {
+		if text, ok := fields[t.Merge].(string); ok && t.Merge != "" {
 			v.text = text
 			versions = append(versions, v)
 		}
@@ -249,22 +218,22 @@ func materialize(ctx context.Context, tx *sql.Tx, entity, id string) error {
 		return err
 	}
 	if len(versions) > 1 {
-		values[t.merge] = merged(versions)
+		values[t.Merge] = merged(versions)
 	}
 
 	keys := strings.Split(id, "/")
-	if len(keys) != len(t.key) {
-		return fmt.Errorf("oplog: %s id %q needs %d parts", entity, id, len(t.key))
+	if len(keys) != len(t.Key) {
+		return fmt.Errorf("oplog: %s id %q needs %d parts", entity, id, len(t.Key))
 	}
-	cols := append([]string{}, t.key...)
-	args := make([]any, 0, len(t.key)+len(values))
+	cols := append([]string{}, t.Key...)
+	args := make([]any, 0, len(t.Key)+len(values))
 	for _, k := range keys {
 		args = append(args, k)
 	}
 	set := []string{}
 	names := make([]string, 0, len(values))
 	for name := range values {
-		if slices.Contains(t.columns, name) {
+		if _, ok := t.Column(name); ok {
 			names = append(names, name)
 		}
 	}
@@ -274,7 +243,7 @@ func materialize(ctx context.Context, tx *sql.Tx, entity, id string) error {
 		if err != nil {
 			return err
 		}
-		if name == t.unique {
+		if name == t.Unique {
 			if v, err = claim(ctx, tx, entity, id, v); err != nil {
 				return err
 			}
@@ -284,7 +253,7 @@ func materialize(ctx context.Context, tx *sql.Tx, entity, id string) error {
 		set = append(set, name+" = excluded."+name)
 	}
 	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) ON CONFLICT (%s) DO ",
-		t.name, strings.Join(cols, ", "), strings.TrimSuffix(strings.Repeat("?, ", len(cols)), ", "), strings.Join(t.key, ", "))
+		t.Table, strings.Join(cols, ", "), strings.TrimSuffix(strings.Repeat("?, ", len(cols)), ", "), strings.Join(t.Key, ", "))
 	if len(set) == 0 {
 		query += "NOTHING"
 	} else {
@@ -320,8 +289,8 @@ func column(v any) (any, error) {
 // whose latest wish is value keeps it; the rest get value plus a suffix of
 // their own id. If this row owns value, rows already holding it are renamed.
 func claim(ctx context.Context, tx *sql.Tx, entity, id string, value any) (any, error) {
-	t := tables[entity]
-	path := "$." + t.unique
+	t, _ := schema.Lookup(entity)
+	path := "$." + t.Unique
 	var owner string
 	err := tx.QueryRowContext(ctx, `SELECT MIN(o.entity_id) FROM ops o
 		WHERE o.entity = ? AND json_extract(o.fields, ?) = ?
@@ -334,7 +303,7 @@ func claim(ctx context.Context, tx *sql.Tx, entity, id string, value any) (any, 
 	if owner != id {
 		return suffixed(value, id), nil
 	}
-	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT id FROM %s WHERE %s = ? AND id <> ?`, t.name, t.unique), value, id)
+	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT id FROM %s WHERE %s = ? AND id <> ?`, t.Table, t.Unique), value, id)
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +318,7 @@ func claim(ctx context.Context, tx *sql.Tx, entity, id string, value any) (any, 
 	}
 	rows.Close()
 	for _, other := range holders {
-		if _, err = tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET %s = ? WHERE id = ?`, t.name, t.unique), suffixed(value, other), other); err != nil {
+		if _, err = tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET %s = ? WHERE id = ?`, t.Table, t.Unique), suffixed(value, other), other); err != nil {
 			return nil, err
 		}
 	}
@@ -396,10 +365,4 @@ func merged(versions []version) string {
 		}
 	}
 	return out
-}
-
-// Columns returns the key and the replicated columns of an entity.
-func Columns(entity string) (key, columns []string, ok bool) {
-	t, ok := tables[entity]
-	return t.key, t.columns, ok
 }

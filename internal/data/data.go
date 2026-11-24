@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/oplog"
+	"github.com/migueel15/dory/internal/schema"
 )
 
 var ErrNotFound = errors.New("resource not found")
@@ -75,19 +76,6 @@ func (s *Store) PatchThread(ctx context.Context, id string, fields map[string]an
 	return s.Threads().Get(ctx, id)
 }
 
-// jsonColumns are stored as JSON text and read back as JSON values.
-var jsonColumns = []string{"sections", "open_questions", "labels", "files", "targets"}
-
-// defaults fill columns left empty by a Put.
-var defaults = map[string]map[string]any{
-	"repository": {"default_branch": "main"},
-	"task":       {"stage": "inbox"},
-	"plan":       {"author": "agent", "sections": map[string]any{}, "open_questions": []any{}},
-	"memory":     {"kind": "context", "labels": []any{}},
-	"thread":     {"runtime_mode": "full-access", "status": "idle"},
-	"skill":      {"files": map[string]any{}, "targets": map[string]any{}},
-}
-
 // Filter matches columns exactly. Limit defaults to 100 (maximum 1000).
 type Filter struct {
 	Fields          map[string]any
@@ -141,8 +129,8 @@ func (r Resource[T]) Put(ctx context.Context, v T) (T, error) {
 	if err = json.Unmarshal(raw, &next); err != nil {
 		return zero, err
 	}
-	key, columns, _ := oplog.Columns(r.entity)
-	id, err := r.identity(next, key)
+	spec, _ := schema.Lookup(r.entity)
+	id, err := r.identity(next, spec.Key)
 	if err != nil {
 		return zero, err
 	}
@@ -152,14 +140,15 @@ func (r Resource[T]) Put(ctx context.Context, v T) (T, error) {
 	} else if len(rows) > 0 {
 		json.Unmarshal(rows[0], &current)
 	}
-	for col, def := range defaults[r.entity] {
+	for col, def := range spec.Defaults() {
 		if empty(next[col]) {
 			next[col] = def
 		}
 	}
 	now := r.s.now().UTC().Format(time.RFC3339Nano)
 	changed := map[string]any{}
-	for _, col := range columns {
+	for _, column := range spec.Columns {
+		col := column.Name
 		if col == "created_at" || col == "updated_at" {
 			continue
 		}
@@ -173,7 +162,7 @@ func (r Resource[T]) Put(ctx context.Context, v T) (T, error) {
 	if len(current) == 0 {
 		changed["created_at"] = now
 	}
-	if slices.Contains(columns, "updated_at") {
+	if _, ok := spec.Column("updated_at"); ok {
 		changed["updated_at"] = now
 	}
 	if _, err = r.s.log.Write(ctx, r.entity, id, changed); err != nil {
@@ -189,7 +178,8 @@ func (r Resource[T]) Archive(ctx context.Context, id string) error {
 	}
 	now := r.s.now().UTC().Format(time.RFC3339Nano)
 	fields := map[string]any{"archived_at": now}
-	if _, columns, _ := oplog.Columns(r.entity); slices.Contains(columns, "updated_at") {
+	spec, _ := schema.Lookup(r.entity)
+	if _, ok := spec.Column("updated_at"); ok {
 		fields["updated_at"] = now
 	}
 	_, err := r.s.log.Write(ctx, r.entity, id, fields)
@@ -232,10 +222,10 @@ func (r Resource[T]) identity(row map[string]any, key []string) (string, error) 
 }
 
 func (r Resource[T]) keyFields(id string) map[string]any {
-	key, _, _ := oplog.Columns(r.entity)
+	spec, _ := schema.Lookup(r.entity)
 	parts := strings.Split(id, "/")
 	fields := map[string]any{}
-	for i, k := range key {
+	for i, k := range spec.Key {
 		if i < len(parts) {
 			fields[k] = parts[i]
 		}
@@ -245,7 +235,7 @@ func (r Resource[T]) keyFields(id string) map[string]any {
 
 // query returns matching rows as JSON objects.
 func (s *Store) query(ctx context.Context, entity string, f Filter) ([]json.RawMessage, error) {
-	key, columns, ok := oplog.Columns(entity)
+	spec, ok := schema.Lookup(entity)
 	if !ok {
 		return nil, ErrInvalid
 	}
@@ -255,11 +245,11 @@ func (s *Store) query(ctx context.Context, entity string, f Filter) ([]json.RawM
 	if f.Limit == 0 {
 		f.Limit = 100
 	}
-	all := append(append([]string{}, key...), columns...)
+	all := append(append([]string{}, spec.Key...), spec.ColumnNames()...)
 	pairs := make([]string, 0, len(all))
 	for _, col := range all {
 		value := col
-		if slices.Contains(jsonColumns, col) {
+		if spec.IsJSON(col) {
 			value = "json(" + col + ")"
 		}
 		pairs = append(pairs, fmt.Sprintf("'%s', %s", col, value))
@@ -276,10 +266,8 @@ func (s *Store) query(ctx context.Context, entity string, f Filter) ([]json.RawM
 		where = append(where, col+" = ?")
 		args = append(args, v)
 	}
-	table := map[string]string{"project": "projects", "repository": "repositories", "task": "tasks",
-		"task_dependency": "task_dependencies", "plan": "plans", "memory": "memories", "thread": "threads", "skill": "skills", "skill_state": "skill_states", "repository_location": "repository_locations", "notice": "notices", "setting": "settings"}[entity]
 	query := fmt.Sprintf("SELECT json_object(%s) FROM %s WHERE %s ORDER BY created_at, %s LIMIT ? OFFSET ?",
-		strings.Join(pairs, ", "), table, strings.Join(where, " AND "), strings.Join(key, ", "))
+		strings.Join(pairs, ", "), spec.Table, strings.Join(where, " AND "), strings.Join(spec.Key, ", "))
 	rows, err := s.db.QueryContext(ctx, query, append(args, f.Limit, f.Offset)...)
 	if err != nil {
 		return nil, err

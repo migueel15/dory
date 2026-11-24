@@ -48,11 +48,12 @@ Si mientras el nodo estaba desactualizado se editó a mano el fichero de una ski
 
 ### Añadir una columna replicada
 
-Dory no reconstruye las filas a partir del registro. Al añadir una columna a una entidad replicada (la lista de `internal/oplog/apply.go`):
+Al actualizarse, cada nodo necesita recuperar en la migración las columnas nuevas ya presentes en sus operaciones. Para añadir una columna a una entidad replicada, sigue estos pasos.
 
 1. Añade la columna en una migración.
 2. En la misma migración, recupera su valor de las operaciones ya recibidas: para cada fila, el último valor por `hlc` de esa clave en `ops`. Distingue la clave ausente (`json_type(...) IS NULL`) de un `null` explícito. `00022_system_skills.sql` es el ejemplo.
-3. Si la columna cambia qué hace un nodo (instalar, mostrar, permitir), escribe qué hará mientras tanto un nodo antiguo y cómo se corrige al actualizarse.
+3. Añade la columna al registro en `internal/schema` y al struct de la entidad en `internal/data/types.go`. Si el struct está expuesto a la web, ejecuta `go generate ./cmd/gen-ts` y guarda `web/src/api/types.gen.ts` junto con el cambio.
+4. Si la columna cambia qué hace un nodo (instalar, mostrar, permitir), escribe qué hará mientras tanto un nodo antiguo y cómo se corrige al actualizarse.
 
 Sin el paso 2, un nodo que recibió esos cambios antes de actualizarse no los ve hasta que llegue otra operación sobre la misma fila.
 

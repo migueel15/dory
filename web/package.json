@@ -7,6 +7,7 @@
     "dev": "vite",
     "test": "tsc src/stack.ts src/stack.test.ts src/lib/merge3.ts src/lib/merge3.test.ts src/lib/turn-changes.ts src/lib/turn-changes.test.ts --outDir .test --module nodenext --moduleResolution nodenext --target es2022 --strict --skipLibCheck && echo '{\"type\":\"module\"}' > .test/package.json && node --test .test/stack.test.js .test/lib/merge3.test.js .test/lib/turn-changes.test.js; rm -rf .test",
     "build": "tsc --noEmit && vite build && touch dist/.gitkeep",
+    "gen:types": "cd .. && go run ./cmd/gen-ts",
     "preview": "vite preview"
   },
   "dependencies": {
