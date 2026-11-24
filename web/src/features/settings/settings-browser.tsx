@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Info } from "@phosphor-icons/react";
 import { Button, ErrorText, Select } from "../../components/ui";
 import { SettingRow, useNodeSettings, type SectionProps } from "./settings-node";
 
@@ -24,8 +25,10 @@ export function BrowserSettings({ node }: SectionProps) {
       <section aria-labelledby="browser-title" className="space-y-4">
         <h2 id="browser-title" className="text-lg font-semibold">Navegador</h2>
         <SettingRow settings={settings} field="agents_use_browser" title="Permitir que los agentes usen el navegador" />
-        <SettingRow settings={settings} field="browser_search_engine" title="Buscador"
-          control={(value, set, disabled) => <Select className="w-48 shrink-0" value={value || "google"} onChange={set} options={ENGINES} disabled={disabled} />} />
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <strong className="font-medium">Motor de búsqueda</strong>
+          <Select className="w-48 shrink-0" value={settings.get("browser_search_engine") || "google"} onChange={(v) => settings.set({ browser_search_engine: v })} options={ENGINES} disabled={!settings.loaded || settings.pending} />
+        </div>
         <SettingRow settings={settings} field="browser_tunnel_disabled" title="Bloquear el túnel del navegador" help="Impide abrir los puertos de localhost de este nodo desde un hilo remoto." />
         <ErrorText error={settings.error} />
       </section>
@@ -66,10 +69,10 @@ function CookieSettings() {
 
   return (
     <section aria-labelledby="cookies-title" className="space-y-6">
-      <div>
-        <h2 id="cookies-title" className="text-lg font-semibold">Sesiones de este equipo</h2>
-        <p className="text-xs text-slate-500 dark:text-muted">Los agentes en segundo plano no las reciben.</p>
-      </div>
+      <h2 id="cookies-title" className="text-lg font-semibold">Cookies</h2>
+      <p className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-border dark:bg-raised dark:text-muted">
+        <Info weight="regular" className="size-4 shrink-0" aria-hidden="true" />Los agentes en segundo plano no las reciben.
+      </p>
       <div className="max-w-sm space-y-2">
         <span className="block text-sm font-medium">Importar sesiones desde</span>
         {list && !options.length
