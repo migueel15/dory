@@ -1,4 +1,4 @@
-package runtime
+package kit
 
 import (
 	"os"
@@ -8,27 +8,11 @@ import (
 )
 
 // shellInstall runs the official installer script of a harness.
-func shellInstall(unix, windows string) []string {
+func ShellInstall(unix, windows string) []string {
 	if runtime.GOOS == "windows" {
 		return []string{"powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm " + windows + " | iex"}
 	}
 	return []string{"sh", "-c", "curl -fsSL " + unix + " | bash"}
-}
-
-func (Claude) InstallCommand() []string {
-	return shellInstall("https://claude.ai/install.sh", "https://claude.ai/install.ps1")
-}
-
-func (Codex) InstallCommand() []string {
-	return shellInstall("https://chatgpt.com/codex/install.sh", "https://chatgpt.com/codex/install.ps1")
-}
-
-// OpenCode publishes no installer for Windows; npm is its documented route.
-func (OpenCode) InstallCommand() []string {
-	if runtime.GOOS == "windows" {
-		return []string{"npm", "install", "-g", "@opencode/cli@latest"}
-	}
-	return shellInstall("https://opencode.ai/v2/install", "")
 }
 
 // installDirs are where the official installers leave the harnesses. The
@@ -47,7 +31,7 @@ func installDirs() []string {
 
 // resolveBin returns name when it is on PATH, else its path in a known
 // install folder, else name so the caller's error names the harness.
-func resolveBin(name string) string {
+func ResolveBin(name string) string {
 	if _, err := exec.LookPath(name); err == nil {
 		return name
 	}

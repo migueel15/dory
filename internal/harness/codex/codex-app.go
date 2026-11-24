@@ -1,12 +1,17 @@
-package runtime
+package codex
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
+
+	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/kit"
 )
 
 // Start runs a turn over "codex app-server", Codex's JSON-RPC protocol on
@@ -14,18 +19,14 @@ import (
 // request_user_input pauses the turn until the user answers. The process
 // stays open for the next turn of the thread (see live.go), which only
 // starts a turn, so what the agent left running survives.
-func (c Codex) Start(ctx context.Context, t Turn) (Session, error) {
-	return legacyStart(c.startLegacy(ctx, t))
-}
-
-func (c Codex) startLegacy(ctx context.Context, t Turn) (legacySession, error) {
+func (c Codex) Start(ctx context.Context, t harness.Turn) (harness.Session, error) {
 	key := strings.Join([]string{t.Model, fmt.Sprint(t.FullAccess), t.Dir, c.Home, t.MCPURL}, "\x00")
-	p := reuseStdio(c.pool, t.ThreadID, c.ID(), key)
+	p := kit.ReuseStdio(c.pool, t.ThreadID, c.ID(), key)
 	if p == nil {
 		args := []string{"app-server", "--enable", "default_mode_request_user_input"}
-		cmd := providerCommand(context.Background(), t.ThreadID, c.bin(), args...)
+		cmd := kit.ProviderCommand(context.Background(), t.ThreadID, c.bin(), args...)
 		cmd.Dir = t.Dir
-		cmd.Env = threadEnv(c.Environ(), t.ThreadID)
+		cmd.Env = kit.ThreadEnv(c.Environ(), t.ThreadID)
 		if t.MCPURL != "" {
 			cmd.Args = append(cmd.Args,
 				"-c", fmt.Sprintf("mcp_servers.dory.url=%q", t.MCPURL),
@@ -37,19 +38,19 @@ func (c Codex) startLegacy(ctx context.Context, t Turn) (legacySession, error) {
 			cmd.Env = append(cmd.Env, "DORY_MCP_TOKEN="+t.MCPToken)
 		}
 		var err error
-		if p, err = openStdio(c.pool, cmd, t.ThreadID, c.ID(), key); err != nil {
+		if p, err = kit.OpenStdio(c.pool, cmd, t.ThreadID, c.ID(), key); err != nil {
 			return nil, err
 		}
 	}
-	s := newCodexSession(t, p.in)
+	s := newCodexSession(t, p.Input)
 	s.proc = p
-	turn := p.begin(t.ThreadID, s.handle)
-	s.events = turn.out
+	turn := p.Begin(t.ThreadID, s.handle)
+	s.events = turn.Events
 	// Call ids stay unique on the process across turns.
-	s.next = p.turns * 1_000_000
-	p.watch(ctx, t.ThreadID, c.ID(), turn, s.interrupt)
+	s.next = p.Turns * 1_000_000
+	p.Watch(ctx, t.ThreadID, c.ID(), turn, s.interrupt)
 	var err error
-	if thread := p.get("thread"); thread != "" {
+	if thread := p.Get("thread"); thread != "" {
 		err = s.startTurn(thread)
 	} else {
 		err = s.call("initialize", map[string]any{
@@ -58,7 +59,7 @@ func (c Codex) startLegacy(ctx context.Context, t Turn) (legacySession, error) {
 		})
 	}
 	if err != nil {
-		p.abort(turn)
+		p.Abort(turn)
 		return nil, err
 	}
 	return s, nil
@@ -67,10 +68,10 @@ func (c Codex) startLegacy(ctx context.Context, t Turn) (legacySession, error) {
 // codexSession drives one turn of codex app-server. Responses to its own
 // calls move the handshake on; server requests ask for the user.
 type codexSession struct {
-	turn      Turn
-	parser    *codexParser
-	events    <-chan Event
-	proc      *stdioProc
+	turn harness.Turn
+
+	events    <-chan harness.Event
+	proc      *kit.StdioProc
 	turnID    string
 	lastUsage *codexTokenUsage
 
@@ -80,26 +81,26 @@ type codexSession struct {
 	next    int
 	calls   map[int]string // call id → method
 	pending map[string]*codexAsk
-	texts   map[string]*Message
+	texts   map[string]*codexText
 	failure string
 }
 
 // codexAsk is a request_user_input call waiting for the user.
 type codexAsk struct {
 	rpcID   json.RawMessage
-	message *Message
+	message *harness.Message
 	answers [][]string
 }
 
-func newCodexSession(t Turn, in io.WriteCloser) *codexSession {
-	return &codexSession{turn: t, parser: &codexParser{run: t.RunID, started: true}, in: in,
-		calls: map[int]string{}, pending: map[string]*codexAsk{}, texts: map[string]*Message{}}
+func newCodexSession(t harness.Turn, in io.WriteCloser) *codexSession {
+	return &codexSession{turn: t, in: in,
+		calls: map[int]string{}, pending: map[string]*codexAsk{}, texts: map[string]*codexText{}}
 }
 
-func (s *codexSession) Events() <-chan Event { return s.events }
+func (s *codexSession) Events() <-chan harness.Event { return s.events }
 
-// Answer replies to request_user_input with the answers by question id.
-func (s *codexSession) Answer(id string, answers [][]string) error {
+// Respond replies to request_user_input with the answers by question id.
+func (s *codexSession) Respond(id string, answers [][]string) error {
 	s.mu.Lock()
 	ask, ok := s.pending[id]
 	if ok && ask.answers != nil {
@@ -110,7 +111,7 @@ func (s *codexSession) Answer(id string, answers [][]string) error {
 	}
 	s.mu.Unlock()
 	if !ok {
-		return ErrNoRequest
+		return harness.ErrNoRequest
 	}
 	byID := map[string]any{}
 	for i, q := range ask.message.Tool.Questions {
@@ -133,7 +134,7 @@ type codexRPC struct {
 	} `json:"error"`
 }
 
-func (s *codexSession) handle(line []byte, emit func(Event)) {
+func (s *codexSession) handle(line []byte, emit func(harness.Event)) {
 	var r codexRPC
 	if json.Unmarshal(line, &r) != nil {
 		return
@@ -149,7 +150,7 @@ func (s *codexSession) handle(line []byte, emit func(Event)) {
 }
 
 // response moves the handshake on: initialize, thread, turn.
-func (s *codexSession) response(r codexRPC, emit func(Event)) {
+func (s *codexSession) response(r codexRPC, emit func(harness.Event)) {
 	var id int
 	_ = json.Unmarshal(r.ID, &id)
 	s.mu.Lock()
@@ -157,7 +158,7 @@ func (s *codexSession) response(r codexRPC, emit func(Event)) {
 	delete(s.calls, id)
 	s.mu.Unlock()
 	if r.Error != nil {
-		s.finish(emit, method+": "+r.Error.Message)
+		s.finish(emit, harness.TurnEnded{Reason: harness.Failed, Error: method + ": " + r.Error.Message})
 		return
 	}
 	t := s.turn
@@ -189,11 +190,11 @@ func (s *codexSession) response(r codexRPC, emit func(Event)) {
 			ReasoningEffort string `json:"reasoningEffort"`
 		}
 		_ = json.Unmarshal(r.Result, &res)
-		emit(Event{Session: res.Thread.ID})
+		emit(harness.SessionBound{ID: res.Thread.ID})
 		if res.Model != "" || res.ReasoningEffort != "" {
-			emit(Event{Settings: &ReportedSettings{Model: res.Model, Effort: res.ReasoningEffort}})
+			emit(harness.SettingsReported{Model: res.Model, Effort: res.ReasoningEffort})
 		}
-		s.proc.set("thread", res.Thread.ID)
+		s.proc.Set("thread", res.Thread.ID)
 		s.startTurn(res.Thread.ID)
 	case "turn/start":
 		var res struct {
@@ -210,7 +211,7 @@ func (s *codexSession) response(r codexRPC, emit func(Event)) {
 
 // request answers what the server asks. request_user_input waits for the
 // user; approvals are declined, as "never" should not raise them.
-func (s *codexSession) request(r codexRPC, emit func(Event)) {
+func (s *codexSession) request(r codexRPC, emit func(harness.Event)) {
 	switch r.Method {
 	case "item/tool/requestUserInput":
 		var p struct {
@@ -218,14 +219,14 @@ func (s *codexSession) request(r codexRPC, emit func(Event)) {
 			Questions json.RawMessage `json:"questions"`
 		}
 		_ = json.Unmarshal(r.Params, &p)
-		qs := parseQuestions(json.RawMessage(`{"questions":` + string(p.Questions) + `}`))
-		m := &Message{ID: s.turn.RunID + ":" + p.ItemID, RunID: s.turn.RunID, Role: "tool", Title: "request_user_input",
-			Status: "running", CreatedAt: now(), Tool: &ToolCall{Kind: "question", Name: "request_user_input", Questions: qs}}
+		qs := kit.ParseQuestions(json.RawMessage(`{"questions":` + string(p.Questions) + `}`))
+		m := &harness.Message{ID: s.turn.RunID + ":" + p.ItemID, RunID: s.turn.RunID, Role: "tool", Title: "request_user_input",
+			Status: "running", CreatedAt: kit.Now(), Tool: &harness.ToolCall{Kind: "question", Name: "request_user_input", Questions: qs}}
 		s.mu.Lock()
 		s.pending[p.ItemID] = &codexAsk{rpcID: r.ID, message: m}
 		s.mu.Unlock()
-		emit(Event{Message: copyOf(m)})
-		emit(Event{Request: &Request{ID: p.ItemID, Kind: "question", MessageID: m.ID, Questions: qs, CreatedAt: now()}})
+		emit(kit.StartTool(m))
+		emit(harness.RequestOpened{Request: harness.Request{ID: p.ItemID, Kind: "question", MessageID: m.ID, Questions: qs, CreatedAt: kit.Now()}})
 	case "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
 		s.write(map[string]any{"jsonrpc": "2.0", "id": r.ID, "result": map[string]any{"decision": "decline"}})
 	default:
@@ -233,8 +234,7 @@ func (s *codexSession) request(r codexRPC, emit func(Event)) {
 	}
 }
 
-// codexAppItem is an item of app-server; it maps onto the items of
-// "codex exec --json", whose parser already turns them into messages.
+// codexAppItem is an item of the app-server protocol.
 type codexAppItem struct {
 	ID               string          `json:"id"`
 	Type             string          `json:"type"`
@@ -259,23 +259,6 @@ type codexAppItem struct {
 	} `json:"changes"`
 }
 
-func (it codexAppItem) exec() codexItem {
-	out := codexItem{ID: it.ID, Text: it.Text, Command: it.Command, AggregatedOutput: it.AggregatedOutput, ExitCode: it.ExitCode,
-		Status: it.Status, Server: it.Server, Tool: it.Tool, Arguments: it.Arguments, Query: it.Query}
-	out.Type = map[string]string{"agentMessage": "agent_message", "reasoning": "reasoning", "commandExecution": "command_execution",
-		"fileChange": "file_change", "mcpToolCall": "mcp_tool_call", "webSearch": "web_search"}[it.Type]
-	if it.Type == "reasoning" {
-		out.Text = strings.Join(it.Summary, "\n")
-	}
-	for _, c := range it.Changes {
-		out.Changes = append(out.Changes, struct {
-			Path string `json:"path"`
-			Kind string `json:"kind"`
-		}{c.Path, c.Kind.Type})
-	}
-	return out
-}
-
 type codexTokenUsage struct {
 	Input     int64 `json:"inputTokens"`
 	Read      int64 `json:"cachedInputTokens"`
@@ -285,7 +268,7 @@ type codexTokenUsage struct {
 	Total     int64 `json:"totalTokens"`
 }
 
-func (s *codexSession) notification(r codexRPC, emit func(Event)) {
+func (s *codexSession) notification(r codexRPC, emit func(harness.Event)) {
 	var p struct {
 		TurnID     string `json:"turnId"`
 		TokenUsage *struct {
@@ -322,22 +305,14 @@ func (s *codexSession) notification(r codexRPC, emit func(Event)) {
 		}
 		s.lastUsage = &p.TokenUsage.Total
 		u := p.TokenUsage.Last
-		emit(Event{Step: &StepUsage{Model: s.turn.Model, Input: max(0, u.Input-u.Read-u.Write), CacheRead: u.Read, CacheWrite: u.Write, Output: u.Output, Reasoning: u.Reasoning}})
+		emit(harness.StepUsage{Model: s.turn.Model, Input: max(0, u.Input-u.Read-u.Write), CacheRead: u.Read, CacheWrite: u.Write, Output: u.Output, Reasoning: u.Reasoning})
 	case "item/started", "item/completed":
 		done := r.Method == "item/completed"
-		if m := s.parser.message(p.Item.exec(), done); m != nil {
-			if p.Item.Type == "agentMessage" || p.Item.Type == "reasoning" {
-				s.texts[p.Item.ID] = m
-				if p.Item.Type == "agentMessage" && !done {
-					// Keep the raw text so tags can span multiple deltas.
-					raw := copyOf(m)
-					raw.Text = p.Item.Text
-					s.texts[p.Item.ID] = raw
-				}
-				if m.Text == "" && !done {
-					return
-				}
-			}
+		if p.Item.Type == "agentMessage" || p.Item.Type == "reasoning" {
+			s.textItem(p.Item, done, emit)
+			return
+		}
+		if m := itemMessage(s.turn.RunID, p.Item, done); m != nil {
 			m.InputChars = len(p.Item.Arguments)
 			if done {
 				m.ResultChars = len(p.Item.AggregatedOutput)
@@ -362,7 +337,7 @@ func (s *codexSession) notification(r codexRPC, emit func(Event)) {
 								texts = append(texts, c.Text)
 							}
 						}
-						m.Text = clip(strings.Join(texts, "\n"), 4000)
+						m.Text = kit.Clip(strings.Join(texts, "\n"), 4000)
 					}
 				}
 			}
@@ -373,39 +348,40 @@ func (s *codexSession) notification(r codexRPC, emit func(Event)) {
 					}
 				}
 			}
-			emit(Event{Message: m})
+			if done {
+				emit(kit.FinishTool(m))
+			} else {
+				emit(kit.StartTool(m))
+			}
 		}
 	case "item/agentMessage/delta", "item/reasoning/summaryTextDelta":
-		if m := s.texts[p.ItemID]; m != nil {
-			m.Text += p.Delta
-			snapshot := copyOf(m)
-			if r.Method == "item/agentMessage/delta" {
-				snapshot.Text = stripCodexMemoryCitations(m.Text, true)
-			}
-			emit(Event{Message: snapshot})
+		kind := harness.Assistant
+		if r.Method == "item/reasoning/summaryTextDelta" {
+			kind = harness.Reasoning
 		}
+		s.text(p.ItemID, kind).append(p.Delta, emit)
 	case "turn/plan/updated":
-		m := &Message{ID: s.turn.RunID + ":plan", RunID: s.turn.RunID, Role: "plan", Title: "Plan", CreatedAt: now(),
-			Tool: &ToolCall{Kind: "todo", Name: "update_plan"}}
+		m := &harness.Message{ID: s.turn.RunID + ":plan", RunID: s.turn.RunID, Role: "plan", CreatedAt: kit.Now(),
+			Tool: &harness.ToolCall{Kind: "todo", Name: "update_plan"}}
 		var lines []string
 		for _, x := range p.Plan {
 			st := map[string]string{"inProgress": "in_progress"}[x.Status]
 			if st == "" {
 				st = x.Status
 			}
-			m.Tool.Todos = append(m.Tool.Todos, Todo{Text: x.Step, Status: st})
+			m.Tool.Todos = append(m.Tool.Todos, harness.Todo{Text: x.Step, Status: st})
 			lines = append(lines, x.Step)
 		}
 		m.Detail = strings.Join(lines, "\n")
-		emit(Event{Message: m})
+		emit(kit.Plan(m))
 	case "serverRequest/resolved":
 		// The answer went through: the card shows it.
 		s.mu.Lock()
 		for id, ask := range s.pending {
 			if ask.answers != nil {
 				ask.message.Status = "completed"
-				ask.message.Tool.Questions = answered(ask.message.Tool.Questions, ask.answers)
-				emit(Event{Message: copyOf(ask.message)})
+				ask.message.Tool.Questions = kit.Answered(ask.message.Tool.Questions, ask.answers)
+				emit(kit.FinishTool(ask.message))
 				delete(s.pending, id)
 			}
 		}
@@ -415,17 +391,20 @@ func (s *codexSession) notification(r codexRPC, emit func(Event)) {
 			s.failure = p.Error.Message
 		}
 	case "turn/completed":
-		msg := ""
-		if p.Turn.Status == "failed" || p.Turn.Status == "interrupted" {
-			msg = s.failure
+		end := harness.TurnEnded{Reason: harness.Completed}
+		switch p.Turn.Status {
+		case "interrupted":
+			end.Reason = harness.Interrupted
+		case "failed":
+			end.Reason, end.Error = harness.Failed, s.failure
 			if p.Turn.Error != nil && p.Turn.Error.Message != "" {
-				msg = p.Turn.Error.Message
+				end.Error = p.Turn.Error.Message
 			}
-			if msg == "" {
-				msg = p.Turn.Status
+			if end.Error == "" {
+				end.Error = p.Turn.Status
 			}
 		}
-		s.finish(emit, msg)
+		s.finish(emit, end)
 	}
 }
 
@@ -444,11 +423,11 @@ func (s *codexSession) interrupt() {
 	s.mu.Lock()
 	turn := s.turnID
 	s.mu.Unlock()
-	_ = s.call("turn/interrupt", map[string]any{"threadId": s.proc.get("thread"), "turnId": turn})
+	_ = s.call("turn/interrupt", map[string]any{"threadId": s.proc.Get("thread"), "turnId": turn})
 }
 
 // finish ends the turn; the process stays open for the next one.
-func (s *codexSession) finish(emit func(Event), failure string) {
+func (s *codexSession) finish(emit func(harness.Event), end harness.TurnEnded) {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -456,17 +435,13 @@ func (s *codexSession) finish(emit func(Event), failure string) {
 	}
 	s.closed = true
 	s.mu.Unlock()
-	for _, m := range s.texts {
-		if m.Streaming {
-			snapshot := copyOf(m)
-			snapshot.Streaming = false
-			if m.Role == "assistant" {
-				snapshot.Text = stripCodexMemoryCitations(m.Text, true)
-			}
-			emit(Event{Message: snapshot})
+	for _, id := range slices.Sorted(maps.Keys(s.texts)) {
+		text := s.texts[id]
+		if text.String() != "" {
+			emit(text.Done(text.String()))
 		}
 	}
-	emit(Event{Done: true, Err: failure})
+	emit(end)
 }
 
 func (s *codexSession) call(method string, params any) error {
@@ -493,18 +468,7 @@ func (s *codexSession) write(v any) error {
 }
 
 // answered copies the questions with the answers in the same order.
-func answered(qs []Question, answers [][]string) []Question {
-	out := append([]Question(nil), qs...)
-	for i := range out {
-		if i < len(answers) {
-			out[i].Answer = answers[i]
-		}
-	}
-	return out
-}
-
-// withDiff counts the lines of a unified diff into a file edit.
-func withDiff(f FileEdit, diff string) FileEdit {
+func withDiff(f harness.FileEdit, diff string) harness.FileEdit {
 	var body []string
 	for _, l := range strings.Split(diff, "\n") {
 		switch {
@@ -519,6 +483,6 @@ func withDiff(f FileEdit, diff string) FileEdit {
 			body = append(body, l)
 		}
 	}
-	f.Diff = clip(strings.Join(body, "\n"), 12000)
+	f.Diff = kit.Clip(strings.Join(body, "\n"), 12000)
 	return f
 }

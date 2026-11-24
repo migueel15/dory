@@ -1,0 +1,163 @@
+[
+  {
+    "Type": "SessionBound",
+    "Event": {
+      "ID": "s-1"
+    }
+  },
+  {
+    "Type": "SettingsReported",
+    "Event": {
+      "model": "claude-opus-4-6",
+      "effort": "high"
+    }
+  },
+  {
+    "Type": "TextDelta",
+    "Event": {
+      "ItemID": "msg_1:0",
+      "Kind": "reasoning",
+      "Delta": "Miro el repo",
+      "Replace": false,
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "TextDelta",
+    "Event": {
+      "ItemID": "msg_1:1",
+      "Kind": "assistant",
+      "Delta": "Voy a ",
+      "Replace": false,
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "TextDelta",
+    "Event": {
+      "ItemID": "msg_1:1",
+      "Kind": "assistant",
+      "Delta": "listar.",
+      "Replace": false,
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "TextDone",
+    "Event": {
+      "ItemID": "msg_1:0",
+      "Kind": "reasoning",
+      "Text": "Miro el repo",
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "TextDone",
+    "Event": {
+      "ItemID": "msg_1:1",
+      "Kind": "assistant",
+      "Text": "Voy a listar.",
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "ToolStarted",
+    "Event": {
+      "ItemID": "tu_1",
+      "Call": {
+        "kind": "command",
+        "name": "Bash",
+        "command": "ls -la",
+        "summary": "Listar"
+      },
+      "Title": "Bash",
+      "Detail": "ls -la",
+      "InputChars": 43,
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "ToolDone",
+    "Event": {
+      "ItemID": "tu_1",
+      "Status": "completed",
+      "Result": "go.mod\nREADME.md",
+      "ResultChars": 16,
+      "Call": null,
+      "Update": {
+        "ItemID": "tu_1",
+        "Call": {
+          "kind": "command",
+          "name": "Bash",
+          "command": "ls -la",
+          "summary": "Listar"
+        },
+        "Title": "Bash",
+        "Detail": "ls -la",
+        "Status": "completed",
+        "Result": "go.mod\nREADME.md",
+        "InputChars": 43,
+        "ResultChars": 16,
+        "Streaming": false,
+        "Meta": {
+          "RunID": "r1",
+          "CreatedAt": "<time>"
+        }
+      }
+    }
+  },
+  {
+    "Type": "UsageReported",
+    "Event": {
+      "Windows": [
+        {
+          "kind": "five_hour",
+          "utilization": 0.07,
+          "resets_at": "2026-11-16T05:50:00Z"
+        },
+        {
+          "kind": "seven_day",
+          "utilization": 0.08,
+          "resets_at": "2026-11-20T08:00:00Z"
+        }
+      ]
+    }
+  },
+  {
+    "Type": "TextDone",
+    "Event": {
+      "ItemID": "msg_2:0",
+      "Kind": "assistant",
+      "Text": "Hecho.",
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "TurnEnded",
+    "Event": {
+      "Reason": "completed",
+      "Error": ""
+    }
+  }
+]

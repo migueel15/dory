@@ -1,4 +1,4 @@
-package runtime
+package opencode
 
 import (
 	"bufio"
@@ -9,13 +9,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/kit"
 )
 
 // Start runs a turn on the "opencode serve" of its thread: Dory opens the
@@ -23,11 +28,7 @@ import (
 // question tool opens a form that pauses the turn until the user replies.
 // The server stays open for the next turn of the thread (see live.go), so
 // what the agent left running survives the turn.
-func (o OpenCode) Start(ctx context.Context, t Turn) (Session, error) {
-	return legacyStart(o.startLegacy(ctx, t))
-}
-
-func (o OpenCode) startLegacy(ctx context.Context, t Turn) (legacySession, error) {
+func (o OpenCode) Start(ctx context.Context, t harness.Turn) (harness.Session, error) {
 	srv, _ := o.pool.Get(t.ThreadID, o.ID()).(*openCodeServer)
 	if srv != nil && (srv.key != openCodeServerKey(t) || srv.Busy() || srv.exited()) {
 		o.pool.Drop(t.ThreadID, o.ID(), srv)
@@ -49,7 +50,7 @@ func (o OpenCode) startLegacy(ctx context.Context, t Turn) (legacySession, error
 	srv.mu.Lock()
 	srv.busy = true
 	srv.mu.Unlock()
-	events := make(chan Event, 64)
+	events := make(chan harness.Event, 64)
 	s := &openCodeSession{api: srv.api, turn: t, events: events,
 		parser: newOpenCodeEvents(t.RunID)}
 	go func() {
@@ -64,25 +65,25 @@ func (o OpenCode) startLegacy(ctx context.Context, t Turn) (legacySession, error
 	return s, nil
 }
 
-func openCodeServerKey(t Turn) string {
+func openCodeServerKey(t harness.Turn) string {
 	return t.Dir + "\x00" + t.MCPURL
 }
 
 // serve starts an "opencode serve" for the thread.
-func (o OpenCode) serve(ctx context.Context, t Turn) (*openCodeServer, error) {
+func (o OpenCode) serve(ctx context.Context, t harness.Turn) (*openCodeServer, error) {
 	password := rand.Text()
-	cmd := providerCommand(context.Background(), t.ThreadID, o.bin(), "serve", "--hostname", "127.0.0.1", "--port", "0")
+	cmd := kit.ProviderCommand(context.Background(), t.ThreadID, o.bin(), "serve", "--hostname", "127.0.0.1", "--port", "0")
 	cmd.Dir = t.Dir
 	cmd.Env = append(os.Environ(), "OPENCODE_SERVER_PASSWORD="+password)
-	cmd.Env = threadEnv(cmd.Env, t.ThreadID)
-	interruptible(cmd)
+	cmd.Env = kit.ThreadEnv(cmd.Env, t.ThreadID)
+	kit.Interruptible(cmd)
 	cmd.WaitDelay = 10 * time.Second
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err
 	}
 	var stderr strings.Builder
-	cmd.Stderr = &limited{w: &stderr, n: 8 << 10}
+	cmd.Stderr = kit.LimitWriter(&stderr, 8<<10)
 	if err = cmd.Start(); err != nil {
 		return nil, err
 	}
@@ -145,11 +146,11 @@ func (s *openCodeServer) exited() bool {
 
 // Close stops the server's process group, with what the agent started.
 func (s *openCodeServer) Close() {
-	stopGroup(s.cmd, syscall.SIGTERM)
+	kit.StopGroup(s.cmd, syscall.SIGTERM)
 	select {
 	case <-s.dead:
 	case <-time.After(5 * time.Second):
-		stopGroup(s.cmd, syscall.SIGKILL)
+		kit.StopGroup(s.cmd, syscall.SIGKILL)
 	}
 }
 
@@ -182,7 +183,7 @@ type openCodeAPI struct {
 	base, password string
 }
 
-func (a *openCodeAPI) registerDory(ctx context.Context, t Turn) error {
+func (a *openCodeAPI) registerDory(ctx context.Context, t harness.Turn) error {
 	config := map[string]any{
 		"type": "remote", "url": t.MCPURL, "oauth": false,
 		"headers": map[string]string{"Authorization": "Bearer " + t.MCPToken},
@@ -255,8 +256,8 @@ func (a *openCodeAPI) do(ctx context.Context, method, path string, body, out any
 
 type openCodeSession struct {
 	api    *openCodeAPI
-	turn   Turn
-	events chan Event
+	turn   harness.Turn
+	events chan harness.Event
 	parser *openCodeEvents
 
 	mu      sync.Mutex
@@ -269,18 +270,18 @@ type openCodeForm struct {
 	fields []openCodeField
 }
 
-func (s *openCodeSession) Events() <-chan Event { return s.events }
+func (s *openCodeSession) Events() <-chan harness.Event { return s.events }
 
-// Answer replies to the form: one value per field key, a list for
+// Respond replies to the form: one value per field key, a list for
 // multiselect fields.
-func (s *openCodeSession) Answer(id string, answers [][]string) error {
+func (s *openCodeSession) Respond(id string, answers [][]string) error {
 	s.mu.Lock()
 	form, ok := s.forms[id]
 	delete(s.forms, id)
 	session := s.session
 	s.mu.Unlock()
 	if !ok {
-		return ErrNoRequest
+		return harness.ErrNoRequest
 	}
 	answer := map[string]any{}
 	for i, f := range form.fields {
@@ -301,17 +302,13 @@ func (s *openCodeSession) Answer(id string, answers [][]string) error {
 
 // run opens or resumes the session, follows its events, sends the prompt
 // and stops the server when the turn ends.
-func (s *openCodeSession) run(ctx context.Context, events chan<- Event) {
+func (s *openCodeSession) run(ctx context.Context, events chan<- harness.Event) {
 	defer close(events)
 	// The stream outlives a cancellation until the session confirms it stopped.
 	streamCtx, stop := context.WithCancel(context.WithoutCancel(ctx))
 	defer stop()
 	fail := func(err error) {
-		msg := err.Error()
-		if ctx.Err() != nil {
-			msg = "interrumpido"
-		}
-		events <- Event{Done: true, Err: msg}
+		events <- kit.ProcessEnd(ctx.Err(), err, "")
 	}
 	t := s.turn
 	session := t.Session
@@ -330,7 +327,7 @@ func (s *openCodeSession) run(ctx context.Context, events chan<- Event) {
 	s.mu.Lock()
 	s.session, s.forms = session, map[string]openCodeForm{}
 	s.mu.Unlock()
-	events <- Event{Session: session}
+	events <- harness.SessionBound{ID: session}
 	if t.Instructions != "" {
 		// Session instructions join OpenCode's system prompt, not the history.
 		if err := s.api.do(ctx, "PUT", "/api/experimental/session/"+session+"/instructions/entries/dory", map[string]any{"value": t.Instructions}, nil); err != nil {
@@ -387,13 +384,13 @@ func (s *openCodeSession) run(ctx context.Context, events chan<- Event) {
 		if !ok {
 			continue
 		}
-		s.parser.handle(session, []byte(strings.TrimSpace(data)), func(e Event) {
-			if e.Request != nil {
+		s.parser.handle(session, []byte(strings.TrimSpace(data)), func(e harness.Event) {
+			if request, ok := e.(harness.RequestOpened); ok {
 				s.mu.Lock()
-				s.forms[e.Request.ID] = openCodeForm{fields: s.parser.fields[e.Request.ID]}
+				s.forms[request.Request.ID] = openCodeForm{fields: s.parser.fields[request.Request.ID]}
 				s.mu.Unlock()
 			}
-			done = done || e.Done
+			_, done = e.(harness.TurnEnded)
 			events <- e
 		})
 	}
@@ -401,13 +398,7 @@ func (s *openCodeSession) run(ctx context.Context, events chan<- Event) {
 		s.parser.mu.Lock()
 		msg := s.parser.failure
 		s.parser.mu.Unlock()
-		if ctx.Err() != nil {
-			msg = "interrumpido"
-		}
-		if msg == "" {
-			msg = "el agente terminó sin respuesta"
-		}
-		events <- Event{Done: true, Err: msg}
+		s.parser.close(func(e harness.Event) { events <- e }, kit.ProcessEnd(ctx.Err(), scan.Err(), msg))
 	}
 }
 
@@ -418,8 +409,8 @@ type openCodeEvents struct {
 	model    string
 	lastStep string
 	names    map[string]string // tool call id → tool name
-	tools    map[string]*Message
-	texts    map[string]*Message
+	tools    map[string]*harness.Message
+	texts    map[string]*kit.Text
 	fields   map[string][]openCodeField // form id → fields
 	mu       sync.Mutex
 	failure  string
@@ -437,7 +428,7 @@ type openCodeField struct {
 }
 
 func newOpenCodeEvents(run string) *openCodeEvents {
-	return &openCodeEvents{run: run, names: map[string]string{}, tools: map[string]*Message{}, texts: map[string]*Message{}, fields: map[string][]openCodeField{}}
+	return &openCodeEvents{run: run, names: map[string]string{}, tools: map[string]*harness.Message{}, texts: map[string]*kit.Text{}, fields: map[string][]openCodeField{}}
 }
 
 func (p *openCodeEvents) failed(msg string) {
@@ -493,7 +484,7 @@ type openCodeEvent struct {
 	} `json:"data"`
 }
 
-func (p *openCodeEvents) handle(session string, line []byte, emit func(Event)) {
+func (p *openCodeEvents) handle(session string, line []byte, emit func(harness.Event)) {
 	var e openCodeEvent
 	if json.Unmarshal(line, &e) != nil {
 		return
@@ -507,42 +498,41 @@ func (p *openCodeEvents) handle(session string, line []byte, emit func(Event)) {
 	case "session.step.started":
 		if d.Model != nil && d.Model.ID != "" {
 			p.model = d.Model.ProviderID + "/" + d.Model.ID
-			emit(Event{Settings: &ReportedSettings{Model: p.model}})
+			emit(harness.SettingsReported{Model: p.model})
 		}
 	case "session.step.ended", "session.step.failed":
 		if u := d.Tokens; u != nil && (e.ID == "" || e.ID != p.lastStep) {
 			p.lastStep = e.ID
-			emit(Event{Step: &StepUsage{Model: p.model, Input: u.Input, Output: u.Output + u.Reasoning, Reasoning: u.Reasoning, CacheRead: u.Cache.Read, CacheWrite: u.Cache.Write}})
+			emit(harness.StepUsage{Model: p.model, Input: u.Input, Output: u.Output + u.Reasoning, Reasoning: u.Reasoning, CacheRead: u.Cache.Read, CacheWrite: u.Cache.Write})
 		}
 	case "session.text.started", "session.reasoning.started":
-		m := &Message{ID: textID, RunID: p.run, Role: "assistant", Streaming: true, CreatedAt: now()}
+		kind := harness.Assistant
 		if e.Type == "session.reasoning.started" {
-			m.ID, m.Role, m.Title = textID+":r", "reasoning", "Pensando"
+			textID, kind = textID+":r", harness.Reasoning
 		}
-		p.texts[m.ID] = m
+		p.texts[textID] = kit.NewText(textID, p.run, kind)
 	case "session.text.delta", "session.reasoning.delta", "session.text.ended", "session.reasoning.ended":
-		id := textID
 		if strings.HasPrefix(e.Type, "session.reasoning") {
-			id += ":r"
+			textID += ":r"
 		}
-		m := p.texts[id]
-		if m == nil {
+		text := p.texts[textID]
+		if text == nil {
 			return
 		}
 		if strings.HasSuffix(e.Type, ".ended") {
-			m.Text, m.Streaming = d.Text, false
+			delete(p.texts, textID)
+			if d.Text != "" || text.String() != "" {
+				emit(text.Done(d.Text))
+			}
 		} else {
-			m.Text += d.Delta
-		}
-		if m.Text != "" {
-			emit(Event{Message: copyOf(m)})
+			text.Append(d.Delta, emit)
 		}
 	case "session.tool.input.started":
 		p.names[d.ID] = d.Name
 	case "session.tool.called":
 		name := p.names[d.ID]
-		m := &Message{ID: p.run + ":" + d.ID, RunID: p.run, Role: "tool", Title: name, Detail: toolDetail(name, d.Input),
-			Status: "running", CreatedAt: now(), Tool: toolCall(name, d.Input)}
+		m := &harness.Message{ID: p.run + ":" + d.ID, RunID: p.run, Role: "tool", Title: name, Detail: kit.ToolDetail(name, d.Input),
+			Status: "running", CreatedAt: kit.Now(), Tool: kit.ToolCallFromInput(name, d.Input)}
 		if m.Tool.Kind == "todo" {
 			m.Role = "plan"
 		}
@@ -551,7 +541,7 @@ func (p *openCodeEvents) handle(session string, line []byte, emit func(Event)) {
 		}
 		m.InputChars = len(d.Input)
 		p.tools[d.ID] = m
-		emit(Event{Message: copyOf(m)})
+		emit(kit.StartTool(m))
 	case "session.tool.success", "session.tool.failed":
 		m := p.tools[d.ID]
 		if m == nil {
@@ -563,7 +553,7 @@ func (p *openCodeEvents) handle(session string, line []byte, emit func(Event)) {
 		}
 		output := strings.Join(parts, "\n")
 		m.ResultChars = len(output)
-		m.Status, m.Text = "completed", clip(output, 4000)
+		m.Status, m.Text = "completed", kit.Clip(output, 4000)
 		if e.Type == "session.tool.failed" {
 			m.Status = "failed"
 			if d.Error != nil && m.Text == "" {
@@ -572,20 +562,20 @@ func (p *openCodeEvents) handle(session string, line []byte, emit func(Event)) {
 			}
 		}
 		if m.Tool.Kind == "question" && len(d.Metadata.Answers) > 0 {
-			m.Tool.Questions = answered(m.Tool.Questions, d.Metadata.Answers)
+			m.Tool.Questions = kit.Answered(m.Tool.Questions, d.Metadata.Answers)
 			m.Text = ""
 		}
-		emit(Event{Message: copyOf(m)})
+		emit(kit.FinishTool(m))
 	case "form.created":
 		f := d.Form
-		var qs []Question
+		var qs []harness.Question
 		for _, x := range f.Fields {
-			q := Question{ID: x.Key, Header: x.Title, Question: x.Description, MultiSelect: x.Type == "multiselect"}
+			q := harness.Question{ID: x.Key, Header: x.Title, Question: x.Description, MultiSelect: x.Type == "multiselect"}
 			if q.Question == "" {
 				q.Question, q.Header = x.Title, ""
 			}
 			for _, o := range x.Options {
-				q.Options = append(q.Options, Option{Label: o.Label, Description: o.Description})
+				q.Options = append(q.Options, harness.Option{Label: o.Label, Description: o.Description})
 			}
 			qs = append(qs, q)
 		}
@@ -594,24 +584,26 @@ func (p *openCodeEvents) handle(session string, line []byte, emit func(Event)) {
 		if f.Metadata.Tool.ID != "" {
 			msg = p.run + ":" + f.Metadata.Tool.ID
 		}
-		emit(Event{Request: &Request{ID: f.ID, Kind: "question", MessageID: msg, Questions: qs, CreatedAt: now()}})
+		emit(harness.RequestOpened{Request: harness.Request{ID: f.ID, Kind: "question", MessageID: msg, Questions: qs, CreatedAt: kit.Now()}})
 	case "session.execution.succeeded":
-		p.close(emit, "")
-	case "session.execution.failed", "session.execution.interrupted":
-		msg := "interrumpido"
+		p.close(emit, harness.TurnEnded{Reason: harness.Completed})
+	case "session.execution.interrupted":
+		p.close(emit, harness.TurnEnded{Reason: harness.Interrupted})
+	case "session.execution.failed":
+		msg := ""
 		if d.Error != nil {
 			msg = d.Error.Message
 		}
-		p.close(emit, msg)
+		p.close(emit, harness.TurnEnded{Reason: harness.Failed, Error: msg})
 	}
 }
 
-func (p *openCodeEvents) close(emit func(Event), failure string) {
-	for _, m := range p.texts {
-		if m.Streaming {
-			m.Streaming = false
-			emit(Event{Message: copyOf(m)})
+func (p *openCodeEvents) close(emit func(harness.Event), end harness.TurnEnded) {
+	for _, id := range slices.Sorted(maps.Keys(p.texts)) {
+		text := p.texts[id]
+		if text.String() != "" {
+			emit(text.Done(text.String()))
 		}
 	}
-	emit(Event{Done: true, Err: failure})
+	emit(end)
 }

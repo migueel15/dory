@@ -1,0 +1,5 @@
+{"timestamp":"2026-11-10T11:00:00Z","type":"session_meta","payload":{"id":"c1"}}
+{"timestamp":"2026-11-10T11:00:00Z","type":"turn_context","payload":{"model":"gpt-x"}}
+{"timestamp":"2026-11-10T11:00:01Z","type":"event_msg","payload":{"type":"token_count","info":null}}
+{"timestamp":"2026-11-10T11:00:02Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":300},"last_token_usage":{"input_tokens":300,"cached_input_tokens":200,"output_tokens":30}}}}
+{"timestamp":"2026-11-10T11:00:03Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":300},"last_token_usage":{"input_tokens":300,"cached_input_tokens":200,"output_tokens":30}}}}

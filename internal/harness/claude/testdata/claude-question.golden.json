@@ -1,0 +1,176 @@
+[
+  {
+    "Type": "SessionBound",
+    "Event": {
+      "ID": "56c89813-ebb0-4a92-85c9-9752b4f86882"
+    }
+  },
+  {
+    "Type": "SettingsReported",
+    "Event": {
+      "model": "claude-haiku-5-5"
+    }
+  },
+  {
+    "Type": "SettingsReported",
+    "Event": {
+      "model": "claude-haiku-5-5"
+    }
+  },
+  {
+    "Type": "ToolStarted",
+    "Event": {
+      "ItemID": "toolu_012fnMxnrm9guShHDg3VdSMb",
+      "Call": {
+        "kind": "question",
+        "name": "AskUserQuestion",
+        "questions": [
+          {
+            "question": "Which color do you prefer?",
+            "header": "Color",
+            "options": [
+              {
+                "label": "Red",
+                "description": "Choose red as your preferred color."
+              },
+              {
+                "label": "Blue",
+                "description": "Choose blue as your preferred color."
+              }
+            ]
+          }
+        ]
+      },
+      "Title": "AskUserQuestion",
+      "Detail": "",
+      "InputChars": 244,
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "RequestOpened",
+    "Event": {
+      "Request": {
+        "id": "74ef56b8-9137-49dc-960a-e1e3074aff25",
+        "kind": "question",
+        "message_id": "toolu_012fnMxnrm9guShHDg3VdSMb",
+        "questions": [
+          {
+            "question": "Which color do you prefer?",
+            "header": "Color",
+            "options": [
+              {
+                "label": "Red",
+                "description": "Choose red as your preferred color."
+              },
+              {
+                "label": "Blue",
+                "description": "Choose blue as your preferred color."
+              }
+            ]
+          }
+        ],
+        "created_at": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "StepUsage",
+    "Event": {
+      "Model": "claude-haiku-5-5",
+      "Input": 2,
+      "CacheRead": 23840,
+      "CacheWrite": 0,
+      "Output": 20,
+      "Reasoning": 0,
+      "Subagent": ""
+    }
+  },
+  {
+    "Type": "ToolDone",
+    "Event": {
+      "ItemID": "toolu_012fnMxnrm9guShHDg3VdSMb",
+      "Status": "completed",
+      "Result": "",
+      "ResultChars": 120,
+      "Call": null,
+      "Update": {
+        "ItemID": "toolu_012fnMxnrm9guShHDg3VdSMb",
+        "Call": {
+          "kind": "question",
+          "name": "AskUserQuestion",
+          "questions": [
+            {
+              "question": "Which color do you prefer?",
+              "header": "Color",
+              "options": [
+                {
+                  "label": "Red",
+                  "description": "Choose red as your preferred color."
+                },
+                {
+                  "label": "Blue",
+                  "description": "Choose blue as your preferred color."
+                }
+              ],
+              "answer": [
+                "Blue"
+              ]
+            }
+          ]
+        },
+        "Title": "AskUserQuestion",
+        "Detail": "",
+        "Status": "completed",
+        "Result": "",
+        "InputChars": 244,
+        "ResultChars": 120,
+        "Streaming": false,
+        "Meta": {
+          "RunID": "r1",
+          "CreatedAt": "<time>"
+        }
+      }
+    }
+  },
+  {
+    "Type": "SettingsReported",
+    "Event": {
+      "model": "claude-haiku-5-5"
+    }
+  },
+  {
+    "Type": "TextDone",
+    "Event": {
+      "ItemID": "msg_011ChAGCCnKgiAzPKfpQBMUp:0",
+      "Kind": "assistant",
+      "Text": "Blue",
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "StepUsage",
+    "Event": {
+      "Model": "claude-haiku-5-5",
+      "Input": 2,
+      "CacheRead": 23840,
+      "CacheWrite": 6210,
+      "Output": 4,
+      "Reasoning": 0,
+      "Subagent": ""
+    }
+  },
+  {
+    "Type": "TurnEnded",
+    "Event": {
+      "Reason": "completed",
+      "Error": ""
+    }
+  }
+]

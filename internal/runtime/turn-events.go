@@ -1,6 +1,10 @@
 package runtime
 
-import "github.com/migueel15/dory/internal/harness"
+import (
+	"time"
+
+	"github.com/migueel15/dory/internal/harness"
+)
 
 type turnMessages struct {
 	run   string
@@ -72,3 +76,14 @@ func (t *turnMessages) apply(event harness.Event) (Message, bool) {
 }
 
 func (m *Manager) CloseLive(thread string) { m.pool.CloseThread(thread) }
+
+// Checkpoint sizes double so the sum of full snapshots stays linear. The
+// interval also limits writes when fragments arrive in a short burst.
+type textCheckpoint struct {
+	at   time.Time
+	size int
+}
+
+func (c textCheckpoint) due(at time.Time, size int) bool {
+	return at.Sub(c.at) >= 500*time.Millisecond && size-c.size >= c.size
+}

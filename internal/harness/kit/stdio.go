@@ -1,4 +1,4 @@
-package runtime
+package kit
 
 import (
 	"bufio"
@@ -10,47 +10,48 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/migueel15/dory/internal/harness"
 	"github.com/migueel15/dory/internal/harness/procpool"
 )
 
 // stdioProc is a harness speaking a line protocol on stdio, kept open
-// between turns. One turn at a time reads its stdout.
-type stdioProc struct {
-	pool *procpool.Pool
-	key  string
-	cmd  *exec.Cmd
-	in   io.WriteCloser
-	dead chan struct{}
+// between Turns. One turn at a time reads its stdout.
+type StdioProc struct {
+	pool  *procpool.Pool
+	key   string
+	cmd   *exec.Cmd
+	Input io.WriteCloser
+	dead  chan struct{}
 
 	mu    sync.Mutex
-	cur   *stdioTurn
+	cur   *StdioTurn
 	idle  time.Time
-	turns int
-	// state keeps what the provider needs between turns, such as its thread id.
+	Turns int
+	// state keeps what the provider needs between Turns, such as its thread id.
 	state map[string]string
 }
 
-// stdioTurn is one turn on a stdioProc.
-type stdioTurn struct {
-	handle   func(line []byte, emit func(Event))
-	out      chan Event
+// StdioTurn is one turn on a stdioProc.
+type StdioTurn struct {
+	handle   func(line []byte, emit func(harness.Event))
+	Events   chan harness.Event
 	done     chan struct{}
 	finished bool // guarded by the stdioProc mutex
 }
 
-func (p *stdioProc) Busy() bool {
+func (p *StdioProc) Busy() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.cur != nil
 }
 
-func (p *stdioProc) IdleSince() time.Time {
+func (p *StdioProc) IdleSince() time.Time {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.idle
 }
 
-func (p *stdioProc) exited() bool {
+func (p *StdioProc) exited() bool {
 	select {
 	case <-p.dead:
 		return true
@@ -59,7 +60,7 @@ func (p *stdioProc) exited() bool {
 	}
 }
 
-func (p *stdioProc) get(k string) string {
+func (p *StdioProc) Get(k string) string {
 	if p == nil {
 		return ""
 	}
@@ -68,7 +69,7 @@ func (p *stdioProc) get(k string) string {
 	return p.state[k]
 }
 
-func (p *stdioProc) set(k, v string) {
+func (p *StdioProc) Set(k, v string) {
 	if p == nil {
 		return
 	}
@@ -79,27 +80,27 @@ func (p *stdioProc) set(k, v string) {
 
 // Close ends stdin and, as a harness may wait for its background jobs, then
 // stops its process group with them.
-func (p *stdioProc) Close() {
+func (p *StdioProc) Close() {
 	p.mu.Lock()
-	_ = p.in.Close()
+	_ = p.Input.Close()
 	p.mu.Unlock()
 	select {
 	case <-p.dead:
 		return
 	case <-time.After(2 * time.Second):
 	}
-	stopGroup(p.cmd, syscall.SIGTERM)
+	StopGroup(p.cmd, syscall.SIGTERM)
 	select {
 	case <-p.dead:
 	case <-time.After(5 * time.Second):
-		stopGroup(p.cmd, syscall.SIGKILL)
+		StopGroup(p.cmd, syscall.SIGKILL)
 	}
 }
 
 // reuseStdio returns the open process of the thread when it can take a turn
 // with the same settings, and closes it otherwise.
-func reuseStdio(pool *procpool.Pool, thread, provider, key string) *stdioProc {
-	p, _ := pool.Get(thread, provider).(*stdioProc)
+func ReuseStdio(pool *procpool.Pool, thread, provider, key string) *StdioProc {
+	p, _ := pool.Get(thread, provider).(*StdioProc)
 	if p == nil || thread == "" {
 		return nil
 	}
@@ -113,10 +114,10 @@ func reuseStdio(pool *procpool.Pool, thread, provider, key string) *stdioProc {
 
 // openStdio starts cmd, which must not be started yet, and keeps it for the
 // thread. Each line of stdout goes to the turn running on it.
-func openStdio(pool *procpool.Pool, cmd *exec.Cmd, thread, provider, key string) (*stdioProc, error) {
-	interruptible(cmd)
+func OpenStdio(pool *procpool.Pool, cmd *exec.Cmd, thread, provider, key string) (*StdioProc, error) {
+	Interruptible(cmd)
 	cmd.WaitDelay = 10 * time.Second
-	in, err := cmd.StdinPipe()
+	Input, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
 	}
@@ -125,11 +126,11 @@ func openStdio(pool *procpool.Pool, cmd *exec.Cmd, thread, provider, key string)
 		return nil, err
 	}
 	var stderr strings.Builder
-	cmd.Stderr = &limited{w: &stderr, n: 8 << 10}
+	cmd.Stderr = LimitWriter(&stderr, 8<<10)
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	p := &stdioProc{pool: pool, key: key, cmd: cmd, in: in, dead: make(chan struct{}), idle: time.Now(), state: map[string]string{}}
+	p := &StdioProc{pool: pool, key: key, cmd: cmd, Input: Input, dead: make(chan struct{}), idle: time.Now(), state: map[string]string{}}
 	if thread != "" {
 		pool.Set(thread, provider, p)
 	}
@@ -141,7 +142,7 @@ func openStdio(pool *procpool.Pool, cmd *exec.Cmd, thread, provider, key string)
 			t := p.cur
 			p.mu.Unlock()
 			if t != nil {
-				t.handle(scanner.Bytes(), func(e Event) { p.emit(t, e) })
+				t.handle(scanner.Bytes(), func(e harness.Event) { p.emit(t, e) })
 			}
 		}
 		err := cmd.Wait()
@@ -151,26 +152,19 @@ func openStdio(pool *procpool.Pool, cmd *exec.Cmd, thread, provider, key string)
 		t := p.cur
 		p.mu.Unlock()
 		if t != nil {
-			msg := strings.TrimSpace(stderr.String())
-			switch {
-			case err != nil && msg == "":
-				msg = err.Error()
-			case msg == "":
-				msg = "el agente terminó sin respuesta"
-			}
-			p.emit(t, Event{Done: true, Err: msg})
+			p.emit(t, ProcessEnd(nil, err, strings.TrimSpace(stderr.String())))
 		}
 	}()
 	return p, nil
 }
 
-// begin makes handle the reader of the next turn. Without a thread nothing
+// Begin makes handle the reader of the next turn. Without a thread nothing
 // can reuse the process, so it ends with the turn.
-func (p *stdioProc) begin(thread string, handle func([]byte, func(Event))) *stdioTurn {
-	t := &stdioTurn{handle: handle, out: make(chan Event, 64), done: make(chan struct{})}
+func (p *StdioProc) Begin(thread string, handle func([]byte, func(harness.Event))) *StdioTurn {
+	t := &StdioTurn{handle: handle, Events: make(chan harness.Event, 64), done: make(chan struct{})}
 	p.mu.Lock()
 	p.cur = t
-	p.turns++
+	p.Turns++
 	p.mu.Unlock()
 	if thread == "" {
 		go func() { <-t.done; p.Close() }()
@@ -178,8 +172,8 @@ func (p *stdioProc) begin(thread string, handle func([]byte, func(Event))) *stdi
 	return t
 }
 
-// abort drops a turn that could not start.
-func (p *stdioProc) abort(t *stdioTurn) {
+// Abort drops a turn that could not start.
+func (p *StdioProc) Abort(t *StdioTurn) {
 	p.mu.Lock()
 	if p.cur == t {
 		p.cur = nil
@@ -187,9 +181,9 @@ func (p *stdioProc) abort(t *stdioTurn) {
 	p.mu.Unlock()
 }
 
-// watch interrupts the turn when ctx ends: by protocol first, then, if the
+// Watch interrupts the turn when ctx ends: by protocol first, then, if the
 // turn does not end within 5s, by closing the process.
-func (p *stdioProc) watch(ctx context.Context, thread, provider string, t *stdioTurn, interrupt func()) {
+func (p *StdioProc) Watch(ctx context.Context, thread, provider string, t *StdioTurn, interrupt func()) {
 	go func() {
 		select {
 		case <-t.done:
@@ -207,13 +201,14 @@ func (p *stdioProc) watch(ctx context.Context, thread, provider string, t *stdio
 
 // emit delivers an event of turn t; its Done event ends the turn and frees
 // the process for the next one.
-func (p *stdioProc) emit(t *stdioTurn, e Event) {
+func (p *StdioProc) emit(t *StdioTurn, e harness.Event) {
+	_, ended := e.(harness.TurnEnded)
 	p.mu.Lock()
 	if t.finished {
 		p.mu.Unlock()
 		return
 	}
-	if e.Done {
+	if ended {
 		t.finished = true
 		if p.cur == t {
 			p.cur = nil
@@ -221,9 +216,9 @@ func (p *stdioProc) emit(t *stdioTurn, e Event) {
 		}
 	}
 	p.mu.Unlock()
-	t.out <- e
-	if e.Done {
-		close(t.out)
+	t.Events <- e
+	if ended {
+		close(t.Events)
 		close(t.done)
 	}
 }

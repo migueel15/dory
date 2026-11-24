@@ -11,6 +11,11 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+
+	"github.com/migueel15/dory/internal/harness/claude"
+	"github.com/migueel15/dory/internal/harness/codex"
+	"github.com/migueel15/dory/internal/harness/opencode"
+
 	goruntime "runtime"
 	"strings"
 	"syscall"
@@ -117,7 +122,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	if err := store.PublishLocations(ctx); err != nil {
 		log.Printf("publish repository locations: %v", err)
 	}
-	providers := []runtime.Provider{runtime.Claude{}, runtime.Codex{}, runtime.OpenCode{}, acp.New(antigravity.Profile(""), nil)}
+	providers := []runtime.Provider{claude.Claude{}, codex.Codex{}, opencode.OpenCode{}, acp.New(antigravity.Profile(""), nil)}
 	for _, a := range cfg.ACP {
 		providers = append(providers, acp.New(acp.Declared(a.ID, a.Name, a.Command, a.Args, a.Env), nil))
 	}

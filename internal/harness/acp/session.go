@@ -13,6 +13,7 @@ import (
 
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/kit"
 )
 
 type event = harness.LegacyEvent
@@ -122,7 +123,7 @@ func (s *session) update(raw json.RawMessage) {
 			if s.chunk.Role != role {
 				s.finishChunk()
 				s.seq++
-				s.chunk = harness.Message{ID: fmt.Sprintf("%s:acp:%d", s.turn.RunID, s.seq), RunID: s.turn.RunID, Role: role, CreatedAt: now(), Streaming: true}
+				s.chunk = harness.Message{ID: fmt.Sprintf("%s:acp:%d", s.turn.RunID, s.seq), RunID: s.turn.RunID, Role: role, CreatedAt: kit.Now(), Streaming: true}
 			}
 			s.chunk.Text += content.Text
 			msg := s.chunk
@@ -143,7 +144,7 @@ func (s *session) update(raw json.RawMessage) {
 		s.finishChunk()
 		msg, ok := s.tools[u.ToolCallID]
 		if !ok {
-			msg = harness.Message{ID: s.turn.RunID + ":tool:" + u.ToolCallID, RunID: s.turn.RunID, Role: "tool", CreatedAt: now(), Tool: &harness.ToolCall{Kind: "other"}}
+			msg = harness.Message{ID: s.turn.RunID + ":tool:" + u.ToolCallID, RunID: s.turn.RunID, Role: "tool", CreatedAt: kit.Now(), Tool: &harness.ToolCall{Kind: "other"}}
 		}
 		tool := *msg.Tool
 		if u.Title != "" {
@@ -152,7 +153,7 @@ func (s *session) update(raw json.RawMessage) {
 		if kind := map[string]string{"read": "read", "edit": "edit", "delete": "edit", "move": "edit", "search": "search", "execute": "command", "fetch": "web", "think": "other"}[u.Kind]; kind != "" {
 			tool.Kind = kind
 		}
-		if server, name, ok := mcpName(tool.Name); ok {
+		if server, name, ok := kit.McpName(tool.Name); ok {
 			tool.Kind, tool.Server, tool.Tool = "mcp", server, name
 		}
 		if len(u.RawInput) > 0 && string(u.RawInput) != "null" {
@@ -162,7 +163,7 @@ func (s *session) update(raw json.RawMessage) {
 			}
 			_ = json.Unmarshal(u.RawInput, &in)
 			msg.InputChars = len(u.RawInput)
-			tool.Input = clip(string(u.RawInput), 4000)
+			tool.Input = kit.Clip(string(u.RawInput), 4000)
 			tool.Command, tool.Path, tool.Query, tool.Pattern, tool.URL = in.Command, in.Path, in.Query, in.Pattern, in.URL
 			if tool.Command == "" {
 				tool.Command = in.Cmd
@@ -181,7 +182,7 @@ func (s *session) update(raw json.RawMessage) {
 		var detail []string
 		for _, c := range u.Content {
 			if c.Type == "diff" {
-				files = append(files, lineDiff(c.Path, c.OldText, c.NewText))
+				files = append(files, kit.LineDiff(c.Path, c.OldText, c.NewText))
 			} else if c.Content.Text != "" {
 				detail = append(detail, c.Content.Text)
 			}
@@ -196,7 +197,7 @@ func (s *session) update(raw json.RawMessage) {
 		if len(detail) > 0 {
 			output := strings.Join(detail, "\n")
 			msg.ResultChars = len(output)
-			msg.Detail = clip(output, 12000)
+			msg.Detail = kit.Clip(output, 12000)
 		} else if len(u.RawOutput) > 0 && string(u.RawOutput) != "null" {
 			msg.ResultChars = len(u.RawOutput)
 			var output string
@@ -210,7 +211,7 @@ func (s *session) update(raw json.RawMessage) {
 				}
 			}
 			if output != "" {
-				msg.Detail = clip(output, 12000)
+				msg.Detail = kit.Clip(output, 12000)
 			}
 		}
 		if u.Status != "" {
@@ -234,7 +235,7 @@ func (s *session) update(raw json.RawMessage) {
 			fmt.Fprintf(&plan, "- [%s] %s\n", check, entry.Content)
 			tool.Todos = append(tool.Todos, harness.Todo{Text: entry.Content, Status: entry.Status})
 		}
-		s.emit(event{Message: &harness.Message{ID: s.turn.RunID + ":acp-plan", RunID: s.turn.RunID, Role: "plan", Title: "Plan", Text: plan.String(), CreatedAt: now(), Tool: tool}})
+		s.emit(event{Message: &harness.Message{ID: s.turn.RunID + ":acp-plan", RunID: s.turn.RunID, Role: "plan", Title: "Plan", Text: plan.String(), CreatedAt: kit.Now(), Tool: tool}})
 	case "config_option_update":
 		info := sessionInfo{ConfigOptions: u.ConfigOptions}
 		s.emit(event{Settings: &harness.ReportedSettings{Model: info.option("model").CurrentValue, Effort: info.option("thought_level").CurrentValue}})
@@ -468,8 +469,8 @@ func (s *session) ask(frame rpcFrame, title string, questions []harness.Question
 		s.mu.Unlock()
 	}()
 	s.finishChunk()
-	s.emit(event{Message: &harness.Message{ID: id, RunID: s.turn.RunID, Role: "tool", Title: title, CreatedAt: now(), Tool: &harness.ToolCall{Kind: "question", Questions: questions}}})
-	s.emit(event{Request: &harness.Request{ID: id, Kind: "question", MessageID: id, Questions: questions, CreatedAt: now()}})
+	s.emit(event{Message: &harness.Message{ID: id, RunID: s.turn.RunID, Role: "tool", Title: title, CreatedAt: kit.Now(), Tool: &harness.ToolCall{Kind: "question", Questions: questions}}})
+	s.emit(event{Request: &harness.Request{ID: id, Kind: "question", MessageID: id, Questions: questions, CreatedAt: kit.Now()}})
 	select {
 	case answers := <-pending:
 		return answers, nil

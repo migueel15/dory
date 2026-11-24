@@ -70,8 +70,8 @@ func (m *Manager) OneShot(ctx context.Context, provider, model, prompt string) (
 			failure = "the agent asked for input"
 			cancel()
 		case harness.TurnEnded:
-			if e.Error != "" {
-				failure = e.Error
+			if msg := turnError(e); msg != "" {
+				failure = msg
 			}
 		}
 	}

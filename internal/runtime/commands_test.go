@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"github.com/migueel15/dory/internal/harness/claude"
+	"github.com/migueel15/dory/internal/harness/codex"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,7 +18,7 @@ func TestCommandsClaude(t *testing.T) {
 	write(filepath.Join(dir, ".claude", "commands", "clear.md"), "harness clear")
 	write(filepath.Join(home, ".claude", "skills", "s", "SKILL.md"), "---\nname: s\ndescription: Skill s\n---\n")
 	write(filepath.Join(home, ".claude", "commands", "s.md"), "dup of skill")
-	commands, skills := (Claude{}).Commands(Paths{Home: home}, dir)
+	commands, skills := (claude.Claude{}).Commands(Paths{Home: home}, dir)
 	commands, skills = composerCommands(commands, skills)
 	got := map[string]Entry{}
 	for _, c := range commands {
@@ -37,7 +39,7 @@ func TestCommandsClaude(t *testing.T) {
 	if len(skills) != 1 || skills[0].Insert != "/s" {
 		t.Fatalf("skills = %+v", skills)
 	}
-	if c, _ := composerCommands((Codex{}).Commands(Paths{Home: home}, dir)); len(c) != 1 || c[0].Name != "clear" {
+	if c, _ := composerCommands((codex.Codex{}).Commands(Paths{Home: home}, dir)); len(c) != 1 || c[0].Name != "clear" {
 		t.Fatalf("codex = %+v", c)
 	}
 }

@@ -3,7 +3,6 @@ package runtime
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"mime"
 	"os"
@@ -13,10 +12,9 @@ import (
 
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/kit"
 	"github.com/migueel15/dory/internal/workspace"
 )
-
-const attachmentFooter = "Ficheros adjuntos (léelos desde su ruta):"
 
 var attachmentIDPrefix = regexp.MustCompile(`^run-[a-z0-9]{12}-[0-9]{1,6}-`)
 
@@ -80,30 +78,17 @@ func (m *Manager) Attachment(threadID, id string) (Attachment, error) {
 // WithAttachments is withAttachments for answers to the agent's questions.
 func WithAttachments(text string, files []Attachment) string { return withAttachments(text, files) }
 
-func withAttachments(text string, files []Attachment) string {
-	if len(files) == 0 {
-		return text
-	}
-	var b strings.Builder
-	b.WriteString(text)
-	b.WriteString("\n\n" + attachmentFooter)
-	for _, f := range files {
-		fmt.Fprintf(&b, "\n- %s (%s)", f.Path, f.Name)
-	}
-	return b.String()
-}
-
-// restoreAttachments recovers Dory's attachment metadata from a harness prompt.
+func withAttachments(text string, files []Attachment) string { return kit.WithAttachments(text, files) }
 func (m *Manager) restoreAttachments(thread string, msg *Message) {
 	if msg.Role != "user" || msg.Detail != "" {
 		return
 	}
-	marker := "\n\n" + attachmentFooter + "\n"
+	marker := "\n\n" + kit.AttachmentFooter + "\n"
 	start := strings.LastIndex(msg.Text, marker)
 	var text, footer string
 	if start >= 0 {
 		text, footer = msg.Text[:start], msg.Text[start+len(marker):]
-	} else if rest, ok := strings.CutPrefix(msg.Text, attachmentFooter+"\n"); ok {
+	} else if rest, ok := strings.CutPrefix(msg.Text, kit.AttachmentFooter+"\n"); ok {
 		footer = rest
 	} else {
 		return

@@ -1,4 +1,4 @@
-package runtime
+package opencode
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 
 	"github.com/migueel15/dory/internal/cmdexec"
 	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/kit"
 	"github.com/migueel15/dory/internal/harness/procpool"
 	"github.com/migueel15/dory/internal/update"
 )
@@ -25,12 +26,12 @@ func (o OpenCode) bin() string {
 	if o.Bin != "" {
 		return o.Bin
 	}
-	return resolveBin("opencode")
+	return kit.ResolveBin("opencode")
 }
 
-func (o OpenCode) Detect(ctx context.Context) Status {
-	version, ok := detect(ctx, o.bin())
-	st := Status{ID: "opencode", Name: "OpenCode", Installed: ok, Version: version}
+func (o OpenCode) Detect(ctx context.Context) harness.Status {
+	version, ok := kit.Detect(ctx, o.bin())
+	st := harness.Status{ID: "opencode", Name: "OpenCode", Installed: ok, Version: version}
 	if !ok {
 		return st
 	}
@@ -38,10 +39,10 @@ func (o OpenCode) Detect(ctx context.Context) Status {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	out, _ := cmdexec.CommandContext(ctx, o.bin(), "models").Output()
-	st.Models = append(st.Models, Model{Slug: "", Name: "Por defecto"})
+	st.Models = append(st.Models, harness.Model{Slug: "", Name: "Por defecto"})
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		if line = strings.TrimSpace(line); line != "" {
-			st.Models = append(st.Models, Model{Slug: line, Name: line})
+			st.Models = append(st.Models, harness.Model{Slug: line, Name: line})
 		}
 	}
 	return st
@@ -62,17 +63,17 @@ func (o OpenCode) IsControlProcess(command string) bool {
 	return strings.Contains(command, o.ID()+" serve --hostname 127.0.0.1 --port 0")
 }
 
-func (o OpenCode) Commands(p Paths, dir string) (commands, skills []Entry) {
+func (o OpenCode) Commands(p harness.Paths, dir string) (commands, skills []harness.Entry) {
 	home := p.Home
 	for _, root := range []string{filepath.Join(home, ".config", "opencode", "command"), filepath.Join(dir, ".opencode", "command")} {
-		commands = append(commands, markdownEntries(root, "/")...)
+		commands = append(commands, kit.MarkdownEntries(root, "/")...)
 	}
-	for _, root := range []string{o.SkillDir(p).Dir, filepath.Join(p.Dir((Claude{}).ID()), "skills"), filepath.Join(dir, ".opencode", "skills")} {
-		skills = append(skills, skillEntries(root, "$")...)
+	for _, root := range []string{o.SkillDir(p).Dir, filepath.Join(p.Dir("claude"), "skills"), filepath.Join(dir, ".opencode", "skills")} {
+		skills = append(skills, kit.SkillEntries(root, "$")...)
 	}
 	return
 }
 
-func (OpenCode) SkillDir(p Paths) harness.SkillLocation {
+func (OpenCode) SkillDir(p harness.Paths) harness.SkillLocation {
 	return harness.SkillLocation{Dir: filepath.Join(p.Home, ".config", "opencode", "skills")}
 }

@@ -1,0 +1,178 @@
+[
+  {
+    "Type": "SettingsReported",
+    "Event": {
+      "model": "openai/gpt-6.2-astra"
+    }
+  },
+  {
+    "Type": "ToolStarted",
+    "Event": {
+      "ItemID": "r1:call_92b74c10d9bf45839a397a67bf26805f",
+      "Call": {
+        "kind": "question",
+        "name": "question",
+        "questions": [
+          {
+            "question": "Which color do you prefer?",
+            "header": "Color preference",
+            "options": [
+              {
+                "label": "Red",
+                "description": "I prefer red."
+              },
+              {
+                "label": "Blue",
+                "description": "I prefer blue."
+              }
+            ]
+          }
+        ]
+      },
+      "Title": "question",
+      "Detail": "",
+      "InputChars": 191,
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "RequestOpened",
+    "Event": {
+      "Request": {
+        "id": "frm_1ee50396b001pmpd6IsSWgo56S",
+        "kind": "question",
+        "message_id": "r1:call_92b74c10d9bf45839a397a67bf26805f",
+        "questions": [
+          {
+            "id": "q0",
+            "question": "Which color do you prefer?",
+            "header": "Color preference",
+            "options": [
+              {
+                "label": "Red",
+                "description": "I prefer red."
+              },
+              {
+                "label": "Blue",
+                "description": "I prefer blue."
+              }
+            ]
+          }
+        ],
+        "created_at": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "ToolDone",
+    "Event": {
+      "ItemID": "r1:call_92b74c10d9bf45839a397a67bf26805f",
+      "Status": "completed",
+      "Result": "",
+      "ResultChars": 124,
+      "Call": null,
+      "Update": {
+        "ItemID": "r1:call_92b74c10d9bf45839a397a67bf26805f",
+        "Call": {
+          "kind": "question",
+          "name": "question",
+          "questions": [
+            {
+              "question": "Which color do you prefer?",
+              "header": "Color preference",
+              "options": [
+                {
+                  "label": "Red",
+                  "description": "I prefer red."
+                },
+                {
+                  "label": "Blue",
+                  "description": "I prefer blue."
+                }
+              ],
+              "answer": [
+                "Blue"
+              ]
+            }
+          ]
+        },
+        "Title": "question",
+        "Detail": "",
+        "Status": "completed",
+        "Result": "",
+        "InputChars": 191,
+        "ResultChars": 124,
+        "Streaming": false,
+        "Meta": {
+          "RunID": "r1",
+          "CreatedAt": "<time>"
+        }
+      }
+    }
+  },
+  {
+    "Type": "StepUsage",
+    "Event": {
+      "Model": "openai/gpt-6.2-astra",
+      "Input": 10463,
+      "CacheRead": 0,
+      "CacheWrite": 0,
+      "Output": 57,
+      "Reasoning": 0,
+      "Subagent": ""
+    }
+  },
+  {
+    "Type": "SettingsReported",
+    "Event": {
+      "model": "openai/gpt-6.2-astra"
+    }
+  },
+  {
+    "Type": "TextDelta",
+    "Event": {
+      "ItemID": "r1:msg_1ee5039a2001XzmdmmypN4RKJy:0",
+      "Kind": "assistant",
+      "Delta": "Blue",
+      "Replace": false,
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "TextDone",
+    "Event": {
+      "ItemID": "r1:msg_1ee5039a2001XzmdmmypN4RKJy:0",
+      "Kind": "assistant",
+      "Text": "Blue",
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "StepUsage",
+    "Event": {
+      "Model": "openai/gpt-6.2-astra",
+      "Input": 10557,
+      "CacheRead": 0,
+      "CacheWrite": 0,
+      "Output": 5,
+      "Reasoning": 0,
+      "Subagent": ""
+    }
+  },
+  {
+    "Type": "TurnEnded",
+    "Event": {
+      "Reason": "completed",
+      "Error": ""
+    }
+  }
+]

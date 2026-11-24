@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/kit"
 	"github.com/migueel15/dory/internal/harness/procpool"
 )
 
@@ -149,7 +150,7 @@ func (d *driver) open(ctx context.Context, dir string, sandbox bool, threadID st
 }
 
 func (d *driver) Detect(ctx context.Context) harness.Status {
-	version, installed := detectVersion(ctx, d.bin())
+	version, installed := kit.Detect(ctx, d.bin())
 	s := harness.Status{ID: d.p.ID, Name: d.p.Name, Installed: installed, Version: version, Models: []harness.Model{d.p.DefaultModel}}
 	if !installed || !d.p.Catalog {
 		return s

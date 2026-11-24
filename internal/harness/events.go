@@ -197,3 +197,6 @@ func Upgrade(in <-chan LegacyEvent) <-chan Event {
 	}()
 	return out
 }
+
+// ErrNoRequest indicates that a response no longer has a pending request.
+var ErrNoRequest = apperr.New(apperr.NoRequest, "the request is no longer pending")
