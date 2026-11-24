@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"github.com/migueel15/dory/internal/apperr"
+	"github.com/migueel15/dory/internal/i18n"
 	"log"
 	"math"
 	"strings"
@@ -271,7 +272,7 @@ func (m *Manager) work(s *session) {
 		s.mu.Lock()
 		s.pending--
 		if err != nil {
-			s.status, s.err = "failed", "transcripción fallida: "+err.Error()
+			s.status, s.err = "failed", i18n.Textf("dictation.transcription_failed", err)
 		} else if !failed {
 			s.text = Merge(s.text, text)
 		}

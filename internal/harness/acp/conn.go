@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"io"
 	"os"
 	"os/exec"
@@ -277,7 +278,7 @@ func (c *conn) initialize(ctx context.Context, p *Profile) (Initialize, error) {
 		}
 	}
 	if info.ProtocolVersion != 1 || (p.RequireLoad && !info.AgentCapabilities.LoadSession) {
-		return info, fmt.Errorf("esta versión de %s no admite reanudar sesiones con ACP v1", c.name)
+		return info, fmt.Errorf(i18n.Text("acp.esta_version_no_admite"), c.name)
 	}
 	return info, nil
 }

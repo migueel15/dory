@@ -1,7 +1,7 @@
 // @ts-nocheck -- runs with node:test; the project has no @types/node
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { messageText } from "./es.js";
+import { messageText, stateCodes, t } from "./es.js";
 
 test("a code is translated with its params", () => {
   assert.equal(messageText({ code: "context.cleared", text: "" }), "Contexto limpiado");
@@ -11,4 +11,9 @@ test("a code is translated with its params", () => {
 test("a message without a known code shows its own text", () => {
   assert.equal(messageText({ text: "Contexto limpiado" }), "Contexto limpiado");
   assert.equal(messageText({ code: "nope", text: "hola" }), "hola");
+});
+
+test("every failed-state code of the backend has a text", () => {
+  assert.deepEqual(stateCodes.filter((code) => t(code) === undefined), []);
+  assert.equal(t("github.device.failed", { detail: "bad" }), "GitHub ha rechazado el inicio de sesión (bad).");
 });

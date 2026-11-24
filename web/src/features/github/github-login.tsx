@@ -4,6 +4,7 @@ import { Copy } from "@phosphor-icons/react";
 import { api, type GithubDeviceCode } from "../../api/client";
 import { Button, ErrorText } from "../../components/ui";
 import { qk } from "../../api/queries/keys";
+import { t } from "../../i18n/es";
 
 // GithubLogin links this node to a GitHub account with the device flow: it
 // shows the code, opens github.com/login/device and waits for the token,
@@ -25,7 +26,8 @@ export function GithubLogin() {
     qc.invalidateQueries({ queryKey: qk.githubAuth() });
     qc.invalidateQueries({ queryKey: qk.github() });
   }, [done, qc]);
-  const failed = code && state.data && state.data.state !== "pending" && state.data.state !== "done" ? state.data.error : "";
+  const failed = code && state.data && state.data.state !== "pending" && state.data.state !== "done"
+    ? t(`github.device.${state.data.state}`, { detail: state.data.error }) ?? state.data.error ?? "" : "";
   const copy = async () => {
     if (!code) return;
     try { await navigator.clipboard.writeText(code.user_code); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard unavailable */ }

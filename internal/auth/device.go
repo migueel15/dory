@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"github.com/migueel15/dory/internal/i18n"
 	"net/http"
 	"strings"
 	"time"
@@ -47,7 +48,7 @@ func IssueDevice(ctx context.Context, svc DeviceStore, name string) (string, err
 	}
 	name = strings.TrimSpace(name)
 	if name == "" {
-		name = "móvil"
+		name = i18n.Text("auth.movil")
 	}
 	value := secret()
 	return value, svc.CreateToken(ctx, Token{UserID: owner, Name: devicePrefix + name, SecretHash: digest(value), Permissions: []string{"admin"}})

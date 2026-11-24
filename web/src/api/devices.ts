@@ -3,7 +3,7 @@ import { get, post } from "./http";
 
 export type DeviceTools = { adb: string; emulator: string; kvm: boolean; sdk: string };
 export type Device = { serial: string; state: string; model: string; product: string; transport: "usb" | "wifi" | "emulator"; avd?: string; streaming: boolean };
-export type AvdState = { status: "starting" | "booting" | "ready" | "failed"; error?: string };
+export type AvdState = { status: "starting" | "booting" | "ready" | "failed"; code?: string; error?: string };
 export type DeviceList = { tools: DeviceTools; devices: Device[]; avds: string[]; avd_states: Record<string, AvdState>; error?: string };
 export const devicesApi = {
   list: (node = "local") => get<DeviceList>(`/nodes/${node}/devices`),

@@ -1,4 +1,4 @@
-package api
+package app
 
 import (
 	"context"
@@ -15,13 +15,13 @@ const maintenanceEvery = 2 * time.Minute
 
 // StartWorktreeMaintenance pulls branches and removes worktrees of merged
 // work according to the node settings.
-func (s *Server) StartWorktreeMaintenance(ctx context.Context) {
+func (a *Tasks) StartWorktreeMaintenance(ctx context.Context) {
 	go func() {
 		t := time.NewTicker(maintenanceEvery)
 		defer t.Stop()
 		for {
-			s.AutoPull(ctx)
-			s.RemoveMergedWorktrees(ctx)
+			a.AutoPull(ctx)
+			a.RemoveMergedWorktrees(ctx)
 			select {
 			case <-ctx.Done():
 				return
@@ -33,23 +33,24 @@ func (s *Server) StartWorktreeMaintenance(ctx context.Context) {
 
 // AutoPull fast-forwards the branch of every active thread of this node that
 // runs in a checkout without uncommitted changes, when the node is set to.
-func (s *Server) AutoPull(ctx context.Context) {
-	if !s.Settings.Get().SourceControl.AutoPull {
+func (a *Tasks) AutoPull(ctx context.Context) {
+	th := a.Threads
+	if !th.Settings.ThreadSettings().AutoPull {
 		return
 	}
-	threads, err := s.Store.Threads().ListAll(ctx, data.Filter{})
+	threads, err := a.Store.Threads().ListAll(ctx, data.Filter{})
 	if err != nil {
 		return
 	}
 	seen := map[string]bool{}
 	for _, t := range threads {
-		if t.NodeID != s.Node.ID || t.Branch == "" || s.Runtime.Running(t.ID) {
+		if t.NodeID != a.Node || t.Branch == "" || th.Runtime.Running(t.ID) {
 			continue
 		}
-		if dir, err := s.Runtime.Dir(ctx, t.ID); err == nil && dir != "" && !seen[dir] {
+		if dir, err := th.Runtime.Dir(ctx, t.ID); err == nil && dir != "" && !seen[dir] {
 			seen[dir] = true
-			if err := workspace.Pull(ctx, dir, t.Branch); err != nil {
-				log.Printf("api: auto-pull %s: %v", t.Branch, err)
+			if err := th.Workspace.Pull(ctx, dir, t.Branch); err != nil {
+				log.Printf("app: auto-pull %s: %v", t.Branch, err)
 			}
 		}
 	}
@@ -58,28 +59,28 @@ func (s *Server) AutoPull(ctx context.Context) {
 // RemoveMergedWorktrees deletes the clean worktrees of the threads of a task
 // whose pull request was merged, when the node is set to. A worktree with
 // changes, or one another active thread uses, is kept.
-func (s *Server) RemoveMergedWorktrees(ctx context.Context) {
-	if !s.Settings.Get().Worktrees.RemoveOnMerge {
+func (a *Tasks) RemoveMergedWorktrees(ctx context.Context) {
+	if !a.Threads.Settings.ThreadSettings().RemoveWorktreeOnMerge {
 		return
 	}
-	threads, err := s.Store.Threads().ListAll(ctx, data.Filter{IncludeArchived: true})
+	threads, err := a.Store.Threads().ListAll(ctx, data.Filter{IncludeArchived: true})
 	if err != nil {
 		return
 	}
 	byTask := map[string][]data.Thread{}
 	var tasks []data.Task
 	for _, th := range threads {
-		if th.TaskID == nil || th.NodeID != s.Node.ID {
+		if th.TaskID == nil || th.NodeID != a.Node {
 			continue
 		}
 		if _, ok := byTask[*th.TaskID]; !ok {
-			if t, err := s.Store.Tasks().Get(ctx, *th.TaskID); err == nil {
+			if t, err := a.Store.Tasks().Get(ctx, *th.TaskID); err == nil {
 				tasks = append(tasks, t)
 			}
 		}
 		byTask[*th.TaskID] = append(byTask[*th.TaskID], th)
 	}
-	cards, err := s.Cards(ctx, tasks)
+	cards, err := a.Cards(ctx, tasks)
 	if err != nil {
 		return
 	}
@@ -88,8 +89,8 @@ func (s *Server) RemoveMergedWorktrees(ctx context.Context) {
 			continue
 		}
 		for _, th := range byTask[c.ID] {
-			if err := s.Runtime.Remove(ctx, th.ID, false); err != nil && !errors.Is(err, workspace.ErrDirtyWorktree) && !errors.Is(err, runtime.ErrNotFound) {
-				log.Printf("api: remove merged worktree of %s: %v", th.ID, err)
+			if err := a.Threads.Runtime.Remove(ctx, th.ID, false); err != nil && !errors.Is(err, workspace.ErrDirtyWorktree) && !errors.Is(err, runtime.ErrNotFound) {
+				log.Printf("app: remove merged worktree of %s: %v", th.ID, err)
 			}
 		}
 	}

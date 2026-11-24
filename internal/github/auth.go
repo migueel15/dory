@@ -193,7 +193,7 @@ func (a *Auth) StartDevice(ctx context.Context) (DeviceCode, error) {
 		return DeviceCode{}, err
 	}
 	if code.Error != "" || code.Device == "" {
-		return DeviceCode{}, fmt.Errorf("github: no se pudo iniciar sesión (%s)", code.Error)
+		return DeviceCode{}, fmt.Errorf("github: could not start the device flow (%s)", code.Error)
 	}
 	pollCtx, cancel := context.WithTimeout(context.Background(), time.Duration(code.ExpiresIn)*time.Second)
 	d := &device{cancel: cancel, status: DeviceStatus{State: DevicePending}}
@@ -234,7 +234,7 @@ func (a *Auth) poll(ctx context.Context, d *device, code string, interval time.D
 			pending := d.status.State == DevicePending
 			a.mu.Unlock()
 			if pending && errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				a.finish(d, DeviceExpired, "El código ha caducado. Vuelve a intentarlo.")
+				a.finish(d, DeviceExpired, "")
 			}
 			return
 		case <-time.After(interval):
@@ -250,7 +250,7 @@ func (a *Auth) poll(ctx context.Context, d *device, code string, interval time.D
 		switch {
 		case res.AccessToken != "":
 			if err := a.save(res.AccessToken); err != nil {
-				a.finish(d, DeviceFailed, "No se pudo guardar el token: "+err.Error())
+				a.finish(d, DeviceFailed, "save token: "+err.Error())
 				return
 			}
 			a.finish(d, DeviceDone, "")
@@ -264,13 +264,13 @@ func (a *Auth) poll(ctx context.Context, d *device, code string, interval time.D
 				interval += 5 * time.Second
 			}
 		case res.Error == "expired_token":
-			a.finish(d, DeviceExpired, "El código ha caducado. Vuelve a intentarlo.")
+			a.finish(d, DeviceExpired, "")
 			return
 		case res.Error == "access_denied":
-			a.finish(d, DeviceDenied, "Has cancelado la autorización en GitHub.")
+			a.finish(d, DeviceDenied, "")
 			return
 		default:
-			a.finish(d, DeviceFailed, "GitHub ha rechazado el inicio de sesión ("+res.Error+").")
+			a.finish(d, DeviceFailed, res.Error)
 			return
 		}
 	}

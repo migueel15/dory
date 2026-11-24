@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/migueel15/dory/internal/i18n"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -57,7 +58,10 @@ var (
 // AVDState is the progress of an emulator this node started.
 type AVDState struct {
 	Status string `json:"status"` // starting, booting, ready, failed
-	Error  string `json:"error,omitempty"`
+	// Code names a known failure the web explains (avd.exited, avd.timeout);
+	// Error is the technical detail.
+	Code  string `json:"code,omitempty"`
+	Error string `json:"error,omitempty"`
 }
 
 type avdProc struct {
@@ -84,13 +88,13 @@ func (m *Manager) AVDStates() map[string]AVDState {
 // StartAVD launches an emulator without a window and watches it until Android booted.
 func (m *Manager) StartAVD(name string) error {
 	if !avdName.MatchString(name) {
-		return errors.New("nombre de emulador no válido")
+		return errors.New(i18n.Text("devices.nombre_emulador_no_valido"))
 	}
 	if m.Tools.Emulator == "" {
-		return errors.New("el emulador de Android no está instalado en este nodo")
+		return errors.New(i18n.Text("devices.emulador_android_no_esta"))
 	}
 	if !m.Tools.KVM {
-		return errors.New("el emulador necesita KVM (/dev/kvm)")
+		return errors.New(i18n.Text("devices.emulador_necesita_kvm_dev"))
 	}
 	m.mu.Lock()
 	if p := m.avds[name]; p != nil && (p.state.Status == "starting" || p.state.Status == "booting") {
@@ -118,12 +122,12 @@ func (m *Manager) StartAVD(name string) error {
 		for {
 			select {
 			case err := <-exited:
-				p.set(AVDState{Status: "failed", Error: tail(log.String(), "el emulador terminó")})
+				p.set(AVDState{Status: "failed", Code: "avd.exited", Error: tail(log.String(), "the emulator exited")})
 				_ = err
 				return
 			case <-deadline:
 				_ = cmd.Process.Kill()
-				p.set(AVDState{Status: "failed", Error: "el emulador no arrancó en 4 minutos"})
+				p.set(AVDState{Status: "failed", Code: "avd.timeout", Error: "the emulator did not boot in 4 minutes"})
 				return
 			case <-tick.C:
 				if m.avdBooted(name) {
@@ -195,7 +199,7 @@ func (m *Manager) Stop(ctx context.Context, serial string) error {
 // Pair pairs with a device that shows a wireless debugging pairing code.
 func (m *Manager) Pair(ctx context.Context, hostPortStr, code string) (string, error) {
 	if !hostPort.MatchString(hostPortStr) || !pairCode.MatchString(code) {
-		return "", errors.New("dirección o código de emparejamiento no válidos")
+		return "", errors.New(i18n.Text("devices.direccion_codigo_emparejamiento_no"))
 	}
 	out, err := m.ADB.Run(ctx, 20*time.Second, "pair", hostPortStr, code)
 	res := strings.TrimSpace(string(out))
@@ -208,7 +212,7 @@ func (m *Manager) Pair(ctx context.Context, hostPortStr, code string) (string, e
 // Connect connects to a device over Wi-Fi.
 func (m *Manager) Connect(ctx context.Context, hostPortStr string) (string, error) {
 	if !hostPort.MatchString(hostPortStr) {
-		return "", errors.New("dirección no válida")
+		return "", errors.New(i18n.Text("devices.direccion_no_valida"))
 	}
 	out, err := m.ADB.Run(ctx, 15*time.Second, "connect", hostPortStr)
 	res := strings.TrimSpace(string(out))

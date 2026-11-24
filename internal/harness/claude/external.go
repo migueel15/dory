@@ -94,7 +94,7 @@ func claudeRecord(line []byte, emit func(harness.Message), out []harness.Message
 			emit(harness.Message{ID: id, Role: role, Text: b.Text, CreatedAt: r.Timestamp})
 		case "thinking":
 			if b.Thinking != "" {
-				emit(harness.Message{ID: id, Role: "reasoning", Title: "Pensando", Text: b.Thinking, CreatedAt: r.Timestamp})
+				emit(harness.Message{ID: id, Role: "reasoning", Text: b.Thinking, CreatedAt: r.Timestamp})
 			}
 		case "tool_use":
 			emit(harness.Message{ID: b.ID, Role: "tool", Title: b.Name, Detail: kit.ToolDetail(b.Name, b.Input), Status: "completed", CreatedAt: r.Timestamp, Tool: kit.ToolCallFromInput(b.Name, b.Input)})

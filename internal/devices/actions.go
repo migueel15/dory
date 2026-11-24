@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"regexp"
 	"strconv"
 	"strings"
@@ -44,7 +45,7 @@ func onOff(v string) (bool, error) {
 	case "off", "false", "0":
 		return false, nil
 	}
-	return false, errors.New("el valor debe ser on u off")
+	return false, errors.New(i18n.Text("devices.valor_debe_ser_on"))
 }
 
 // State reads the settings the tools drawer shows. Each key is read from the device.
@@ -99,7 +100,7 @@ func (m *Manager) Apply(ctx context.Context, serial string, a Action) (map[strin
 		return map[string]string{"input": m.InputAllowed(ctx, serial)}, nil
 	case "dark_mode":
 		if a.Value != "yes" && a.Value != "no" && a.Value != "auto" {
-			return nil, errors.New("el modo oscuro admite yes, no o auto")
+			return nil, errors.New(i18n.Text("devices.modo_oscuro_admite_yes"))
 		}
 		key = "dark_mode"
 		if _, err := sh("cmd", "uimode", "night", a.Value); err != nil {
@@ -108,7 +109,7 @@ func (m *Manager) Apply(ctx context.Context, serial string, a Action) (map[strin
 	case "font_scale":
 		f, err := strconv.ParseFloat(a.Value, 64)
 		if err != nil || f < 0.5 || f > 2.0 {
-			return nil, errors.New("el tamaño de texto va de 0.5 a 2.0")
+			return nil, errors.New(i18n.Text("devices.tamano_texto_va_0"))
 		}
 		key = "font_scale"
 		if _, err := sh("settings", "put", "system", "font_scale", strconv.FormatFloat(f, 'f', 2, 64)); err != nil {
@@ -129,7 +130,7 @@ func (m *Manager) Apply(ctx context.Context, serial string, a Action) (map[strin
 				return nil, err
 			}
 		} else {
-			return nil, errors.New("orientación no válida")
+			return nil, errors.New(i18n.Text("devices.orientacion_no_valida"))
 		}
 	case "wifi", "data":
 		on, err := onOff(a.Value)
@@ -138,7 +139,7 @@ func (m *Manager) Apply(ctx context.Context, serial string, a Action) (map[strin
 		}
 		// Turning Wi-Fi off would drop the adb connection this very device uses.
 		if a.Name == "wifi" && !on && !strings.HasPrefix(serial, "emulator-") && (strings.Contains(serial, "._adb-tls-") || strings.Contains(serial, ":")) {
-			return nil, errors.New("no se puede apagar el Wi-Fi de un dispositivo conectado por Wi-Fi: se perdería la conexión")
+			return nil, errors.New(i18n.Text("devices.no_puede_apagar_wi"))
 		}
 		verb := map[bool]string{true: "enable", false: "disable"}[on]
 		key = a.Name
@@ -158,13 +159,13 @@ func (m *Manager) Apply(ctx context.Context, serial string, a Action) (map[strin
 		}
 	case "permission":
 		if !ident.MatchString(a.Package) || !ident.MatchString(a.Perm) {
-			return nil, errors.New("paquete o permiso no válidos")
+			return nil, errors.New(i18n.Text("devices.paquete_permiso_no_validos"))
 		}
 		verb := "revoke"
 		if a.Value == "grant" {
 			verb = "grant"
 		} else if a.Value != "revoke" {
-			return nil, errors.New("el valor debe ser grant o revoke")
+			return nil, errors.New(i18n.Text("devices.valor_debe_ser_grant"))
 		}
 		if _, err := sh("pm", verb, a.Package, a.Perm); err != nil {
 			return nil, err
@@ -177,7 +178,7 @@ func (m *Manager) Apply(ctx context.Context, serial string, a Action) (map[strin
 		return map[string]string{"permission": a.Perm, "state": state}, nil
 	case "location":
 		if !strings.HasPrefix(serial, "emulator-") {
-			return nil, errors.New("la ubicación simulada solo funciona en emuladores")
+			return nil, errors.New(i18n.Text("devices.ubicacion_simulada_solo_funciona"))
 		}
 		if a.Lat < -90 || a.Lat > 90 || a.Lon < -180 || a.Lon > 180 {
 			return nil, errors.New("coordenadas fuera de rango")
@@ -187,7 +188,7 @@ func (m *Manager) Apply(ctx context.Context, serial string, a Action) (map[strin
 		}
 		return map[string]string{"location": fmt.Sprintf("%.5f,%.5f", a.Lat, a.Lon)}, nil
 	default:
-		return nil, errors.New("acción no admitida")
+		return nil, errors.New(i18n.Text("devices.accion_no_admitida"))
 	}
 	return map[string]string{key: m.State(ctx, serial)[key]}, nil
 }

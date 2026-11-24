@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"regexp"
 	"sort"
 	"strconv"
@@ -122,7 +123,7 @@ func (m *Manager) LaunchByName(ctx context.Context, serial, query string) (App, 
 	found := FindApp(apps, query)
 	switch len(found) {
 	case 0:
-		return App{}, fmt.Errorf("no hay ninguna app que se llame %q; usa device_apps", query)
+		return App{}, fmt.Errorf(i18n.Text("devices.no_hay_ninguna_app"), query)
 	case 1:
 		a := found[0]
 		out, err := m.ADB.Shell(ctx, serial, 10*time.Second, "am", "start", "-n", a.Package+"/"+a.Activity)
@@ -135,7 +136,7 @@ func (m *Manager) LaunchByName(ctx context.Context, serial, query string) (App, 
 	for _, a := range found {
 		names = append(names, a.Name+" ("+a.Package+")")
 	}
-	return App{}, fmt.Errorf("%q coincide con varias apps: %s; repite con el paquete exacto", query, strings.Join(names, ", "))
+	return App{}, fmt.Errorf(i18n.Text("devices.coincide_varias_apps_repite"), query, strings.Join(names, ", "))
 }
 
 // ScreenSize reads the device's screen size in pixels.
@@ -153,7 +154,7 @@ func (m *Manager) ScreenSize(ctx context.Context, serial string) (int, int, erro
 		}
 	}
 	if w == 0 || h == 0 {
-		return 0, 0, errors.New("no se pudo leer el tamaño de la pantalla")
+		return 0, 0, errors.New(i18n.Text("devices.no_pudo_leer_tamano"))
 	}
 	return w, h, nil
 }
@@ -176,7 +177,7 @@ func (m *Manager) Scroll(ctx context.Context, serial, dir string) error {
 	case "left":
 		return m.Swipe(ctx, serial, cx-dx, cy, cx+dx, cy, 350)
 	}
-	return errors.New("la dirección debe ser up, down, left o right")
+	return errors.New(i18n.Text("devices.direccion_debe_ser_up"))
 }
 
 // LongPress holds a point for about a second.
@@ -287,7 +288,7 @@ func (m *Manager) Screen(ctx context.Context, serial, state string) error {
 		}
 		return m.Swipe(ctx, serial, w/2, h*4/5, w/2, h/5, 300)
 	}
-	return errors.New("el estado debe ser on, off o unlock (unlock solo pasa pantallas sin PIN)")
+	return errors.New(i18n.Text("devices.estado_debe_ser_on"))
 }
 
 // Overview reads the device state as text: what is in front, battery, screen and the settings of the tools drawer.

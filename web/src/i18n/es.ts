@@ -13,7 +13,17 @@ export const messages: Record<string, Text> = {
   "context.cleared": "Contexto limpiado",
   "model.change_failed": (p) => `No se pudo cambiar el modelo: ${p.error ?? ""}`,
   "question.title": "Pregunta",
+  // Failed states the backend reports with a code and a technical detail.
+  "github.device.expired": "El código ha caducado. Vuelve a intentarlo.",
+  "github.device.denied": "Has cancelado la autorización en GitHub.",
+  "github.device.failed": (p) => `GitHub ha rechazado el inicio de sesión${p.detail ? ` (${p.detail})` : ""}.`,
+  "avd.exited": "el emulador terminó",
+  "avd.timeout": "el emulador no arrancó en 4 minutos",
 };
+
+// stateCodes are the codes of failed states the backend sends: each one needs
+// a text (checked by the tests).
+export const stateCodes = ["github.device.expired", "github.device.denied", "github.device.failed", "avd.exited", "avd.timeout"];
 
 // t is the text of a code, or undefined when the web has none.
 export function t(code: string | undefined, params: MessageParams = {}): string | undefined {

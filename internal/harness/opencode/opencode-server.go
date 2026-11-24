@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"io"
 	"maps"
 	"net/http"
@@ -190,7 +191,7 @@ func (a *openCodeAPI) registerDory(ctx context.Context, t harness.Turn) error {
 	}
 	if err := a.do(ctx, http.MethodPut, "/api/experimental/mcp/dory", map[string]any{"config": config}, nil); err != nil {
 		// The server may echo configuration when rejecting a request.
-		return errors.New("opencode: no se pudo registrar el servidor MCP de Dory")
+		return errors.New(i18n.Text("opencode.opencode_no_pudo_registrar"))
 	}
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -202,7 +203,7 @@ func (a *openCodeAPI) registerDory(ctx context.Context, t harness.Turn) error {
 			}
 		}
 		if err := a.do(ctx, http.MethodGet, "/api/mcp", nil, &catalog); err != nil {
-			return errors.New("opencode: no se pudo consultar el estado del MCP de Dory")
+			return errors.New(i18n.Text("opencode.opencode_no_pudo_consultar"))
 		}
 		for _, server := range catalog.Data {
 			if server.Name != "dory" {
@@ -213,12 +214,12 @@ func (a *openCodeAPI) registerDory(ctx context.Context, t harness.Turn) error {
 				return nil
 			case "pending":
 			default:
-				return errors.New("opencode: el servidor MCP de Dory no se conectó")
+				return errors.New(i18n.Text("opencode.opencode_servidor_mcp_dory"))
 			}
 		}
 		select {
 		case <-ctx.Done():
-			return errors.New("opencode: se agotó el tiempo de conexión al MCP de Dory")
+			return errors.New(i18n.Text("opencode.opencode_agoto_tiempo_conexion"))
 		case <-ticker.C:
 		}
 	}

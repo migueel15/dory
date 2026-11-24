@@ -115,6 +115,7 @@ func (st *SettingsStore) ThreadSettings() app.ThreadSettings {
 		DefaultModel: app.ModelChoice(s.Threads.DefaultModel), FallbackModel: app.ModelChoice(s.Threads.FallbackModel),
 		DefaultWorkspace: s.Threads.DefaultWorkspace, WorktreeRoot: s.Worktrees.Location, BranchNaming: s.Worktrees.BranchNaming,
 		AutoPull: s.SourceControl.AutoPull, RemoveWorktreeOnArchive: s.RemoveWorktreeOnArchive,
+		RemoveWorktreeOnMerge: s.Worktrees.RemoveOnMerge,
 	}
 }
 

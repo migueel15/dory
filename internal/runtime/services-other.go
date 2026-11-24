@@ -5,6 +5,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"github.com/migueel15/dory/internal/i18n"
 
 	"github.com/migueel15/dory/internal/apperr"
 )
@@ -26,5 +27,5 @@ func (m *Manager) StopAllServices()                {}
 func (m *Manager) StopArchivedServices()           {}
 
 func (m *Manager) StartService(context.Context, string, string) (int, string, error) {
-	return 0, "", errors.New("los servicios solo están disponibles en Linux")
+	return 0, "", errors.New(i18n.Text("runtime.servicios_solo_estan_disponibles"))
 }

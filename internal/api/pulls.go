@@ -1,18 +1,11 @@
 package api
 
 import (
-	"context"
-	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
-	"time"
 
 	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/apperr"
-	"github.com/migueel15/dory/internal/data"
-	"github.com/migueel15/dory/internal/github"
-	"github.com/migueel15/dory/internal/mesh/peerapi"
 )
 
 // mountPulls serves the review aids of a pull request: files marked as
@@ -27,33 +20,17 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 		}
 		return r.PathValue("owner") + "/" + r.PathValue("repo"), n, true
 	}
-	db := s.Store.LocalDB()
 	mux.HandleFunc("GET "+base+"/reviews", func(w http.ResponseWriter, r *http.Request) {
 		repo, n, ok := target(w, r)
 		if !ok {
 			return
 		}
-		rows, err := db.QueryContext(r.Context(), `SELECT path, patch_hash, reviewed_at FROM pr_file_reviews WHERE repo = ? AND number = ?`, repo, n)
+		marks, err := s.PullReviews.Marks(r.Context(), repo, n)
 		if err != nil {
 			writeErr(w, r, err)
 			return
 		}
-		defer rows.Close()
-		type mark struct {
-			Path       string `json:"path"`
-			PatchHash  string `json:"patch_hash"`
-			ReviewedAt string `json:"reviewed_at"`
-		}
-		out := []mark{}
-		for rows.Next() {
-			var m mark
-			if err = rows.Scan(&m.Path, &m.PatchHash, &m.ReviewedAt); err != nil {
-				writeErr(w, r, err)
-				return
-			}
-			out = append(out, m)
-		}
-		writeJSON(w, http.StatusOK, out)
+		writeJSON(w, http.StatusOK, marks)
 	})
 	mux.HandleFunc("PUT "+base+"/reviews", func(w http.ResponseWriter, r *http.Request) {
 		repo, n, ok := target(w, r)
@@ -67,10 +44,7 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 		if !decode(w, r, &body) {
 			return
 		}
-		_, err := db.ExecContext(r.Context(), `INSERT INTO pr_file_reviews(repo, number, path, patch_hash, reviewed_at) VALUES (?, ?, ?, ?, ?)
-			ON CONFLICT(repo, number, path) DO UPDATE SET patch_hash = excluded.patch_hash, reviewed_at = excluded.reviewed_at`,
-			repo, n, body.Path, body.PatchHash, time.Now().UTC().Format(time.RFC3339))
-		if err != nil {
+		if err := s.PullReviews.Mark(r.Context(), repo, n, body.Path, body.PatchHash); err != nil {
 			writeErr(w, r, err)
 			return
 		}
@@ -81,7 +55,7 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 		if !ok {
 			return
 		}
-		if _, err := db.ExecContext(r.Context(), `DELETE FROM pr_file_reviews WHERE repo = ? AND number = ? AND path = ?`, repo, n, r.URL.Query().Get("path")); err != nil {
+		if err := s.PullReviews.Unmark(r.Context(), repo, n, r.URL.Query().Get("path")); err != nil {
 			writeErr(w, r, err)
 			return
 		}
@@ -92,7 +66,7 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 		if !ok {
 			return
 		}
-		t, err := s.pullThread(r.Context(), repo, n)
+		t, err := s.PullReviews.Thread(r.Context(), repo, n)
 		if err != nil {
 			writeErr(w, r, err)
 			return
@@ -103,113 +77,22 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"available": true, "thread_id": t.ID})
 	})
-	// ask sends a question about the pull request to its review thread,
-	// creating the thread on the first question.
 	ask := func(w http.ResponseWriter, r *http.Request) {
 		repo, n, ok := target(w, r)
 		if !ok {
 			return
 		}
-		var body struct {
-			Path     string `json:"path"`
-			Start    int    `json:"start"`
-			End      int    `json:"end"`
-			Snippet  string `json:"snippet"`
-			Question string `json:"question"`
-			Launch   *struct {
-				Provider    string `json:"provider"`
-				Model       string `json:"model"`
-				Effort      string `json:"effort"`
-				RuntimeMode string `json:"runtime_mode"`
-			} `json:"launch"`
-		}
+		var body app.PullQuestion
 		if !decode(w, r, &body) {
 			return
 		}
-		ctx := r.Context()
-		t, err := s.pullThread(ctx, repo, n)
+		t, err := s.PullReviews.Ask(r.Context(), repo, n, body)
 		if err != nil {
 			writeErr(w, r, err)
 			return
-		}
-		var first string
-		if t == nil {
-			if body.Launch == nil {
-				writeErr(w, r, apperr.New(apperr.NoThread, "the pull request has no review thread yet: send launch"))
-				return
-			}
-			first = fmt.Sprintf("Revisas la pull request #%d de %s. Léela con `gh pr view %d --repo %s` y `gh pr diff %d --repo %s`. No modifiques nada salvo que te lo pida. Responde a mis preguntas sobre ella.\n\n", n, repo, n, repo, n, repo)
-		}
-		var b strings.Builder
-		b.WriteString(first)
-		attrs := map[string]string{"repo": repo, "pr": fmt.Sprint(n)}
-		if body.Path != "" {
-			attrs["path"] = body.Path
-			if body.Start > 0 {
-				attrs["start"], attrs["end"] = fmt.Sprint(body.Start), fmt.Sprint(body.End)
-			}
-			if body.Start > 0 {
-				fmt.Fprintf(&b, "Sobre `%s` líneas %d-%d:\n", body.Path, body.Start, body.End)
-			} else {
-				fmt.Fprintf(&b, "Sobre `%s`:\n", body.Path)
-			}
-			if body.Snippet != "" {
-				fmt.Fprintf(&b, "```\n%s\n```\n", body.Snippet)
-			}
-		}
-		// The first message and any question about some code carry their
-		// context in a block; a plain follow-up question goes as typed.
-		text := body.Question
-		if context := b.String(); strings.TrimSpace(context) != "" {
-			kind := "pr-review"
-			if body.Path != "" {
-				kind = "pr-question"
-			}
-			text = app.AutoMessage(kind, attrs, context, body.Question)
-		}
-		if t == nil {
-			project, repository := s.reviewRepository(ctx, repo)
-			worktree := false
-			created, err := s.Threads.Create(ctx, app.CreateThread{CreateThreadRequest: peerapi.CreateThreadRequest{
-				ProjectID: project, RepositoryID: repository, Provider: body.Launch.Provider, Model: body.Launch.Model,
-				Effort: body.Launch.Effort, RuntimeMode: body.Launch.RuntimeMode, Title: pullTitle(repo, n), Text: text, Worktree: &worktree,
-			}})
-			if err != nil {
-				writeErr(w, r, err)
-				return
-			}
-			t = &created
-		} else if strings.TrimSpace(text) != "" {
-			if err = s.Runtime.Send(ctx, t.ID, text); err != nil {
-				writeErr(w, r, err)
-				return
-			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"available": true, "thread_id": t.ID})
 	}
 	mux.HandleFunc("POST "+base+"/ask", ask)
 	mux.HandleFunc("POST "+base+"/agent", ask)
-}
-
-func pullTitle(repo string, n int) string { return fmt.Sprintf("Revisión de %s#%d", repo, n) }
-
-// pullThread finds the open review thread of a pull request.
-func (s *Server) pullThread(ctx context.Context, repo string, n int) (*data.Thread, error) {
-	threads, err := s.Store.Threads().List(ctx, data.Filter{Fields: map[string]any{"title": pullTitle(repo, n)}, Limit: 1})
-	if err != nil || len(threads) == 0 {
-		return nil, err
-	}
-	return &threads[0], nil
-}
-
-// reviewRepository matches a GitHub repository with its project and id.
-func (s *Server) reviewRepository(ctx context.Context, repo string) (*string, string) {
-	repos, _ := s.Store.Repositories().ListAll(ctx, data.Filter{})
-	for _, r := range repos {
-		if name, ok := github.ParseRemote(r.RemoteURL); ok && strings.EqualFold(name, repo) {
-			project := r.ProjectID
-			return &project, r.ID
-		}
-	}
-	return nil, ""
 }

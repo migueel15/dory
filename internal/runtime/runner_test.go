@@ -187,3 +187,48 @@ func settled(t *testing.T, m *Manager, id string) {
 	}
 	t.Fatal("turn never ended")
 }
+
+// slowProvider holds the start of a turn until gate is closed.
+type slowProvider struct {
+	capturedProvider
+	gate chan struct{}
+}
+
+func (p slowProvider) Start(ctx context.Context, turn Turn) (Session, error) {
+	<-p.gate
+	return p.capturedProvider.Start(ctx, turn)
+}
+
+// The harness starts outside the actor: an interrupt does not wait for it,
+// and the turn it stopped ends as soon as the harness is up.
+func TestRunnerInterruptDoesNotWaitForStart(t *testing.T) {
+	ctx := context.Background()
+	m, _ := manager(t, 0)
+	p := slowProvider{capturedProvider{"claude", make(chan Turn, 1), make(chan chan Event, 1)}, make(chan struct{})}
+	m.registry.Register(p)
+	th, _ := registerTestThread(ctx, m, data.Thread{Provider: p.id, Model: "haiku"})
+	sent := make(chan error, 1)
+	go func() { sent <- m.Send(ctx, th.ID, "uno") }()
+	for !m.Running(th.ID) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	interrupted := make(chan error, 1)
+	go func() { interrupted <- m.Interrupt(ctx, th.ID) }()
+	select {
+	case err := <-interrupted:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("interrupt waited for the harness to start")
+	}
+	close(p.gate)
+	if err := <-sent; err != nil {
+		t.Fatalf("send = %v", err)
+	}
+	<-p.turns
+	events := <-p.ends
+	events <- harness.TurnEnded{Reason: harness.Interrupted}
+	close(events)
+	settled(t, m, th.ID)
+}

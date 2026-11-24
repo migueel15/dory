@@ -111,7 +111,7 @@ func codexRecord(line []byte, emit func(harness.Message), out []harness.Message,
 			parts = append(parts, s.Text)
 		}
 		if len(parts) > 0 {
-			emit(harness.Message{ID: id, Role: "reasoning", Title: "Pensando", Text: strings.Join(parts, "\n"), CreatedAt: r.Timestamp})
+			emit(harness.Message{ID: id, Role: "reasoning", Text: strings.Join(parts, "\n"), CreatedAt: r.Timestamp})
 		}
 	case "function_call", "custom_tool_call":
 		args := p.Arguments + p.Input

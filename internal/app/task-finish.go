@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/domain/board"
@@ -62,6 +63,8 @@ func (a *Tasks) Finish(ctx context.Context) {
 	if a.ArchiveOnFinish == nil || !a.ArchiveOnFinish() {
 		return
 	}
+	a.finishing.Lock()
+	defer a.finishing.Unlock()
 	cards, err := a.Board(ctx, data.Filter{})
 	if err != nil {
 		log.Printf("app: finish tasks: %v", err)
@@ -72,6 +75,22 @@ func (a *Tasks) Finish(ctx context.Context) {
 			a.FinishTask(ctx, c.ID)
 		}
 	}
+}
+
+// finishDelay is how long FinishSoon waits for changes to settle.
+const finishDelay = 2 * time.Second
+
+// FinishSoon runs Finish once the changes of tasks and threads settle, so a
+// burst of writes costs one pass over the board.
+func (a *Tasks) FinishSoon(ctx context.Context) {
+	if a.ArchiveOnFinish == nil || !a.ArchiveOnFinish() {
+		return
+	}
+	a.finishSoon.call(finishDelay, func() {
+		if ctx.Err() == nil {
+			a.Finish(ctx)
+		}
+	})
 }
 
 // Cards derives the board state of the given tasks.

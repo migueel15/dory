@@ -75,7 +75,7 @@ func (c *Client) Call(ctx context.Context, node, method, path string, in, out an
 		return unreachable(err)
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return fmt.Errorf("respuesta no válida: %w", err)
+		return fmt.Errorf("invalid response: %w", err)
 	}
 	return nil
 }

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/migueel15/dory/internal/apperr"
+	"github.com/migueel15/dory/internal/i18n"
 	"io"
 	"log"
 	"net/http"
@@ -192,7 +193,7 @@ func providerError(notes []string) error {
 	if len(notes) == 0 {
 		return nil
 	}
-	return errors.New("no se actualizaron: " + strings.Join(notes, "; "))
+	return errors.New(i18n.Textf("update.providers_failed", strings.Join(notes, "; ")))
 }
 
 // Apply updates this node and waits; the CLI uses it.
@@ -266,7 +267,7 @@ func (u *Updater) run(ctx context.Context, opts Options) error {
 		return providerError(notes)
 	}
 	if err = replaceCore(filepath.Join(dir, asset)); err != nil {
-		return fmt.Errorf("no se pudo sustituir el núcleo: %w", err)
+		return fmt.Errorf(i18n.Text("update.no_pudo_sustituir_nucleo"), err)
 	}
 	if len(notes) > 0 {
 		log.Printf("update: harnesses that failed: %s", strings.Join(notes, "; "))
@@ -296,11 +297,11 @@ func latest(ctx context.Context, channel string) (tag, sha string, err error) {
 	branch := "updates-" + channel + "-" + runtime.GOOS
 	if err = getJSON(ctx, api+"/contents/manifest.json?ref="+url.QueryEscape(branch), &manifestFile{target: &manifest}); err == nil {
 		if manifest.Tag == "" || manifest.SHA == "" {
-			return "", "", errors.New("manifiesto de actualización incompleto")
+			return "", "", errors.New(i18n.Text("update.manifiesto_actualizacion_incompleto"))
 		}
 		return manifest.Tag, manifest.SHA, nil
 	}
-	return "", "", fmt.Errorf("no se pudo consultar la publicación de %s: %w", runtime.GOOS, err)
+	return "", "", fmt.Errorf(i18n.Text("update.no_pudo_consultar_publicacion"), runtime.GOOS, err)
 }
 
 // GitHub's contents API returns the file encoded in base64.
@@ -338,13 +339,13 @@ func download(ctx context.Context, tag, dir string, patterns ...string) error {
 			}
 		}
 		if !found {
-			return fmt.Errorf("la release %s no tiene %s", tag, p)
+			return fmt.Errorf(i18n.Text("update.release_no_tiene"), tag, p)
 		}
 	}
 	return nil
 }
 
-var errNotFound = errors.New("no encontrado")
+var errNotFound = errors.New("not found")
 
 func get(ctx context.Context, target string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
