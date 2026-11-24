@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type NodeUpdate } from "../api/client";
 import { askConfirm } from "./confirm";
 import { HoverCard } from "./tooltip";
+import { qk } from "../api/queries/keys";
 
 // What a node has to update: its core and the harnesses with a newer release.
 function pendingOf(n: NodeUpdate) {
@@ -16,7 +17,7 @@ function pendingOf(n: NodeUpdate) {
 // faster while one of them is updating.
 export function useMeshUpdates(enabled = true) {
   return useQuery({
-    queryKey: ["mesh-update"], queryFn: () => api.meshUpdates(), enabled,
+    queryKey: qk.meshUpdate(), queryFn: () => api.meshUpdates(), enabled,
     refetchInterval: (q) => (q.state.data?.some((n) => n.status?.state === "updating") ? 3_000 : 5 * 60_000),
   });
 }

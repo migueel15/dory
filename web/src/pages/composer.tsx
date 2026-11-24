@@ -20,6 +20,8 @@ import { formatChord } from "../components/dictation-shortcut";
 import { autoMessage } from "../lib/auto-message";
 import { useComposerFiles } from "../components/composer-files";
 import { paintTokens, quoteBlock, quoteLabel, tokenRanges, type Token, type Tokens } from "../components/composer-tokens";
+import { qk } from "../api/queries/keys";
+import { useNodeProviders } from "../api/queries/hooks";
 
 // The composer of a thread, kept from Dory v1: attachments, @ mentions of
 // files, model, effort and permissions, and send, queue or stop.
@@ -277,8 +279,8 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
 }) {
   const qc = useQueryClient();
   const getShortcut = useShortcuts();
-  const key = ["thread", t.id];
-  const providers = useQuery({ queryKey: ["node-providers", t.node_id], queryFn: () => api.nodeProviders(t.node_id), staleTime: 60_000 });
+  const key = qk.thread(t.id);
+  const providers = useNodeProviders(t.node_id, { staleTime: 60_000 });
   const [text, setText] = useState("");
   useEffect(() => {
     const on = (e: Event) => { const d = (e as CustomEvent<{ threadId: string; text: string }>).detail; if (d.threadId === t.id) { setText(d.text); area.current?.focus(); } };
@@ -580,8 +582,8 @@ export const threadSource = (threadId: string, provider: string): SuggestSource 
 export function useSuggest(source: SuggestSource, text: string, area: React.RefObject<HTMLTextAreaElement | null>, setText: (t: string) => void, onToken: (insert: string, t: Token) => string = (insert) => insert) {
   const [word, setWord] = useState<{ start: number; sigil: "/" | "$" | "@"; q: string } | null>(null);
   const [index, setIndex] = useState(0);
-  const catalog = useQuery({ queryKey: ["commands", ...source.key], queryFn: source.commands, enabled: word?.sigil === "/" || word?.sigil === "$", staleTime: 60_000 });
-  const files = useQuery({ queryKey: ["files", ...source.key, word?.q], queryFn: () => source.files!(word!.q), enabled: word?.sigil === "@" && !!source.files, staleTime: 30_000 });
+  const catalog = useQuery({ queryKey: qk.commands(...source.key), queryFn: source.commands, enabled: word?.sigil === "/" || word?.sigil === "$", staleTime: 60_000 });
+  const files = useQuery({ queryKey: qk.files(...source.key, word?.q), queryFn: () => source.files!(word!.q), enabled: word?.sigil === "@" && !!source.files, staleTime: 30_000 });
   const q = word?.q.toLowerCase() ?? "";
   const hit = (e: { name: string; description: string }) => !q || e.name.toLowerCase().includes(q) || e.description.toLowerCase().includes(q);
   const entry = (e: { name: string; description: string; insert: string }, icon: React.ReactNode, kind: "command" | "skill"): Suggestion => ({ key: e.insert, label: e.insert, hint: e.description, insert: e.insert, icon, token: { kind, value: e.name, title: e.description } });
@@ -647,7 +649,7 @@ export function Queue({ t }: { t: ThreadView }) {
   const qc = useQueryClient();
   const act = useMutation({
     mutationFn: ({ run, action, text }: { run: string; action: "edit" | "cancel" | "steer"; text?: string }) => api.queue(t.id, run, action, text),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["thread", t.id] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.thread(t.id) }),
   });
   if (!t.queue.length) return null;
   return (

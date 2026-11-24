@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { noteThreadUpdate } from "./activity";
-import type { Message, Queued, ThreadView, TurnModel } from "./client";
+import type { ThreadView } from "./types.gen";
+import { qk } from "./queries/keys";
+import { needsRefetch, reduceDelta, reduceEvent, type ThreadEvent } from "./thread-reducer";
 
 // useVisible tracks whether this tab is on screen. Live streams only stay open
 // while it is: over plain HTTP a browser allows about six connections per host.
@@ -15,20 +17,24 @@ export function useVisible() {
   return visible;
 }
 
-// Query keys refreshed when an entity changes, locally or replicated from another node.
-const keys: Record<string, string[]> = {
-  project: ["projects", "board"],
-  repository: ["repositories", "board"],
-  task: ["tasks", "board", "card"],
-  task_dependency: ["board", "card", "dependencies"],
-  plan: ["plans", "board", "card"],
-  memory: ["memories"],
-  thread: ["threads", "board", "card", "thread"],
-  thread_state: ["threads", "board", "card", "thread"],
-  notice: ["notices"],
-  github: ["board", "card", "github", "github-detail"],
-  browser: ["browser"],
-};
+// queriesFor maps an entity change to the exact query keys it affects.
+// Plans and dependencies carry their own ids, not the task's, so they refresh
+// the family. A key is refreshed once per burst (see useLiveUpdates).
+export function queriesFor(entity: string, id: string): unknown[][] {
+  switch (entity) {
+    case "project": return [qk.projects(), qk.board()];
+    case "repository": return [qk.repositories(), qk.board()];
+    case "task": return [qk.card(id), qk.board()];
+    case "task_dependency": return [qk.board(), qk.card(), qk.dependencies()];
+    case "plan": return [qk.plans(), qk.board(), qk.card()];
+    case "memory": return [qk.memories()];
+    case "thread":
+    case "thread_state": return [qk.thread(id), qk.threads(), qk.board(), qk.card()];
+    case "notice": return [qk.notices()];
+    case "github": return [qk.board(), qk.card(), qk.github(), qk.githubDetail()];
+    default: return [];
+  }
+}
 
 // useGithubWatch keeps the node polling GitHub every few seconds while a view
 // with branches or pull requests is on screen.
@@ -65,7 +71,7 @@ export function useLiveUpdates(enabled: boolean) {
   const visible = useVisible();
   useEffect(() => {
     if (!enabled || !visible) return;
-    const pending = new Set<string>();
+    const pending = new Map<string, unknown[]>();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const source = new EventSource("/api/events", { withCredentials: true });
     let opened = false;
@@ -89,10 +95,10 @@ export function useLiveUpdates(enabled: boolean) {
       if (entity === "browser" && (data as { action?: string } | undefined)?.action === "open") {
         window.dispatchEvent(new CustomEvent("dory-browser-open", { detail: id }));
       }
-      for (const k of keys[entity] ?? []) pending.add(k);
+      for (const k of queriesFor(entity, id)) pending.set(JSON.stringify(k), k);
       clearTimeout(timer);
       timer = setTimeout(() => {
-        for (const k of pending) qc.invalidateQueries({ queryKey: [k] });
+        for (const k of pending.values()) qc.invalidateQueries({ queryKey: k });
         pending.clear();
       }, 250);
     });
@@ -104,60 +110,6 @@ export function useLiveUpdates(enabled: boolean) {
   useEffect(() => { if (visible && !seen) qc.invalidateQueries(); setSeen(visible); }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
-type ThreadEvent = { thread_id: string; seq?: number; type: string; item_id?: string; payload?: Record<string, unknown> };
-
-// applyEvent folds one event of the thread into its cached view. Items are
-// upserted by id, so replaying an event is harmless. Events that change more
-// than the view carries (requests, settings, rewinds) refetch it.
-function applyEvent(v: ThreadView, e: ThreadEvent): { view: ThreadView; refetch: boolean } {
-  const next = { ...v };
-  let refetch = false;
-  const p = (e.payload ?? {}) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-  switch (e.type) {
-    case "item.started":
-    case "item.completed":
-    case "marker": {
-      if (e.type === "marker" && p.kind === "rewind") { refetch = true; break; }
-      if (!p.id) break;
-      const msg = p as unknown as Message;
-      const i = v.messages.findIndex((m) => m.id === msg.id);
-      next.messages = i < 0 ? [...v.messages, msg] : v.messages.map((m, j) => (j === i ? msg : m));
-      break;
-    }
-    case "state.changed":
-      next.status = p.status as ThreadView["status"];
-      next.running = p.status === "working";
-      break;
-    case "queue.changed":
-      next.queue = (p.queue as Queued[] | undefined) ?? [];
-      break;
-    case "settings.reported":
-      if (p.last_turn_model) next.last_turn_model = p.last_turn_model as TurnModel;
-      else refetch = true;
-      break;
-    case "request.opened":
-    case "request.resolved":
-      refetch = true;
-      break;
-  }
-  if (e.seq && e.seq > next.seq) next.seq = e.seq;
-  return { view: next, refetch };
-}
-
-// applyDelta appends a fragment to the item being written, creating it when
-// the client has not seen it yet.
-function applyDelta(v: ThreadView, e: ThreadEvent): ThreadView {
-  const p = (e.payload ?? {}) as { id: string; role: string; run_id?: string; created_at?: string; text: string; replace?: boolean };
-  const i = v.messages.findIndex((m) => m.id === p.id);
-  if (i < 0) {
-    const msg = { id: p.id, thread_id: v.id, run_id: p.run_id, role: p.role, text: p.text, streaming: true, created_at: p.created_at ?? "" } as Message;
-    return { ...v, messages: [...v.messages, msg] };
-  }
-  const cur = v.messages[i];
-  const text = p.replace ? p.text : cur.text + p.text;
-  return { ...v, messages: v.messages.map((m, j) => (j === i ? { ...cur, text, streaming: true } : m)) };
-}
-
 // useThreadLive follows the stream of one thread: durable events (numbered)
 // patch the cached view, fragments extend the text being written. EventSource
 // reconnects with Last-Event-ID, so the server replays exactly what was missed.
@@ -166,7 +118,7 @@ export function useThreadLive(threadId: string | undefined) {
   const visible = useVisible();
   useEffect(() => {
     if (!threadId || !visible) return;
-    const key = ["thread", threadId];
+    const key = qk.thread(threadId);
     const source = new EventSource(`/api/threads/${encodeURIComponent(threadId)}/stream`, { withCredentials: true });
     let refetch: ReturnType<typeof setTimeout> | undefined;
     const later = () => {
@@ -186,9 +138,9 @@ export function useThreadLive(threadId: string | undefined) {
       qc.setQueryData<ThreadView>(key, (v) => {
         if (!v) { again = true; return v; }
         if (ev.seq && ev.seq <= v.seq) return v;
-        const r = applyEvent(v, ev);
-        again = r.refetch;
-        return r.view;
+        if (ev.seq && ev.seq <= v.seq) return v;
+        again = needsRefetch(ev);
+        return reduceEvent(v, ev);
       });
       if (again) later();
       // A fetch started before the turn ended may still answer running.
@@ -196,7 +148,7 @@ export function useThreadLive(threadId: string | undefined) {
     });
     source.addEventListener("delta", (e) => {
       const ev = JSON.parse((e as MessageEvent).data) as ThreadEvent;
-      qc.setQueryData<ThreadView>(key, (v) => (v ? applyDelta(v, ev) : v));
+      qc.setQueryData<ThreadView>(key, (v) => (v ? reduceDelta(v, ev) : v));
     });
     return () => { clearTimeout(refetch); source.close(); };
   }, [threadId, visible, qc]);

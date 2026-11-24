@@ -25,6 +25,8 @@ import { useThreadsFold } from "../lib/threads-fold";
 import { BrowserPanel } from "../components/browser-panel";
 import { DevicePanel, FloatingWindow } from "../components/device-panel";
 import { kindOf, SidePanel, SidePanelToggle, useSidePanel, type SidePanelState } from "../components/side-panel";
+import { qk } from "../api/queries/keys";
+import { usePlan, useProjects, useNodeProviders, useThreadView } from "../api/queries/hooks";
 
 // ThreadView is a whole thread page: header, chat and, on demand, its changes
 // and the plan of its task.
@@ -84,7 +86,7 @@ export function ThreadView() {
 // taskId is undefined while the thread loads, so opening a thread is not taken
 // for linking a task to it: the panel then stays as the user left it.
 function useOpenPlanOnAgentEdit(taskId: string | null | undefined, panel: SidePanelState) {
-  const plan = useQuery({ queryKey: ["plans", taskId, "doc"], queryFn: () => api.plan(taskId!), enabled: !!taskId });
+  const plan = usePlan(taskId, { enabled: !!taskId });
   const seen = useRef<number | undefined>(undefined);
   const previousTask = useRef(taskId);
   const newlyLinked = useRef(false);
@@ -101,7 +103,7 @@ function useOpenPlanOnAgentEdit(taskId: string | null | undefined, panel: SidePa
 
 function useThread(threadId?: string) {
   useThreadLive(threadId);
-  return useQuery({ queryKey: ["thread", threadId], queryFn: () => api.thread(threadId!), enabled: !!threadId, staleTime: 5_000 });
+  return useThreadView(threadId, { staleTime: 5_000 });
 }
 
 // TaskCard opens the thread's task as a side card in the place of the details
@@ -135,12 +137,12 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
   const act = useMutation({
     mutationFn: (body: Parameters<typeof api.threadAction>[1]) => api.threadAction(threadId, body),
     onSuccess: (_, body) => {
-      qc.invalidateQueries({ queryKey: ["thread", threadId] });
-      qc.invalidateQueries({ queryKey: ["threads"] });
+      qc.invalidateQueries({ queryKey: qk.thread(threadId) });
+      qc.invalidateQueries({ queryKey: qk.threads() });
     },
   });
   const menu = useThreadMenu(t);
-  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
+  const projects = useProjects();
   const projectName = t?.project_id ? projects.data?.find((p) => p.id === t.project_id)?.name : undefined;
   // Opening a thread marks it as read.
   useEffect(() => { if (t?.unread && t.status !== "working") act.mutate({ action: "read" }); }, [t?.id, t?.status, t?.unread, t?.last_activity_at]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -255,7 +257,7 @@ function Changes({ threadId, messages }: { threadId: string; messages?: Message[
   const comment = useCallback(async (s: Suggestion) => {
     addDraftQuote(threadId, { id: uuid(), text: s.snippet, reply: s.question, code: { path: s.path, start: s.start, end: s.end } });
   }, [threadId]);
-  const diff = useQuery({ queryKey: ["thread-diff", threadId, base], queryFn: () => api.threadDiff(threadId, base), refetchInterval: 5000 });
+  const diff = useQuery({ queryKey: qk.threadDiff(threadId, base), queryFn: () => api.threadDiff(threadId, base), refetchInterval: 5000 });
   return (
     <>
       {diff.data?.branch && <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-1.5 text-xs text-slate-500 dark:border-border">
@@ -312,12 +314,12 @@ export function ExternalView() {
   const { node, provider, id } = useParams({ strict: false }) as { node: string; provider: string; id: string };
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const providers = useQuery({ queryKey: ["node-providers", node], queryFn: () => api.nodeProviders(node) });
+  const providers = useNodeProviders(node);
   const providerName = providers.data?.find((p) => p.id === provider)?.name ?? provider;
-  const view = useQuery({ queryKey: ["external", node, provider, id], queryFn: () => api.externalSession(node, provider, id) });
+  const view = useQuery({ queryKey: qk.external(node, provider, id), queryFn: () => api.externalSession(node, provider, id) });
   const adopt = useMutation({
     mutationFn: () => api.adoptSession(node, provider, id),
-    onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["threads"] }); qc.invalidateQueries({ queryKey: ["external"] }); navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } }); },
+    onSuccess: (r) => { qc.invalidateQueries({ queryKey: qk.threads() }); qc.invalidateQueries({ queryKey: qk.external() }); navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } }); },
   });
   const s = view.data?.session;
   return (

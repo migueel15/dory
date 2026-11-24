@@ -9,6 +9,8 @@ import { expectedRemaining, paceTitle, windowLabel, windowMinutes, windowReset }
 import { ProviderIcon } from "./launch-picker";
 import { HoverCard } from "./tooltip";
 import { Arrow } from "./ui";
+import { qk } from "../api/queries/keys";
+import { useNode } from "../api/queries/hooks";
 
 const pinKey = "dory-usage-provider";
 const readPin = () => { try { return localStorage.getItem(pinKey) ?? ""; } catch { return ""; } };
@@ -54,7 +56,7 @@ export function UsageQuick() {
   const [pos, setPos] = useState<CSSProperties>({});
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const node = useQuery({ queryKey: ["node"], queryFn: api.node, refetchInterval: open ? 30_000 : 5 * 60_000 });
+  const node = useNode({ refetchInterval: open ? 30_000 : 5 * 60_000 });
   const names = new Map((node.data?.providers ?? []).map((p) => [p.id, p.name]));
   const list = Object.entries(node.data?.usage ?? {}).filter(([, ws]) => ws.length > 0).sort(([a], [b]) => a.localeCompare(b));
   const [pin, setPin] = useState(readPin);

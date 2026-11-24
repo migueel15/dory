@@ -6,6 +6,7 @@ import {
 } from "@phosphor-icons/react";
 import { api } from "../api/client";
 import { ErrorText } from "./ui";
+import { qk } from "../api/queries/keys";
 
 // The icons an environment can take; the id is what the node stores.
 export const ENV_ICONS: Record<string, Icon> = {
@@ -37,7 +38,7 @@ export function EnvIconPicker({ node, icon, os, name }: { node: string; icon?: s
     mutationFn: (id: string) => api.setNodeIcon(node, id),
     onMutate: (id) => { setChosen(id); setOpen(false); },
     onError: () => { setChosen(undefined); setOpen(true); },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["node"] }); qc.invalidateQueries({ queryKey: ["mesh"] }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: qk.node() }); qc.invalidateQueries({ queryKey: qk.mesh() }); },
   });
   const shown = chosen ?? icon;
   const Current = envIcon(shown, os);

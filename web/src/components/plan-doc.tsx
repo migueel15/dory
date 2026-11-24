@@ -11,6 +11,8 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { api, ApiError, type Plan } from "../api/client";
 import { merge3 } from "../lib/merge3";
 import { Button, ErrorText, prose } from "./ui";
+import { qk } from "../api/queries/keys";
+import { usePlan } from "../api/queries/hooks";
 
 // PlanDoc shows the plan of a task: one Markdown document that the user and
 // the agents edit. It is edited in place already rendered (headings, lists and
@@ -21,7 +23,7 @@ import { Button, ErrorText, prose } from "./ui";
 // and "Aceptar plan" sits after the text, so it is read before accepting.
 export function PlanDoc({ taskId, showStatus = true, reader = false, onAccepted }: { taskId: string; showStatus?: boolean; reader?: boolean; onAccepted?: () => void }) {
   const qc = useQueryClient();
-  const plan = useQuery({ queryKey: ["plans", taskId, "doc"], queryFn: () => api.plan(taskId) });
+  const plan = usePlan(taskId);
   const p = plan.data;
   // Following the agent is a choice kept in this browser; on by default.
   const [following, setFollowing] = useState(() => { try { return localStorage.getItem("dory.plan-follow") !== "0"; } catch { return true; } });
@@ -29,7 +31,7 @@ export function PlanDoc({ taskId, showStatus = true, reader = false, onAccepted 
   const doc = usePlanEditor(taskId, p, following && !reader);
   const accept = useMutation({
     mutationFn: () => api.acceptPlan(taskId),
-    onSuccess: () => { onAccepted?.(); qc.invalidateQueries({ queryKey: ["plans", taskId] }); qc.invalidateQueries({ queryKey: ["card", taskId] }); qc.invalidateQueries({ queryKey: ["board"] }); },
+    onSuccess: () => { onAccepted?.(); qc.invalidateQueries({ queryKey: qk.plans(taskId) }); qc.invalidateQueries({ queryKey: qk.card(taskId) }); qc.invalidateQueries({ queryKey: qk.board() }); },
   });
 
   if (plan.error) return <div className="p-4"><ErrorText error={plan.error} /></div>;
@@ -106,7 +108,7 @@ function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) 
       base.current = next.revision;
       stored.current = next.body_md;
       qc.setQueryData(["plans", taskId, "doc"], next);
-      qc.invalidateQueries({ queryKey: ["card", taskId] });
+      qc.invalidateQueries({ queryKey: qk.card(taskId) });
       setError(undefined);
       // Typing during the save leaves more to save.
       if (edits.current !== at) { setState("dirty"); stateRef.current = "dirty"; timer.current = setTimeout(() => save(ed), 700); }
@@ -117,7 +119,7 @@ function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) 
         setState("dirty");
         stateRef.current = "dirty";
         try {
-          const fresh = await qc.fetchQuery({ queryKey: ["plans", taskId, "doc"], queryFn: () => api.plan(taskId), staleTime: 0 });
+          const fresh = await qc.fetchQuery({ queryKey: qk.planDoc(taskId), queryFn: () => api.plan(taskId), staleTime: 0 });
           latest.current = fresh;
           rebase(ed, fresh);
         } catch (err) { setError(err); }

@@ -14,6 +14,7 @@ import { ResizeHandle, ThreadChat } from "./thread";
 import { FileRefContext, type FileRef } from "../components/refs";
 import { useLaunchForm } from "../components/launch-picker";
 import { GithubMark, Icon, IconButton, Menu, MenuItem, RefContext, RefMd, Tip, UserPicker, icons, useArm, MentionArea } from "../components/github-ui";
+import { qk } from "../api/queries/keys";
 
 const labels: Record<string, string> = {
   IssueComment: "comentó", PullRequestReview: "revisó", PullRequestCommit: "hizo un commit", ClosedEvent: "cerró", ReopenedEvent: "reabrió", MergedEvent: "mergeó", LabeledEvent: "añadió la etiqueta", AssignedEvent: "asignó", ReadyForReviewEvent: "marcó como lista", ConvertToDraftEvent: "pasó a draft", ReviewRequestedEvent: "pidió revisión", CrossReferencedEvent: "referenció desde",
@@ -339,7 +340,7 @@ export function GithubView() {
   const onAsked = useCallback(() => setChat(true), []);
   const [defining, setDefining] = useState(false);
   useGithubWatch();
-  const key = ["github-detail", full, kind, n];
+  const key = qk.githubDetail(full, kind, n);
   const detail = useQuery({ queryKey: key, queryFn: () => api.githubDetail(full, kind, n), refetchInterval: 60_000 });
   // The floating button hides while the composer area is on screen.
   const bottom = useRef<HTMLDivElement>(null);
@@ -359,11 +360,11 @@ export function GithubView() {
   const open = (d?.pull ?? d?.issue)?.state === "OPEN";
   // A pull request's review thread shows as a chat on the right, 60/40 by
   // default and resizable; asking from the diff always opens it.
-  const agent = useQuery({ queryKey: ["pull-agent", full, n], queryFn: () => api.pullAgent(full, n), enabled: kind === "pulls" });
+  const agent = useQuery({ queryKey: qk.pullAgent(full, n), queryFn: () => api.pullAgent(full, n), enabled: kind === "pulls" });
   const [launchReview, setLaunchReview] = useState(false);
   const createReview = useMutation({
     mutationFn: (launch: Parameters<typeof api.createPullReview>[2]) => api.createPullReview(full, n, launch),
-    onSuccess: () => { setLaunchReview(false); setChat(true); qc.invalidateQueries({ queryKey: ["pull-agent", full, n] }); },
+    onSuccess: () => { setLaunchReview(false); setChat(true); qc.invalidateQueries({ queryKey: qk.pullAgent(full, n) }); },
   });
   const [chat, setChat] = useState(true);
   const side = useRef<HTMLElement>(null);
@@ -547,7 +548,7 @@ function useActionQueue(key: unknown[], onDone: (a: GithubAction) => void) {
       // Reload only once the queue is empty, so a later optimistic change is not overwritten.
       if (--inflight.current === 0) {
         qc.invalidateQueries({ queryKey: key });
-        qc.invalidateQueries({ queryKey: ["github"] });
+        qc.invalidateQueries({ queryKey: qk.github() });
       } else qc.cancelQueries({ queryKey: key });
     });
     tail.current = run;

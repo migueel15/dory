@@ -19,6 +19,8 @@ import { IdeaModal } from "../components/capture";
 import { TaskQuickMenu, type QuickLaunch } from "../components/task-quick-menu";
 import { githubRoute } from "../components/refs";
 import { planMessage } from "../lib/auto-message";
+import { qk } from "../api/queries/keys";
+import { useBoard, useCard, useMesh, useNode, usePlan, useRepositories } from "../api/queries/hooks";
 
 // Fixed meaning of each state color (requirement RF-48).
 const TONE = {
@@ -107,7 +109,7 @@ export function Tasks() {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { task?: string; launch?: QuickLaunch };
   useGithubWatch();
-  const board = useQuery({ queryKey: ["board", project], queryFn: () => api.board(project || undefined), // Faster while a pull request has checks running, so CI progress shows up soon.
+  const board = useQuery({ queryKey: qk.board(project), queryFn: () => api.board(project || undefined), // Faster while a pull request has checks running, so CI progress shows up soon.
     refetchInterval: (q) => (q.state.data?.cards.some((c) => c.pull && ((c.pull.ci_pending ?? 0) > 0 || c.pull.ci === "PENDING")) ? 15_000 : 30_000) });
   const [adding, setAdding] = useState(false);
   const [drag, setDrag] = useState<string>();
@@ -119,7 +121,7 @@ export function Tasks() {
   const footer = useRef<HTMLDivElement>(null);
   const move = useMutation({
     mutationFn: ({ id, stage }: { id: string; stage: Stage }) => api.tasks.update(id, { stage }),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["board"] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.board() }),
   });
   // Newest activity first, in every column.
   const cards = [...(board.data?.cards ?? [])].sort((x, y) => lastActivity(y).localeCompare(lastActivity(x)));
@@ -242,7 +244,7 @@ function MergeButton({ c, pull }: { c: Card; pull: Pull }) {
   const qc = useQueryClient();
   const merge = useMutation({
     mutationFn: () => api.githubAct(pull.repo, "pulls", pull.number, { type: "merge", method: "SQUASH" }),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["board"] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.board() }),
   });
   const [armed, click] = useArm(() => merge.mutate());
   return (
@@ -302,8 +304,8 @@ function Reviewers({ pull }: { pull: Pull }) {
 
 // ThreadEnv draws the environment a thread runs in, which may be a peer of this node.
 function ThreadEnv({ nodeId, className }: { nodeId: string; className: string }) {
-  const node = useQuery({ queryKey: ["node"], queryFn: api.node, staleTime: 60_000 });
-  const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh, staleTime: 60_000 });
+  const node = useNode({ staleTime: 60_000 });
+  const mesh = useMesh({ staleTime: 60_000 });
   const self = node.data?.node;
   const peer = mesh.data?.peers.find((p) => p.id === nodeId);
   const env = self && nodeId === self.id ? self : peer?.info.node;
@@ -415,12 +417,12 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
   const qc = useQueryClient();
   const dictating = useDictationInProgress();
   const navigate = useNavigate();
-  const card = useQuery({ queryKey: ["card", id], queryFn: () => api.card(id) });
-  const plans = useQuery({ queryKey: ["plans", id], queryFn: () => api.plans(id) });
-  const planDoc = useQuery({ queryKey: ["plans", id, "doc"], queryFn: () => api.plan(id) });
-  const deps = useQuery({ queryKey: ["dependencies", id], queryFn: () => api.dependencies(id) });
-  const board = useQuery({ queryKey: ["board", ""], queryFn: () => api.board() });
-  const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list() });
+  const card = useCard(id);
+  const plans = useQuery({ queryKey: qk.plans(id), queryFn: () => api.plans(id) });
+  const planDoc = usePlan(id);
+  const deps = useQuery({ queryKey: qk.dependencies(id), queryFn: () => api.dependencies(id) });
+  const board = useBoard();
+  const repos = useRepositories();
   const [draft, setDraft] = useState<{ title: string; description: string; issue: string; pr: string; repo: string }>();
   const planSection = useRef<HTMLDetailsElement>(null);
   const launchPopoverId = useId();
@@ -471,7 +473,7 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
   const [mode, setMode] = useState<"define" | "implement">("define");
   const c = card.data;
   useEffect(() => { if (c && !draft) setDraft({ title: c.title, description: c.description, issue: c.issue_number?.toString() ?? "", pr: c.pr_number?.toString() ?? "", repo: c.repository_id ?? "" }); }, [c]); // eslint-disable-line react-hooks/exhaustive-deps
-  const refresh = () => { qc.invalidateQueries({ queryKey: ["card", id] }); qc.invalidateQueries({ queryKey: ["board"] }); };
+  const refresh = () => { qc.invalidateQueries({ queryKey: qk.card(id) }); qc.invalidateQueries({ queryKey: qk.board() }); };
   const save = useMutation({
     mutationFn: () => api.tasks.update(id, { title: draft!.title, description: draft!.description, issue_number: draft!.issue ? Number(draft!.issue) : null, pr_number: draft!.pr ? Number(draft!.pr) : null, repository_id: draft!.repo || null }),
     onSuccess: () => { refresh(); setEditing(false); },
@@ -479,7 +481,7 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
   const stage = useMutation({ mutationFn: (s: Stage) => api.tasks.update(id, { stage: s }), onSuccess: refresh });
   const dep = useMutation({
     mutationFn: ({ other, add }: { other: string; add: boolean }) => (add ? api.addDependency(id, other) : api.removeDependency(id, other)).then(() => undefined),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["dependencies", id] }); refresh(); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: qk.dependencies(id) }); refresh(); },
   });
   const archive = useMutation({ mutationFn: () => api.tasks.archive(id), onSuccess: () => { refresh(); onClose(); } });
   const form = useLaunchForm({ section: "task", project: c?.project_id, borderless: true });
@@ -488,7 +490,7 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
     if (go) return navigate({ to: "/threads/$threadId", params: { threadId: r.thread_id } });
     launchPopover.current?.hidePopover();
     refresh();
-    qc.invalidateQueries({ queryKey: ["threads"] });
+    qc.invalidateQueries({ queryKey: qk.threads() });
   };
   const launch = useMutation({
     mutationFn: (_go: boolean) => { form.remember(); return api.launch(id, form.value); },

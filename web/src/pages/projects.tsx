@@ -8,6 +8,8 @@ import { api, repoName, type Project } from "../api/client";
 import { Arrow, Button, Card, ErrorText, Input, Label, Modal, PageHeader, pill } from "../components/ui";
 import { setProject } from "../project";
 import { askConfirm } from "../components/confirm";
+import { qk } from "../api/queries/keys";
+import { useMesh, useNode, useProjects, useRepositories, useRepositoryLocations } from "../api/queries/hooks";
 
 const slugify = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -16,9 +18,9 @@ const slugify = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300
 function NewProject({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const dictating = useDictationInProgress();
-  const node = useQuery({ queryKey: ["node"], queryFn: api.node });
-  const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh });
-  const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list() });
+  const node = useNode();
+  const mesh = useMesh();
+  const repos = useRepositories();
   const [env, setEnv] = useState<{ id: string; name: string }>();
   const [dir, setDir] = useState("");
   const [hidden, setHidden] = useState(false);
@@ -27,8 +29,8 @@ function NewProject({ onClose }: { onClose: () => void }) {
     ...(node.data ? [{ id: "local", name: node.data.node.name, online: true }] : []),
     ...(mesh.data?.peers ?? []).filter((p) => !p.revoked).map((p) => ({ id: p.id, name: p.name, online: p.connected })),
   ];
-  const folders = useQuery({ queryKey: ["folders", env?.id, dir, hidden], queryFn: () => api.folders(env!.id, dir, hidden), enabled: !!env && !picked });
-  const found = useQuery({ queryKey: ["checkout", env?.id, picked], queryFn: () => api.checkout(env!.id, picked!), enabled: !!env && !!picked });
+  const folders = useQuery({ queryKey: qk.folders(env?.id, dir, hidden), queryFn: () => api.folders(env!.id, dir, hidden), enabled: !!env && !picked });
+  const found = useQuery({ queryKey: qk.checkout(env?.id, picked), queryFn: () => api.checkout(env!.id, picked!), enabled: !!env && !!picked });
   const [form, setForm] = useState<{ name: string; slug: string; description: string; remote: string; branch: string }>();
   const c = found.data;
   const existing = c?.remote ? repos.data?.find((r) => repoName(r.remote_url).toLowerCase() === repoName(c.remote).toLowerCase()) : undefined;
@@ -42,7 +44,7 @@ function NewProject({ onClose }: { onClose: () => void }) {
       await api.setNodeRepositoryPath(env!.id, r.id, c!.path);
       return r.project_id;
     },
-    onSuccess: (id) => { qc.invalidateQueries({ queryKey: ["projects"] }); qc.invalidateQueries({ queryKey: ["repositories"] }); qc.invalidateQueries({ queryKey: ["repository-locations"] }); setProject(id); onClose(); },
+    onSuccess: (id) => { qc.invalidateQueries({ queryKey: qk.projects() }); qc.invalidateQueries({ queryKey: qk.repositories() }); qc.invalidateQueries({ queryKey: qk.repositoryLocations() }); setProject(id); onClose(); },
   });
   const row = "flex w-full min-h-11 sm:min-h-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised";
   return (
@@ -111,17 +113,17 @@ function NewProject({ onClose }: { onClose: () => void }) {
 
 // useEnvironments names, by repository id, the environments that keep it and where.
 function useEnvironments() {
-  const node = useQuery({ queryKey: ["node"], queryFn: api.node });
-  const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh });
-  const locations = useQuery({ queryKey: ["repository-locations"], queryFn: api.repositoryLocations });
+  const node = useNode();
+  const mesh = useMesh();
+  const locations = useRepositoryLocations();
   const name = (id: string) => id === node.data?.node.id ? node.data.node.name : mesh.data?.peers.find((p) => p.id === id)?.name ?? id.slice(0, 8);
   return (repoId: string) => (locations.data ?? []).filter((l) => l.repository_id === repoId).map((l) => ({ node: l.node_id, name: name(l.node_id), path: l.path }));
 }
 
 // Projects lists the projects and creates new ones.
 export function Projects() {
-  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
-  const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list() });
+  const projects = useProjects();
+  const repos = useRepositories();
   const envs = useEnvironments();
   const [adding, setAdding] = useState(false);
   return (
@@ -162,7 +164,7 @@ function ProjectForm({ project, onClose }: { project?: Project; onClose: () => v
       }
       return p;
     },
-    onSuccess: (p) => { qc.invalidateQueries({ queryKey: ["projects"] }); qc.invalidateQueries({ queryKey: ["repositories"] }); setProject(p.id); onClose(); },
+    onSuccess: (p) => { qc.invalidateQueries({ queryKey: qk.projects() }); qc.invalidateQueries({ queryKey: qk.repositories() }); setProject(p.id); onClose(); },
   });
   return (
     <Modal title={project ? "Editar proyecto" : "Nuevo proyecto"} onClose={onClose}>
@@ -186,17 +188,17 @@ function ProjectForm({ project, onClose }: { project?: Project; onClose: () => v
 export function ProjectDetail() {
   const { id } = useParams({ strict: false }) as { id: string };
   const qc = useQueryClient();
-  const project = useQuery({ queryKey: ["projects", id], queryFn: () => api.projects.get(id) });
-  const repos = useQuery({ queryKey: ["repositories", id], queryFn: () => api.repositories.list({ project_id: id }) });
-  const paths = useQuery({ queryKey: ["repositories", "paths"], queryFn: api.repositoryPaths });
+  const project = useQuery({ queryKey: qk.project(id), queryFn: () => api.projects.get(id) });
+  const repos = useQuery({ queryKey: qk.repositoriesOf(id), queryFn: () => api.repositories.list({ project_id: id }) });
+  const paths = useQuery({ queryKey: qk.repositoryPaths(), queryFn: api.repositoryPaths });
   const envs = useEnvironments();
   const [editing, setEditing] = useState(false);
   const [remote, setRemote] = useState("");
   const add = useMutation({
     mutationFn: () => api.repositories.create({ project_id: id, remote_url: remote.trim() }),
-    onSuccess: () => { setRemote(""); qc.invalidateQueries({ queryKey: ["repositories"] }); },
+    onSuccess: () => { setRemote(""); qc.invalidateQueries({ queryKey: qk.repositories() }); },
   });
-  const archive = useMutation({ mutationFn: () => api.projects.archive(id), onSuccess: () => { qc.invalidateQueries({ queryKey: ["projects"] }); history.back(); } });
+  const archive = useMutation({ mutationFn: () => api.projects.archive(id), onSuccess: () => { qc.invalidateQueries({ queryKey: qk.projects() }); history.back(); } });
   const p = project.data;
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -230,7 +232,7 @@ export function ProjectDetail() {
 function RepoRow({ id, remote, branch, path, envs }: { id: string; remote: string; branch: string; path: string; envs: { node: string; name: string; path: string }[] }) {
   const qc = useQueryClient();
   const [value, setValue] = useState(path);
-  const save = useMutation({ mutationFn: () => api.setRepositoryPath(id, value.trim()), onSuccess: () => { qc.invalidateQueries({ queryKey: ["repositories", "paths"] }); qc.invalidateQueries({ queryKey: ["repository-locations"] }); } });
+  const save = useMutation({ mutationFn: () => api.setRepositoryPath(id, value.trim()), onSuccess: () => { qc.invalidateQueries({ queryKey: qk.repositoryPaths() }); qc.invalidateQueries({ queryKey: qk.repositoryLocations() }); } });
   return (
     <div className="space-y-1 border-t border-slate-200 py-2 first:border-t-0 dark:border-border">
       <p className="flex items-center gap-2 text-sm"><GithubLogo className="size-4" /><span className="font-mono">{repoName(remote)}</span><span className="text-xs text-slate-500">· {branch}</span></p>

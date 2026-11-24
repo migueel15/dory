@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { api, type Thread } from "../api/client";
 import { ContextMenu } from "./context-menu";
 import { askConfirm } from "./confirm";
+import { qk } from "../api/queries/keys";
 
 // useThreadMenu opens, on right click, the actions of a thread: pin or unpin
 // and archive. The thread header and the side list share it.
@@ -15,8 +16,8 @@ export function useThreadMenu(t: Thread | undefined) {
   const act = useMutation({
     mutationFn: (action: "pin" | "unpin" | "archive") => api.threadAction(t!.id, { action }),
     onSuccess: (_, action) => {
-      qc.invalidateQueries({ queryKey: ["thread", t!.id] });
-      qc.invalidateQueries({ queryKey: ["threads"] });
+      qc.invalidateQueries({ queryKey: qk.thread(t!.id) });
+      qc.invalidateQueries({ queryKey: qk.threads() });
       if (action === "archive" && threadId === t!.id) navigate({ to: "/threads" });
     },
   });

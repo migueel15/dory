@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Warning } from "@phosphor-icons/react";
 import { api, type InputSettings } from "../api/client";
 import { dictationShortcutEvent, dictationShortcutKey } from "./dictation-shortcut";
+import { qk } from "../api/queries/keys";
+import { useNodeSettings } from "../api/queries/hooks";
 
 // Shortcuts and the dictation model live in the settings of each node
 // (NodeSettings.input). The running app is a client of the node that serves it
@@ -49,7 +51,7 @@ let migrating = false;
 // chosen, once; the other nodes keep the defaults.
 export function useInputSettingsSync() {
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["node-settings", "local"], queryFn: () => api.nodeSettings("local"), staleTime: 30_000, retry: false });
+  const { data } = useNodeSettings("local", { staleTime: 30_000, retry: false });
   useEffect(() => {
     if (!data) return;
     if (data.input) { applyLocal(data.input); return; }

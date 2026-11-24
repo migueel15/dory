@@ -4,6 +4,8 @@ import { api, type Job, type Provider } from "../api/client";
 import { ProviderIcon, useNodes } from "./launch-picker";
 import { ALL_NODES, useNodeDefault, type SectionProps } from "./settings-node";
 import { Button, ErrorText, Input, Select } from "./ui";
+import { qk } from "../api/queries/keys";
+import { useNodeProviders } from "../api/queries/hooks";
 
 // Providers are unique per node: they need a login there. With "all" this
 // shows what every node has and asks to pick one to manage.
@@ -16,7 +18,7 @@ export function ProvidersSettings({ node }: SectionProps) {
 
 function ProvidersOverview({ onPick }: { onPick: (node: string) => void }) {
   const nodes = useNodes();
-  const lists = useQueries({ queries: nodes.map((n) => ({ queryKey: ["node-providers", n.value], queryFn: () => api.nodeProviders(n.value) })) });
+  const lists = useQueries({ queries: nodes.map((n) => ({ queryKey: qk.providers(n.value), queryFn: () => api.nodeProviders(n.value) })) });
   return (
     <div className="space-y-5">
       <h2 className="text-lg font-semibold">Proveedores</h2>
@@ -42,12 +44,12 @@ function ProvidersOverview({ onPick }: { onPick: (node: string) => void }) {
 function NodeProviders({ node, onBack }: { node: string; onBack?: () => void }) {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string>();
-  const list = useQuery({ queryKey: ["node-providers", node], queryFn: () => api.nodeProviders(node) });
+  const list = useNodeProviders(node);
   const toggle = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => api.setProviderEnabled(node, id, enabled),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["node-providers"] });
-      qc.invalidateQueries({ queryKey: ["node"] });
+      qc.invalidateQueries({ queryKey: qk.providers() });
+      qc.invalidateQueries({ queryKey: qk.node() });
     },
   });
   const providers = list.data ?? [];
@@ -121,13 +123,13 @@ function ProviderDetail({ node, provider: p }: { node: string; provider: Provide
     onSuccess: (j) => setJob(j.id),
   });
   const state = useQuery({
-    queryKey: ["job", job], queryFn: () => api.job(node, job!), enabled: !!job,
+    queryKey: qk.job(job), queryFn: () => api.job(node, job!), enabled: !!job,
     refetchInterval: (q) => (q.state.data?.done ? false : 1000),
   });
   useEffect(() => {
     if (state.data?.done) {
-      qc.invalidateQueries({ queryKey: ["node"] });
-      qc.invalidateQueries({ queryKey: ["node-providers"] });
+      qc.invalidateQueries({ queryKey: qk.node() });
+      qc.invalidateQueries({ queryKey: qk.providers() });
     }
   }, [state.data?.done]); // eslint-disable-line react-hooks/exhaustive-deps
   const admin = p.installed && p.capabilities.includes("login");
@@ -231,8 +233,8 @@ function AddAccount({ node, providers, onAdded }: { node: string; providers: Pro
   const add = useMutation({
     mutationFn: () => api.addAccount(node, { driver: drv, name, home }),
     onSuccess: (a) => {
-      qc.invalidateQueries({ queryKey: ["node-providers"] });
-      qc.invalidateQueries({ queryKey: ["node"] });
+      qc.invalidateQueries({ queryKey: qk.providers() });
+      qc.invalidateQueries({ queryKey: qk.node() });
       setOpen(false); setName(""); setHome("");
       onAdded(a.id);
     },
@@ -265,7 +267,7 @@ function AccountForm({ node, provider: p }: { node: string; provider: Provider }
   const [name, setName] = useState(p.name === p.driver_name && !extra ? "" : p.name);
   const [home, setHome] = useState(p.home ?? "");
   const harnessHome = p.default_home ?? "";
-  const done = () => { qc.invalidateQueries({ queryKey: ["node-providers"] }); qc.invalidateQueries({ queryKey: ["node"] }); };
+  const done = () => { qc.invalidateQueries({ queryKey: qk.providers() }); qc.invalidateQueries({ queryKey: qk.node() }); };
   const save = useMutation({ mutationFn: () => api.updateAccount(node, p.id, { name, home }), onSuccess: done });
   const remove = useMutation({ mutationFn: () => api.removeAccount(node, p.id), onSuccess: done });
   return (
