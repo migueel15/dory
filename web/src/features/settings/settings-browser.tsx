@@ -23,12 +23,10 @@ export function BrowserSettings({ node }: SectionProps) {
     <div className="space-y-6">
       <section aria-labelledby="browser-title" className="space-y-4">
         <h2 id="browser-title" className="text-lg font-semibold">Navegador</h2>
-        <SettingRow settings={settings} field="agents_use_browser" title="Permitir que los agentes usen el navegador integrado"
-          help="Los agentes de este nodo pueden abrir el panel del navegador, navegar, leer páginas, pulsar elementos y hacer capturas con las herramientas del navegador. Desmarcado, no tienen esas herramientas. Activado por defecto." />
+        <SettingRow settings={settings} field="agents_use_browser" title="Permitir que los agentes usen el navegador" />
         <SettingRow settings={settings} field="browser_search_engine" title="Buscador"
-          help="Lo que escribas en la barra de direcciones y no sea una dirección se busca con él."
           control={(value, set, disabled) => <Select className="w-48 shrink-0" value={value || "google"} onChange={set} options={ENGINES} disabled={disabled} />} />
-        <SettingRow settings={settings} field="browser_tunnel_disabled" title="Bloquear el túnel del navegador" help="La app de escritorio no podrá abrir los puertos de localhost de este nodo desde el navegador de un hilo remoto. Los puertos de Dory nunca son accesibles." />
+        <SettingRow settings={settings} field="browser_tunnel_disabled" title="Bloquear el túnel del navegador" help="Impide abrir los puertos de localhost de este nodo desde un hilo remoto." />
         <ErrorText error={settings.error} />
       </section>
       <CookieSettings />
@@ -70,14 +68,13 @@ function CookieSettings() {
     <section aria-labelledby="cookies-title" className="space-y-6">
       <div>
         <h2 id="cookies-title" className="text-lg font-semibold">Sesiones de este equipo</h2>
-        <p className="text-xs text-slate-500 dark:text-muted">Solo la app de escritorio y solo para este equipo, en todos los nodos. Las cookies van a las pestañas que ves en la app; el navegador de los nodos, que usan los agentes en segundo plano, nunca las recibe.</p>
+        <p className="text-xs text-slate-500 dark:text-muted">Los agentes en segundo plano no las reciben.</p>
       </div>
       <div className="max-w-sm space-y-2">
         <span className="block text-sm font-medium">Importar sesiones desde</span>
         {list && !options.length
-          ? <p className="text-sm text-slate-500 dark:text-muted">No se ha encontrado ningún navegador compatible (Zen, Firefox, LibreWolf, Floorp, Chrome, Chromium o Brave).</p>
+          ? <p className="text-sm text-slate-500 dark:text-muted">No hay ningún navegador compatible.</p>
           : <Select value={settings.source} onChange={(source) => save({ ...settings, source })} options={options} placeholder="Cargando…" />}
-        <p className="text-xs text-slate-500 dark:text-muted">Copia las cookies de ese navegador al navegador lateral, para entrar ya con tu sesión en sitios que no dejan iniciarla en él, como Google.</p>
       </div>
       <div className="space-y-2">
         <Button onClick={importNow} disabled={busy || !settings.source}>{busy ? "Importando…" : "Importar ahora"}</Button>
@@ -87,7 +84,6 @@ function CookieSettings() {
         <input type="checkbox" className="mt-1" checked={settings.auto} disabled={!settings.source} onChange={(e) => save({ ...settings, auto: e.target.checked })} />
         <span>
           <span className="block font-medium">Importar al iniciar Dory</span>
-          <span className="block text-xs text-slate-500 dark:text-muted">Cada vez que abres la app vuelve a copiar las cookies, así las sesiones nuevas de tu navegador llegan solas. Las sesiones cerradas allí siguen aquí hasta que caducan.</span>
         </span>
       </label>
     </section>
