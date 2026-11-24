@@ -6,16 +6,18 @@ import (
 	"bufio"
 	"encoding/hex"
 	"fmt"
-	"github.com/migueel15/dory/internal/apperr"
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/migueel15/dory/internal/apperr"
+	"github.com/migueel15/dory/internal/harness"
 	"golang.org/x/sys/unix"
 )
 
@@ -39,10 +41,11 @@ var ErrSharedProcessGroup = apperr.New(apperr.SharedProcessGroup, "the service s
 
 // safeProcessGroup examines every process, not only those with a thread tag.
 // A shell or provider in the same group must never receive a service signal.
-func safeProcessGroup(group int, thread string) bool {
+func (m *Manager) safeProcessGroup(group int, thread string) bool {
 	if group <= 1 || group == syscall.Getpgrp() {
 		return false
 	}
+	drivers := m.registry.All()
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return false
@@ -88,8 +91,13 @@ func safeProcessGroup(group int, thread string) bool {
 		}
 		name := strings.ToLower(string(stat[strings.IndexByte(string(stat), '(')+1 : end]))
 		switch name {
-		case "sh", "bash", "zsh", "fish", "dash", "ksh", "claude", "codex", "opencode", "agy", "systemd-run", "dory":
+		case "sh", "bash", "zsh", "fish", "dash", "ksh", "systemd-run", "dory":
 			return false
+		}
+		for _, d := range drivers {
+			if slices.Contains(d.ProcessNames, name) {
+				return false
+			}
 		}
 	}
 	return true
@@ -207,7 +215,8 @@ func serviceKind(cmd string, port int) string {
 	return "process"
 }
 
-func ThreadServices(id string) []Service {
+func (m *Manager) ThreadServices(id string) []Service {
+	drivers := m.registry.All()
 	sockets := sockets()
 	out := []Service{}
 	for _, p := range processes() {
@@ -219,7 +228,7 @@ func ThreadServices(id string) []Service {
 			continue
 		}
 		// The provider's own control endpoint is not a service started by it.
-		if strings.Contains(p.command, "opencode serve --hostname 127.0.0.1 --port 0") {
+		if slices.ContainsFunc(drivers, func(d harness.EntryPoint) bool { return d.ControlProcess != nil && d.ControlProcess(p.command) }) {
 			continue
 		}
 		fds, _ := os.ReadDir(fmt.Sprintf("/proc/%d/fd", p.pid))
@@ -250,7 +259,7 @@ func ThreadServices(id string) []Service {
 
 // StopService checks ownership and process identity again before each signal.
 // A listener sharing a process group with an agent or shell cannot be stopped safely.
-func StopService(id string, pid int) error {
+func (m *Manager) StopService(id string, pid int) error {
 	fd, err := unix.PidfdOpen(pid, 0)
 	if err != nil {
 		return err
@@ -261,7 +270,7 @@ func StopService(id string, pid int) error {
 		return ErrNotFound
 	}
 	listening := false
-	for _, s := range ThreadServices(id) {
+	for _, s := range m.ThreadServices(id) {
 		if s.PID == pid {
 			listening = true
 			break
@@ -270,7 +279,7 @@ func StopService(id string, pid int) error {
 	if !listening {
 		return ErrNotFound
 	}
-	if !safeProcessGroup(p.group, id) {
+	if !m.safeProcessGroup(p.group, id) {
 		return ErrSharedProcessGroup
 	}
 	type member struct {

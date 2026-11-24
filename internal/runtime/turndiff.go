@@ -62,7 +62,7 @@ func (m *Manager) Revert(ctx context.Context, id, messageID string) (Reverted, e
 	if _, err := m.db.ExecContext(ctx, `UPDATE thread_runtime SET session_id = '', session_provider = '' WHERE thread_id = ?`, id); err != nil {
 		return Reverted{}, err
 	}
-	CloseLive(id)
+	m.CloseLive(id)
 	if ok {
 		workspace.DropSnapshots(ctx, root, id, snap.At)
 	} else if !sent.IsZero() {

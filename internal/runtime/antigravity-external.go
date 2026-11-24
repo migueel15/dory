@@ -2,12 +2,12 @@ package runtime
 
 import (
 	"context"
-	"github.com/migueel15/dory/internal/workspace"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
+
+	"github.com/migueel15/dory/internal/workspace"
 )
 
 func (a Antigravity) list(ctx context.Context, limit int) ([]External, error) {
@@ -50,52 +50,21 @@ func (a Antigravity) list(ctx context.Context, limit int) ([]External, error) {
 	return result, nil
 }
 
-// ListExternal includes the ACP sessions of the local Antigravity CLI.
-func (m *Manager) ListExternal(ctx context.Context, p Paths) []External {
-	out := ExternalSessions(p)
-	if a, ok := m.provider(antigravityID); ok {
-		if a, ok := a.(Antigravity); ok {
-			probe, cancel := context.WithTimeout(ctx, 8*time.Second)
-			list, _ := a.list(probe, externalLimit)
-			cancel()
-			out = append(out, list...)
+func (a Antigravity) List(ctx context.Context, _ Paths) []External {
+	probe, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	list, _ := a.list(probe, externalLimit)
+	for i := range list {
+		if branch, err := workspace.CurrentBranch(probe, list[i].Dir); err == nil {
+			list[i].Branch = branch
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].UpdatedAt > out[j].UpdatedAt })
-	return out
+	return list
 }
 
-func (m *Manager) FindExternal(ctx context.Context, p Paths, provider, id string) (External, error) {
-	if provider != antigravityID {
-		return ExternalSession(p, provider, id)
-	}
-	for _, session := range m.ListExternal(ctx, p) {
-		if session.Provider == provider && session.ID == id {
-			if branch, err := workspace.CurrentBranch(ctx, session.Dir); err == nil {
-				session.Branch = branch
-			}
-			return session, nil
-		}
-	}
-	return External{}, ErrNotFound
-}
+func (Antigravity) SessionFile(Paths, string) string { return "" }
 
-func (m *Manager) ReadExternal(ctx context.Context, e External) ([]Message, error) {
-	if e.Provider != antigravityID {
-		return ExternalMessages(e)
-	}
-	p, ok := m.provider(antigravityID)
-	if !ok {
-		return nil, ErrProvider
-	}
-	a, ok := p.(Antigravity)
-	if !ok {
-		return nil, ErrProvider
-	}
-	return a.history(ctx, e)
-}
-
-func (a Antigravity) history(ctx context.Context, e External) ([]Message, error) {
+func (a Antigravity) Read(ctx context.Context, e External) ([]Message, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	dir := e.Dir

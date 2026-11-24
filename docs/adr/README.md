@@ -16,7 +16,7 @@
 | [ADR-012](adr-012-directorios-de-estado-local.md) | Directorios de estado local | accepted |
 | [ADR-013](adr-013-herramientas-comunes.md) | Herramientas comunes entre arneses | accepted |
 | [ADR-014](adr-014-app-movil.md) | App de Android que se conecta directamente a cada nodo | accepted |
-| [ADR-015](adr-015-sesiones-interactivas.md) | Sesiones interactivas de los arneses | accepted |
+| [ADR-015](adr-015-sesiones-interactivas.md) | Sesiones interactivas de los arneses | parcialmente sustituido por ADR-037 |
 | [ADR-016](adr-016-actualizacion-de-la-malla.md) | Actualización de la malla desde las releases de GitHub | parcialmente sustituido por ADR-021 |
 | [ADR-017](adr-017-proyectos-por-repositorio-y-entorno.md) | Proyectos únicos por repositorio y entornos replicados | accepted |
 | [ADR-018](adr-018-antigravity-acp.md) | Antigravity CLI mediante ACP | accepted |
@@ -36,3 +36,4 @@
 | [ADR-034](adr-034-protocolo-de-malla.md) | Protocolo versionado entre nodos de la malla | accepted |
 | [ADR-035](adr-035-repositorios-tipados.md) | Repositorios tipados para las entidades replicadas | accepted |
 | [ADR-036](adr-036-estado-de-hilos.md) | Estado de hilos fuera del registro replicado | accepted |
+| [ADR-037](adr-037-contrato-de-arneses.md) | Contrato de arneses basado en capacidades | accepted |

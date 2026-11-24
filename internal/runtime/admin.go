@@ -2,27 +2,15 @@ package runtime
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
-	"github.com/migueel15/dory/internal/apperr"
-	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/migueel15/dory/internal/cmdexec"
+	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/procpool"
 )
-
-// Admin is what a harness offers to manage it from Dory: its session, its
-// login flow and its update. Credentials stay inside the harness.
-type Admin interface {
-	// Session reports whether the harness is signed in, and how.
-	Session(ctx context.Context) (bool, string)
-	LoginCommand() []string
-	UpdateCommand() []string
-	InstallCommand() []string
-}
 
 func (c Claude) Session(ctx context.Context) (bool, string) {
 	out, err := withEnv(cmdexec.CommandContext(ctx, c.bin(), "auth", "status"), c.Environ()).Output()
@@ -59,134 +47,38 @@ func (o OpenCode) Session(ctx context.Context) (bool, string) {
 func (o OpenCode) LoginCommand() []string  { return []string{o.bin(), "auth", "login"} }
 func (o OpenCode) UpdateCommand() []string { return []string{o.bin(), "upgrade"} }
 
-// Job is a harness command started from the interface, such as a login that
-// prints a URL and a code and waits for the browser.
-type Job struct {
-	ID          string    `json:"id"`
-	Provider    string    `json:"provider"`
-	Kind        string    `json:"kind"`
-	Output      string    `json:"output"`
-	Done        bool      `json:"done"`
-	Error       string    `json:"error,omitempty"`
-	Started     time.Time `json:"started"`
-	AcceptsCode bool      `json:"accepts_code"`
-	input       *os.File
-}
+type Job = procpool.Job
 
-type jobs struct {
-	mu   sync.Mutex
-	list map[string]*Job
-}
+var ErrJobInputClosed = procpool.ErrJobInputClosed
 
-var running = &jobs{list: map[string]*Job{}}
-
-type jobOutput struct {
-	j *Job
-}
-
-func (w jobOutput) Write(p []byte) (int, error) {
-	running.mu.Lock()
-	defer running.mu.Unlock()
-	if len(w.j.Output) < 64<<10 {
-		w.j.Output += string(p)
-	}
-	return len(p), nil
-}
-
-// StartJob runs the login, update or install command of a provider in the background.
 func (m *Manager) StartJob(provider, kind string) (*Job, error) {
-	p, ok := m.provider0(provider).(Admin)
-	if !ok {
+	p, ok := m.registry.Get(provider)
+	if !ok || p.Admin == nil {
 		return nil, ErrProvider
 	}
 	var args []string
 	switch kind {
 	case "login":
-		args = p.LoginCommand()
+		args = p.Admin.LoginCommand()
 	case "update":
-		args = p.UpdateCommand()
+		args = p.Admin.UpdateCommand()
 	case "install":
-		args = p.InstallCommand()
+		args = p.Admin.InstallCommand()
 	default:
 		return nil, errors.New("unknown job " + kind)
 	}
-	j := &Job{ID: strings.ToLower(rand.Text()), Provider: provider, Kind: kind, Started: time.Now()}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	cmd := cmdexec.CommandContext(ctx, args[0], args[1:]...)
-	if env, ok := m.provider0(provider).(interface{ Environ() []string }); ok {
-		cmd.Env = env.Environ()
-	}
-	if d := driverOf(provider); (d == "claude" || d == antigravityID) && kind == "login" {
-		reader, writer, err := os.Pipe()
-		if err != nil {
-			cancel()
-			return nil, err
-		}
-		defer reader.Close()
-		cmd.Stdin = reader
-		j.input = writer
-		j.AcceptsCode = true
-	}
-	cmd.Stdout, cmd.Stderr = jobOutput{j}, jobOutput{j}
-	if err := cmd.Start(); err != nil {
-		if j.input != nil {
-			j.input.Close()
-		}
-		cancel()
-		return nil, err
-	}
-	running.mu.Lock()
-	running.list[j.ID] = j
-	snapshot := *j
-	running.mu.Unlock()
-	go func() {
-		defer cancel()
-		err := cmd.Wait()
-		running.mu.Lock()
-		j.Done = true
-		j.AcceptsCode = false
-		if j.input != nil {
-			j.input.Close()
-			j.input = nil
-		}
-		if err != nil {
-			j.Error = err.Error()
-		}
-		running.mu.Unlock()
-		m.invalidate()
-	}()
-	return &snapshot, nil
+	return m.pool.StartJob(provider, kind, args, accountEnvironment(p.Accounts),
+		kind == "login" && p.Info().Capabilities.LoginCode, m.invalidate)
 }
 
-var ErrJobInputClosed = apperr.New(apperr.JobInputClosed, "the login attempt no longer accepts codes")
+func (m *Manager) SubmitLoginCode(id, code string) error { return m.pool.SubmitLoginCode(id, code) }
+func (m *Manager) JobState(id string) (Job, bool)        { return m.pool.JobState(id) }
 
-// SubmitLoginCode writes a single authorization code to the active CLI.
-func (m *Manager) SubmitLoginCode(id, code string) error {
-	running.mu.Lock()
-	defer running.mu.Unlock()
-	j, ok := running.list[id]
-	if !ok {
-		return ErrNotFound
+func accountEnvironment(a harness.AccountSupport) []string {
+	if a == nil {
+		return nil
 	}
-	if !j.AcceptsCode || j.input == nil {
-		return ErrJobInputClosed
-	}
-	j.AcceptsCode = false
-	if _, err := j.input.WriteString(code + "\n"); err != nil {
-		return ErrJobInputClosed
-	}
-	return nil
-}
-
-// JobState returns a copy of a job.
-func (m *Manager) JobState(id string) (Job, bool) {
-	running.mu.Lock()
-	defer running.mu.Unlock()
-	j, ok := running.list[id]
-	if !ok {
-		return Job{}, false
-	}
-	return *j, true
+	return a.Environ()
 }
 
 // UpdateAll runs the update command of every installed harness, one after
@@ -194,16 +86,17 @@ func (m *Manager) JobState(id string) (Job, bool) {
 func (m *Manager) UpdateAll(ctx context.Context) map[string]string {
 	failed := map[string]string{}
 	for _, st := range m.Providers(ctx) {
-		p, ok := m.provider0(st.ID).(Admin)
-		if !ok || !st.Installed {
+		p, ok := m.registry.Get(st.ID)
+		if !ok || p.Admin == nil || !st.Installed {
 			continue
 		}
-		args := p.UpdateCommand()
+		args := p.Admin.UpdateCommand()
+		if len(args) == 0 {
+			continue
+		}
 		run, cancel := context.WithTimeout(ctx, 10*time.Minute)
 		upd := cmdexec.CommandContext(run, args[0], args[1:]...)
-		if env, ok := p.(interface{ Environ() []string }); ok {
-			upd.Env = env.Environ()
-		}
+		upd.Env = accountEnvironment(p.Accounts)
 		out, err := upd.CombinedOutput()
 		cancel()
 		if err != nil {

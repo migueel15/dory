@@ -13,7 +13,8 @@ func TestConfigureRunningThreadAppliesAfterTurn(t *testing.T) {
 	m, store := manager(t, 0)
 	claude := capturedProvider{"claude", make(chan Turn, 1), make(chan chan Event, 1)}
 	codex := capturedProvider{"codex", make(chan Turn, 1), make(chan chan Event, 1)}
-	m.providers[claude.id], m.providers[codex.id] = claude, codex
+	m.registry.Register(claude)
+	m.registry.Register(codex)
 	thread, err := m.Create(ctx, NewThread{Provider: claude.id, Model: "opus"})
 	if err != nil {
 		t.Fatal(err)

@@ -24,9 +24,13 @@ import (
 // The server stays open for the next turn of the thread (see live.go), so
 // what the agent left running survives the turn.
 func (o OpenCode) Start(ctx context.Context, t Turn) (Session, error) {
-	srv, _ := liveGet(t.ThreadID, "opencode").(*openCodeServer)
+	return legacyStart(o.startLegacy(ctx, t))
+}
+
+func (o OpenCode) startLegacy(ctx context.Context, t Turn) (legacySession, error) {
+	srv, _ := o.pool.Get(t.ThreadID, o.ID()).(*openCodeServer)
 	if srv != nil && (srv.key != openCodeServerKey(t) || srv.Busy() || srv.exited()) {
-		liveDrop(t.ThreadID, "opencode", srv)
+		o.pool.Drop(t.ThreadID, o.ID(), srv)
 		go srv.Close()
 		srv = nil
 	}
@@ -36,7 +40,10 @@ func (o OpenCode) Start(ctx context.Context, t Turn) (Session, error) {
 			return nil, err
 		}
 		if t.ThreadID != "" {
-			liveSet(t.ThreadID, "opencode", srv)
+			o.pool.Set(t.ThreadID, o.ID(), srv)
+			if srv.exited() {
+				o.pool.Drop(t.ThreadID, o.ID(), srv)
+			}
 		}
 	}
 	srv.mu.Lock()
@@ -90,7 +97,7 @@ func (o OpenCode) serve(ctx context.Context, t Turn) (*openCodeServer, error) {
 	go func() {
 		cmd.Wait()
 		close(srv.dead)
-		liveDrop(t.ThreadID, "opencode", srv)
+		o.pool.Drop(t.ThreadID, o.ID(), srv)
 	}()
 	if t.MCPURL != "" {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

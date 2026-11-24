@@ -25,7 +25,8 @@ func TestPrepareMCP(t *testing.T) {
 	server := httptest.NewServer(auth.Middleware(nil, config.Config{}, secret)(mcp))
 	defer server.Close()
 
-	m := Manager{MCPURL: server.URL + "/mcp", MCPToken: secret}
+	m := NewManager(nil, nil, "", t.TempDir(), testNodeState(t), nil, Codex{}, Claude{})
+	m.MCPURL, m.MCPToken = server.URL+"/mcp", secret
 	turn := Turn{ThreadID: "one", Text: "continúa"}
 	if err := m.prepareMCP(t.Context(), data.Thread{ID: "one", Provider: "codex"}, &turn); err != nil {
 		t.Fatal(err)
@@ -86,7 +87,7 @@ func TestPromptWithInstructions(t *testing.T) {
 }
 
 func TestBuildInstructions(t *testing.T) {
-	got := buildInstructions("claude", "opus", []string{"subagent_spawn", "subagent_status", "subagent_cancel", "device_list"})
+	got := buildInstructions("claude", "opus", []string{"subagent_spawn", "subagent_status", "subagent_cancel", "device_list"}, true)
 	if !strings.Contains(got, "through claude, as opus") || !strings.Contains(got, "ToolSearch") {
 		t.Fatalf("missing runtime header: %q", got)
 	}
@@ -96,7 +97,7 @@ func TestBuildInstructions(t *testing.T) {
 	if strings.Contains(got, "## Devices") || strings.Contains(got, "## Threads") {
 		t.Fatal("guidance sent for tools the catalog does not offer")
 	}
-	if strings.Contains(buildInstructions("codex", "", nil), "ToolSearch") {
+	if strings.Contains(buildInstructions("codex", "", nil, false), "ToolSearch") {
 		t.Fatal("ToolSearch hint is only for Claude Code")
 	}
 }

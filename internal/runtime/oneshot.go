@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/migueel15/dory/internal/harness"
 	"github.com/migueel15/dory/internal/nodestate"
 )
 
@@ -53,34 +54,28 @@ func (m *Manager) OneShot(ctx context.Context, provider, model, prompt string) (
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	turn := Turn{RunID: newRunID(), Dir: dir, Text: prompt, Model: model}
-	var events <-chan Event
-	switch p := p.(type) {
-	case Interactive:
-		s, err := p.Start(ctx, turn)
-		if err != nil {
-			return "", err
-		}
-		events = s.Events()
-	case Runner:
-		if events, err = p.Run(ctx, turn); err != nil {
-			return "", err
-		}
-	default:
-		return "", ErrProvider.Msgf("%s cannot run turns", provider)
+	session, err := p.Start(ctx, turn)
+	if err != nil {
+		return "", err
 	}
 	var answer, failure string
-	for e := range events {
-		switch {
-		case e.Message != nil && e.Message.Role == "assistant":
-			answer = e.Message.Text
-		case e.Request != nil:
+	messages := turnMessages{run: turn.RunID, items: map[string]Message{}}
+	for e := range session.Events() {
+		if msg, ok := messages.apply(e); ok && msg.Role == "assistant" {
+			answer = msg.Text
+		}
+		switch e := e.(type) {
+		case harness.RequestOpened:
 			// Nobody can answer: stop the turn.
 			failure = "the agent asked for input"
 			cancel()
-		case e.Done && e.Err != "":
-			failure = e.Err
+		case harness.TurnEnded:
+			if e.Error != "" {
+				failure = e.Error
+			}
 		}
 	}
+
 	if ctx.Err() != nil && failure == "" {
 		failure = ctx.Err().Error()
 	}

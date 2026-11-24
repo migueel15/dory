@@ -15,8 +15,12 @@ import (
 // stays open for the next turn of the thread (see live.go), which only
 // starts a turn, so what the agent left running survives.
 func (c Codex) Start(ctx context.Context, t Turn) (Session, error) {
-	key := strings.Join([]string{t.Model, fmt.Sprint(t.FullAccess), t.Dir, t.MCPURL}, "\x00")
-	p := reuseStdio(t.ThreadID, "codex", key)
+	return legacyStart(c.startLegacy(ctx, t))
+}
+
+func (c Codex) startLegacy(ctx context.Context, t Turn) (legacySession, error) {
+	key := strings.Join([]string{t.Model, fmt.Sprint(t.FullAccess), t.Dir, c.Home, t.MCPURL}, "\x00")
+	p := reuseStdio(c.pool, t.ThreadID, c.ID(), key)
 	if p == nil {
 		args := []string{"app-server", "--enable", "default_mode_request_user_input"}
 		cmd := providerCommand(context.Background(), t.ThreadID, c.bin(), args...)
@@ -33,7 +37,7 @@ func (c Codex) Start(ctx context.Context, t Turn) (Session, error) {
 			cmd.Env = append(cmd.Env, "DORY_MCP_TOKEN="+t.MCPToken)
 		}
 		var err error
-		if p, err = openStdio(cmd, t.ThreadID, "codex", key); err != nil {
+		if p, err = openStdio(c.pool, cmd, t.ThreadID, c.ID(), key); err != nil {
 			return nil, err
 		}
 	}
@@ -43,7 +47,7 @@ func (c Codex) Start(ctx context.Context, t Turn) (Session, error) {
 	s.events = turn.out
 	// Call ids stay unique on the process across turns.
 	s.next = p.turns * 1_000_000
-	p.watch(ctx, t.ThreadID, "codex", turn, s.interrupt)
+	p.watch(ctx, t.ThreadID, c.ID(), turn, s.interrupt)
 	var err error
 	if thread := p.get("thread"); thread != "" {
 		err = s.startTurn(thread)

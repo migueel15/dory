@@ -5,15 +5,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/procpool"
+	"github.com/migueel15/dory/internal/update"
 )
 
 // Claude runs Claude Code headless with its stream-json output.
 type Claude struct {
-	Bin string
+	pool    *procpool.Pool
+	cache   *summaryCache
+	history *usageCache
+	Bin     string
 	// Account tells one extra account of this harness from the default one;
 	// Home is its CLAUDE_CONFIG_DIR and Label its display name.
 	Account, Home, Label string
@@ -22,7 +30,7 @@ type Claude struct {
 func (c Claude) ID() string { return accountID("claude", c.Account) }
 
 // Environ is the environment of every process run for this account.
-func (c Claude) Environ() []string { return accountEnv("CLAUDE_CONFIG_DIR", c.Home) }
+func (c Claude) Environ() []string { return accountEnv(c.ConfigEnv(), c.Home) }
 
 func (c Claude) bin() string {
 	if c.Bin != "" {
@@ -39,7 +47,6 @@ func (c Claude) Detect(ctx context.Context) Status {
 			{Slug: "sonnet", Name: "Sonnet", Efforts: []string{"low", "medium", "high", "xhigh", "max"}},
 			{Slug: "haiku", Name: "Haiku"},
 		},
-		Capabilities: []string{"interrupt", "resume", "effort", "usage"},
 	}
 	if ok {
 		if models := claudeModels(ctx, c.bin(), c.Environ()); len(models) > 0 {
@@ -54,6 +61,10 @@ func (c Claude) Detect(ctx context.Context) Status {
 // user answers it. The process stays open for the next turn of the thread
 // (see live.go), so what the agent left running in the background survives.
 func (c Claude) Start(ctx context.Context, t Turn) (Session, error) {
+	return legacyStart(c.startLegacy(ctx, t))
+}
+
+func (c Claude) startLegacy(ctx context.Context, t Turn) (legacySession, error) {
 	args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
 		"--include-partial-messages", "--permission-prompt-tool", "stdio"}
 	if t.Model != "" {
@@ -79,8 +90,8 @@ func (c Claude) Start(ctx context.Context, t Turn) (Session, error) {
 	if t.Instructions != "" {
 		args = append(args, "--append-system-prompt", t.Instructions)
 	}
-	key := strings.Join([]string{t.Model, t.Effort, fmt.Sprint(t.FullAccess), t.Dir, t.MCPURL, t.Instructions}, "\x00")
-	p := reuseStdio(t.ThreadID, "claude", key)
+	key := strings.Join([]string{t.Model, t.Effort, fmt.Sprint(t.FullAccess), t.Dir, c.Home, t.MCPURL, t.Instructions}, "\x00")
+	p := reuseStdio(c.pool, t.ThreadID, c.ID(), key)
 	if p == nil {
 		cmd := providerCommand(context.Background(), t.ThreadID, c.bin(), args...)
 		cmd.Dir = t.Dir
@@ -90,7 +101,7 @@ func (c Claude) Start(ctx context.Context, t Turn) (Session, error) {
 			cmd.Env = append(cmd.Env, "DORY_MCP_TOKEN="+t.MCPToken)
 		}
 		var err error
-		if p, err = openStdio(cmd, t.ThreadID, "claude", key); err != nil {
+		if p, err = openStdio(c.pool, cmd, t.ThreadID, c.ID(), key); err != nil {
 			return nil, err
 		}
 	}
@@ -99,7 +110,7 @@ func (c Claude) Start(ctx context.Context, t Turn) (Session, error) {
 	s.events = turn.out
 	// A turn cancellation is a protocol request, not a signal to what the
 	// agent started.
-	p.watch(ctx, t.ThreadID, "claude", turn, func() {
+	p.watch(ctx, t.ThreadID, c.ID(), turn, func() {
 		_ = s.write(map[string]any{"type": "control_request", "request_id": newRunID(), "request": map[string]any{"subtype": "interrupt"}})
 	})
 	if err := s.write(map[string]any{"type": "user", "parent_tool_use_id": nil,
@@ -586,4 +597,54 @@ func withAnswers(qs []Question, answers map[string]string) []Question {
 		}
 	}
 	return out
+}
+
+func (c Claude) Info() harness.Info {
+	return harness.Info{ID: c.ID(), Driver: "claude", Name: "Claude Code", Order: 0,
+		Capabilities: harness.Capabilities{Resume: true, MidTurnRequests: true, UsageReport: true, SystemPrompt: true, Effort: true, OfflineHistory: true, DeferredTools: true, LoginCode: true}}
+}
+
+func (c Claude) WithPool(p *procpool.Pool) harness.Driver {
+	c.pool = p
+	c.cache = &summaryCache{seen: map[summaryKey]cachedSummary{}}
+	c.history = &usageCache{files: map[string]usageFile{}}
+	return c
+}
+func (c Claude) WithAccount(a Account) harness.Driver {
+	c.Account, c.Home, c.Label = a.Slug, a.Home, a.Name
+	return c
+}
+func (Claude) ConfigEnv() string              { return "CLAUDE_CONFIG_DIR" }
+func (Claude) DefaultHome(home string) string { return filepath.Join(home, ".claude") }
+func (c Claude) AccountHome() string          { return c.Home }
+func (Claude) ProcessNames() []string         { return []string{"claude"} }
+func (Claude) LatestVersion(ctx context.Context) string {
+	return update.NPMLatest(ctx, "@anthropic-ai/claude-code")
+}
+func (c Claude) Commands(p Paths, dir string) (commands, skills []Entry) {
+	commands = claudeCommands()
+	for _, root := range []string{filepath.Join(accountDir(p, c), "commands"), filepath.Join(dir, ".claude", "commands")} {
+		commands = append(commands, markdownEntries(root, "/")...)
+	}
+	for _, root := range []string{filepath.Join(accountDir(p, c), "skills"), filepath.Join(dir, ".claude", "skills")} {
+		// Claude Code runs a skill as a slash command.
+		skills = append(skills, skillEntries(root, "/")...)
+	}
+	return
+}
+
+func claudeCommands() []Entry {
+	return []Entry{
+		{Name: "compact", Description: "Resume la conversación para liberar contexto", Insert: "/compact"},
+		{Name: "context", Description: "Muestra el uso de la ventana de contexto", Insert: "/context"},
+		{Name: "cost", Description: "Muestra el coste de la sesión", Insert: "/cost"},
+		{Name: "init", Description: "Crea CLAUDE.md con la documentación del repositorio", Insert: "/init"},
+		{Name: "review", Description: "Revisa un pull request", Insert: "/review"},
+		{Name: "security-review", Description: "Revisión de seguridad de los cambios pendientes", Insert: "/security-review"},
+		{Name: "pr-comments", Description: "Trae los comentarios de un pull request", Insert: "/pr-comments"},
+	}
+}
+
+func (c Claude) SkillDir(p Paths) harness.SkillLocation {
+	return harness.SkillLocation{Dir: filepath.Join(accountDir(p, c), "skills")}
 }

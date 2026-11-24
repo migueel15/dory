@@ -20,28 +20,11 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/harness"
 	"github.com/migueel15/dory/internal/nodestate"
 )
 
 var namePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
-
-// Dirs maps each harness to the folder where it reads skills.
-func Dirs(home string, config func(driver string) string) map[string]string {
-	dir := func(driver, def string) string {
-		if config != nil {
-			if d := config(driver); d != "" {
-				return d
-			}
-		}
-		return filepath.Join(home, def)
-	}
-	return map[string]string{
-		"claude":      filepath.Join(dir("claude", ".claude"), "skills"),
-		"codex":       filepath.Join(dir("codex", ".codex"), "skills"),
-		"opencode":    filepath.Join(home, ".config", "opencode", "skills"),
-		"antigravity": antigravitySkillDir(home),
-	}
-}
 
 // Save creates or updates a skill, bumping its version when its content changes.
 func Save(ctx context.Context, store *data.Store, s data.Skill) (data.Skill, error) {
@@ -105,12 +88,10 @@ func render(s data.Skill) string {
 
 // Reconciler keeps this node's harness folders in line with the catalog.
 type Reconciler struct {
-	Store *data.Store
-	Node  string
-	Home  string
-	// Config resolves the configuration directory of a harness through its
-	// default account; nil uses ~/.claude and ~/.codex.
-	Config func(driver string) string
+	Store     *data.Store
+	Node      string
+	Home      string
+	Locations func() map[string]harness.SkillLocation
 	// State remembers the files written by this reconciler.
 	State *nodestate.Store
 	// DataDir holds managed Antigravity skills and backups.
@@ -198,7 +179,7 @@ func (r *Reconciler) reconcile(ctx context.Context) error {
 		return err
 	}
 	installed := r.Installed(ctx)
-	dirs := Dirs(r.Home, r.Config)
+	dirs := r.locations()
 	m, err := r.load(ctx)
 	if err != nil {
 		return err
@@ -218,9 +199,13 @@ func (r *Reconciler) reconcile(ctx context.Context) error {
 			if len(s.Targets.Harnesses) > 0 && !slices.Contains(s.Targets.Harnesses, harness) {
 				continue
 			}
-			dir := filepath.Join(dirs[harness], s.Name)
-			if harness == "antigravity" {
-				dir, err = r.antigravityTarget(dir, s.Name, m, want)
+			target, ok := dirs[harness]
+			if !ok {
+				continue
+			}
+			dir := filepath.Join(target.Dir, s.Name)
+			if target.ManagedSubdir != "" {
+				dir, err = r.linkTarget(dir, filepath.Join(r.DataDir, target.ManagedSubdir, s.Name), m, want)
 				if err != nil {
 					problems = append(problems, err.Error())
 					if !strings.HasPrefix(err.Error(), "conflicto:") {
@@ -298,9 +283,12 @@ func (r *Reconciler) reconcile(ctx context.Context) error {
 
 // roots are the folders that hold one folder per skill on this node.
 func (r *Reconciler) roots() []string {
-	out := []string{filepath.Join(r.DataDir, "antigravity-skills")}
-	for _, dir := range Dirs(r.Home, r.Config) {
-		out = append(out, dir)
+	var out []string
+	for _, loc := range r.locations() {
+		out = append(out, loc.Dir)
+		if loc.ManagedSubdir != "" {
+			out = append(out, filepath.Join(r.DataDir, loc.ManagedSubdir))
+		}
 	}
 	return out
 }
@@ -371,4 +359,11 @@ func (r *Reconciler) publish(ctx context.Context, states map[string]data.SkillSt
 		}
 	}
 	return nil
+}
+
+func (r *Reconciler) locations() map[string]harness.SkillLocation {
+	if r.Locations == nil {
+		return nil
+	}
+	return r.Locations()
 }

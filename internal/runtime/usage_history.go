@@ -10,33 +10,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/migueel15/dory/internal/harness"
 )
 
-// usageEvent is the token usage of one model response read from the local
-// logs of a harness.
-type usageEvent struct {
-	Time      time.Time
-	Provider  string
-	Session   string
-	Model     string
-	Key       string // dedup key; empty when the format needs none
-	Tokens    UsageTokens
-	Reasoning int64
-}
+type usageEvent = harness.UsageEvent
+type UsageTokens = harness.UsageTokens
 
-// UsageTokens splits the tokens of a response by how they are billed. Input
-// excludes the cached part.
-type UsageTokens struct {
-	Input      int64 `json:"input"`
-	Output     int64 `json:"output"`
-	CacheWrite int64 `json:"cache_write"`
-	CacheRead  int64 `json:"cache_read"`
-	// CacheWrite1h is the part of CacheWrite kept for an hour, which costs
-	// more than the 5 minute writes (Claude Code writes its cache this way).
-	CacheWrite1h int64 `json:"cache_write_1h"`
-}
-
-func (t *UsageTokens) add(o UsageTokens) {
+func addUsageTokens(t *UsageTokens, o UsageTokens) {
 	t.Input += o.Input
 	t.Output += o.Output
 	t.CacheWrite += o.CacheWrite
@@ -76,13 +57,28 @@ type UsageReport struct {
 	Sessions map[string]int `json:"sessions"`
 }
 
-// UsageHistory reads the Claude Code and Codex logs under home and sums the
-// usage since from, by hour or by day in loc.
-func UsageHistory(p Paths, from time.Time, hourly bool, loc *time.Location) UsageReport {
-	events := usageEvents(filepath.Join(p.Dir("claude"), "projects"), "claude", readClaudeUsage)
-	events = append(events, usageEvents(filepath.Join(p.Dir("codex"), "sessions"), "codex", readCodexUsage)...)
-	events = append(events, antigravityUsageEvents(p.Home, from)...)
+// UsageHistory aggregates local adapter histories.
+func (m *Manager) UsageHistory(p Paths, from time.Time, hourly bool, loc *time.Location) UsageReport {
+	var events []usageEvent
+	for _, d := range m.registry.All() {
+		info := d.Info()
+		if d.History != nil && info.ID == info.Driver {
+			events = append(events, d.History.UsageHistory(p, from)...)
+		}
+	}
 	return aggregateUsage(events, from, hourly, loc)
+}
+
+func (c Claude) UsageHistory(p Paths, _ time.Time) []usageEvent {
+	return c.history.events(filepath.Join(accountDir(p, c), "projects"), readClaudeUsage)
+}
+
+func (c Codex) UsageHistory(p Paths, _ time.Time) []usageEvent {
+	return c.history.events(filepath.Join(accountDir(p, c), "sessions"), readCodexUsage)
+}
+
+func (Antigravity) UsageHistory(p Paths, from time.Time) []usageEvent {
+	return antigravityUsageEvents(p.Home, from)
 }
 
 func aggregateUsage(events []usageEvent, from time.Time, hourly bool, loc *time.Location) UsageReport {
@@ -116,7 +112,7 @@ func aggregateUsage(events []usageEvent, from time.Time, hourly bool, loc *time.
 			r = &UsageRow{Bucket: b, Provider: e.Provider, Model: e.Model, Priced: ok}
 			rows[k], rowSessions[k] = r, map[string]bool{}
 		}
-		r.Tokens.add(e.Tokens)
+		addUsageTokens(&r.Tokens, e.Tokens)
 		rowSessions[k][e.Session] = true
 		if sessions[e.Provider] == nil {
 			sessions[e.Provider] = map[string]bool{}
@@ -160,14 +156,17 @@ type usageFile struct {
 	events []usageEvent
 }
 
-var usageCache = struct {
+type usageCache struct {
 	sync.Mutex
 	files map[string]usageFile
-}{files: map[string]usageFile{}}
+}
 
 // usageEvents reads every JSONL under root, reusing the events of the files
 // that did not change since the last read.
-func usageEvents(root, provider string, read func(path string) []usageEvent) []usageEvent {
+func (cache *usageCache) events(root string, read func(path string) []usageEvent) []usageEvent {
+	if cache == nil {
+		cache = &usageCache{files: map[string]usageFile{}}
+	}
 	var out []usageEvent
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".jsonl") {
@@ -177,14 +176,14 @@ func usageEvents(root, provider string, read func(path string) []usageEvent) []u
 		if err != nil {
 			return nil
 		}
-		usageCache.Lock()
-		f, ok := usageCache.files[path]
-		usageCache.Unlock()
+		cache.Lock()
+		f, ok := cache.files[path]
+		cache.Unlock()
 		if !ok || !f.mod.Equal(info.ModTime()) || f.size != info.Size() {
 			f = usageFile{mod: info.ModTime(), size: info.Size(), events: read(path)}
-			usageCache.Lock()
-			usageCache.files[path] = f
-			usageCache.Unlock()
+			cache.Lock()
+			cache.files[path] = f
+			cache.Unlock()
 		}
 		out = append(out, f.events...)
 		return nil
@@ -244,7 +243,7 @@ func readClaudeUsage(path string) []usageEvent {
 		if l.Message.ID != "" {
 			key = "claude:" + l.Message.ID + ":" + l.RequestID
 		}
-		out = append(out, usageEvent{Time: l.Timestamp, Provider: "claude", Session: s, Model: l.Message.Model, Key: key,
+		out = append(out, usageEvent{Time: l.Timestamp, Provider: (Claude{}).ID(), Session: s, Model: l.Message.Model, Key: key,
 			Tokens: UsageTokens{Input: u.Input, Output: u.Output, CacheWrite: u.CacheWrite, CacheRead: u.CacheRead, CacheWrite1h: min(u.Creation.Hour, u.CacheWrite)}})
 	})
 	return out
@@ -293,9 +292,9 @@ func readCodexUsage(path string) []usageEvent {
 			u := l.Payload.Info.Last
 			m := model
 			if m == "" {
-				m = "codex"
+				m = (Codex{}).ID()
 			}
-			out = append(out, usageEvent{Time: l.Timestamp, Provider: "codex", Session: session, Model: m,
+			out = append(out, usageEvent{Time: l.Timestamp, Provider: (Codex{}).ID(), Session: session, Model: m,
 				Tokens: UsageTokens{Input: max(u.Input-u.Cached-u.CacheWrite, 0), Output: u.Output, CacheWrite: u.CacheWrite, CacheRead: u.Cached}})
 		}
 	})

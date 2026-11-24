@@ -9,111 +9,14 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/migueel15/dory/internal/harness/procpool"
 )
-
-// liveProc is a harness process that outlives its turn: the next turn of the
-// same thread reuses it, so what the agent started in the background (a dev
-// server, a database) keeps running between turns, as in an interactive CLI.
-type liveProc interface {
-	// Busy is true while a turn runs on the process.
-	Busy() bool
-	// IdleSince is when its last turn ended.
-	IdleSince() time.Time
-	// Close ends the process and what it started.
-	Close()
-}
-
-// liveIdle is how long an idle process stays open when its thread has no
-// listening services; a thread with services keeps its process.
-const liveIdle = 30 * time.Minute
-
-var live = struct {
-	sync.Mutex
-	procs map[string]liveProc
-}{procs: map[string]liveProc{}}
-
-func liveKey(thread, provider string) string { return thread + "\x00" + provider }
-
-func liveGet(thread, provider string) liveProc {
-	live.Lock()
-	defer live.Unlock()
-	return live.procs[liveKey(thread, provider)]
-}
-
-func liveSet(thread, provider string, p liveProc) {
-	live.Lock()
-	live.procs[liveKey(thread, provider)] = p
-	live.Unlock()
-}
-
-// liveDrop forgets p if it still is the process of the thread.
-func liveDrop(thread, provider string, p liveProc) {
-	live.Lock()
-	if live.procs[liveKey(thread, provider)] == p {
-		delete(live.procs, liveKey(thread, provider))
-	}
-	live.Unlock()
-}
-
-// take removes and returns the processes whose key matches.
-func take(match func(key string) bool) []liveProc {
-	live.Lock()
-	defer live.Unlock()
-	var out []liveProc
-	for k, p := range live.procs {
-		if match(k) {
-			out = append(out, p)
-			delete(live.procs, k)
-		}
-	}
-	return out
-}
-
-func closeAll(ps []liveProc) {
-	var wg sync.WaitGroup
-	for _, p := range ps {
-		wg.Add(1)
-		go func() { defer wg.Done(); p.Close() }()
-	}
-	wg.Wait()
-}
-
-// CloseLive ends the harness processes of a thread, such as when it is archived.
-func CloseLive(thread string) {
-	closeAll(take(func(k string) bool { return strings.HasPrefix(k, thread+"\x00") }))
-}
-
-// CloseAllLive ends every harness process; Dory calls it when it stops.
-func CloseAllLive() { closeAll(take(func(string) bool { return true })) }
-
-var reapOnce sync.Once
-
-// reapLive closes the processes idle for longer than liveIdle whose thread
-// has no listening service.
-func reapLive(ctx context.Context) {
-	reapOnce.Do(func() {
-		go func() {
-			tick := time.NewTicker(time.Minute)
-			defer tick.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-tick.C:
-				}
-				closeAll(take(func(k string) bool {
-					p := live.procs[k]
-					thread, _, _ := strings.Cut(k, "\x00")
-					return !p.Busy() && time.Since(p.IdleSince()) > liveIdle && len(ThreadServices(thread)) == 0
-				}))
-			}
-		}()
-	})
-}
 
 // stdioProc is a harness speaking a line protocol on stdio, kept open
 // between turns. One turn at a time reads its stdout.
 type stdioProc struct {
+	pool *procpool.Pool
 	key  string
 	cmd  *exec.Cmd
 	in   io.WriteCloser
@@ -195,22 +98,22 @@ func (p *stdioProc) Close() {
 
 // reuseStdio returns the open process of the thread when it can take a turn
 // with the same settings, and closes it otherwise.
-func reuseStdio(thread, provider, key string) *stdioProc {
-	p, _ := liveGet(thread, provider).(*stdioProc)
+func reuseStdio(pool *procpool.Pool, thread, provider, key string) *stdioProc {
+	p, _ := pool.Get(thread, provider).(*stdioProc)
 	if p == nil || thread == "" {
 		return nil
 	}
 	if p.key == key && !p.Busy() && !p.exited() {
 		return p
 	}
-	liveDrop(thread, provider, p)
+	pool.Drop(thread, provider, p)
 	go p.Close()
 	return nil
 }
 
 // openStdio starts cmd, which must not be started yet, and keeps it for the
 // thread. Each line of stdout goes to the turn running on it.
-func openStdio(cmd *exec.Cmd, thread, provider, key string) (*stdioProc, error) {
+func openStdio(pool *procpool.Pool, cmd *exec.Cmd, thread, provider, key string) (*stdioProc, error) {
 	interruptible(cmd)
 	cmd.WaitDelay = 10 * time.Second
 	in, err := cmd.StdinPipe()
@@ -226,7 +129,10 @@ func openStdio(cmd *exec.Cmd, thread, provider, key string) (*stdioProc, error) 
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	p := &stdioProc{key: key, cmd: cmd, in: in, dead: make(chan struct{}), idle: time.Now(), state: map[string]string{}}
+	p := &stdioProc{pool: pool, key: key, cmd: cmd, in: in, dead: make(chan struct{}), idle: time.Now(), state: map[string]string{}}
+	if thread != "" {
+		pool.Set(thread, provider, p)
+	}
 	go func() {
 		scanner := bufio.NewScanner(stdout)
 		scanner.Buffer(make([]byte, 64<<10), 32<<20)
@@ -240,7 +146,7 @@ func openStdio(cmd *exec.Cmd, thread, provider, key string) (*stdioProc, error) 
 		}
 		err := cmd.Wait()
 		close(p.dead)
-		liveDrop(thread, provider, p)
+		pool.Drop(thread, provider, p)
 		p.mu.Lock()
 		t := p.cur
 		p.mu.Unlock()
@@ -255,9 +161,6 @@ func openStdio(cmd *exec.Cmd, thread, provider, key string) (*stdioProc, error) 
 			p.emit(t, Event{Done: true, Err: msg})
 		}
 	}()
-	if thread != "" {
-		liveSet(thread, provider, p)
-	}
 	return p, nil
 }
 
@@ -295,7 +198,7 @@ func (p *stdioProc) watch(ctx context.Context, thread, provider string, t *stdio
 			select {
 			case <-t.done:
 			case <-time.After(5 * time.Second):
-				liveDrop(thread, provider, p)
+				p.pool.Drop(thread, provider, p)
 				p.Close()
 			}
 		}

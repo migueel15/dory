@@ -16,7 +16,8 @@ func TestCommandsClaude(t *testing.T) {
 	write(filepath.Join(dir, ".claude", "commands", "clear.md"), "harness clear")
 	write(filepath.Join(home, ".claude", "skills", "s", "SKILL.md"), "---\nname: s\ndescription: Skill s\n---\n")
 	write(filepath.Join(home, ".claude", "commands", "s.md"), "dup of skill")
-	commands, skills := Commands(Paths{Home: home}, dir, "claude")
+	commands, skills := (Claude{}).Commands(Paths{Home: home}, dir)
+	commands, skills = composerCommands(commands, skills)
 	got := map[string]Entry{}
 	for _, c := range commands {
 		got[c.Name] = c
@@ -36,7 +37,7 @@ func TestCommandsClaude(t *testing.T) {
 	if len(skills) != 1 || skills[0].Insert != "/s" {
 		t.Fatalf("skills = %+v", skills)
 	}
-	if c, _ := Commands(Paths{Home: home}, dir, "codex"); len(c) != 1 || c[0].Name != "clear" {
+	if c, _ := composerCommands((Codex{}).Commands(Paths{Home: home}, dir)); len(c) != 1 || c[0].Name != "clear" {
 		t.Fatalf("codex = %+v", c)
 	}
 }

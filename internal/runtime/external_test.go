@@ -34,7 +34,13 @@ func TestExternalMessagesKeepDoryContext(t *testing.T) {
 			if kind == "claude-block" {
 				kind = "claude"
 			}
-			messages, err := ExternalMessages(External{Provider: kind, path: path})
+			var d interface {
+				Read(context.Context, External) ([]Message, error)
+			} = Claude{}
+			if kind == "codex" {
+				d = Codex{}
+			}
+			messages, err := d.Read(context.Background(), External{Provider: kind, Path: path})
 			if err != nil || len(messages) != 1 || messages[0].Text != prompt {
 				t.Fatalf("messages = %+v, error = %v", messages, err)
 			}
@@ -60,7 +66,7 @@ func TestExternalSessions(t *testing.T) {
 {"timestamp":"2026-11-16T01:00:04Z","type":"response_item","payload":{"type":"function_call_output","call_id":"k1","output":"b.go"}}
 {"timestamp":"2026-11-16T01:00:05Z","type":"response_item","payload":{"type":"message","id":"m2","role":"assistant","content":[{"type":"output_text","text":"hola\n\n<oai-mem-citation>\n<citation_entries>referencia</citation_entries>\n</oai-mem-citation>"}]}}
 `), 0o644)
-	list := ExternalSessions(Paths{Home: home})
+	list := append((Claude{}).List(context.Background(), Paths{Home: home}), (Codex{}).List(context.Background(), Paths{Home: home})...)
 	if len(list) != 2 {
 		t.Fatalf("sessions %+v", list)
 	}
@@ -74,11 +80,11 @@ func TestExternalSessions(t *testing.T) {
 	if c := byProvider["codex"]; c.ID != "c1" || c.Title != "Hola codex" || c.Dir != "/repo2" {
 		t.Fatalf("codex %+v", c)
 	}
-	msgs, _ := ExternalMessages(byProvider["claude"])
+	msgs, _ := (Claude{}).Read(context.Background(), byProvider["claude"])
 	if len(msgs) != 4 || msgs[3].Role != "tool" || msgs[3].Text != "a.go" || msgs[3].Detail != "ls" {
 		t.Fatalf("claude messages %+v", msgs)
 	}
-	msgs, _ = ExternalMessages(byProvider["codex"])
+	msgs, _ = (Codex{}).Read(context.Background(), byProvider["codex"])
 	if len(msgs) != 3 || msgs[0].Text != "Hola codex" || msgs[1].Text != "b.go" || msgs[2].Text != "hola\n\n" {
 		t.Fatalf("codex messages %+v", msgs)
 	}
@@ -88,14 +94,14 @@ func TestFollowPicksUpTerminalTurns(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 	defer cancel()
 	m, _ := manager(t, 0)
-	m.providers["claude"] = Claude{}
+	m.registry.Register(Claude{})
 	home := t.TempDir()
 	dir := filepath.Join(home, ".claude", "projects", "-repo")
 	os.MkdirAll(dir, 0o755)
 	file := filepath.Join(dir, "s9.jsonl")
 	os.WriteFile(file, []byte(`{"type":"user","uuid":"u1","sessionId":"s9","cwd":"/repo","timestamp":"2026-11-16T00:00:00Z","message":{"content":"Primera"}}
 `+"\n"), 0o644)
-	e, err := ExternalSession(Paths{Home: home}, "claude", "s9")
+	e, err := m.FindExternal(ctx, Paths{Home: home}, "claude", "s9")
 	if err != nil {
 		t.Fatal(err)
 	}

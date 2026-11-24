@@ -39,7 +39,7 @@ func (m *Manager) prepareMCP(ctx context.Context, thread data.Thread, turn *Turn
 	if err != nil {
 		return fmt.Errorf("%s: MCP de Dory: %w", provider, err)
 	}
-	turn.Instructions = buildInstructions(provider, turn.Model, tools)
+	turn.Instructions = buildInstructions(provider, turn.Model, tools, m.registry.Capabilities(provider).DeferredTools)
 	if card := m.threadContext(ctx, thread, turn.Dir); card != "" {
 		turn.Instructions += "\n\n" + card
 	}

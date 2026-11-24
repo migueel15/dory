@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/migueel15/dory/internal/apperr"
 	"io"
 	"mime"
 	"os"
@@ -12,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/migueel15/dory/internal/apperr"
+	"github.com/migueel15/dory/internal/harness"
 	"github.com/migueel15/dory/internal/workspace"
 )
 
@@ -19,14 +20,7 @@ const attachmentFooter = "Ficheros adjuntos (léelos desde su ruta):"
 
 var attachmentIDPrefix = regexp.MustCompile(`^run-[a-z0-9]{12}-[0-9]{1,6}-`)
 
-// Attachment is a file the user sent with a message. It is saved on the node
-// of the thread and the agent reads it from its path.
-type Attachment struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Mime string `json:"mime"`
-	Path string `json:"path"`
-}
+type Attachment = harness.Attachment
 
 // maxAttachment bounds one uploaded file.
 const maxAttachment = 25 << 20
