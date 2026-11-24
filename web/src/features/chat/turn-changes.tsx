@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CaretRight, Folder, FolderOpen, GitDiff } from "@phosphor-icons/react";
 import type { Message } from "../../api/client";
 import { mergeTurnFiles, type TurnFile } from "../../lib/turn-changes";
-import { tree, type Dir } from "../github/github-diff";
+import { tree, type Dir } from "../github/diff-parse";
 import { showPanelTab } from "../thread/side-panel";
 import { events } from "../../lib/store";
 
