@@ -18,7 +18,7 @@ import { SettingsModal } from "./features/settings/settings-modal";
 import { ProjectSwitcher } from "./components/project-switcher";
 import { NoticeAlerts, NoticeInbox, NoticesToggle } from "./components/notices";
 import { Home } from "./pages/home";
-import { Github } from "./pages/github";
+import { Github } from "./features/github/github";
 import { Tasks } from "./pages/tasks";
 import { applyTheme, useTheme } from "./theme";
 import { applyScale, listenZoomKeys } from "./scale";
@@ -358,7 +358,7 @@ function Layout() {
 // browser is idle (and on hover, see defaultPreload) to keep navigation instant.
 const pages = {
   thread: () => import("./pages/thread"),
-  githubDetail: () => import("./pages/github-detail"),
+  githubDetail: () => import("./features/github/github-detail"),
   usage: () => import("./pages/usage"),
   projects: () => import("./pages/projects"),
   skills: () => import("./pages/skills"),

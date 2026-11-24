@@ -1,20 +1,20 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import { useGithubWatch } from "../api/live";
+import { useGithubWatch } from "../../api/live";
 import { Robot } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { api, type GithubAction, type GithubDetail, type GithubPull, type GithubThread } from "../api/client";
-import { DictationField } from "../components/dictation-field";
-import { useDictationInProgress } from "../components/local-dictation";
-import { Badge, Button, Card, Input, Select, ErrorText, Md, Arrow, pill, toggleTask, keepAboveKeyboard, Modal } from "../components/ui";
+import { api, type GithubAction, type GithubDetail, type GithubPull, type GithubThread } from "../../api/client";
+import { DictationField } from "../../components/dictation-field";
+import { useDictationInProgress } from "../../components/local-dictation";
+import { Badge, Button, Card, Input, Select, ErrorText, Md, Arrow, pill, toggleTask, keepAboveKeyboard, Modal } from "../../components/ui";
 import { Avatar, PullStatus, StackBar } from "./github";
 import { Diff, FullscreenHost } from "./github-diff";
-import { DefineIssueDialog } from "./define-issue";
-import { ResizeHandle, ThreadChat } from "./thread";
-import { FileRefContext, type FileRef } from "../components/refs";
-import { useLaunchForm } from "../components/launch-picker";
-import { GithubMark, Icon, IconButton, Menu, MenuItem, RefContext, RefMd, Tip, UserPicker, icons, useArm, MentionArea } from "../components/github-ui";
-import { qk } from "../api/queries/keys";
+import { DefineIssueDialog } from "../../pages/define-issue";
+import { ResizeHandle, ThreadChat } from "../../pages/thread";
+import { FileRefContext, type FileRef } from "../../components/refs";
+import { useLaunchForm } from "../../components/launch-picker";
+import { GithubMark, Icon, IconButton, Menu, MenuItem, RefContext, RefMd, Tip, UserPicker, icons, useArm, MentionArea } from "./github-ui";
+import { qk } from "../../api/queries/keys";
 
 const labels: Record<string, string> = {
   IssueComment: "comentó", PullRequestReview: "revisó", PullRequestCommit: "hizo un commit", ClosedEvent: "cerró", ReopenedEvent: "reabrió", MergedEvent: "mergeó", LabeledEvent: "añadió la etiqueta", AssignedEvent: "asignó", ReadyForReviewEvent: "marcó como lista", ConvertToDraftEvent: "pasó a draft", ReviewRequestedEvent: "pidió revisión", CrossReferencedEvent: "referenció desde",

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy } from "@phosphor-icons/react";
-import { api, type GithubDeviceCode } from "../api/client";
-import { Button, ErrorText } from "./ui";
-import { qk } from "../api/queries/keys";
+import { api, type GithubDeviceCode } from "../../api/client";
+import { Button, ErrorText } from "../../components/ui";
+import { qk } from "../../api/queries/keys";
 
 // GithubLogin links this node to a GitHub account with the device flow: it
 // shows the code, opens github.com/login/device and waits for the token,

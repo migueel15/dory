@@ -14,7 +14,7 @@ import { changeTurns, Messages, ModelChangeDivider, ToEnd, useFollow } from "./c
 import { Chip, Composer, Queue } from "./composer";
 import { QuoteSelection } from "../components/quote-selection";
 import { ProviderIcon } from "../components/launch-picker";
-import { Diff, type Suggestion } from "./github-diff";
+import { Diff, type Suggestion } from "../features/github/github-diff";
 import { setDiffBase, useDiffBase } from "../lib/diff-base";
 import { addDraftQuote, removeDraftQuotes, useDraftQuotes } from "../lib/draft-quotes";
 import { headerButton, ThreadInfo } from "../components/thread-info";

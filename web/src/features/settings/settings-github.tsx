@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
-import { GithubLogin } from "../../components/github-login";
+import { GithubLogin } from "../github/github-login";
 import { Button, ErrorText } from "../../components/ui";
 import { qk } from "../../api/queries/keys";
 

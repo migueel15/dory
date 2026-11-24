@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CaretRight, Folder, FolderOpen, GitDiff } from "@phosphor-icons/react";
 import type { Message } from "../api/client";
 import { mergeTurnFiles, type TurnFile } from "../lib/turn-changes";
-import { tree, type Dir } from "../pages/github-diff";
+import { tree, type Dir } from "../features/github/github-diff";
 import { showPanelTab } from "./side-panel";
 
 // A turn's changes: the box at the end of each agent turn, and the filter the

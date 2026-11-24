@@ -1,7 +1,7 @@
 import { Link as RouterLink } from "@tanstack/react-router";
 import { ArrowBendUpLeft, ArrowCounterClockwise, CaretDown, ChatCircle, Check, CheckCircle, Clock, Code, Eye, File, Flag, GitBranch, GitMerge, GitPullRequest, GithubLogo, PencilSimple, Plus, RadioButton, User, X, type Icon as PhosphorIcon, type IconWeight } from "@phosphor-icons/react";
-import { DictationMic, DictationPreview, useLocalDictation, useEnterFinishesDictation } from "./local-dictation";
-import { ErrorText, defaultUrlTransform, Md, Textarea } from "./ui";
+import { DictationMic, DictationPreview, useLocalDictation, useEnterFinishesDictation } from "../../components/local-dictation";
+import { ErrorText, defaultUrlTransform, Md, Textarea } from "../../components/ui";
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject, type ReactNode, type Ref, type TextareaHTMLAttributes } from "react";
 
 // Phosphor icons shared by the GitHub views.

@@ -9,7 +9,7 @@ import { Check, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimp
 import { api, COLUMN_LABELS, repoName, type Card, type Column, type Pull, type Stage, type Thread } from "../api/client";
 import { Button, ErrorText, iconButton, Input, Label, Md, Modal, Select } from "../components/ui";
 import { useThreadActivity } from "../api/activity";
-import { useArm } from "../components/github-ui";
+import { useArm } from "../features/github/github-ui";
 import { useLaunchForm } from "../components/launch-picker";
 import { useProject } from "../project";
 import { ModelLogo } from "../components/model-logo";

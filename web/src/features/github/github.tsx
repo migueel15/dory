@@ -1,17 +1,17 @@
-import { DefineIssueDialog } from "./define-issue";
-import { useGithubWatch } from "../api/live";
+import { DefineIssueDialog } from "../../pages/define-issue";
+import { useGithubWatch } from "../../api/live";
 import { ArrowClockwise, MagnifyingGlass } from "@phosphor-icons/react";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ApiError, api, type GithubIssue, type GithubPull } from "../api/client";
-import { Arrow, Card, ErrorText, Input, Select, pill } from "../components/ui";
-import { GithubMark, Icon, PrRefChip, Tip, icons } from "../components/github-ui";
+import { ApiError, api, type GithubIssue, type GithubPull } from "../../api/client";
+import { Arrow, Card, ErrorText, Input, Select, pill } from "../../components/ui";
+import { GithubMark, Icon, PrRefChip, Tip, icons } from "./github-ui";
 import { type Icon as PhosphorIcon } from "@phosphor-icons/react";
-import { useProject } from "../project";
-import { GithubLogin } from "../components/github-login";
-import { buildStacks, groupByStack, pullKey } from "../stack";
-import { qk } from "../api/queries/keys";
+import { useProject } from "../../project";
+import { GithubLogin } from "./github-login";
+import { buildStacks, groupByStack, pullKey } from "../../stack";
+import { qk } from "../../api/queries/keys";
 
 const ok = "text-green-700 dark:text-green-400";
 const bad = "text-red-600 dark:text-red-400";
