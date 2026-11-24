@@ -115,7 +115,7 @@ func (s *Store) runSearch(ctx context.Context, query string, args []any) ([]Hit,
 // finished when it is cancelled or archived; pull request state joins in
 // with the GitHub phase.
 func (s *Store) Blockers(ctx context.Context, id string) ([]Task, error) {
-	deps, err := s.Dependencies().List(ctx, Filter{Fields: map[string]any{"task_id": id}, Limit: 1000})
+	deps, err := s.Dependencies().ListAll(ctx, Filter{Fields: map[string]any{"task_id": id}})
 	if err != nil {
 		return nil, err
 	}

@@ -60,7 +60,7 @@ func PlanMarkdown(p data.Plan) string {
 
 // latest is the newest version of a task's plan; ok is false without one.
 func (s *Plans) latest(ctx context.Context, taskID string) (p data.Plan, ok bool, err error) {
-	plans, err := s.Store.Plans().List(ctx, data.Filter{Fields: map[string]any{"task_id": taskID}, Limit: 1000})
+	plans, err := s.Store.Plans().ListAll(ctx, data.Filter{Fields: map[string]any{"task_id": taskID}})
 	if err != nil {
 		return p, false, err
 	}
@@ -109,7 +109,7 @@ func (s *Plans) write(ctx context.Context, taskID, body string, base int64, auth
 	}
 	if cur.ID == "" {
 		// Archived versions keep their numbers, so the new one goes after them.
-		all, err := s.Store.Plans().List(ctx, data.Filter{Fields: map[string]any{"task_id": taskID}, Limit: 1000, IncludeArchived: true})
+		all, err := s.Store.Plans().ListAll(ctx, data.Filter{Fields: map[string]any{"task_id": taskID}, IncludeArchived: true})
 		if err != nil {
 			return cur, err
 		}
@@ -182,7 +182,7 @@ func (s *Plans) Accept(ctx context.Context, taskID string) (data.Task, data.Plan
 
 // List is every version of the plan of a task.
 func (s *Plans) List(ctx context.Context, taskID string) ([]data.Plan, error) {
-	return s.Store.Plans().List(ctx, data.Filter{Fields: map[string]any{"task_id": taskID}, Limit: 1000})
+	return s.Store.Plans().ListAll(ctx, data.Filter{Fields: map[string]any{"task_id": taskID}})
 }
 
 // WriteByAgent saves a whole plan for an agent. Rewriting an existing plan

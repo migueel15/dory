@@ -160,7 +160,7 @@ func (m *Manager) Recover(ctx context.Context) error {
 		return err
 	}
 	m.loadQueues(ctx)
-	threads, err := m.store.Threads().List(ctx, data.Filter{Fields: map[string]any{"node_id": m.node, "status": "working"}, Limit: 1000})
+	threads, err := m.store.Threads().ListAll(ctx, data.Filter{Fields: map[string]any{"node_id": m.node, "status": "working"}})
 	if err != nil {
 		return err
 	}

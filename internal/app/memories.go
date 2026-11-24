@@ -58,12 +58,12 @@ func (*Memories) Index(memories []data.Memory) []MemoryEntry {
 
 // Global are the memories every project shares.
 func (a *Memories) Global(ctx context.Context) ([]data.Memory, error) {
-	return a.Store.Memories().List(ctx, data.Filter{Fields: map[string]any{"scope": "global"}, Limit: 1000})
+	return a.Store.Memories().ListAll(ctx, data.Filter{Fields: map[string]any{"scope": "global"}})
 }
 
 // OfProject are the memories of one project.
 func (a *Memories) OfProject(ctx context.Context, projectID string) ([]data.Memory, error) {
-	return a.Store.Memories().List(ctx, data.Filter{Fields: map[string]any{"scope": "project", "scope_id": projectID}, Limit: 1000})
+	return a.Store.Memories().ListAll(ctx, data.Filter{Fields: map[string]any{"scope": "project", "scope_id": projectID}})
 }
 
 // ThreadScope is the project scope of a thread, or global without a thread
@@ -173,7 +173,7 @@ func (a *Memories) Recall(ctx context.Context, in RecallInput) ([]data.Memory, e
 			}
 		}
 		var err error
-		if memories, err = store.Memories().List(ctx, data.Filter{Fields: fields, Limit: 1000}); err != nil {
+		if memories, err = store.Memories().ListAll(ctx, data.Filter{Fields: fields}); err != nil {
 			return nil, err
 		}
 		slices.Reverse(memories) // newest first

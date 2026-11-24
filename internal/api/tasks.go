@@ -32,7 +32,7 @@ func (s *Server) mountTasks(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, c)
 	})
 	mux.HandleFunc("GET /api/tasks/{id}/dependencies", func(w http.ResponseWriter, r *http.Request) {
-		deps, err := s.Store.Dependencies().List(r.Context(), data.Filter{Fields: map[string]any{"task_id": r.PathValue("id")}, Limit: 1000})
+		deps, err := s.Store.Dependencies().ListAll(r.Context(), data.Filter{Fields: map[string]any{"task_id": r.PathValue("id")}})
 		if err != nil {
 			writeErr(w, r, err)
 			return

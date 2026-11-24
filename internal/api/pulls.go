@@ -204,7 +204,7 @@ func (s *Server) pullThread(ctx context.Context, repo string, n int) (*data.Thre
 
 // reviewRepository matches a GitHub repository with its project and id.
 func (s *Server) reviewRepository(ctx context.Context, repo string) (*string, string) {
-	repos, _ := s.Store.Repositories().List(ctx, data.Filter{Limit: 1000})
+	repos, _ := s.Store.Repositories().ListAll(ctx, data.Filter{})
 	for _, r := range repos {
 		if name, ok := github.ParseRemote(r.RemoteURL); ok && strings.EqualFold(name, repo) {
 			project := r.ProjectID

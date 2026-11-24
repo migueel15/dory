@@ -108,7 +108,7 @@ func addTaskTools(srv *sdk.Server, s *Deps) {
 		return store.UnlinkThread(ctx, id)
 	})
 	add(srv, "list_task_threads", "List the threads of a task with title, node and status.", func(ctx context.Context, in planReadInput) (any, error) {
-		threads, err := store.Threads().List(ctx, data.Filter{Fields: map[string]any{"task_id": in.TaskID}, Limit: 1000})
+		threads, err := store.Threads().ListAll(ctx, data.Filter{Fields: map[string]any{"task_id": in.TaskID}})
 		if err != nil {
 			return nil, err
 		}

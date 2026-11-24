@@ -191,7 +191,7 @@ func SetEnabled(ctx context.Context, store *data.Store, id string, enabled bool)
 		return store.Skills().PatchIf(ctx, s.ID, s.UpdatedAt, data.Fields{"disabled_at": now})
 	}
 	if s.Source == "system" {
-		forks, err := store.Skills().List(ctx, data.Filter{Fields: map[string]any{"forked_from": s.ID}, Limit: 1000})
+		forks, err := store.Skills().ListAll(ctx, data.Filter{Fields: map[string]any{"forked_from": s.ID}})
 		if err != nil {
 			return s, err
 		}

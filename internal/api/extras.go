@@ -26,7 +26,7 @@ func (s *Server) mountRepositoryPaths(mux *http.ServeMux) {
 	})
 	// Every environment that keeps each repository, published by each node.
 	mux.HandleFunc("GET /api/repository-locations", func(w http.ResponseWriter, r *http.Request) {
-		locs, err := s.Store.RepositoryLocations().List(r.Context(), data.Filter{Limit: 1000})
+		locs, err := s.Store.RepositoryLocations().ListAll(r.Context(), data.Filter{})
 		if err != nil {
 			writeErr(w, r, err)
 			return

@@ -77,7 +77,7 @@ func addThreadTools(srv *sdkServer, s *Deps) {
 				fields[k] = v
 			}
 		}
-		threads, err := s.Store.Threads().List(ctx, data.Filter{Fields: fields, IncludeArchived: in.IncludeArchived, Limit: 1000})
+		threads, err := s.Store.Threads().ListAll(ctx, data.Filter{Fields: fields, IncludeArchived: in.IncludeArchived})
 		if err != nil {
 			return nil, err
 		}
@@ -361,7 +361,7 @@ func findEnvironment(ctx context.Context, s *Deps, name string) (string, error) 
 
 // findProjectByName resolves a project id, slug or name.
 func findProjectByName(ctx context.Context, store *data.Store, name string) (data.Project, error) {
-	projects, err := store.Projects().List(ctx, data.Filter{Limit: 1000})
+	projects, err := store.Projects().ListAll(ctx, data.Filter{})
 	if err != nil {
 		return data.Project{}, err
 	}

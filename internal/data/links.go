@@ -75,7 +75,7 @@ func (s *Store) AddDependency(ctx context.Context, taskID, dependsOnID string) (
 			continue
 		}
 		seen[id] = true
-		deps, err := s.Dependencies().List(ctx, Filter{Fields: map[string]any{"task_id": id}, Limit: 1000})
+		deps, err := s.Dependencies().ListAll(ctx, Filter{Fields: map[string]any{"task_id": id}})
 		if err != nil {
 			return Dependency{}, err
 		}
