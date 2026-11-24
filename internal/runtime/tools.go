@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"strconv"
 	"strings"
 
 	"github.com/migueel15/dory/internal/harness"
@@ -55,7 +54,3 @@ func legacyTool(title, detail string) *ToolCall {
 	}
 	return t
 }
-
-func mcpName(name string) (string, string, bool) { return kit.McpName(name) }
-func lineDiff(path, old, next string) FileEdit   { return kit.LineDiff(path, old, next) }
-func itoa(n int) string                          { return strconv.Itoa(n) }

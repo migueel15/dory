@@ -73,11 +73,6 @@ func (n *Notifier) HasPush(ctx context.Context) bool {
 	return count > 0
 }
 
-// Info is what this node tells its peers about the user's interfaces.
-func (n *Notifier) Info(ctx context.Context) map[string]any {
-	return map[string]any{"presence": n.Presence(), "push": n.HasPush(ctx)}
-}
-
 // presenceChanged tells the peers when the state of this node changed.
 func (n *Notifier) presenceChanged() {
 	state := n.Presence()

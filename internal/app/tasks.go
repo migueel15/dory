@@ -50,10 +50,6 @@ func (a *Tasks) ListPage(ctx context.Context, f data.Filter) ([]data.Task, int, 
 	return a.Store.Tasks().ListPage(ctx, f)
 }
 
-func (a *Tasks) Archive(ctx context.Context, id string) error {
-	return a.Store.Tasks().Archive(ctx, id)
-}
-
 func (a *Tasks) Card(ctx context.Context, id string) (Card, error) {
 	t, err := a.Get(ctx, id)
 	if err != nil {
@@ -72,15 +68,6 @@ func (a *Tasks) Board(ctx context.Context, f data.Filter) ([]Card, error) {
 		return nil, err
 	}
 	return a.cards(ctx, tasks)
-}
-
-func (a *Tasks) BoardPage(ctx context.Context, f data.Filter) ([]Card, int, error) {
-	tasks, next, err := a.ListPage(ctx, f)
-	if err != nil {
-		return nil, 0, err
-	}
-	cards, err := a.cards(ctx, tasks)
-	return cards, next, err
 }
 
 func (a *Tasks) repositoryNames(ctx context.Context) (map[string]string, error) {

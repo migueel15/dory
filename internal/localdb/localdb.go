@@ -51,9 +51,3 @@ func migrate(ctx context.Context, db *sql.DB) error {
 	}
 	return nil
 }
-
-// NodeID returns the identity of this node.
-func NodeID(ctx context.Context, db *sql.DB) (id string, err error) {
-	err = db.QueryRowContext(ctx, `SELECT node_id FROM node_state WHERE id = 1`).Scan(&id)
-	return id, err
-}

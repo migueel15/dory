@@ -18,3 +18,4 @@ Dos nodos con versiones distintas pueden recibir operaciones con entidades o col
 
 - El paso de `/peer/v1` a `/peer/v2` requiere actualizar ambos nodos para volver a sincronizar. Se conserva el emparejamiento.
 - La conexión y el emparejamiento móvil siguen el protocolo `/device/v1`.
+- Las entregas que no deben perderse con el destino desconectado (el resultado de un subagente a su padre) pasan por una bandeja de salida local (`internal/outbox`). Se reintentan con retroceso exponencial hasta 7 días y se aplican una sola vez gracias a un identificador de entrega. Las llamadas que esperan respuesta, como crear un hilo remoto, siguen siendo síncronas.

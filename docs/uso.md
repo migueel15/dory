@@ -50,6 +50,7 @@ Para implementar, las dependencias deben estar resueltas.
 La bandeja reúne los hilos de todos los nodos, con filtros (activos, te necesitan, trabajando, archivados).
 
 - **Chat:** muestra en directo el razonamiento, las herramientas y los planes del agente. Lo que escribas mientras trabaja se pone en cola; el botón de parar interrumpe el turno.
+- **Cola tras reiniciar:** la cola de mensajes se guarda en disco. Tras reiniciar el nodo se carga y se muestra, pero no se ejecuta sola: envíala con reconducir o envía otro mensaje.
 - **Hilos de otras máquinas:** se abren a través de su nodo; si ese nodo está apagado, el hilo no está disponible.
 - **Acciones:** renombrar, fijar y archivar. Archivar borra el worktree.
 - **Cambios:** ver el diff del worktree contra la rama base.

@@ -40,6 +40,10 @@ Un cambio llega al otro nodo en menos de 2 s si están conectados. Sin conexión
 
 Cada nodo pliega en instantáneas las operaciones que todos sus pares activos han confirmado. Un par deja de frenar la compactación tras 30 días sin sincronizar. Al conectar un nodo nuevo o atrasado, la malla combina las instantáneas con las operaciones pendientes y conserva las ediciones locales que todavía no se habían sincronizado.
 
+## Entregas entre nodos
+
+El resultado de un subagente que corre en otro nodo se guarda en una bandeja de salida local y se reintenta, con espera creciente, hasta que el padre lo acepta o pasan 7 días. Se aplica una sola vez aunque se entregue más de una. Crear un hilo remoto o interrumpir un subagente remoto siguen siendo llamadas inmediatas que devuelven el error.
+
 ## Nodos con versiones distintas
 
 Los nodos anuncian su protocolo en `/peer/v2/info` antes de intercambiar operaciones. Si un par usa otro protocolo, Dory pausa la sincronización y muestra un aviso en **Entornos** y **Conexiones**. Actualiza Dory en ese nodo para reanudarla con el mismo emparejamiento. Los móviles se conectan mediante `/device/v1`.

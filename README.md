@@ -9,6 +9,7 @@ Cada máquina ejecuta un nodo completo, que funciona sin red y se sincroniza con
 - [Malla de nodos](docs/malla.md): emparejar máquinas y cómo se sincronizan.
 - [Configuración](docs/configuracion.md): opciones y variables `DORY_*`.
 - [MCP](docs/mcp.md): herramientas para los agentes.
+- [Arquitectura](docs/arquitectura.md): paquetes, flujo de un turno y deuda conocida.
 - [Dictado](docs/dictado.md): transcripción local con whisper.cpp.
 - [Dispositivos Android](docs/dispositivos.md): ver y controlar emuladores y móviles desde el hilo.
 - [Decisiones de arquitectura](docs/adr/README.md).
