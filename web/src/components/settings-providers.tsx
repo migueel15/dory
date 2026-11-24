@@ -162,7 +162,7 @@ function ProviderDetail({ node, provider: p }: { node: string; provider: Provide
             <button type="button" className="ml-auto text-slate-500" onClick={() => setJob(undefined)}>cerrar</button></p>
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-xs"><Linkify text={state.data.output || "Esperando salida…"} linkLabel={p.capabilities.includes("login_code") && state.data.kind === "login" && !state.data.done ? `Abrir ${p.name} en el navegador` : undefined} /></pre>
           {!state.data.done && p.capabilities.includes("login_code") && state.data.kind === "login" && state.data.accepts_code !== undefined && (
-            <LoginCodeForm key={job} node={node} id={job} acceptsCode={state.data.accepts_code} />
+            <LoginCodeForm key={job} node={node} id={job} providerName={p.driver_name || p.name} acceptsCode={state.data.accepts_code} />
           )}
         </div>
       )}
@@ -179,11 +179,11 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function LoginCodeForm({ node, id, acceptsCode }: { node: string; id: string; acceptsCode: boolean }) {
+function LoginCodeForm({ node, id, providerName, acceptsCode }: { node: string; id: string; providerName: string; acceptsCode: boolean }) {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<unknown>();
-  if (sent) return <p role="status" className="mt-2 text-sm">Código enviado. Esperando la confirmación de Claude…</p>;
+  if (sent) return <p role="status" className="mt-2 text-sm">Código enviado. Esperando la confirmación de {providerName}…</p>;
   if (!acceptsCode) return <ErrorText error={error} />;
   return (
     <form className="mt-3 space-y-2" onSubmit={async (event) => {
@@ -207,7 +207,7 @@ function LoginCodeForm({ node, id, acceptsCode }: { node: string; id: string; ac
         <span>Código de autorización</span>
         <Input name="code" type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={2048} required />
       </label>
-      <p className="text-sm">Abre el enlace de Claude arriba. Si Claude te muestra un código, pégalo aquí.</p>
+      <p className="text-sm">Abre el enlace de {providerName}. Si te muestra un código, pégalo aquí.</p>
       <Button type="submit" disabled={sending}>Confirmar código</Button>
       <ErrorText error={error} />
     </form>
