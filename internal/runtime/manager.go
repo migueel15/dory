@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/migueel15/dory/internal/cmdexec"
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/workspace"
 )
 
 var (
@@ -334,20 +334,8 @@ func (m *Manager) Create(ctx context.Context, n NewThread) (data.Thread, error) 
 			return t, fmt.Errorf("%w: worktree needs a repository path and a branch", data.ErrInvalid)
 		}
 		dir = m.newWorktreeDir(t.ID)
-		if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		if err := workspace.AddWorktree(ctx, n.RepoPath, dir, n.Branch, n.BaseBranch); err != nil {
 			return t, err
-		}
-		args := []string{"-C", n.RepoPath, "worktree", "add"}
-		if exists(ctx, n.RepoPath, n.Branch) {
-			args = append(args, dir, n.Branch)
-		} else {
-			args = append(args, "-b", n.Branch, dir)
-			if n.BaseBranch != "" {
-				args = append(args, n.BaseBranch)
-			}
-		}
-		if out, err := cmdexec.CommandContext(ctx, "git", args...).CombinedOutput(); err != nil {
-			return t, fmt.Errorf("git worktree: %s", strings.TrimSpace(string(out)))
 		}
 	}
 	if dir == "" {
@@ -358,10 +346,6 @@ func (m *Manager) Create(ctx context.Context, n NewThread) (data.Thread, error) 
 	}
 	_, err = m.db.ExecContext(ctx, `INSERT INTO thread_runtime(thread_id, worktree_path, base_branch, session_provider) VALUES (?, ?, ?, ?)`, t.ID, dir, n.BaseBranch, t.Provider)
 	return t, err
-}
-
-func exists(ctx context.Context, repo, branch string) bool {
-	return cmdexec.CommandContext(ctx, "git", "-C", repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil
 }
 
 // Dir returns the working directory of a thread of this node.
@@ -562,9 +546,9 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
 		closeAll(take(func(candidate string) bool { return candidate == key }))
 	}
 	// The snapshot the turn's changes are diffed against when it ends.
-	root := repoRoot(ctx, dir)
-	base := snapshot(ctx, root)
-	keepSnapshot(ctx, root, t.ID, run, base)
+	root := workspace.RepoRoot(ctx, dir)
+	base := workspace.Snapshot(ctx, root)
+	workspace.KeepSnapshot(ctx, root, t.ID, run, base)
 	var events <-chan Event
 	switch p := p.(type) {
 	case Interactive:
@@ -694,7 +678,7 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 	if _, err := m.db.ExecContext(bg, `DELETE FROM thread_requests WHERE thread_id = ?`, t.ID); err != nil {
 		log.Printf("runtime: drop requests: %v", err)
 	}
-	if files := treeChanges(bg, root, base, snapshot(bg, root)); len(files) > 0 {
+	if files := workspace.TreeChanges(bg, root, base, workspace.Snapshot(bg, root)); len(files) > 0 {
 		m.save(bg, Message{ID: run + ":changes", ThreadID: t.ID, RunID: run, Role: "changes", Tool: &ToolCall{Kind: "changes", Name: "changes", Files: files}, CreatedAt: now()})
 	}
 	m.syncBranch(bg, t.ID)
@@ -868,65 +852,26 @@ func (m *Manager) Diff(ctx context.Context, id string) (string, error) {
 	return d.Diff, err
 }
 
-// WorkDiff is the diff of a thread's folder and what it was compared with:
-// Base is the reference chosen ("" for the uncommitted changes, HEAD), and
-// Branches are the local branches it can be compared with instead.
-type WorkDiff struct {
-	Diff     string   `json:"diff"`
-	Base     string   `json:"base"`
-	Branches []string `json:"branches"`
-}
+// WorkDiff is the diff of a thread's folder and what it was compared with.
+type WorkDiff = workspace.WorkDiff
 
 // DiffAgainst compares the thread's folder with against: a branch, from the
 // point the work left it (merge-base), or "HEAD" for only what is not
 // committed. Empty against uses the base branch the thread started from.
 func (m *Manager) DiffAgainst(ctx context.Context, id, against string) (WorkDiff, error) {
-	out := WorkDiff{Branches: []string{}}
 	var dir, base string
 	err := m.db.QueryRowContext(ctx, `SELECT worktree_path, base_branch FROM thread_runtime WHERE thread_id = ?`, id).Scan(&dir, &base)
 	if errors.Is(err, sql.ErrNoRows) {
-		return out, ErrNotFound
+		return WorkDiff{Branches: []string{}}, ErrNotFound
 	}
 	if err != nil {
-		return out, err
+		return WorkDiff{Branches: []string{}}, err
 	}
-	if cmdexec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--git-dir").Run() != nil {
-		return out, nil
-	}
-	if refs, err := cmdexec.CommandContext(ctx, "git", "-C", dir, "for-each-ref", "--format=%(refname:short)", "refs/heads").Output(); err == nil {
-		for _, b := range strings.Fields(string(refs)) {
-			out.Branches = append(out.Branches, b)
-		}
-	}
-	if against == "" {
-		against = base
-	}
-	if against == "" || strings.HasPrefix(against, "-") {
-		against = "HEAD"
-	}
-	out.Base = against
-	ref := "HEAD"
-	if against != "HEAD" {
-		mb, err := cmdexec.CommandContext(ctx, "git", "-C", dir, "merge-base", against, "HEAD").Output()
-		if err != nil {
-			// An unknown reference falls back to the uncommitted changes.
-			out.Base = "HEAD"
-		} else {
-			ref = strings.TrimSpace(string(mb))
-		}
-	}
-	// Against a snapshot of the folder, so new files not yet added count too.
-	args := []string{"-C", dir, "diff", ref}
-	if tree := snapshot(ctx, repoRoot(ctx, dir)); tree != "" {
-		args = append(args, tree)
-	}
-	diff, err := cmdexec.CommandContext(ctx, "git", args...).Output()
-	out.Diff = string(diff)
-	return out, err
+	return workspace.Diff(ctx, dir, against, base)
 }
 
 // ErrDirtyWorktree says a worktree holds changes that are not committed.
-var ErrDirtyWorktree = errors.New("el worktree tiene cambios sin commitear")
+var ErrDirtyWorktree = workspace.ErrDirtyWorktree
 
 // worktreeDir returns the worktree dory created for a thread, or "" when the
 // thread works in a checkout of the user or has no worktree.
@@ -938,9 +883,8 @@ func (m *Manager) worktreeDir(ctx context.Context, id string) (string, error) {
 	if strings.HasPrefix(dir, filepath.Join(m.dataDir, "worktrees")) {
 		return dir, nil
 	}
-	// A custom location: dory names the folder after the thread, and a linked
-	// worktree has a .git file where a checkout has a folder.
-	if st, serr := os.Stat(filepath.Join(dir, ".git")); filepath.Base(dir) == id && serr == nil && !st.IsDir() {
+	// A custom location Dory named after the thread.
+	if workspace.IsLinkedWorktree(dir, id) {
 		return dir, nil
 	}
 	return "", nil
@@ -959,10 +903,7 @@ func (m *Manager) newWorktreeDir(id string) string {
 }
 
 // Dirty says whether dir has changes that are not committed.
-func Dirty(ctx context.Context, dir string) (bool, error) {
-	out, err := gitCmd(ctx, dir, "status", "--porcelain")
-	return len(strings.TrimSpace(string(out))) > 0, err
-}
+func Dirty(ctx context.Context, dir string) (bool, error) { return workspace.Dirty(ctx, dir) }
 
 // WorktreeState tells whether the worktree of a thread still exists and
 // whether it has uncommitted changes. Shared is true while another thread
@@ -1036,16 +977,7 @@ func (m *Manager) Remove(ctx context.Context, id string, force bool) error {
 	if _, err := os.Stat(dir); err != nil {
 		return nil
 	}
-	if !force {
-		dirty, err := Dirty(ctx, dir)
-		if err != nil {
-			return err
-		}
-		if dirty {
-			return ErrDirtyWorktree
-		}
-	}
-	return cmdexec.CommandContext(ctx, "git", "-C", dir, "worktree", "remove", "--force", dir).Run()
+	return workspace.RemoveWorktree(ctx, dir, force)
 }
 
 // WorktreeUse tells how many threads that are not archived, apart from
@@ -1077,8 +1009,7 @@ func (m *Manager) syncBranch(ctx context.Context, id string) {
 	if err != nil || dir == "" {
 		return
 	}
-	out, err := gitCmd(ctx, dir, "branch", "--show-current")
-	branch := strings.TrimSpace(string(out))
+	branch, err := workspace.CurrentBranch(ctx, dir)
 	if err != nil || branch == "" {
 		return
 	}
@@ -1089,10 +1020,6 @@ func (m *Manager) syncBranch(ctx context.Context, id string) {
 	if _, err := m.store.PatchThread(ctx, id, map[string]any{"branch": branch}); err != nil {
 		log.Printf("runtime: branch of %s: %v", id, err)
 	}
-}
-
-func gitCmd(ctx context.Context, dir string, args ...string) ([]byte, error) {
-	return cmdexec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).CombinedOutput()
 }
 
 // Adopted returns the harness sessions that already are Dory threads.
