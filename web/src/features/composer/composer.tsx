@@ -290,6 +290,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
                 const efforts = option?.model.efforts;
                 return option && efforts?.length ? { values: efforts, initial: modelEffort(option.provider, option.model) } : undefined;
               }}
+              onSelectClose={() => area.current?.focus()}
               onChange={(value, effort) => {
                 const option = modelOptions.find((model) => model.value === value);
                 if (!option) return;

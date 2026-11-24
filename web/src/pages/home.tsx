@@ -135,6 +135,7 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
                 const efforts = option?.model.efforts;
                 return option && efforts?.length ? { values: efforts, initial: modelEffort(option.provider, option.model) } : undefined;
               }}
+              onSelectClose={() => box.current?.focus()}
               onChange={(value, effort) => {
                 const model = models.find((m) => m.value === value);
                 if (model) form.selectModel(model.provider, model.model, effort);

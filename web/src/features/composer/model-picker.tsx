@@ -63,7 +63,7 @@ export type ModelOption = MenuOption & { provider: string };
 export type ModelProvider = { id: string; name: string; disabled?: boolean };
 
 // ModelPicker filters the active provider's catalog and shows the selected model's reasoning levels.
-export function ModelPicker({ models, providers, selected, effort, effortsOf, onChange, modelId = selected, reportedEffort }: { models: ModelOption[]; providers: ModelProvider[]; selected: string; effort: string; effortsOf: (value: string) => { values: string[]; initial: string } | undefined; onChange: (value: string, effort: string) => void; modelId?: string; reportedEffort?: string }) {
+export function ModelPicker({ models, providers, selected, effort, effortsOf, onChange, modelId = selected, reportedEffort, onSelectClose }: { models: ModelOption[]; providers: ModelProvider[]; selected: string; effort: string; effortsOf: (value: string) => { values: string[]; initial: string } | undefined; onChange: (value: string, effort: string) => void; modelId?: string; reportedEffort?: string; onSelectClose?: () => void }) {
   const [open, setOpen] = useState(false);
   const getShortcut = useShortcuts();
   const [focus, setFocus] = useState(selected);
@@ -75,6 +75,7 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
   const [placement, setPlacement] = useState<{ above: boolean; maxHeight: number }>();
   const gap = 8;
   const modelList = useRef<HTMLUListElement>(null);
+  const effortList = useRef<HTMLDivElement>(null);
   const listId = useId();
   const box = useOutside(open, () => setOpen(false));
   useLayoutEffect(() => {
@@ -112,16 +113,24 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
   }, [open]);
   const current = models.find((m) => m.value === selected);
   const activeProvider = providers.find((item) => item.id === provider && !item.disabled) ?? providers.find((item) => !item.disabled);
+  const enabledProviders = new Set(providers.filter((item) => !item.disabled).map((item) => item.id));
+  const providerNames = new Map(providers.map((item) => [item.id, item.name]));
   const query = search.trim().toLowerCase();
   const visibleModels = models.filter((model) =>
-    model.provider === activeProvider?.id &&
-    [model.label, model.modelId ?? model.value].some((name) => name.toLowerCase().includes(query)),
+    query
+      ? enabledProviders.has(model.provider) &&
+        [model.label, model.modelId ?? model.value, providerNames.get(model.provider) ?? model.provider].some((name) => name.toLowerCase().includes(query))
+      : model.provider === activeProvider?.id,
   );
   const highlightedIndex = navigationIndex ?? (query ? 0 : undefined);
   const highlightedModel = highlightedIndex === undefined ? undefined : visibleModels[highlightedIndex];
-  const close = () => {
+  const close = (confirmed = false) => {
     setOpen(false);
-    trigger.current?.focus();
+    if (confirmed && onSelectClose) {
+      if (!touch) onSelectClose();
+    } else {
+      trigger.current?.focus();
+    }
   };
   const toggle = () => {
     if (open) {
@@ -144,11 +153,22 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
   const touch = window.matchMedia("(pointer: coarse)").matches;
   const settingsLabel = effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel;
   const efforts = visibleModels.some((model) => model.value === focus) ? effortsOf(focus) : undefined;
-  const pickModel = (value: string, closeAfterSelection = false) => {
+  const pickModel = (value: string, mode: "stay" | "close" | "focusEfforts" = "stay") => {
+    const picked = models.find((m) => m.value === value);
+    if (picked) setProvider(picked.provider);
     const e = effortsOf(value);
     setFocus(value);
     onChange(value, value === selected && effort ? effort : e?.initial ?? "");
-    if (!e || closeAfterSelection) close();
+    if (!e || mode === "close") {
+      close(true);
+      return;
+    }
+    if (mode === "focusEfforts") {
+      requestAnimationFrame(() => {
+        const activeBtn = effortList.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
+        (activeBtn ?? effortList.current?.querySelector<HTMLButtonElement>("button"))?.focus();
+      });
+    }
   };
   const row = "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised";
   return (
@@ -180,7 +200,7 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
                 if (e.nativeEvent.isComposing) return;
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  if (highlightedModel) pickModel(highlightedModel.value, true);
+                  if (highlightedModel) pickModel(highlightedModel.value, e.shiftKey ? "focusEfforts" : "close");
                   return;
                 }
                 if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
@@ -200,10 +220,11 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
             <ul aria-label="Proveedores" className="row-span-2 max-h-64 overflow-y-auto border-r border-slate-200 p-1 dark:border-border sm:row-span-1">
               {providers.map((item) => (
                 <li key={item.id}>
-                  <button type="button" disabled={item.disabled} aria-pressed={activeProvider?.id === item.id} aria-label={item.name}
+                  <button type="button" disabled={item.disabled} aria-pressed={!query && activeProvider?.id === item.id} aria-label={item.name}
                     title={item.disabled ? "Espera a que termine el turno para cambiar de proveedor" : item.name}
                     onClick={() => {
                       setProvider(item.id);
+                      setSearch("");
                       setNavigationIndex(undefined);
                       if (modelList.current) modelList.current.scrollTop = 0;
                     }}
@@ -227,12 +248,22 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
               {!visibleModels.length && <li role="presentation" className="px-2 py-1.5 text-sm text-slate-500 dark:text-muted">{search.trim() ? "Sin resultados" : "Sin modelos disponibles"}</li>}
             </ul>
             {efforts && (
-              <div aria-label="Razonamiento" className="flex flex-wrap gap-1 border-t border-slate-200 p-1 dark:border-border sm:block sm:max-h-64 sm:overflow-y-auto sm:border-l sm:border-t-0">
+              <div ref={effortList} aria-label="Razonamiento"
+                onKeyDown={(e) => {
+                  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+                  e.preventDefault();
+                  const buttons = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>("button"));
+                  const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+                  if (index === -1 || !buttons.length) return;
+                  const next = Math.max(0, Math.min(buttons.length - 1, index + (e.key === "ArrowDown" ? 1 : -1)));
+                  buttons[next]?.focus();
+                }}
+                className="flex flex-wrap gap-1 border-t border-slate-200 p-1 dark:border-border sm:block sm:max-h-64 sm:overflow-y-auto sm:border-l sm:border-t-0">
                 {efforts.values.map((level) => {
                   const active = level === (focus === selected ? effort : efforts.initial);
                   return (
-                    <button key={level} type="button" aria-pressed={active} onClick={() => { onChange(focus, level); close(); }}
-                      className={`${row} !w-auto sm:!w-full`}>
+                    <button key={level} type="button" aria-pressed={active} onClick={() => { onChange(focus, level); close(true); }}
+                      className={`${row} !w-auto outline-none! focus-visible:outline-none! focus:bg-slate-100 focus:ring-1 focus:ring-inset focus:ring-slate-500 dark:focus:bg-raised dark:focus:ring-accent-text sm:!w-full`}>
                       <span className="min-w-0 flex-1 truncate">{level}</span>{active && <Check weight="thin" className="size-3.5 shrink-0" />}
                     </button>
                   );
