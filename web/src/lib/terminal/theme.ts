@@ -23,4 +23,6 @@ export function terminalTheme(): ITheme {
   };
 }
 
-export const terminalFont = () => css("--font-mono", "") || 'ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace';
+// Nerd Fonts go first so the icons of prompts and tools (powerline, git, folders) draw; the rest is the fallback.
+const NERD = ['"CaskaydiaMono Nerd Font"', '"CaskaydiaCove Nerd Font Mono"', '"JetBrainsMono Nerd Font"', '"FiraCode Nerd Font"', '"Hack Nerd Font"', '"MesloLGS NF"', '"Iosevka Nerd Font"', '"Symbols Nerd Font Mono"', '"Symbols Nerd Font"'];
+export const terminalFont = () => [...NERD, css("--font-mono", "") || 'ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace'].join(", ");
