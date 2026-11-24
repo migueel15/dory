@@ -73,14 +73,14 @@ function CookieSettings() {
       <p className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-border dark:bg-raised dark:text-muted">
         <Info weight="regular" className="size-4 shrink-0" aria-hidden="true" />Los agentes en segundo plano no las reciben.
       </p>
-      <div className="max-w-sm space-y-2">
+      <div className="space-y-2">
         <span className="block text-sm font-medium">Importar sesiones desde</span>
         {list && !options.length
           ? <p className="text-sm text-slate-500 dark:text-muted">No hay ningún navegador compatible.</p>
-          : <Select value={settings.source} onChange={(source) => save({ ...settings, source })} options={options} placeholder="Cargando…" />}
-      </div>
-      <div className="space-y-2">
-        <Button onClick={importNow} disabled={busy || !settings.source}>{busy ? "Importando…" : "Importar ahora"}</Button>
+          : <div className="flex items-center gap-2">
+              <Select className="w-64" value={settings.source} onChange={(source) => save({ ...settings, source })} options={options} placeholder="Cargando…" />
+              <Button onClick={importNow} disabled={busy || !settings.source}>{busy ? "Importando…" : "Importar ahora"}</Button>
+            </div>}
         {status && <p className="text-xs text-slate-500 dark:text-muted">{status}</p>}
       </div>
       <label className="flex items-start gap-2 text-sm">
