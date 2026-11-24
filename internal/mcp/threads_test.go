@@ -15,6 +15,7 @@ import (
 	"github.com/migueel15/dory/internal/config"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/devices"
+	"github.com/migueel15/dory/internal/harness"
 	"github.com/migueel15/dory/internal/localdb"
 	"github.com/migueel15/dory/internal/mesh/peerapi"
 	"github.com/migueel15/dory/internal/nodestate"
@@ -84,7 +85,7 @@ func TestFindProjectAndEnvironment(t *testing.T) {
 
 type selectionProvider struct{ runtime.Provider }
 
-func (selectionProvider) ID() string { return "test" }
+func (selectionProvider) Info() harness.Info { return harness.Info{ID: "test"} }
 
 func (selectionProvider) Detect(context.Context) runtime.Status {
 	return runtime.Status{ID: "test", Installed: true, Models: []runtime.Model{{Slug: "model", Name: "Test Model", Efforts: []string{"high"}}}}
@@ -104,7 +105,7 @@ func TestAPIAndMCPUseSameThreadSelection(t *testing.T) {
 	}
 	store := data.New(db, log)
 	state := nodestate.New(db)
-	rt := runtime.NewManager(db, store, log.Node(), dir, state, selectionProvider{})
+	rt := runtime.NewManager(db, store, log.Node(), dir, state, nil, selectionProvider{})
 	settings := api.NewSettingsStore(state, api.Settings{})
 	s := &api.Server{Store: store, Runtime: rt, Node: api.Node{ID: log.Node()}, Settings: settings,
 		Threads: &app.Threads{Store: store, Runtime: rt, Settings: settings, Node: log.Node(), DataDir: dir}}

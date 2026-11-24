@@ -3,7 +3,6 @@ package mcp
 import (
 	"context"
 	"fmt"
-	"github.com/migueel15/dory/internal/apperr"
 	"slices"
 	"strings"
 
