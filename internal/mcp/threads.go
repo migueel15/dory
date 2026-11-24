@@ -4,7 +4,6 @@ import (
 	"github.com/migueel15/dory/internal/apperr"
 	"context"
 	"fmt"
-	"net/http"
 	"slices"
 	"strings"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/mesh"
+	"github.com/migueel15/dory/internal/mesh/peerapi"
 	"github.com/migueel15/dory/internal/runtime"
 )
 
@@ -317,7 +317,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 			if d.ChildNodeID == s.Node.ID {
 				err = m.Interrupt(ctx, d.ChildThreadID)
 			} else {
-				err = s.PeerCall(ctx, d.ChildNodeID, http.MethodPost, "/api/threads/"+d.ChildThreadID+"/interrupt", struct{}{}, nil)
+				err = s.PeerClient.InterruptThread(ctx, d.ChildNodeID, d.ChildThreadID)
 			}
 		}
 		return map[string]any{"task_id": d.ID, "status": d.Status}, err
@@ -451,11 +451,10 @@ func createThread(ctx context.Context, s *api.Server, base data.Thread, in newTh
 	out := map[string]any{"title": n.Title, "provider": n.Provider, "project_id": n.ProjectID, "environment": node, "started": in.Prompt != ""}
 	if node != s.Node.ID {
 		// The peer checks the selection against its own harnesses.
-		var created struct {
-			ThreadID string `json:"thread_id"`
-		}
-		err := s.PeerCall(ctx, node, http.MethodPost, "/api/threads", map[string]any{"project_id": n.ProjectID, "task_id": n.TaskID, "parent_id": n.ParentID, "origin_id": n.OriginID,
-			"provider": n.Provider, "model": n.Model, "effort": n.Effort, "runtime_mode": n.RuntimeMode, "title": n.Title, "text": in.Prompt}, &created)
+		created, err := s.PeerClient.CreateThread(ctx, node, peerapi.CreateThreadRequest{
+			ProjectID: n.ProjectID, TaskID: n.TaskID, ParentID: n.ParentID, OriginID: n.OriginID,
+			Provider: n.Provider, Model: n.Model, Effort: n.Effort, RuntimeMode: n.RuntimeMode, Title: n.Title, Text: in.Prompt,
+		})
 		if err != nil {
 			return nil, err
 		}

@@ -171,7 +171,8 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	})
 	srv.StartWorktreeMaintenance(ctx)
 	srv.Remote = net
-	rt.PeerComplete = srv.CompleteOnPeer
+	srv.PeerClient = net.Client()
+	rt.PeerComplete = srv.PeerClient.CompleteDelegation
 	srv.MeshPort = cfg.MeshPort
 	srv.Browser = &browser.Manager{DB: store.DB(), Profile: filepath.Join(cfg.DataDir, "browser-profile"),
 		Changed: func(id string) { events.Changed("browser", id) }}
