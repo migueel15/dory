@@ -47,6 +47,12 @@ func Permanent(err error) error {
 	return permanent{err}
 }
 
+// IsPermanent reports whether err was marked with Permanent.
+func IsPermanent(err error) bool {
+	var p permanent
+	return errors.As(err, &p)
+}
+
 // Delivery is one row of the outbox.
 type Delivery struct {
 	ID        string
@@ -169,11 +175,10 @@ func (o *Outbox) Flush(ctx context.Context) error {
 			continue
 		}
 		err := o.send.Deliver(ctx, d.Node, d.Kind, d.ID, d.Payload)
-		var perm permanent
 		switch {
 		case err == nil:
 			err = o.finish(ctx, d.ID, "delivered", d.Attempts+1, "", "")
-		case errors.As(err, &perm):
+		case IsPermanent(err):
 			log.Printf("outbox: %s to %s failed for good: %v", d.Kind, d.Node, err)
 			err = o.finish(ctx, d.ID, "failed", d.Attempts+1, "", err.Error())
 		default:

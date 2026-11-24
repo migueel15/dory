@@ -71,6 +71,9 @@ type Mesh struct {
 	Web http.Handler
 	// IssueDevice creates the token of a phone that showed the pairing code.
 	IssueDevice func(ctx context.Context, name string) (string, error)
+	// Connected is called when a peer becomes reachable: the first successful
+	// sync after the peer was unknown or failing.
+	Connected func(node string)
 	// DeviceSession trades the token of a phone for a session cookie.
 	DeviceSession http.HandlerFunc
 
@@ -556,6 +559,7 @@ func (m *Mesh) Start(ctx context.Context, node string) {
 	m.mu.Unlock()
 	go m.listen(ctx, node, wake)
 	timer := time.NewTimer(0)
+	connected := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -563,9 +567,15 @@ func (m *Mesh) Start(ctx context.Context, node string) {
 		case <-wake:
 		case <-timer.C:
 		}
-		if err := m.sync(ctx, node); err != nil && ctx.Err() == nil {
+		synced, err := m.sync(ctx, node)
+		if err != nil && ctx.Err() == nil {
 			log.Printf("mesh: sync with %s: %v", node, err)
 		}
+		// A peer that just became reachable gets what was waiting for it.
+		if synced && !connected && m.Connected != nil {
+			m.Connected(node)
+		}
+		connected = synced
 		timer.Reset(syncEvery)
 	}
 }
@@ -611,29 +621,29 @@ func (m *Mesh) listen(ctx context.Context, node string, wake chan struct{}) {
 
 // sync exchanges what each side is missing: it pulls the peer's new ops and
 // pushes its own, so one reachable direction is enough.
-func (m *Mesh) sync(ctx context.Context, node string) error {
+func (m *Mesh) sync(ctx context.Context, node string) (bool, error) {
 	peer, err := m.peer(ctx, node)
 	if err != nil || peer.address == "" {
-		return err
+		return false, err
 	}
 	c := peer.client()
 	base := "https://" + peer.address + peerPrefix
 	compatible, err := m.checkProtocol(ctx, c, base, node, peer.address, peer.key)
 	if err != nil || !compatible {
-		return err
+		return false, err
 	}
 	for range 1000 {
 		mine, err := m.log.Vector(ctx)
 		if err != nil {
-			return err
+			return false, err
 		}
 		var ops []oplog.Op
 		if err = postJSON(ctx, c, base+"/ops", mine, &ops); err != nil {
-			return err
+			return false, err
 		}
 		if len(ops) > 0 {
 			if err = m.log.Apply(ctx, ops); err != nil {
-				return err
+				return false, err
 			}
 		}
 		if len(ops) < pageSize {
@@ -643,20 +653,20 @@ func (m *Mesh) sync(ctx context.Context, node string) error {
 	for range 1000 {
 		var theirs oplog.Vector
 		if err = getJSON(ctx, c, base+"/vector", &theirs); err != nil {
-			return err
+			return false, err
 		}
 		ops, err := m.log.Since(ctx, theirs, pageSize)
 		if err != nil || len(ops) == 0 {
-			return err
+			return err == nil, err
 		}
 		if err = postJSON(ctx, c, base+"/apply", ops, nil); err != nil {
-			return err
+			return false, err
 		}
 		if len(ops) < pageSize {
-			return nil
+			return true, nil
 		}
 	}
-	return nil
+	return true, nil
 }
 
 func getJSON(ctx context.Context, c *http.Client, url string, out any) error {

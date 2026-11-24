@@ -53,7 +53,7 @@ func TestSyncRejectsIncompatibleProtocol(t *testing.T) {
 			if err := local.addPeer(ctx, "other", "Other", key, address); err != nil {
 				t.Fatal(err)
 			}
-			if err := local.sync(ctx, "other"); err != nil {
+			if _, err := local.sync(ctx, "other"); err != nil {
 				t.Fatal(err)
 			}
 			peers, err := local.Peers(ctx)
