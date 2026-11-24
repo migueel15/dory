@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { FitAddon } from "@xterm/addon-fit";
-import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { Button } from "../../components/ui";
@@ -31,11 +30,6 @@ export function TerminalPanel({ threadId, tab, id, active, onId }: { threadId: s
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(el);
-    try {
-      const gl = new WebglAddon();
-      gl.onContextLoss(() => gl.dispose());
-      term.loadAddon(gl);
-    } catch { /* the canvas renderer stays */ }
     // The panel's own hover focus (see SidePanel) lands on the keyboard input.
     term.textarea?.setAttribute("data-panel-focus", "");
     const refit = () => { if (el.clientWidth > 0 && el.clientHeight > 0) { try { fit.fit(); } catch { /* not laid out yet */ } } };
