@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { req } from "../api/client";
-import { ErrorText, Select } from "./ui";
-import { qk } from "../api/queries/keys";
+import { req } from "../../api/client";
+import { ErrorText, Select } from "../../components/ui";
+import { qk } from "../../api/queries/keys";
 
 type Setting = { kind: string; title: string; mode: string };
 

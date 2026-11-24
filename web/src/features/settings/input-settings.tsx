@@ -1,10 +1,10 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Warning } from "@phosphor-icons/react";
-import { api, type InputSettings } from "../api/client";
-import { dictationShortcutEvent, dictationShortcutKey } from "./dictation-shortcut";
-import { qk } from "../api/queries/keys";
-import { useNodeSettings } from "../api/queries/hooks";
+import { api, type InputSettings } from "../../api/client";
+import { dictationShortcutEvent, dictationShortcutKey } from "../../components/dictation-shortcut";
+import { qk } from "../../api/queries/keys";
+import { useNodeSettings } from "../../api/queries/hooks";
 
 // Shortcuts and the dictation model live in the settings of each node
 // (NodeSettings.input). The running app is a client of the node that serves it

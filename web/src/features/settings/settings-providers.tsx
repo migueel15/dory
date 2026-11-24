@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
-import { api, type Job, type Provider } from "../api/client";
-import { ProviderIcon, useNodes } from "./launch-picker";
+import { api, type Job, type Provider } from "../../api/client";
+import { ProviderIcon, useNodes } from "../../components/launch-picker";
 import { ALL_NODES, useNodeDefault, type SectionProps } from "./settings-node";
-import { Button, ErrorText, Input, Select } from "./ui";
-import { qk } from "../api/queries/keys";
-import { useNodeProviders } from "../api/queries/hooks";
+import { Button, ErrorText, Input, Select } from "../../components/ui";
+import { qk } from "../../api/queries/keys";
+import { useNodeProviders } from "../../api/queries/hooks";
 
 // Providers are unique per node: they need a login there. With "all" this
 // shows what every node has and asks to pick one to manage.

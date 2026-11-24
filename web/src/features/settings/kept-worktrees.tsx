@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api/client";
-import { askConfirm } from "./confirm";
-import { Button, ErrorText } from "./ui";
-import { qk } from "../api/queries/keys";
+import { api } from "../../api/client";
+import { askConfirm } from "../../components/confirm";
+import { Button, ErrorText } from "../../components/ui";
+import { qk } from "../../api/queries/keys";
 
 // KeptWorktrees warns about the worktrees of archived threads that were not
 // deleted because they have uncommitted changes, and deletes them on request.

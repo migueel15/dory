@@ -1,15 +1,15 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowCircleUp, ArrowsClockwise, DeviceMobile, DotsThree, Plus, WifiHigh } from "@phosphor-icons/react";
-import { api, type NodeUpdate, type Provider } from "../api/client";
-import { EnvIconPicker } from "./env-icon";
-import { ProviderIcon } from "./launch-picker";
-import { useMeshUpdates } from "./mesh-update";
-import { askConfirm } from "./confirm";
-import { Button, ErrorText, Input } from "./ui";
+import { api, type NodeUpdate, type Provider } from "../../api/client";
+import { EnvIconPicker } from "../../components/env-icon";
+import { ProviderIcon } from "../../components/launch-picker";
+import { useMeshUpdates } from "../../components/mesh-update";
+import { askConfirm } from "../../components/confirm";
+import { Button, ErrorText, Input } from "../../components/ui";
 import type { SectionProps } from "./settings-node";
-import { qk } from "../api/queries/keys";
-import { useMesh, useNode, usePairedDevices, useNodeProviders } from "../api/queries/hooks";
+import { qk } from "../../api/queries/keys";
+import { useMesh, useNode, usePairedDevices, useNodeProviders } from "../../api/queries/hooks";
 
 type Row = { id: string; name: string; icon?: string; os?: string; version?: string; local: boolean; state: "on" | "off" | "disabled"; seen?: string; incompatible?: boolean };
 

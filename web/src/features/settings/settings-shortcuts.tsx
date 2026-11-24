@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Button } from "./ui";
-import { chordFromEvent, formatChord } from "./dictation-shortcut";
-import { available, chordIn, commands, conflictIn, reserved, type CommandId } from "./shortcuts";
+import { Button } from "../../components/ui";
+import { chordFromEvent, formatChord } from "../../components/dictation-shortcut";
+import { available, chordIn, commands, conflictIn, reserved, type CommandId } from "../../components/shortcuts";
 import { emptyInput, ValueDiff } from "./input-settings";
 import { useNodeSettings, type SectionProps } from "./settings-node";
-import type { InputChord } from "../api/client";
+import type { InputChord } from "../../api/client";
 
 // Shortcuts are a setting of each node; with "Todos los nodos" a change is
 // written to each node on top of its own list.

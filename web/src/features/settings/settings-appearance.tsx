@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Desktop, Moon, Sun } from "@phosphor-icons/react";
-import { MAX_SCALE, MIN_SCALE, setScale, useScale } from "../scale";
-import { useTheme, type Theme } from "../theme";
+import { MAX_SCALE, MIN_SCALE, setScale, useScale } from "../../scale";
+import { useTheme, type Theme } from "../../theme";
 
 const THEMES: { value: Theme; label: string; icon: typeof Sun }[] = [
   { value: "light", label: "Claro", icon: Sun },

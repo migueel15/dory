@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { chordFromEvent, openShortcutPopups, readDictationShortcut, type Chord } from "./dictation-shortcut";
-import { shortcutsEvent, shortcutsKey, useInputSettingsSync } from "./input-settings";
+import { shortcutsEvent, shortcutsKey, useInputSettingsSync } from "../features/settings/input-settings";
 
 const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const chord = (code: string, shift = false): Chord => ({ code: `Key${code}`, ctrl: !mac, meta: mac, alt: false, shift });

@@ -14,7 +14,7 @@ import { listenShortcuts, useCommand } from "./components/shortcuts";
 import { CommandPalette, CommandsButton } from "./components/commands";
 import { TooltipHost } from "./components/tooltip";
 import { MeshUpdateButton } from "./components/mesh-update";
-import { SettingsModal } from "./components/settings-modal";
+import { SettingsModal } from "./features/settings/settings-modal";
 import { ProjectSwitcher } from "./components/project-switcher";
 import { NoticeAlerts, NoticeInbox, NoticesToggle } from "./components/notices";
 import { Home } from "./pages/home";

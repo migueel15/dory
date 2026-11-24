@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ErrorText } from "./ui";
+import { ErrorText } from "../../components/ui";
 import { NodeDiff, SettingRow, useNodeDefault, useNodeSettings, type NodeSettingsView, type SectionProps } from "./settings-node";
 
 type Worktrees = { location: string; branch_naming: string; remove_on_merge: boolean };

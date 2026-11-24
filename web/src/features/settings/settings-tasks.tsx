@@ -1,4 +1,4 @@
-import { ErrorText } from "./ui";
+import { ErrorText } from "../../components/ui";
 import { SettingRow, useNodeSettings, type SectionProps } from "./settings-node";
 
 // TaskSettings holds what the selected node(s) do when a task is done or

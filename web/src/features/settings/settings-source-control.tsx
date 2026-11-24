@@ -1,4 +1,4 @@
-import { ErrorText } from "./ui";
+import { ErrorText } from "../../components/ui";
 import { SettingRow, useNodeSettings, type SectionProps } from "./settings-node";
 
 // SourceControlSettings is the "Control de versiones" section: what the selected

@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api/client";
-import { useProviders } from "./launch-picker";
-import { ErrorText, Select } from "./ui";
-import { qk } from "../api/queries/keys";
+import { api } from "../../api/client";
+import { useProviders } from "../../components/launch-picker";
+import { ErrorText, Select } from "../../components/ui";
+import { qk } from "../../api/queries/keys";
 
 // IdeasSettings picks the provider and model that write the titles of the
 // ideas saved in «Nueva idea». Without one, ideas keep their first sentence.

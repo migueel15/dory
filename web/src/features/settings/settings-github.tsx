@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api/client";
-import { GithubLogin } from "./github-login";
-import { Button, ErrorText } from "./ui";
-import { qk } from "../api/queries/keys";
+import { api } from "../../api/client";
+import { GithubLogin } from "../../components/github-login";
+import { Button, ErrorText } from "../../components/ui";
+import { qk } from "../../api/queries/keys";
 
 const sources = { env: "la variable DORY_GITHUB_TOKEN", ui: "el inicio de sesión de Dory", gh: "la CLI gh", none: "" };
 

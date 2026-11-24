@@ -1,9 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, DownloadSimple } from "@phosphor-icons/react";
-import { downloadSpeechModel, pickSpeechModel, speechKey, useSpeechModels } from "./local-dictation";
+import { downloadSpeechModel, pickSpeechModel, speechKey, useSpeechModels } from "../../components/local-dictation";
 import { emptyInput, ValueDiff } from "./input-settings";
 import { useNodeSettings, type SectionProps } from "./settings-node";
-import { Button, ErrorText } from "./ui";
+import { Button, ErrorText } from "../../components/ui";
 
 // DictationSettings is the Dictado section of the settings: which speech model
 // each node uses. The models are downloaded on this node, whose list is shown.

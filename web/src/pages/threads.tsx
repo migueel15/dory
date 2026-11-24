@@ -1,4 +1,4 @@
-import { KeptWorktrees } from "../components/kept-worktrees";
+import { KeptWorktrees } from "../features/settings/kept-worktrees";
 import { useCommand } from "../components/shortcuts";
 import { ThreadsFold } from "../lib/threads-fold";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";

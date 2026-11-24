@@ -15,12 +15,12 @@ import { ThreadsSettings } from "./settings-threads";
 import { SourceControlSettings } from "./settings-source-control";
 import { WorktreesSettings } from "./settings-worktrees";
 import { ALL_NODES, type SectionProps } from "./settings-node";
-import { useNodes } from "./launch-picker";
-import { Select } from "./ui";
-import { commands } from "./shortcuts";
-import { Projects } from "../pages/projects";
-import { Memories } from "../pages/crud";
-import { Skills } from "../pages/skills";
+import { useNodes } from "../../components/launch-picker";
+import { Select } from "../../components/ui";
+import { commands } from "../../components/shortcuts";
+import { Projects } from "../../pages/projects";
+import { Memories } from "../../pages/crud";
+import { Skills } from "../../pages/skills";
 
 // A section receives the selected node ("all" or a node id). perNode: false
 // hides the selector (device-local or global sections).

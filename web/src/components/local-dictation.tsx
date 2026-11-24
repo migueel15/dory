@@ -7,7 +7,7 @@ import { wav } from "./audio-wav";
 import { playDictationSound, prepareDictationSound } from "./dictation-sound";
 import { openDictationMicrophone } from "./dictation-microphone";
 import { iconButton } from "./ui";
-import { modelEvent, modelKey, useInputSettingsSync } from "./input-settings";
+import { modelEvent, modelKey, useInputSettingsSync } from "../features/settings/input-settings";
 import { qk } from "../api/queries/keys";
 
 export type SpeechModel = {
