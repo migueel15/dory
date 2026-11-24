@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"io"
 	"net/http"
 	"os"
@@ -76,7 +77,7 @@ func (m *LocalModels) ensureEngine() error {
 	}
 	asset, ok := platformAsset()
 	if !ok {
-		return errors.New("NeMo-Speech no publica un motor para este sistema")
+		return errors.New(i18n.Text("dictation.nemo_speech_no_publica"))
 	}
 	if err := os.MkdirAll(filepath.Dir(m.engineDir()), 0700); err != nil {
 		return err
@@ -97,11 +98,11 @@ func (m *LocalModels) ensureEngine() error {
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return errors.New("no se pudo descargar NeMo-Speech de GitHub")
+		return errors.New(i18n.Text("dictation.no_pudo_descargar_nemo"))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GitHub respondió con HTTP %d al descargar NeMo-Speech", resp.StatusCode)
+		return fmt.Errorf(i18n.Text("dictation.github_respondio_http_al"), resp.StatusCode)
 	}
 	hash := sha256.New()
 	size, err := io.Copy(io.MultiWriter(archive, hash), io.LimitReader(resp.Body, asset.Bytes+1))
@@ -109,7 +110,7 @@ func (m *LocalModels) ensureEngine() error {
 		return err
 	}
 	if size != asset.Bytes || hex.EncodeToString(hash.Sum(nil)) != asset.SHA {
-		return errors.New("el motor descargado no coincide con la versión publicada")
+		return errors.New(i18n.Text("dictation.motor_descargado_no_coincide"))
 	}
 	staging, err := os.MkdirTemp(filepath.Dir(m.engineDir()), "extract-*")
 	if err != nil {
@@ -122,7 +123,7 @@ func (m *LocalModels) ensureEngine() error {
 		err = extractTarGz(archive.Name(), staging)
 	}
 	if err != nil {
-		return fmt.Errorf("no se pudo descomprimir NeMo-Speech: %w", err)
+		return fmt.Errorf(i18n.Text("dictation.no_pudo_descomprimir_nemo"), err)
 	}
 	os.RemoveAll(m.engineDir())
 	return os.Rename(staging, m.engineDir())

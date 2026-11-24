@@ -43,12 +43,12 @@ func sameSite(r *http.Request) bool {
 
 func upgradeWS(w http.ResponseWriter, r *http.Request) (*wsConn, error) {
 	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") || !strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade") {
-		return nil, errors.New("se esperaba una conexión WebSocket")
+		return nil, errors.New("expected a WebSocket connection")
 	}
 	key := r.Header.Get("Sec-WebSocket-Key")
 	hj, ok := w.(http.Hijacker)
 	if key == "" || !ok {
-		return nil, errors.New("WebSocket no disponible")
+		return nil, errors.New("WebSocket not available")
 	}
 	c, rw, err := hj.Hijack()
 	if err != nil {
@@ -115,7 +115,7 @@ func (w *wsConn) read(limit int) (byte, []byte, error) {
 			n = binary.BigEndian.Uint64(b[:])
 		}
 		if h[1]&0x80 == 0 || n > uint64(limit) {
-			return 0, nil, errors.New("trama no válida")
+			return 0, nil, errors.New("invalid frame")
 		}
 		var mask [4]byte
 		if _, err := io.ReadFull(w.br, mask[:]); err != nil {

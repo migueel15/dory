@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"github.com/migueel15/dory/internal/i18n"
 	"net/http"
 	"sync"
 
@@ -108,7 +109,7 @@ func (s *Server) nodeUpdate(ctx context.Context, n MeshNode, opts *update.Option
 	if err != nil {
 		switch domainErr := apperr.As(err); {
 		case errors.Is(err, mesh.ErrUnreachable):
-			res.Error = "el nodo no está conectado"
+			res.Error = i18n.Text("api.nodo_no_esta_conectado")
 		case domainErr != nil:
 			res.Error = domainErr.Message
 		default:

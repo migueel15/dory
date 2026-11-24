@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/migueel15/dory/internal/apperr"
+	"github.com/migueel15/dory/internal/i18n"
 	"os"
 	"os/exec"
 	"regexp"
@@ -116,7 +117,7 @@ func launchChrome(bin, profile string) (*exec.Cmd, string, error) {
 		cmd.Wait()
 		mu.Lock()
 		defer mu.Unlock()
-		return nil, "", fmt.Errorf("Chromium no abrió el puerto de depuración: %s", strings.Join(tail, " | "))
+		return nil, "", fmt.Errorf(i18n.Text("browser.chromium_no_abrio_puerto"), strings.Join(tail, " | "))
 	}
 }
 

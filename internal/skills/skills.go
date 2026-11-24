@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"log"
 	"os"
 	"path/filepath"
@@ -262,7 +263,7 @@ func (r *Reconciler) reconcile(ctx context.Context) error {
 			if id, ok := byName[r.ownerName(path)]; ok {
 				st := states[id]
 				st.SkillID, st.NodeID, st.Status = id, r.Node, "conflict"
-				st.Message = strings.TrimSpace(st.Message + "\nconflicto: " + path + " se editó a mano y Dory no la quita")
+				st.Message = strings.TrimSpace(st.Message + "\n" + i18n.Textf("skills.conflict_edited_left", path))
 				states[id] = st
 				continue
 			}
@@ -313,13 +314,13 @@ func (r *Reconciler) write(path string, content []byte, m manifest) string {
 			return ""
 		}
 		if prev, ours := m[path]; !ours || prev != hash(current) {
-			return "conflicto: " + path + " no lo escribió Dory o se editó a mano"
+			return i18n.Textf("skills.conflict_not_ours", path)
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "error: " + err.Error()
 	}
 	if info, err := os.Lstat(filepath.Dir(path)); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return "conflicto: " + filepath.Dir(path) + " es un enlace simbólico ajeno"
+		return i18n.Textf("skills.conflict_foreign_symlink", filepath.Dir(path))
 	}
 	if err = os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "error: " + err.Error()

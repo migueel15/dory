@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"io"
 	"maps"
 	"path/filepath"
@@ -569,13 +570,13 @@ func (c Claude) Commands(p harness.Paths, dir string) (commands, skills []harnes
 
 func claudeCommands() []harness.Entry {
 	return []harness.Entry{
-		{Name: "compact", Description: "Resume la conversación para liberar contexto", Insert: "/compact"},
-		{Name: "context", Description: "Muestra el uso de la ventana de contexto", Insert: "/context"},
-		{Name: "cost", Description: "Muestra el coste de la sesión", Insert: "/cost"},
-		{Name: "init", Description: "Crea CLAUDE.md con la documentación del repositorio", Insert: "/init"},
-		{Name: "review", Description: "Revisa un pull request", Insert: "/review"},
-		{Name: "security-review", Description: "Revisión de seguridad de los cambios pendientes", Insert: "/security-review"},
-		{Name: "pr-comments", Description: "Trae los comentarios de un pull request", Insert: "/pr-comments"},
+		{Name: "compact", Description: i18n.Text("command.compact"), Insert: "/compact"},
+		{Name: "context", Description: i18n.Text("command.context"), Insert: "/context"},
+		{Name: "cost", Description: i18n.Text("command.cost"), Insert: "/cost"},
+		{Name: "init", Description: i18n.Text("command.init"), Insert: "/init"},
+		{Name: "review", Description: i18n.Text("command.review"), Insert: "/review"},
+		{Name: "security-review", Description: i18n.Text("command.security_review"), Insert: "/security-review"},
+		{Name: "pr-comments", Description: i18n.Text("command.pr_comments"), Insert: "/pr-comments"},
 	}
 }
 

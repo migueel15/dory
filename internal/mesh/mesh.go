@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"io"
 	"log"
 	"maps"
@@ -389,7 +390,7 @@ func (m *Mesh) Pair(ctx context.Context, address, code string) (Peer, error) {
 	defer hello.CloseIdleConnections()
 	var info json.RawMessage
 	if err := getJSON(ctx, hello, "https://"+address+peerPrefix+"/hello", &info); err != nil {
-		return Peer{}, fmt.Errorf("no se pudo conectar con %s: %w", address, err)
+		return Peer{}, fmt.Errorf(i18n.Text("mesh.no_pudo_conectar"), address, err)
 	}
 	body, _ := json.Marshal(pairRequest{NodeID: m.log.Node(), Name: m.name, Address: fmt.Sprintf(":%d", m.port), Proof: proof(code, m.id.PublicKey(), theirKey)})
 	client := m.probeClient(theirKey, nil)

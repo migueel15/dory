@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"os"
 	"path/filepath"
 	"sort"
@@ -442,7 +443,7 @@ func (s *session) elicit(frame rpcFrame) error {
 func (s *session) permissionQuestion(frame rpcFrame, tool toolCall, options []permissionOption) error {
 	q := harness.Question{ID: tool.ToolCallID, Question: tool.Title}
 	if q.Question == "" {
-		q.Question = "Elige una opción"
+		q.Question = i18n.Text("acp.elige_opcion")
 	}
 	ids := map[string]string{}
 	for _, o := range options {

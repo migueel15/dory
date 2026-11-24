@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/migueel15/dory/internal/i18n"
 	"sync"
 	"time"
 
@@ -397,7 +398,7 @@ func (d *desktopTarget) fail() {
 	})
 }
 
-var errDesktopGone = errors.New("la vista de escritorio se cerró; repite la acción y se abrirá en el nodo")
+var errDesktopGone = errors.New(i18n.Text("browser.vista_escritorio_cerro_repite"))
 
 func (d *desktopTarget) Call(ctx context.Context, method string, params any) (json.RawMessage, error) {
 	select {
@@ -407,7 +408,7 @@ func (d *desktopTarget) Call(ctx context.Context, method string, params any) (js
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-time.After(15 * time.Second):
-		return nil, errors.New("la vista de escritorio no respondió")
+		return nil, errors.New(i18n.Text("browser.vista_escritorio_no_respondio"))
 	}
 	d.mu.Lock()
 	select {

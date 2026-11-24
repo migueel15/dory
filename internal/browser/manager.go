@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/migueel15/dory/internal/apperr"
+	"github.com/migueel15/dory/internal/i18n"
 	"strings"
 	"sync"
 	"time"
@@ -188,9 +189,9 @@ func (m *Manager) tab(ctx context.Context, threadID, id string) (Tab, error) {
 		}
 	}
 	if id == "" {
-		return Tab{}, errors.New("el hilo no tiene pestañas abiertas: abre una con browser_open")
+		return Tab{}, errors.New(i18n.Text("browser.hilo_no_tiene_pestanas"))
 	}
-	return Tab{}, fmt.Errorf("no existe la pestaña %s en este hilo", id)
+	return Tab{}, fmt.Errorf(i18n.Text("browser.no_existe_pestana_este"), id)
 }
 
 func (m *Manager) insert(ctx context.Context, threadID, url string) (Tab, error) {

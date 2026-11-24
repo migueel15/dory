@@ -3,7 +3,9 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"io"
 	"net/http"
 	"net/url"
@@ -28,7 +30,7 @@ func (m *Manager) prepareMCP(ctx context.Context, thread data.Thread, turn *Turn
 	}
 	endpoint, err := url.Parse(m.MCPURL)
 	if err != nil {
-		return fmt.Errorf("%s: URL del MCP de Dory no válida", provider)
+		return fmt.Errorf(i18n.Text("runtime.url_mcp_dory_no"), provider)
 	}
 	query := endpoint.Query()
 	query.Set("thread", turn.ThreadID)
@@ -52,7 +54,7 @@ func checkMCP(ctx context.Context, endpoint, token string) ([]string, error) {
 	// Dory's stateless JSON transport accepts tools/list without a session.
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
 	if err != nil {
-		return nil, fmt.Errorf("URL no válida")
+		return nil, errors.New(i18n.Text("runtime.url_no_valida"))
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
@@ -60,11 +62,11 @@ func checkMCP(ctx context.Context, endpoint, token string) ([]string, error) {
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	res, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("el servidor no responde")
+		return nil, errors.New(i18n.Text("runtime.servidor_no_responde"))
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("el catálogo devolvió HTTP %d", res.StatusCode)
+		return nil, fmt.Errorf(i18n.Text("runtime.catalogo_devolvio_http"), res.StatusCode)
 	}
 	var catalog struct {
 		Result struct {
@@ -72,7 +74,7 @@ func checkMCP(ctx context.Context, endpoint, token string) ([]string, error) {
 		}
 	}
 	if err := json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&catalog); err != nil || len(catalog.Result.Tools) == 0 {
-		return nil, fmt.Errorf("el catálogo de herramientas no está disponible")
+		return nil, errors.New(i18n.Text("runtime.catalogo_herramientas_no_esta"))
 	}
 	names := make([]string, 0, len(catalog.Result.Tools))
 	for _, tool := range catalog.Result.Tools {

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"strings"
 	"time"
 
@@ -131,7 +132,7 @@ func (p *PullReviews) Ask(ctx context.Context, repo string, n int, q PullQuestio
 
 // pullTitle names the review thread of a pull request; it is also how the
 // thread is found again.
-func pullTitle(repo string, n int) string { return fmt.Sprintf("Revisión de %s#%d", repo, n) }
+func pullTitle(repo string, n int) string { return fmt.Sprintf(i18n.Text("app.revision"), repo, n) }
 
 // Thread finds the open review thread of a pull request.
 func (p *PullReviews) Thread(ctx context.Context, repo string, n int) (*data.Thread, error) {

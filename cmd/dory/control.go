@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"net/http"
 	"os"
 	"os/exec"
@@ -82,10 +83,10 @@ func control(args []string) (bool, error) {
 	case "status":
 		h, err := health(base)
 		if err != nil {
-			fmt.Println("parado")
+			fmt.Println(i18n.Text("cli.parado"))
 			return true, nil
 		}
-		fmt.Printf("en marcha: %s (%s), versión %s, en %s\n", h["name"], h["node_id"], h["version"], base)
+		fmt.Printf(i18n.Text("cli.marcha_version"), h["name"], h["node_id"], h["version"], base)
 		return true, nil
 	case "start":
 		return true, start(base, cfg.DataDir)
@@ -123,7 +124,7 @@ func control(args []string) (bool, error) {
 		if err := u.Apply(context.Background(), update.Options{}); err != nil {
 			return true, err
 		}
-		fmt.Println("actualizado")
+		fmt.Println(i18n.Text("cli.actualizado"))
 		return true, nil
 	}
 	return true, nil
@@ -176,7 +177,7 @@ func start(base, dataDir string) error {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	return fmt.Errorf("el núcleo no arrancó; mira %s o `journalctl --user -u dory`", filepath.Join(dataDir, "dory.log"))
+	return fmt.Errorf(i18n.Text("cli.nucleo_no_arranco_mira"), filepath.Join(dataDir, "dory.log"))
 }
 
 // stop ends the core: through the service when it is installed, otherwise
@@ -190,7 +191,7 @@ func stop(base string) error {
 	}
 	pid, ok := h["pid"].(float64)
 	if !ok {
-		return errors.New("el núcleo en marcha es de una versión anterior: páralo a mano")
+		return errors.New(i18n.Text("cli.nucleo_marcha_es_version"))
 	}
 	p, err := os.FindProcess(int(pid))
 	if err != nil {
@@ -205,7 +206,7 @@ func stop(base string) error {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	return errors.New("el núcleo no se detuvo")
+	return errors.New(i18n.Text("cli.nucleo_no_detuvo"))
 }
 
 func serviceCtl(action string) error {
@@ -215,7 +216,7 @@ func serviceCtl(action string) error {
 		out, err := cmdexec.Command("systemctl", "--user", "cat", unitName).Output()
 		self, _ := os.Executable()
 		if err != nil || !strings.Contains(string(out), "ExecStart="+self+" serve") {
-			return errors.New("el servicio no está instalado: dory service install")
+			return errors.New(i18n.Text("cli.servicio_no_esta_instalado"))
 		}
 		return cmdexec.Command("systemctl", "--user", action, unitName).Run()
 	case "darwin":
@@ -226,7 +227,7 @@ func serviceCtl(action string) error {
 		}
 		return cmdexec.Command("launchctl", verb, "-w", plist).Run()
 	}
-	return errors.New("en este sistema el núcleo se arranca con `dory serve`")
+	return errors.New(i18n.Text("cli.este_sistema_nucleo_arranca"))
 }
 
 // service installs or removes the user service and the desktop launcher.
@@ -267,7 +268,7 @@ func service(action string) error {
 				return fmt.Errorf("systemctl %s: %s", strings.Join(args, " "), out)
 			}
 		}
-		fmt.Println("servicio instalado y en marcha: arranca con tu sesión")
+		fmt.Println(i18n.Text("cli.servicio_instalado_marcha_arranca"))
 		return nil
 	case "darwin":
 		plist := filepath.Join(home, "Library", "LaunchAgents", "net.dorlab.dory.plist")
@@ -291,10 +292,10 @@ func service(action string) error {
 		if out, err := cmdexec.Command("reg", "add", key, "/v", "Dory", "/t", "REG_SZ", "/d", value, "/f").CombinedOutput(); err != nil {
 			return fmt.Errorf("reg add: %s", out)
 		}
-		fmt.Println("servicio instalado: el núcleo arranca con tu sesión")
+		fmt.Println(i18n.Text("cli.servicio_instalado_nucleo_arranca"))
 		return nil
 	}
-	return errors.New("este sistema no tiene servicio de usuario: ejecuta `dory serve`")
+	return errors.New(i18n.Text("cli.este_sistema_no_tiene"))
 }
 
 // desktopApp returns the command that opens the installed desktop app of
@@ -361,11 +362,11 @@ func openWindow(base string) error {
 // of another node and its code, pairs with it. It needs no interface.
 func pair(base, dataDir string, args []string) error {
 	if len(args) != 0 && len(args) != 2 {
-		return errors.New("usage: dory pair            muestra un código para emparejar este nodo\n       dory pair DIRECCIÓN CÓDIGO   empareja con otro nodo")
+		return errors.New(i18n.Text("cli.usage_dory_pair_muestra"))
 	}
 	h, err := health(base)
 	if err != nil {
-		return errors.New("el núcleo no está en marcha: ejecuta `dory start`")
+		return errors.New(i18n.Text("cli.nucleo_no_esta_marcha"))
 	}
 	// The running core may use another data folder than this shell's config.
 	if d, ok := h["data_dir"].(string); ok && d != "" {
@@ -373,7 +374,7 @@ func pair(base, dataDir string, args []string) error {
 	}
 	token, err := os.ReadFile(filepath.Join(dataDir, "control.token"))
 	if err != nil {
-		return errors.New("no encuentro el token de control: reinicia el núcleo con `dory restart`")
+		return errors.New(i18n.Text("cli.no_encuentro_token_control"))
 	}
 	path, body := "/api/mesh/pair/code", "{}"
 	if len(args) == 2 {
@@ -393,18 +394,18 @@ func pair(base, dataDir string, args []string) error {
 	if resp.StatusCode >= 300 {
 		if e, ok := out["error"].(map[string]any); ok {
 			if p, ok := e["params"].(map[string]any); ok && p["detail"] != nil {
-				return fmt.Errorf("no se pudo emparejar: %v", p["detail"])
+				return fmt.Errorf(i18n.Text("cli.no_pudo_emparejar"), p["detail"])
 			}
-			return fmt.Errorf("no se pudo emparejar: %v", e["message"])
+			return fmt.Errorf(i18n.Text("cli.no_pudo_emparejar"), e["message"])
 		}
-		return fmt.Errorf("no se pudo emparejar: %s", resp.Status)
+		return fmt.Errorf(i18n.Text("cli.no_pudo_emparejar_2"), resp.Status)
 	}
 	if len(args) == 0 {
-		fmt.Printf("Código: %v (caduca %v)\nHuella de este nodo: %v\nPuerto de la malla: %v\n\nEn el otro nodo: Entornos → Emparejar, o `dory pair <dirección de este nodo> %v`\n",
+		fmt.Printf(i18n.Text("cli.codigo_caduca_huella_este"),
 			out["code"], out["expires_at"], out["fingerprint"], out["port"], out["code"])
 		return nil
 	}
-	fmt.Printf("Emparejado con %v. Huella: %v. Comprueba que coincide con la del otro nodo.\n", out["name"], out["fingerprint"])
+	fmt.Printf(i18n.Text("cli.emparejado_huella_comprueba_coincide"), out["name"], out["fingerprint"])
 	return nil
 }
 

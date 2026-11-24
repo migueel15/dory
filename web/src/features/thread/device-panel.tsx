@@ -7,6 +7,7 @@ import { askConfirm } from "../../components/confirm";
 import { Button, ErrorText, Input, Select, iconButton } from "../../components/ui";
 import { qk } from "../../api/queries/keys";
 import { storage, storageKeys } from "../../lib/storage";
+import { t } from "../../i18n/es";
 
 // DevicePanel shows an Android device or emulator of the thread's node live.
 // Only the visible tab streams: it connects on mount and closes on unmount.
@@ -79,7 +80,7 @@ function Picker({ node, list, lost, onPick }: { node: string; list: DeviceList; 
             return (
               <div key={a} className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 dark:border-border">
                 <Cpu className="size-4" /><span className="min-w-0 flex-1 truncate font-medium">{a}</span>
-                {st?.status === "failed" && <span className="max-w-40 truncate text-xs text-red-500" title={st.error}>{st.error}</span>}
+                {st?.status === "failed" && <span className="max-w-40 truncate text-xs text-red-500" title={st.error}>{t(st.code) ?? st.error}</span>}
                 {busy ? <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-muted"><CircleNotch className="size-3.5 animate-spin" />{st.status === "starting" ? "Arrancando…" : "Iniciando Android…"}</span>
                   : <Button variant="ghost" onClick={() => run.mutate(() => devicesApi.startAvd(a, node))}>Iniciar</Button>}
               </div>

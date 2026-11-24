@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -301,9 +302,9 @@ func (d *driver) run(s *session) error {
 			var rpcErr *rpcError
 			if errors.As(err, &rpcErr) && (rpcErr.Code == -32000 && strings.Contains(strings.ToLower(rpcErr.Message), "auth")) {
 				if len(d.p.Login) > 0 {
-					return fmt.Errorf("inicia sesión en %s con %s: %w", d.p.Name, strings.Join(append([]string{filepath.Base(d.bin())}, d.p.Login...), " "), err)
+					return fmt.Errorf(i18n.Text("acp.inicia_sesion"), d.p.Name, strings.Join(append([]string{filepath.Base(d.bin())}, d.p.Login...), " "), err)
 				}
-				return fmt.Errorf("inicia sesión en %s: %w", d.p.Name, err)
+				return fmt.Errorf(i18n.Text("acp.inicia_sesion_2"), d.p.Name, err)
 			}
 			return err
 		}
@@ -312,7 +313,7 @@ func (d *driver) run(s *session) error {
 			id = s.turn.Session
 		}
 		if id == "" {
-			return fmt.Errorf("%s no devolvió el identificador de sesión", d.p.Name)
+			return fmt.Errorf(i18n.Text("acp.no_devolvio_identificador_sesion"), d.p.Name)
 		}
 		lv.mu.Lock()
 		lv.info, lv.session, lv.id = info, session, id

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"sync"
 	"sync/atomic"
 
@@ -126,7 +127,7 @@ func (c *conn) call(ctx context.Context, session, method string, params any) (js
 	select {
 	case m, ok := <-ch:
 		if !ok {
-			return nil, errors.New("cdp: el navegador se cerró")
+			return nil, errors.New(i18n.Text("browser.cdp_navegador_cerro"))
 		}
 		if m.Error != nil {
 			return nil, m.Error

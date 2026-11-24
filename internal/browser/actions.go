@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"strings"
 	"time"
 )
@@ -62,7 +63,7 @@ func navigate(ctx context.Context, t Target, url string) error {
 	}
 	json.Unmarshal(raw, &r)
 	if r.ErrorText != "" {
-		return fmt.Errorf("no se pudo abrir %s: %s", url, r.ErrorText)
+		return fmt.Errorf(i18n.Text("browser.no_pudo_abrir"), url, r.ErrorText)
 	}
 	waitLoad(ctx, t)
 	return nil
@@ -249,7 +250,7 @@ func center(ctx context.Context, t Target, selector string) (float64, float64, e
 		return 0, 0, err
 	}
 	if r == nil {
-		return 0, 0, fmt.Errorf("ningún elemento coincide con %s", selector)
+		return 0, 0, fmt.Errorf(i18n.Text("browser.ningun_elemento_coincide"), selector)
 	}
 	return r.X, r.Y, nil
 }
@@ -407,10 +408,10 @@ func (m *Manager) Resize(ctx context.Context, threadID, tabID string, width, hei
 		return err
 	}
 	if p.backend == "desktop" {
-		return errors.New("la pestaña se muestra en la app de escritorio y su tamaño lo fija el panel")
+		return errors.New(i18n.Text("browser.pestana_muestra_app_escritorio"))
 	}
 	if width < 200 || height < 200 || width > 4000 || height > 4000 {
-		return errors.New("el tamaño debe estar entre 200 y 4000 píxeles")
+		return errors.New(i18n.Text("browser.tamano_debe_estar_entre"))
 	}
 	_, err = p.target.Call(ctx, "Emulation.setDeviceMetricsOverride", map[string]any{"width": width, "height": height, "deviceScaleFactor": 1, "mobile": false})
 	return err
