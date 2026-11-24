@@ -45,6 +45,8 @@ type threadRunner struct {
 	secrets map[string]secretWaiter
 	// native are the requests the harness of the open turn made.
 	native map[string]bool
+	// starter waits for the turn being started, if a caller does.
+	starter chan error
 }
 
 type runnerState int
@@ -52,7 +54,8 @@ type runnerState int
 const (
 	// stateIdle: no turn. A queue loaded after a restart waits here.
 	stateIdle runnerState = iota
-	// stateStarting: the turn is being prepared (only seen inside the actor).
+	// stateStarting: the turn is being prepared outside the actor, which
+	// keeps answering: an interrupt here stops the turn as soon as it starts.
 	stateStarting
 	// stateRunning: a turn is in progress.
 	stateRunning
@@ -95,6 +98,7 @@ const (
 	cmdForgetSecret
 	cmdRequestOpened
 	cmdTurnEnded
+	cmdStarted
 )
 
 // command is one order for the actor. Fields are used by the kinds that need
@@ -120,6 +124,9 @@ type command struct {
 
 	thread  data.Thread
 	outcome turnOutcome
+	// started is the turn a start prepared, or startErr why it failed.
+	started  startedTurn
+	startErr error
 
 	reply chan result
 }
@@ -134,6 +141,9 @@ type result struct {
 	req     string
 	answers chan [][]string
 	secret  chan secretReply
+	// starting, when set, gives the outcome of the start of a turn; do waits
+	// for it outside the actor.
+	starting chan error
 }
 
 type handler func(r *threadRunner, c *command) result
@@ -170,7 +180,7 @@ func init() {
 	// Steering stops the turn to run the chosen message; when idle (a queue
 	// kept over a restart) it just runs it.
 	on(cmdSteer, (*threadRunner).steerIdle, stateIdle)
-	on(cmdSteer, (*threadRunner).steer, turnStates...)
+	on(cmdSteer, (*threadRunner).steer, stateStarting, stateRunning, stateWaitingInput)
 	on(cmdSteer, (*threadRunner).steerStopping, stateStopping)
 	on(cmdInterrupt, (*threadRunner).interrupt, anyState...)
 	on(cmdAnswer, (*threadRunner).answer, anyState...)
@@ -185,6 +195,7 @@ func init() {
 	on(cmdRequestOpened, (*threadRunner).requestOpened, turnStates...)
 	on(cmdTurnEnded, (*threadRunner).turnEnded, turnStates...)
 	on(cmdTurnEnded, (*threadRunner).turnEnded, stateStopping)
+	on(cmdStarted, (*threadRunner).started, stateStarting, stateStopping)
 }
 
 var (
@@ -244,7 +255,11 @@ func (m *Manager) do(id string, c *command) result {
 		r := m.runner(id)
 		select {
 		case r.cmds <- c:
-			return <-c.reply
+			res := <-c.reply
+			if res.starting != nil {
+				res.err = <-res.starting
+			}
+			return res
 		case <-r.done:
 		}
 	}
@@ -437,7 +452,7 @@ func (r *threadRunner) steerIdle(c *command) result {
 	next := r.queue[0]
 	r.queue = r.queue[1:]
 	r.persist()
-	return result{err: r.begin(c.ctx, next)}
+	return r.begin(c.ctx, next, true)
 }
 
 // stop cancels the open turn; its end arrives as cmdTurnEnded.
@@ -460,27 +475,65 @@ func (r *threadRunner) interrupt(c *command) result {
 // ---- turns
 
 func (r *threadRunner) startNow(c *command) result {
-	return result{err: r.begin(c.ctx, c.queued)}
+	return r.begin(c.ctx, c.queued, true)
 }
 
-// begin starts a turn. The turn outlives the caller's context.
-func (r *threadRunner) begin(ctx context.Context, q Queued) error {
+// begin starts a turn. The turn outlives the caller's context. Launching the
+// harness can take a while, so it runs outside the actor, which hears of it
+// with cmdStarted; a caller that waits gets the outcome through starting.
+func (r *threadRunner) begin(ctx context.Context, q Queued, wait bool) result {
 	t, err := r.m.local(ctx, r.id)
 	if err != nil {
-		return err
+		return result{err: err}
 	}
 	r.setState(stateStarting)
 	turnCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	run, err := r.m.start(turnCtx, t, q)
-	if err != nil {
-		cancel()
-		r.setState(stateIdle)
-		return err
+	r.cancel, r.starter = cancel, nil
+	var res result
+	if wait {
+		r.starter = make(chan error, 1)
+		res.starting = r.starter
 	}
-	r.cancel, r.session, r.runID = cancel, run.session, run.run
-	r.setState(stateRunning)
-	go r.follow(turnCtx, run)
-	return nil
+	go func() {
+		run, err := r.m.start(turnCtx, t, q)
+		r.m.do(r.id, &command{kind: cmdStarted, ctx: turnCtx, thread: t, started: run, startErr: err})
+	}()
+	return res
+}
+
+// started takes the outcome of a start. A turn stopped while it started
+// follows on to its end; a start that failed leaves the thread idle.
+func (r *threadRunner) started(c *command) result {
+	starter := r.starter
+	r.starter = nil
+	answer := func(err error) {
+		if starter != nil {
+			starter <- err
+		}
+	}
+	if c.startErr != nil {
+		r.cancel()
+		r.cancel = nil
+		if r.state == stateStopping {
+			// Interrupted or steered before the harness ran: end it as an
+			// interrupted turn, which also runs a steered message.
+			answer(nil)
+			return r.turnEnded(&command{thread: c.thread, outcome: turnOutcome{status: "idle", interrupted: true}})
+		}
+		r.setState(stateIdle)
+		if starter == nil {
+			r.m.setStatus(context.Background(), r.id, "error", c.startErr.Error())
+		}
+		answer(c.startErr)
+		return result{}
+	}
+	r.session, r.runID = c.started.session, c.started.run
+	if r.state == stateStarting {
+		r.setState(stateRunning)
+	}
+	go r.follow(c.ctx, c.started)
+	answer(nil)
+	return result{}
 }
 
 // follow records the turn and then tells the actor it ended.
@@ -533,8 +586,8 @@ func (r *threadRunner) turnEnded(c *command) result {
 		m.notifyParent(bg, t, out.status, out.interrupted)
 	}
 	if next != nil {
-		if err := r.begin(bg, *next); err != nil {
-			m.setStatus(bg, r.id, "error", err.Error())
+		if res := r.begin(bg, *next, false); res.err != nil {
+			m.setStatus(bg, r.id, "error", res.err.Error())
 		}
 	}
 	return result{}
