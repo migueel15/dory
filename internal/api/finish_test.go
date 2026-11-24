@@ -50,8 +50,9 @@ func newFinishServer(t *testing.T, settings Settings) (*Server, string) {
 		t.Fatal(err)
 	}
 	store := data.New(db, log)
-	s := &Server{Store: store, Node: Node{ID: log.Node()}, Settings: NewSettingsStore(dir, settings)}
-	s.Runtime = runtime.NewManager(db, store, log.Node(), dir, nodestate.New(db))
+	state := nodestate.New(db)
+	s := &Server{Store: store, Node: Node{ID: log.Node()}, Settings: NewSettingsStore(state, settings)}
+	s.Runtime = runtime.NewManager(db, store, log.Node(), dir, state)
 	return s, dir
 }
 
