@@ -1,9 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { api, type Card, type Stage } from "../api/client";
-import { askConfirm } from "./confirm";
-import { ContextMenu, type ContextAction } from "./context-menu";
-import { qk } from "../api/queries/keys";
+import { api, type Card, type Stage } from "../../api/client";
+import { askConfirm } from "../../components/confirm";
+import { ContextMenu, type ContextAction } from "../../components/context-menu";
+import { qk } from "../../api/queries/keys";
 
 export type QuickLaunch = "define" | "implement";
 

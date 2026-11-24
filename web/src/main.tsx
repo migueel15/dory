@@ -19,7 +19,7 @@ import { ProjectSwitcher } from "./components/project-switcher";
 import { NoticeAlerts, NoticeInbox, NoticesToggle } from "./components/notices";
 import { Home } from "./pages/home";
 import { Github } from "./features/github/github";
-import { Tasks } from "./pages/tasks";
+import { Tasks } from "./features/board/tasks";
 import { applyTheme, useTheme } from "./theme";
 import { applyScale, listenZoomKeys } from "./scale";
 import "./index.css";

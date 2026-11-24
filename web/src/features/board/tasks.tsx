@@ -1,26 +1,26 @@
-import { DictationField } from "../components/dictation-field";
-import { useGithubWatch } from "../api/live";
-import { PlanDoc } from "../components/plan-doc";
-import { useDictationInProgress } from "../components/local-dictation";
+import { DictationField } from "../../components/dictation-field";
+import { useGithubWatch } from "../../api/live";
+import { PlanDoc } from "../../components/plan-doc";
+import { useDictationInProgress } from "../../components/local-dictation";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Check, CaretDown, CaretRight, PencilSimple, Chats, GithubLogo, LinkSimple, CircleNotch, ClipboardText, DotsThree, GitBranch, GitMerge, GitPullRequest, CircleDashed, Plus, Rocket, X } from "@phosphor-icons/react";
-import { api, COLUMN_LABELS, repoName, type Card, type Column, type Pull, type Stage, type Thread } from "../api/client";
-import { Button, ErrorText, iconButton, Input, Label, Md, Modal, Select } from "../components/ui";
-import { useThreadActivity } from "../api/activity";
-import { useArm } from "../features/github/github-ui";
-import { useLaunchForm } from "../components/launch-picker";
-import { useProject } from "../project";
-import { ModelLogo } from "../components/model-logo";
-import { EnvIcon } from "../components/env-icon";
-import { askConfirm } from "../components/confirm";
-import { IdeaModal } from "../components/capture";
-import { TaskQuickMenu, type QuickLaunch } from "../components/task-quick-menu";
-import { githubRoute } from "../components/refs";
-import { planMessage } from "../lib/auto-message";
-import { qk } from "../api/queries/keys";
-import { useBoard, useCard, useMesh, useNode, usePlan, useRepositories } from "../api/queries/hooks";
+import { api, COLUMN_LABELS, repoName, type Card, type Column, type Pull, type Stage, type Thread } from "../../api/client";
+import { Button, ErrorText, iconButton, Input, Label, Md, Modal, Select } from "../../components/ui";
+import { useThreadActivity } from "../../api/activity";
+import { useArm } from "../github/github-ui";
+import { useLaunchForm } from "../../components/launch-picker";
+import { useProject } from "../../project";
+import { ModelLogo } from "../../components/model-logo";
+import { EnvIcon } from "../../components/env-icon";
+import { askConfirm } from "../../components/confirm";
+import { IdeaModal } from "../../components/capture";
+import { TaskQuickMenu, type QuickLaunch } from "./task-quick-menu";
+import { githubRoute } from "../../components/refs";
+import { planMessage } from "../../lib/auto-message";
+import { qk } from "../../api/queries/keys";
+import { useBoard, useCard, useMesh, useNode, usePlan, useRepositories } from "../../api/queries/hooks";
 
 // Fixed meaning of each state color (requirement RF-48).
 const TONE = {
