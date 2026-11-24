@@ -11,6 +11,7 @@ import (
 
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/mesh/peerapi"
+	"github.com/migueel15/dory/internal/outbox"
 	"github.com/migueel15/dory/internal/runtime"
 	"github.com/migueel15/dory/internal/update"
 )
@@ -99,6 +100,37 @@ func (c *Client) InterruptThread(ctx context.Context, node, thread string) error
 
 func (c *Client) CompleteDelegation(ctx context.Context, node string, outcome runtime.Outcome) error {
 	return c.Call(ctx, node, http.MethodPost, "/api/threads/"+url.PathEscape(outcome.ParentThreadID)+"/delegations/complete", outcome, nil)
+}
+
+// Deliver sends a delivery of the outbox to node, mapping each kind to its
+// typed call. The delivery id travels in the payload so the receiver applies
+// it once.
+func (c *Client) Deliver(ctx context.Context, node, kind, id string, payload json.RawMessage) error {
+	switch kind {
+	case runtime.DelegationComplete:
+		var outcome runtime.Outcome
+		if err := json.Unmarshal(payload, &outcome); err != nil {
+			return outbox.Permanent(err)
+		}
+		outcome.DeliveryID = id
+		return retryable(c.CompleteDelegation(ctx, node, outcome))
+	}
+	return outbox.Permanent(fmt.Errorf("unknown delivery kind %q", kind))
+}
+
+// retryable keeps err as is when sending again can fix it and marks it
+// permanent when the peer refused it: the 4xx answers, except those that
+// depend on timing (not found yet, conflict, too many requests).
+func retryable(err error) error {
+	e := apperr.As(err)
+	if e == nil || e.Code == apperr.Unreachable {
+		return err
+	}
+	switch status := apperr.HTTPStatus(e.Code); {
+	case status < 400 || status >= 500, status == http.StatusNotFound, status == http.StatusConflict, status == http.StatusTooManyRequests:
+		return err
+	}
+	return outbox.Permanent(err)
 }
 
 func (c *Client) UpdateStatus(ctx context.Context, node string, fresh bool) (update.Status, error) {

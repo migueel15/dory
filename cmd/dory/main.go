@@ -34,6 +34,7 @@ import (
 	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/notify"
 	"github.com/migueel15/dory/internal/oplog"
+	"github.com/migueel15/dory/internal/outbox"
 	"github.com/migueel15/dory/internal/runtime"
 	"github.com/migueel15/dory/internal/skills"
 	"github.com/migueel15/dory/internal/version"
@@ -172,7 +173,11 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	srv.StartWorktreeMaintenance(ctx)
 	srv.Remote = net
 	srv.PeerClient = net.Client()
-	rt.PeerComplete = srv.PeerClient.CompleteDelegation
+	// What this node owes other nodes waits here until they are connected.
+	out := outbox.New(store.DB(), srv.PeerClient)
+	rt.Outbox = out
+	net.Connected = func(node string) { out.KickNode(ctx, node) }
+	go out.Run(ctx)
 	srv.MeshPort = cfg.MeshPort
 	srv.Browser = &browser.Manager{DB: store.LocalDB(), Profile: filepath.Join(cfg.DataDir, "browser-profile"),
 		Changed: func(id string) { events.Changed("browser", id) }}
