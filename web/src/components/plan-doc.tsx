@@ -13,6 +13,7 @@ import { merge3 } from "../lib/merge3";
 import { Button, ErrorText, prose } from "./ui";
 import { qk } from "../api/queries/keys";
 import { usePlan } from "../api/queries/hooks";
+import { storage, storageKeys } from "../lib/storage";
 
 // PlanDoc shows the plan of a task: one Markdown document that the user and
 // the agents edit. It is edited in place already rendered (headings, lists and
@@ -26,8 +27,8 @@ export function PlanDoc({ taskId, showStatus = true, reader = false, onAccepted 
   const plan = usePlan(taskId);
   const p = plan.data;
   // Following the agent is a choice kept in this browser; on by default.
-  const [following, setFollowing] = useState(() => { try { return localStorage.getItem("dory.plan-follow") !== "0"; } catch { return true; } });
-  const setFollow = (v: boolean) => { setFollowing(v); try { localStorage.setItem("dory.plan-follow", v ? "1" : "0"); } catch { /* per-browser only */ } };
+  const [following, setFollowing] = useState(() => { try { return storage.get(storageKeys.planFollow) !== "0"; } catch { return true; } });
+  const setFollow = (v: boolean) => { setFollowing(v); try { storage.set(storageKeys.planFollow, v ? "1" : "0"); } catch { /* per-browser only */ } };
   const doc = usePlanEditor(taskId, p, following && !reader);
   const accept = useMutation({
     mutationFn: () => api.acceptPlan(taskId),

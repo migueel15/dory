@@ -1,4 +1,4 @@
-import { KeptWorktrees } from "../components/kept-worktrees";
+import { KeptWorktrees } from "../features/settings/kept-worktrees";
 import { useCommand } from "../components/shortcuts";
 import { ThreadsFold } from "../lib/threads-fold";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
@@ -8,14 +8,16 @@ import { Check, FunnelSimple, MagnifyingGlass, Plus, PushPin, SidebarSimple } fr
 import { api, repoName, type Thread } from "../api/client";
 import { ErrorText } from "../components/ui";
 import { useProject } from "../project";
-import { ProviderIcon } from "../components/launch-picker";
-import { StatusDot } from "./thread";
+import { ProviderIcon } from "../features/composer/launch-picker";
+import { StatusDot } from "../features/thread/thread";
 import { NewThread } from "./home";
-import { RefChip, useThreadRefs, type GhRef } from "../components/thread-refs";
-import { useThreadMenu } from "../components/thread-menu";
+import { RefChip, useThreadRefs, type GhRef } from "../features/thread/thread-refs";
+import { useThreadMenu } from "../features/thread/thread-menu";
 import { EnvIcon } from "../components/env-icon";
 import { qk } from "../api/queries/keys";
 import { useMesh, useNode, useRepositories } from "../api/queries/hooks";
+import { events, useEmitter } from "../lib/store";
+import { storage, storageKeys } from "../lib/storage";
 
 // Filters of the single inbox of threads (requirement RF-19).
 const FILTERS = { active: "Activos", needs: "Te necesitan", working: "Trabajando", archived: "Archivados", external: "En los agentes" } as const;
@@ -34,20 +36,16 @@ export function Threads() {
   const [query, setQuery] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   // On desktop the thread list folds away while a thread is open; remembered in this browser.
-  const [listFolded, setListFolded] = useState(() => { try { return localStorage.getItem("dory.threads-folded") === "1"; } catch { return false; } });
-  const foldList = (v: boolean) => { setListFolded(v); try { localStorage.setItem("dory.threads-folded", v ? "1" : "0"); } catch { /* per-browser only */ } };
+  const [listFolded, setListFolded] = useState(() => { try { return storage.get(storageKeys.threadsFolded) === "1"; } catch { return false; } });
+  const foldList = (v: boolean) => { setListFolded(v); try { storage.set(storageKeys.threadsFolded, v ? "1" : "0"); } catch { /* per-browser only */ } };
   const searchInput = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    const focusSearch = () => { foldList(false); requestAnimationFrame(() => searchInput.current?.focus()); };
-    window.addEventListener("dory:focus-thread-search", focusSearch);
-    return () => window.removeEventListener("dory:focus-thread-search", focusSearch);
-  }, []);
+  useEmitter(events.focusThreadSearch, () => { foldList(false); requestAnimationFrame(() => searchInput.current?.focus()); });
   const folded = listFolded && !!threadId;
   useCommand("thread-list", () => foldList(!listFolded), !!threadId);
   // The list width is dragged from its right edge and kept per browser.
-  const [listWidth, setListWidth] = useState(() => { try { return clampList(Number(localStorage.getItem("dory.threads-width")) || LIST_W); } catch { return LIST_W; } });
+  const [listWidth, setListWidth] = useState(() => { try { return clampList(Number(storage.get(storageKeys.threadsWidth)) || LIST_W); } catch { return LIST_W; } });
   const [dragging, setDragging] = useState(false);
-  const saveWidth = (w: number) => { setListWidth(w); try { localStorage.setItem("dory.threads-width", String(w)); } catch { /* per-browser only */ } };
+  const saveWidth = (w: number) => { setListWidth(w); try { storage.set(storageKeys.threadsWidth, String(w)); } catch { /* per-browser only */ } };
   const startDrag = (e: ReactPointerEvent) => {
     e.preventDefault();
     const x0 = e.clientX, w0 = listWidth;

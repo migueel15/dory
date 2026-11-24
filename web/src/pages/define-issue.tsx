@@ -1,11 +1,11 @@
-import { DictationField } from "../components/dictation-field";
-import { useDictationInProgress } from "../components/local-dictation";
+import { DictationField } from "../features/composer/dictation-field";
+import { useDictationInProgress } from "../features/composer/local-dictation";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { api, repoName } from "../api/client";
 import { Button, ErrorText, Input, Label, Modal } from "../components/ui";
-import { useLaunchForm } from "../components/launch-picker";
+import { useLaunchForm } from "../features/composer/launch-picker";
 import { autoMessage } from "../lib/auto-message";
 import { qk } from "../api/queries/keys";
 import { useRepositories } from "../api/queries/hooks";

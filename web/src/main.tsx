@@ -14,16 +14,18 @@ import { listenShortcuts, useCommand } from "./components/shortcuts";
 import { CommandPalette, CommandsButton } from "./components/commands";
 import { TooltipHost } from "./components/tooltip";
 import { MeshUpdateButton } from "./components/mesh-update";
-import { SettingsModal } from "./components/settings-modal";
+import { SettingsModal } from "./features/settings/settings-modal";
 import { ProjectSwitcher } from "./components/project-switcher";
 import { NoticeAlerts, NoticeInbox, NoticesToggle } from "./components/notices";
 import { Home } from "./pages/home";
-import { Github } from "./pages/github";
-import { Tasks } from "./pages/tasks";
+import { Github } from "./features/github/github";
+import { Tasks } from "./features/board/tasks";
 import { applyTheme, useTheme } from "./theme";
 import { applyScale, listenZoomKeys } from "./scale";
 import "./index.css";
 import { qk } from "./api/queries/keys";
+import { events } from "./lib/store";
+import { storage, storageKeys } from "./lib/storage";
 
 applyTheme();
 applyScale();
@@ -176,16 +178,16 @@ function Layout() {
   }, []);
   const drawer = useRef<HTMLDialogElement>(null);
   // The desktop sidebar folds to icons; the choice is remembered in this browser.
-  const [folded, setFolded] = useState(() => { try { return localStorage.getItem("dory.sidebar-folded") === "1"; } catch { return false; } });
+  const [folded, setFolded] = useState(() => { try { return storage.get(storageKeys.sidebarFolded) === "1"; } catch { return false; } });
   const fold = (v: boolean) => {
     setFolded(v);
-    try { localStorage.setItem("dory.sidebar-folded", v ? "1" : "0"); } catch { /* per-browser only */ }
+    try { storage.set(storageKeys.sidebarFolded, v ? "1" : "0"); } catch { /* per-browser only */ }
   };
 
   useCommand("sidebar", () => fold(!folded));
   const navigateWithoutLosingDraft = async (search: boolean) => {
     if (search && path.startsWith("/threads")) {
-      window.dispatchEvent(new Event("dory:focus-thread-search"));
+      events.focusThreadSearch.emit();
       return;
     }
     if (document.querySelector('[data-unsaved-draft="true"]')) {
@@ -193,7 +195,7 @@ function Layout() {
       return;
     }
     await navigate({ to: "/threads" });
-    if (search) window.setTimeout(() => window.dispatchEvent(new Event("dory:focus-thread-search")), 0);
+    if (search) window.setTimeout(() => events.focusThreadSearch.emit(), 0);
   };
   useCommand("new-thread", () => { void navigateWithoutLosingDraft(false); });
   useCommand("search-threads", () => { void navigateWithoutLosingDraft(true); });
@@ -357,8 +359,8 @@ function Layout() {
 // first paint downloads only what it shows; the rest is fetched when the
 // browser is idle (and on hover, see defaultPreload) to keep navigation instant.
 const pages = {
-  thread: () => import("./pages/thread"),
-  githubDetail: () => import("./pages/github-detail"),
+  thread: () => import("./features/thread/thread"),
+  githubDetail: () => import("./features/github/github-detail"),
   usage: () => import("./pages/usage"),
   projects: () => import("./pages/projects"),
   skills: () => import("./pages/skills"),

@@ -1,5 +1,5 @@
-import { DictationField } from "../components/dictation-field";
-import { useDictationInProgress } from "../components/local-dictation";
+import { DictationField } from "../features/composer/dictation-field";
+import { useDictationInProgress } from "../features/composer/local-dictation";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";

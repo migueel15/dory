@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { storage } from "./storage";
 
 // The reference each thread's diff is compared with, chosen in its details
 // and shared by every view of that diff. "" means the thread's base branch.
@@ -7,7 +8,7 @@ const KEY = "dory.diff-base";
 const listeners = new Set<() => void>();
 
 function read(): Record<string, string> {
-  try { return JSON.parse(localStorage.getItem(KEY) ?? "{}"); } catch { return {}; }
+  try { return JSON.parse(storage.get(KEY) ?? "{}"); } catch { return {}; }
 }
 
 let bases = read();
@@ -15,7 +16,7 @@ let bases = read();
 export function setDiffBase(threadId: string, base: string) {
   bases = { ...bases, [threadId]: base };
   if (!base) delete bases[threadId];
-  try { localStorage.setItem(KEY, JSON.stringify(bases)); } catch { /* per-viewer only */ }
+  try { storage.set(KEY, JSON.stringify(bases)); } catch { /* per-viewer only */ }
   listeners.forEach((l) => l());
 }
 
