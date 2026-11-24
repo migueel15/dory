@@ -19,6 +19,7 @@ import (
 	"github.com/migueel15/dory/internal/harness"
 	"github.com/migueel15/dory/internal/harness/kit"
 	"github.com/migueel15/dory/internal/harness/procpool"
+	"github.com/migueel15/dory/internal/i18n"
 	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/outbox"
 	"github.com/migueel15/dory/internal/workspace"
@@ -164,11 +165,11 @@ func (m *Manager) Recover(ctx context.Context) error {
 		return err
 	}
 	for _, t := range threads {
-		const failure = "El nodo se reinició mientras el agente trabajaba; el turno se interrumpió."
+		failure := i18n.Text("node.restarted")
 		if err := m.store.SetThreadState(ctx, t.ID, "error", failure); err != nil {
 			return err
 		}
-		m.save(ctx, Message{ID: newRunID(), ThreadID: t.ID, Role: "system", Text: failure, CreatedAt: now()})
+		m.save(ctx, Message{ID: newRunID(), ThreadID: t.ID, Role: "system", Code: "node.restarted", CreatedAt: now()})
 	}
 	return nil
 }
@@ -307,7 +308,7 @@ func (m *Manager) clearSession(ctx context.Context, id string) error {
 		return err
 	}
 	m.pool.CloseProcess(id, t.Provider)
-	m.save(ctx, Message{ID: newRunID(), ThreadID: id, Role: "clear", Text: "Contexto limpiado", CreatedAt: now()})
+	m.save(ctx, Message{ID: newRunID(), ThreadID: id, Role: "clear", Code: "context.cleared", CreatedAt: now()})
 	return nil
 }
 
@@ -322,7 +323,7 @@ func (m *Manager) Ask(ctx context.Context, id string, questions []Question) ([][
 	for _, q := range questions {
 		text = append(text, q.Question)
 	}
-	msg := Message{ID: newRunID(), ThreadID: id, Role: "question", Title: "Pregunta", Text: strings.Join(text, "\n"), Status: "waiting", CreatedAt: now(),
+	msg := Message{ID: newRunID(), ThreadID: id, Role: "question", Code: "question.title", Text: strings.Join(text, "\n"), Status: "waiting", CreatedAt: now(),
 		Tool: &ToolCall{Kind: "question", Name: "ask_user", Questions: questions}}
 	m.save(ctx, msg)
 	w := m.do(id, &command{kind: cmdAsk, ctx: ctx})
@@ -545,11 +546,11 @@ func (m *Manager) persist(ctx context.Context, msg *Message, typ, harnessID stri
 	if typ == "" && !msg.Streaming {
 		typ = messageEventType(*msg)
 	}
-	const upsert = `INSERT INTO thread_messages(id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, updated_at, tool, sender_thread_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	const upsert = `INSERT INTO thread_messages(id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, updated_at, tool, sender_thread_id, code, params)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET text = excluded.text, title = excluded.title, detail = excluded.detail,
-			status = excluded.status, streaming = excluded.streaming, updated_at = excluded.updated_at, tool = excluded.tool`
-	args := []any{msg.ID, msg.ThreadID, msg.RunID, msg.Role, msg.Text, msg.Title, msg.Detail, msg.Status, streaming, msg.CreatedAt, at, toolJSON(msg.Tool), msg.SenderThreadID}
+			status = excluded.status, streaming = excluded.streaming, updated_at = excluded.updated_at, tool = excluded.tool, code = excluded.code, params = excluded.params`
+	args := []any{msg.ID, msg.ThreadID, msg.RunID, msg.Role, msg.Text, msg.Title, msg.Detail, msg.Status, streaming, msg.CreatedAt, at, toolJSON(msg.Tool), msg.SenderThreadID, msg.Code, paramsJSON(msg.Params)}
 	if typ == "" {
 		if _, err := m.db.ExecContext(ctx, upsert, args...); err != nil {
 			log.Printf("runtime: save message: %v", err)
@@ -584,6 +585,14 @@ func (m *Manager) persist(ctx context.Context, msg *Message, typ, harnessID stri
 	return true
 }
 
+func paramsJSON(p map[string]any) string {
+	if len(p) == 0 {
+		return ""
+	}
+	b, _ := json.Marshal(p)
+	return string(b)
+}
+
 func toolJSON(t *ToolCall) string {
 	if t == nil {
 		return ""
@@ -594,7 +603,7 @@ func toolJSON(t *ToolCall) string {
 
 // Messages returns the conversation of a thread of this node, oldest first.
 func (m *Manager) Messages(ctx context.Context, id string) ([]Message, error) {
-	rows, err := m.db.QueryContext(ctx, `SELECT id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, tool, sender_thread_id
+	rows, err := m.db.QueryContext(ctx, `SELECT id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, tool, sender_thread_id, code, params
 		FROM thread_messages WHERE thread_id = ? ORDER BY seq`, id)
 	if err != nil {
 		return nil, err
@@ -604,9 +613,12 @@ func (m *Manager) Messages(ctx context.Context, id string) ([]Message, error) {
 	for rows.Next() {
 		var msg Message
 		var streaming int
-		var tool string
-		if err = rows.Scan(&msg.ID, &msg.ThreadID, &msg.RunID, &msg.Role, &msg.Text, &msg.Title, &msg.Detail, &msg.Status, &streaming, &msg.CreatedAt, &tool, &msg.SenderThreadID); err != nil {
+		var tool, params string
+		if err = rows.Scan(&msg.ID, &msg.ThreadID, &msg.RunID, &msg.Role, &msg.Text, &msg.Title, &msg.Detail, &msg.Status, &streaming, &msg.CreatedAt, &tool, &msg.SenderThreadID, &msg.Code, &params); err != nil {
 			return nil, err
+		}
+		if params != "" {
+			_ = json.Unmarshal([]byte(params), &msg.Params)
 		}
 		if tool != "" {
 			msg.Tool = &ToolCall{}

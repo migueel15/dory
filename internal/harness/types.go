@@ -6,16 +6,20 @@ import "time"
 // user, assistant, reasoning, tool, plan or system. An adapter sends the same
 // ID again to update a message while it streams.
 type Message struct {
-	ID        string `json:"id"`
-	ThreadID  string `json:"thread_id,omitempty"`
-	RunID     string `json:"run_id,omitempty"`
-	Role      string `json:"role"`
-	Text      string `json:"text"`
-	Title     string `json:"title,omitempty"`
-	Detail    string `json:"detail,omitempty"`
-	Status    string `json:"status,omitempty"`
-	Streaming bool   `json:"streaming"`
-	CreatedAt string `json:"created_at"`
+	ID       string `json:"id"`
+	ThreadID string `json:"thread_id,omitempty"`
+	RunID    string `json:"run_id,omitempty"`
+	Role     string `json:"role"`
+	Text     string `json:"text"`
+	// Code and Params name a system message by a stable code the web writes the
+	// text of. Text stays empty for them; older messages only have Text.
+	Code      string         `json:"code,omitempty"`
+	Params    map[string]any `json:"params,omitempty"`
+	Title     string         `json:"title,omitempty"`
+	Detail    string         `json:"detail,omitempty"`
+	Status    string         `json:"status,omitempty"`
+	Streaming bool           `json:"streaming"`
+	CreatedAt string         `json:"created_at"`
 	// SenderThreadID is the thread whose agent sent this user message.
 	SenderThreadID string `json:"sender_thread_id,omitempty"`
 	// Tool is set on tool, plan and question messages: the call in Dory's terms.

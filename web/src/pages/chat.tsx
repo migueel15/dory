@@ -16,6 +16,7 @@ import { Link } from "@tanstack/react-router";
 import { parseAutoMessage, type AutoMessage } from "../lib/auto-message";
 import { RefLink } from "../components/refs";
 import { AgentMessage, agentNote } from "../components/subagents";
+import { messageText, t } from "../i18n/es";
 
 // The look of the conversation, kept from Dory v1: user
 // bubbles, answers as plain markdown, and each finished turn's work folded
@@ -133,7 +134,7 @@ export function Entry({ m, threadId = "", fresh = false, openQuestion = false }:
     case "clear":
       return (
         <div role="separator" className="flex items-center gap-3 text-[0.6875rem] font-medium uppercase tracking-wide text-slate-400">
-          <span className="h-px flex-1 bg-slate-200 dark:bg-border" />{m.role === "interrupt" && <Stop weight="fill" className="size-3" />}{m.text}<span className="h-px flex-1 bg-slate-200 dark:bg-border" />
+          <span className="h-px flex-1 bg-slate-200 dark:bg-border" />{m.role === "interrupt" && <Stop weight="fill" className="size-3" />}{messageText(m)}<span className="h-px flex-1 bg-slate-200 dark:bg-border" />
         </div>
       );
     default:
@@ -141,13 +142,13 @@ export function Entry({ m, threadId = "", fresh = false, openQuestion = false }:
       if (m.status === "failed") return (
         <div data-message role="alert" className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
           <WarningCircle weight="fill" className="mt-0.5 size-4 shrink-0" />
-          <div className="min-w-0 flex-1 [&_*]:!text-inherit"><p className="font-medium">{m.title || "El turno falló"}</p><Md>{m.text}</Md></div>
+          <div className="min-w-0 flex-1 [&_*]:!text-inherit"><p className="font-medium">{m.title || t("turn.failed")}</p><Md>{messageText(m)}</Md></div>
         </div>
       );
       return (
         <div data-message className="text-xs text-slate-500 dark:text-muted">
           {m.title && <p className="font-medium">{m.title}</p>}
-          <Md>{m.text}</Md>
+          <Md>{messageText(m)}</Md>
         </div>
       );
   }
@@ -472,7 +473,7 @@ function QuestionStep({ m }: { m: Message }) {
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
         className="flex w-full min-w-0 items-center gap-2 text-left hover:text-slate-900 dark:hover:text-white">
         <QuestionIcon weight="regular" className="size-4 shrink-0" />
-        <span className="min-w-0 flex-1 truncate">{answered ? "Respondida" : "Pregunta"}: {oneLine(first)}{qs.length > 1 ? ` (+${qs.length - 1})` : ""}</span>
+        <span className="min-w-0 flex-1 truncate">{answered ? "Respondida" : t("question.title")}: {oneLine(first)}{qs.length > 1 ? ` (+${qs.length - 1})` : ""}</span>
       </button>
       {open && <div className="mb-1 ml-6 mt-1.5">{isAsk(m) || m.role === "question" ? <QuestionCard m={m} /> : <NativeQuestionCard m={m} />}</div>}
     </div>

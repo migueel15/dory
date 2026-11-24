@@ -3,6 +3,7 @@ package runtime
 import (
 	"github.com/migueel15/dory/internal/harness"
 	"github.com/migueel15/dory/internal/harness/kit"
+	"github.com/migueel15/dory/internal/i18n"
 )
 
 type Entry = harness.Entry
@@ -17,7 +18,7 @@ func (m *Manager) Commands(p Paths, dir, provider string) (commands, skills []En
 
 func composerCommands(commands, skills []Entry) ([]Entry, []Entry) {
 	// Dory runs /clear itself for every harness, so the harness's own is hidden.
-	commands = append([]Entry{{Name: "clear", Description: "Empieza una sesión nueva del agente; los mensajes siguen visibles", Insert: ClearCommand}}, commands...)
+	commands = append([]Entry{{Name: "clear", Description: i18n.Text("command.clear"), Insert: ClearCommand}}, commands...)
 	var kept []Entry
 	names := map[string]bool{}
 	for _, s := range skills {

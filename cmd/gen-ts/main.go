@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/api"
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/github"
 	"github.com/migueel15/dory/internal/mesh/peerapi"
@@ -123,6 +124,14 @@ func generate() []byte {
 		out.WriteByte('\n')
 		out.WriteString(g.declarations[name])
 	}
+	out.WriteString("\n// Codes the web must have a text for.\nexport const specificErrorCodes = [")
+	for i, c := range apperr.Specific {
+		if i > 0 {
+			out.WriteString(", ")
+		}
+		out.WriteString(strconv.Quote(string(c)))
+	}
+	out.WriteString("] as const;\n")
 	return []byte(out.String())
 }
 

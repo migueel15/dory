@@ -323,6 +323,8 @@ export type Message = {
   "run_id"?: string;
   "role": Role;
   "text": string;
+  "code"?: string;
+  "params"?: Record<string, unknown>;
   "title"?: string;
   "detail"?: string;
   "status"?: string;
@@ -798,3 +800,6 @@ export type WorktreeSettings = {
   "branch_naming": string;
   "remove_on_merge": boolean;
 };
+
+// Codes the web must have a text for.
+export const specificErrorCodes = ["upstream", "too_many_requests", "payload_too_large", "node_offline", "repository_not_cloned", "unknown_worktree", "branch_switch_failed", "dirty_worktree", "shared_process_group", "no_request", "job_input_closed", "invalid_code", "invalid_account", "invalid_icon", "invalid_range", "plan_not_accepted", "plan_conflict", "no_repository", "no_thread", "in_progress", "confirm_required", "device_error", "no_adb", "update_refused", "model_missing", "no_chromium", "user_control", "provider_unavailable", "thread_created_send_failed", "thread_busy", "revision_conflict"] as const;
