@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
-import { chordFromEvent, openShortcutPopups, readDictationShortcut, type Chord } from "./dictation-shortcut";
-import { shortcutsEvent, shortcutsKey, useInputSettingsSync } from "./input-settings";
+import { chordFromEvent, openShortcutPopups, readDictationShortcut, type Chord } from "../features/composer/dictation-shortcut";
+import { shortcutsKey, useInputSettingsSync } from "../features/settings/input-settings";
+import { events } from "../lib/store";
+import { storage } from "../lib/storage";
 
 const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const chord = (code: string, shift = false): Chord => ({ code: `Key${code}`, ctrl: !mac, meta: mac, alt: false, shift });
@@ -19,9 +21,8 @@ export const commands = [
   { id: "dictation", label: "Dictado", default: { code: "KeyD", ctrl: true, meta: false, alt: false, shift: false } },
 ] as const;
 export type CommandId = typeof commands[number]["id"];
-const storage = shortcutsKey;
-const eventName = shortcutsEvent;
-const read = () => { try { return localStorage.getItem(storage) ?? "{}"; } catch { return "{}"; } };
+const shortcutsStorageKey = shortcutsKey;
+const read = () => { try { return storage.get(shortcutsStorageKey) ?? "{}"; } catch { return "{}"; } };
 function preferences(): Partial<Record<CommandId, Chord>> {
   try { const value = JSON.parse(read()); return value && typeof value === "object" && !Array.isArray(value) ? value : {}; } catch { return {}; }
 }
@@ -51,8 +52,9 @@ export function conflictIn(map: Record<string, Chord> | undefined, id: CommandId
   return commands.find((c) => c.id !== id && sameChord(chordIn(map, c.id), value));
 }
 const subscribe = (notify: () => void) => {
-  for (const event of [eventName, "storage", "dory:dictation-shortcut"]) window.addEventListener(event, notify);
-  return () => { for (const event of [eventName, "storage", "dory:dictation-shortcut"]) window.removeEventListener(event, notify); };
+  const offs = [events.shortcutsChanged.on(notify), events.dictationShortcutChanged.on(notify)];
+  window.addEventListener("storage", notify);
+  return () => { for (const off of offs) off(); window.removeEventListener("storage", notify); };
 };
 export function useShortcuts() {
   useInputSettingsSync();
@@ -74,8 +76,8 @@ export function useCommand(id: CommandId, callback: () => boolean | void, enable
     const entries = handlers.get(id) ?? new Set<() => boolean | void>();
     const handler = () => latest.current();
     entries.add(handler); handlers.set(id, entries);
-    registryVersion++; window.dispatchEvent(new Event(eventName));
-    return () => { entries.delete(handler); registryVersion++; window.dispatchEvent(new Event(eventName)); };
+    registryVersion++; events.shortcutsChanged.emit();
+    return () => { entries.delete(handler); registryVersion++; events.shortcutsChanged.emit(); };
   }, [id, enabled]);
 }
 export function listenShortcuts(e: KeyboardEvent) {

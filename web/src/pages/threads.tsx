@@ -1,19 +1,21 @@
-import { KeptWorktrees } from "../components/kept-worktrees";
-import { useCommand } from "../components/shortcuts";
-import { ThreadsFold } from "../lib/threads-fold";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
-import { Check, FunnelSimple, MagnifyingGlass, Plus, PushPin, SidebarSimple } from "@phosphor-icons/react";
-import { api, repoName, type Thread } from "../api/client";
-import { ErrorText } from "../components/ui";
-import { useProject } from "../project";
-import { ProviderIcon } from "../components/launch-picker";
-import { StatusDot } from "./thread";
-import { NewThread } from "./home";
-import { RefChip, useThreadRefs, type GhRef } from "../components/thread-refs";
-import { useThreadMenu } from "../components/thread-menu";
+import { Check,FunnelSimple,MagnifyingGlass,Plus,PushPin,SidebarSimple } from "@phosphor-icons/react";
+import { Link,Outlet,useNavigate,useParams } from "@tanstack/react-router";
+import { useMemo,useRef,useState,type CSSProperties,type ReactNode,type PointerEvent as ReactPointerEvent } from "react";
+import { repoName,type Thread } from "../api/client";
+import { useMesh,useNode,useRepositories } from "../api/queries/hooks";
+import { useExternalSessions,useThreadList } from "../api/queries/threads";
 import { EnvIcon } from "../components/env-icon";
+import { useCommand } from "../components/shortcuts";
+import { ErrorText } from "../components/ui";
+import { ProviderIcon } from "../features/composer/launch-picker";
+import { KeptWorktrees } from "../features/settings/kept-worktrees";
+import { useThreadMenu } from "../features/thread/thread-menu";
+import { RefChip,useThreadRefs,type GhRef } from "../features/thread/thread-refs";
+import { storage,storageKeys } from "../lib/storage";
+import { events,useEmitter } from "../lib/store";
+import { ThreadsFold } from "../lib/threads-fold";
+import { useProject } from "../project";
+import { NewThread } from "./home";
 
 // Filters of the single inbox of threads (requirement RF-19).
 const FILTERS = { active: "Activos", needs: "Te necesitan", working: "Trabajando", archived: "Archivados", external: "En los agentes" } as const;
@@ -22,7 +24,6 @@ type Filter = keyof typeof FILTERS;
 const LIST_W = 336;
 const clampList = (w: number) => Math.round(Math.min(Math.max(w, 240), 560));
 
-export const isUnread = (t: Thread) => !t.read_at && t.status !== "working" && !!t.last_activity_at;
 const snoozed = (t: Thread) => !!t.snoozed_until && new Date(t.snoozed_until) > new Date();
 
 // Threads keeps the list of threads on the left and the open one on the right.
@@ -33,20 +34,16 @@ export function Threads() {
   const [query, setQuery] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   // On desktop the thread list folds away while a thread is open; remembered in this browser.
-  const [listFolded, setListFolded] = useState(() => { try { return localStorage.getItem("dory.threads-folded") === "1"; } catch { return false; } });
-  const foldList = (v: boolean) => { setListFolded(v); try { localStorage.setItem("dory.threads-folded", v ? "1" : "0"); } catch { /* per-browser only */ } };
+  const [listFolded, setListFolded] = useState(() => { try { return storage.get(storageKeys.threadsFolded) === "1"; } catch { return false; } });
+  const foldList = (v: boolean) => { setListFolded(v); try { storage.set(storageKeys.threadsFolded, v ? "1" : "0"); } catch { /* per-browser only */ } };
   const searchInput = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    const focusSearch = () => { foldList(false); requestAnimationFrame(() => searchInput.current?.focus()); };
-    window.addEventListener("dory:focus-thread-search", focusSearch);
-    return () => window.removeEventListener("dory:focus-thread-search", focusSearch);
-  }, []);
+  useEmitter(events.focusThreadSearch, () => { foldList(false); requestAnimationFrame(() => searchInput.current?.focus()); });
   const folded = listFolded && !!threadId;
   useCommand("thread-list", () => foldList(!listFolded), !!threadId);
   // The list width is dragged from its right edge and kept per browser.
-  const [listWidth, setListWidth] = useState(() => { try { return clampList(Number(localStorage.getItem("dory.threads-width")) || LIST_W); } catch { return LIST_W; } });
+  const [listWidth, setListWidth] = useState(() => { try { return clampList(Number(storage.get(storageKeys.threadsWidth)) || LIST_W); } catch { return LIST_W; } });
   const [dragging, setDragging] = useState(false);
-  const saveWidth = (w: number) => { setListWidth(w); try { localStorage.setItem("dory.threads-width", String(w)); } catch { /* per-browser only */ } };
+  const saveWidth = (w: number) => { setListWidth(w); try { storage.set(storageKeys.threadsWidth, String(w)); } catch { /* per-browser only */ } };
   const startDrag = (e: ReactPointerEvent) => {
     e.preventDefault();
     const x0 = e.clientX, w0 = listWidth;
@@ -58,26 +55,22 @@ export function Threads() {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
-  const threads = useQuery({
-    queryKey: ["threads", filter],
-    queryFn: () => api.threads(undefined, filter === "archived"),
-    refetchInterval: 15_000,
-  });
-  const nodes = useQuery({ queryKey: ["node"], queryFn: api.node, staleTime: 60_000 });
+  const threads = useThreadList(filter, { refetchInterval: 15_000 });
+  const nodes = useNode({ staleTime: 60_000 });
   // Conversations started in the harnesses of this node, outside Dory.
-  const external = useQuery({ queryKey: ["external", "local"], queryFn: () => api.externalSessions("local"), enabled: filter === "external", refetchInterval: 30_000 });
+  const external = useExternalSessions("local", { enabled: filter === "external", refetchInterval: 30_000 });
   const local = nodes.data?.node.id;
-  const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh, staleTime: 30_000 });
+  const mesh = useMesh({ staleTime: 30_000 });
   // The environment a thread runs in, to show its icon in the list.
   const envOf = (id: string) => {
     if (id === local && nodes.data) return { name: nodes.data.node.name, icon: nodes.data.node.icon, os: nodes.data.node.os };
     const p = mesh.data?.peers.find((x) => x.id === id);
-    return p ? { name: p.name, icon: p.info.node?.icon, os: p.info.node?.os, offline: !p.connected } : { name: "Otro nodo", offline: !!(mesh.data && nodes.data) };
+    return p ? { name: p.name, icon: p.info.node?.icon, os: p.info.node?.os } : { name: "Otro nodo" };
   };
   // Pull requests and issues of each thread, through its task.
   const refsOf = useThreadRefs();
   // Each thread shows the repositories of its project as owner/repo.
-  const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list(), staleTime: 60_000 });
+  const repos = useRepositories({ staleTime: 60_000 });
   const repoOf = (projectID: string | null) => (repos.data ?? []).filter((r) => projectID && r.project_id === projectID && !r.archived_at).map((r) => repoName(r.remote_url)).join(", ");
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -184,9 +177,10 @@ export function ThreadsHome() {
 }
 
 // ThreadRow is one thread of the side list; right click opens its actions.
-function ThreadRow({ t, sub, refs, env: { offline, ...env }, listVisible }: { t: Thread; sub: string; refs: GhRef[]; env: { name: string; icon?: string; os?: string; offline?: boolean }; listVisible: boolean }) {
+function ThreadRow({ t, sub, refs, env, listVisible }: { t: Thread; sub: string; refs: GhRef[]; env: { name: string; icon?: string; os?: string }; listVisible: boolean }) {
   const menu = useThreadMenu(t);
-  const unread = isUnread(t);
+  const offline = t.state_stale;
+  const unread = t.unread;
   const icons = <>
     {refs.map((r) => <RefChip key={r.kind} r={r} listVisible={listVisible} />)}
     <span className="flex shrink-0 items-center text-slate-400 dark:text-muted"><EnvIcon {...env} /></span>

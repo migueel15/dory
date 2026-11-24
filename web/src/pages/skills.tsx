@@ -1,13 +1,15 @@
-import { DictationField } from "../components/dictation-field";
-import { useDictationInProgress } from "../components/local-dictation";
-import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "@phosphor-icons/react";
-import { api, type Skill, type SkillConflict, type SkillState } from "../api/client";
-import { Button, Card, ErrorText, Input, Label, Modal, PageHeader, StatusPill, type Tone } from "../components/ui";
+import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { type Skill,type SkillConflict,type SkillState } from "../api/client";
+import { useMesh,useNode } from "../api/queries/hooks";
+import { qk } from "../api/queries/keys";
+import { useArchiveSkill,useForkSkill,useResolveSkill,useSaveSkill,useSetSkillEnabled,useSkillConflicts,useSkillStates,useSkills } from "../api/queries/skills";
 import { askConfirm } from "../components/confirm";
+import { Button,Card,ErrorText,Input,Label,Modal,PageHeader,StatusPill,type Tone } from "../components/ui";
+import { DictationField } from "../features/composer/dictation-field";
+import { useDictationInProgress } from "../features/composer/local-dictation";
 
-const HARNESSES = [["claude", "Claude Code"], ["codex", "Codex"], ["opencode", "OpenCode"], ["antigravity", "Antigravity"]] as const;
 const STATE: Record<SkillState["status"], [string, Tone]> = {
   synced: ["sincronizada", "green"], pending: ["pendiente", "amber"], error: ["error", "red"], conflict: ["conflicto", "red"], removed: ["no instalada", "slate"],
 };
@@ -15,17 +17,22 @@ const STATE: Record<SkillState["status"], [string, Tone]> = {
 // Skills is the single catalog of skills with, per node, whether each one is
 // installed, pending or in conflict (requirements RF-37 to RF-41).
 export function Skills() {
-  const skills = useQuery({ queryKey: ["skills"], queryFn: api.skills });
-  const states = useQuery({ queryKey: ["skills", "states"], queryFn: api.skillStates, refetchInterval: 10_000 });
-  const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh });
-  const node = useQuery({ queryKey: ["node"], queryFn: api.node });
+  const skills = useSkills();
+  const states = useSkillStates({ refetchInterval: 10_000 });
+  const mesh = useMesh();
+  const node = useNode();
+  const harnesses = (node.data?.providers ?? [])
+    .filter((p) => p.id === (p.driver ?? p.id) && p.capabilities.includes("skills"))
+    .map((p) => [p.id, p.driver_name || p.name] as const);
   const [editing, setEditing] = useState<Skill | "new">();
   const [conflict, setConflict] = useState<{ skill: Skill; node: string }>();
   const nodes = [...(node.data ? [{ id: node.data.node.id, name: node.data.node.name, connected: true }] : []), ...(mesh.data?.peers ?? []).filter((p) => !p.revoked).map((p) => ({ id: p.id, name: p.name, connected: p.connected }))];
   const online = (id: string) => nodes.find((n) => n.id === id)?.connected ?? false;
   const name = (id: string) => nodes.find((n) => n.id === id)?.name ?? id.slice(0, 6);
   const qc = useQueryClient();
-  const enable = useMutation({ mutationFn: ({ id, on }: { id: string; on: boolean }) => api.setSkillEnabled(id, on), onSuccess: () => qc.invalidateQueries({ queryKey: ["skills"] }) });
+  const enable = useSetSkillEnabled({
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.skills() })
+  });
   const skillName = (id: string) => skills.data?.find((s) => s.id === id)?.name ?? id;
   // System skills first; each group keeps the catalog order.
   const list = [...(skills.data ?? [])].sort((a, b) => Number(b.source === "system") - Number(a.source === "system"));
@@ -59,15 +66,15 @@ export function Skills() {
         </Card>
       ))}
       {skills.isSuccess && skills.data.length === 0 && <p className="text-sm text-slate-500 dark:text-muted">El catálogo está vacío.</p>}
-      {conflict && <ConflictDialog skill={conflict.skill} node={conflict.node} nodeName={name(conflict.node)} onClose={() => setConflict(undefined)} />}
+      {conflict && <ConflictDialog skill={conflict.skill} node={conflict.node} nodeName={name(conflict.node)} harnesses={harnesses} onClose={() => setConflict(undefined)} />}
       {editing && (editing !== "new" && editing.source === "system"
         ? <SystemSkill skill={editing} onClose={() => setEditing(undefined)} />
-        : <SkillForm skill={editing === "new" ? undefined : editing} nodes={nodes} onClose={() => setEditing(undefined)} />)}
+        : <SkillForm skill={editing === "new" ? undefined : editing} nodes={nodes} harnesses={harnesses} onClose={() => setEditing(undefined)} />)}
     </div>
   );
 }
 
-function SkillForm({ skill, nodes, onClose }: { skill?: Skill; nodes: { id: string; name: string }[]; onClose: () => void }) {
+function SkillForm({ skill, nodes, harnesses, onClose }: { skill?: Skill; nodes: { id: string; name: string }[]; harnesses: (readonly [string, string])[]; onClose: () => void }) {
   const qc = useQueryClient();
   const dictating = useDictationInProgress();
   const [s, setS] = useState<Partial<Skill>>(skill ?? { name: "", description: "", body_md: "", files: {}, targets: { nodes: [], harnesses: [] } });
@@ -75,8 +82,12 @@ function SkillForm({ skill, nodes, onClose }: { skill?: Skill; nodes: { id: stri
     const list = s.targets?.[key] ?? [];
     setS({ ...s, targets: { nodes: s.targets?.nodes ?? [], harnesses: s.targets?.harnesses ?? [], [key]: list.includes(v) ? list.filter((x) => x !== v) : [...list, v] } });
   };
-  const save = useMutation({ mutationFn: () => api.saveSkill(s), onSuccess: () => { qc.invalidateQueries({ queryKey: ["skills"] }); onClose(); } });
-  const archive = useMutation({ mutationFn: () => api.archiveSkill(skill!.id), onSuccess: () => { qc.invalidateQueries({ queryKey: ["skills"] }); onClose(); } });
+  const save = useSaveSkill(s, {
+    onSuccess: () => { qc.invalidateQueries({ queryKey: qk.skills() }); onClose(); }
+  });
+  const archive = useArchiveSkill(skill?.id, {
+    onSuccess: () => { qc.invalidateQueries({ queryKey: qk.skills() }); onClose(); }
+  });
   return (
     <Modal title={skill ? `Skill ${skill.name}` : "Nueva skill"} onClose={onClose} wide>
       <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (!dictating) save.mutate(); }}>
@@ -87,7 +98,7 @@ function SkillForm({ skill, nodes, onClose }: { skill?: Skill; nodes: { id: stri
         <DictationField label="Instrucciones (SKILL.md, sin frontmatter)" rows={14} value={s.body_md ?? ""} onValue={(body_md) => setS((current) => ({ ...current, body_md }))} className="font-mono !text-xs" />
         <fieldset className="text-sm">
           <legend className="mb-1 font-medium">Agentes <span className="text-xs text-slate-500">(ninguno marcado = todos)</span></legend>
-          <div className="flex flex-wrap gap-3">{HARNESSES.map(([id, label]) => <label key={id} className="flex items-center gap-1.5"><input type="checkbox" checked={!!s.targets?.harnesses?.includes(id)} onChange={() => toggle("harnesses", id)} />{label}</label>)}</div>
+          <div className="flex flex-wrap gap-3">{harnesses.map(([id, label]) => <label key={id} className="flex items-center gap-1.5"><input type="checkbox" checked={!!s.targets?.harnesses?.includes(id)} onChange={() => toggle("harnesses", id)} />{label}</label>)}</div>
         </fieldset>
         <fieldset className="text-sm">
           <legend className="mb-1 font-medium">Nodos <span className="text-xs text-slate-500">(ninguno marcado = todos; se aplica aunque estén desconectados)</span></legend>
@@ -108,7 +119,9 @@ function SkillForm({ skill, nodes, onClose }: { skill?: Skill; nodes: { id: stri
 function SystemSkill({ skill, onClose }: { skill: Skill; onClose: () => void }) {
   const qc = useQueryClient();
   const [name, setName] = useState(`${skill.name}-custom`);
-  const fork = useMutation({ mutationFn: () => api.forkSkill(skill.id, name), onSuccess: () => { qc.invalidateQueries({ queryKey: ["skills"] }); onClose(); } });
+  const fork = useForkSkill(skill.id, name, {
+    onSuccess: () => { qc.invalidateQueries({ queryKey: qk.skills() }); onClose(); }
+  });
   return (
     <Modal title={`Skill ${skill.name}`} onClose={onClose} wide>
       <div className="space-y-3">
@@ -134,16 +147,15 @@ const KIND: Record<SkillConflict["kind"], string> = {
 // ConflictDialog settles the copies of a skill that block its install on one
 // node: keep the catalog version, or take the node's copy into the catalog.
 // Either way the node's copies go to a backup folder first.
-function ConflictDialog({ skill, node, nodeName, onClose }: { skill: Skill; node: string; nodeName: string; onClose: () => void }) {
+function ConflictDialog({ skill, node, nodeName, harnesses, onClose }: { skill: Skill; node: string; nodeName: string; harnesses: (readonly [string, string])[]; onClose: () => void }) {
   const qc = useQueryClient();
-  const conflicts = useQuery({ queryKey: ["skills", "conflicts", node, skill.id], queryFn: () => api.skillConflicts(node, skill.id) });
+  const conflicts = useSkillConflicts(node, skill.id);
   const [done, setDone] = useState<string>();
-  const resolve = useMutation({
-    mutationFn: ({ action, harness }: { action: "restore" | "adopt"; harness?: string }) => api.resolveSkill(node, skill.id, action, harness),
-    onSuccess: (r) => { setDone(r.backup); qc.invalidateQueries({ queryKey: ["skills"] }); },
+  const resolve = useResolveSkill(node, skill.id, {
+    onSuccess: (r) => { setDone(r.backup); qc.invalidateQueries({ queryKey: qk.skills() }); }
   });
   const system = skill.source === "system";
-  const label = (h: string) => HARNESSES.find(([id]) => id === h)?.[1] ?? h;
+  const label = (h: string) => harnesses.find(([id]) => id === h)?.[1] ?? h;
   return (
     <Modal title={`Conflicto de ${skill.name} en ${nodeName}`} onClose={onClose} wide>
       <div className="space-y-3 text-sm">

@@ -43,7 +43,7 @@ func TestEmitIsIdempotentAndKeepsReadState(t *testing.T) {
 	}
 	at := time.Now().UTC().Format(time.RFC3339Nano)
 	list[0].ReadAt = &at
-	store.Notices().Put(ctx, list[0])
+	store.Notices().Patch(ctx, list[0].ID, data.Fields{"read_at": list[0].ReadAt})
 	n.Emit(ctx, "plan.ready", "thread-1", "stamp", "Tarea", "/threads/1")
 	list, _ = store.Notices().List(ctx, data.Filter{})
 	if len(list) != 1 || list[0].ReadAt == nil {
@@ -63,7 +63,7 @@ func TestRetentionDeletesOldReadNotices(t *testing.T) {
 	list, _ := store.Notices().List(ctx, data.Filter{})
 	old := time.Now().Add(-31 * 24 * time.Hour).UTC().Format(time.RFC3339Nano)
 	list[0].ReadAt = &old
-	store.Notices().Put(ctx, list[0])
+	store.Notices().Patch(ctx, list[0].ID, data.Fields{"read_at": list[0].ReadAt})
 	done := make(chan struct{})
 	go func() { n.Run(ctx); close(done) }()
 	time.Sleep(300 * time.Millisecond)
@@ -115,12 +115,39 @@ func TestSettingsMode(t *testing.T) {
 	if n.Mode(ctx, "thread.idle") != ModeAuto {
 		t.Fatal("default must be automatic")
 	}
-	store.Settings().Put(ctx, data.Setting{ID: settingPrefix + "thread.idle", Value: ModeOff})
-	store.Settings().Put(ctx, data.Setting{ID: settingPrefix + "plan.ready", Value: ModePush})
+	store.Settings().Upsert(ctx, data.Setting{ID: settingPrefix + "thread.idle", Value: ModeOff})
+	store.Settings().Upsert(ctx, data.Setting{ID: settingPrefix + "plan.ready", Value: ModePush})
 	n.Emit(ctx, "thread.idle", "t", "1", "", "")
 	n.Emit(ctx, "plan.ready", "t", "1", "", "")
 	list, _ := store.Notices().List(ctx, data.Filter{})
 	if len(list) != 1 || list[0].Kind != "plan.ready" || n.Mode(ctx, "plan.ready") != ModePush {
 		t.Fatalf("a silenced kind must not create notices: %+v", list)
 	}
+}
+
+func TestThreadStateNoticesUseActivity(t *testing.T) {
+	ctx := context.Background()
+	n, store := open(t)
+	thread, err := store.Threads().Create(ctx, data.Thread{NodeID: n.node, Provider: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []string{"working", "idle", "working", "idle"} {
+		if err := store.SetThreadState(ctx, thread.ID, status, ""); err != nil {
+			t.Fatal(err)
+		}
+		n.ThreadState(thread.ID)
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		list, err := store.Notices().List(ctx, data.Filter{Fields: map[string]any{"kind": "thread.idle"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(list) == 2 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("each finished turn must produce its own notice")
 }

@@ -11,31 +11,44 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+
+	"github.com/migueel15/dory/internal/harness/claude"
+	"github.com/migueel15/dory/internal/harness/codex"
+	"github.com/migueel15/dory/internal/harness/opencode"
+
 	goruntime "runtime"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
-	"github.com/migueel15/dory/internal/cmdexec"
-	"github.com/migueel15/dory/internal/update"
-
 	"github.com/migueel15/dory/internal/api"
+	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/browser"
+	"github.com/migueel15/dory/internal/cmdexec"
 	"github.com/migueel15/dory/internal/compress"
 	"github.com/migueel15/dory/internal/config"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/devices"
 	"github.com/migueel15/dory/internal/dictation"
 	"github.com/migueel15/dory/internal/github"
+	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/acp"
+	"github.com/migueel15/dory/internal/harness/acp/antigravity"
+	"github.com/migueel15/dory/internal/harness/procpool"
 	"github.com/migueel15/dory/internal/localdb"
 	"github.com/migueel15/dory/internal/mcp"
 	"github.com/migueel15/dory/internal/mesh"
+	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/notify"
 	"github.com/migueel15/dory/internal/oplog"
+	"github.com/migueel15/dory/internal/outbox"
 	"github.com/migueel15/dory/internal/runtime"
 	"github.com/migueel15/dory/internal/skills"
+	"github.com/migueel15/dory/internal/update"
 	"github.com/migueel15/dory/internal/version"
+	"github.com/migueel15/dory/internal/workspace"
 	"github.com/migueel15/dory/web"
 )
 
@@ -103,11 +116,21 @@ func run() error {
 }
 
 func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplog.Log) error {
+	state := nodestate.New(store.LocalDB())
+	if err := importNodeState(ctx, state, cfg.DataDir); err != nil {
+		return err
+	}
 	if err := store.PublishLocations(ctx); err != nil {
 		log.Printf("publish repository locations: %v", err)
 	}
-	providers := []runtime.Provider{runtime.Claude{}, runtime.Codex{}, runtime.OpenCode{}, runtime.Antigravity{}}
-	rt := runtime.NewManager(store.DB(), store, log_.Node(), cfg.DataDir, providers...)
+	providers := []runtime.Provider{claude.Claude{}, codex.Codex{}, opencode.OpenCode{}, acp.New(antigravity.Profile(""), nil)}
+	for _, a := range cfg.ACP {
+		providers = append(providers, acp.New(acp.Declared(a.ID, a.Name, a.Command, a.Args, a.Env), nil))
+	}
+	var rt *runtime.Manager
+	pool := procpool.New(func(thread string) bool { return len(rt.ThreadServices(thread)) != 0 })
+	rt = runtime.NewManager(store.LocalDB(), store, log_.Node(), cfg.DataDir, state, pool, providers...)
+	go pool.Reap(ctx)
 	agentToken := auth.Secret()
 	rt.MCPURL = "http://" + loopbackAddr(cfg.Listen) + "/mcp"
 	rt.MCPToken = agentToken
@@ -121,12 +144,12 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	if err != nil {
 		return err
 	}
-	net := mesh.New(store.DB(), log_, id, cfg.NodeName, cfg.MeshPort)
+	net := mesh.New(store.LocalDB(), log_, id, cfg.NodeName, cfg.MeshPort)
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
 	}
-	reconciler := &skills.Reconciler{Store: store, Node: log_.Node(), Home: home, Config: rt.ConfigDir, Manifest: filepath.Join(cfg.DataDir, "skills-manifest.json"),
+	reconciler := &skills.Reconciler{Store: store, Node: log_.Node(), Home: home, Locations: func() map[string]harness.SkillLocation { return rt.SkillDirs(home) }, State: state, DataDir: cfg.DataDir,
 		Installed: func(ctx context.Context) []string {
 			var ids []string
 			for _, p := range rt.Providers(ctx) {
@@ -140,38 +163,76 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	if err != nil {
 		return err
 	}
+	// A task or thread that changes may finish a task: its threads are
+	// archived once the changes settle. Set when the tasks service exists.
+	var finishSoon atomic.Pointer[func()]
 	log_.OnChange = func(entity, id string) {
 		events.Changed(entity, id)
 		net.Changed()
 		reconciler.Changed(entity)
 		notices.Changed(entity, id)
+		if f := finishSoon.Load(); f != nil && (entity == "task" || entity == "thread") {
+			(*f)()
+		}
+	}
+	net.OnThreadState = func(id string) { events.Changed("thread_state", id) }
+	rt.OnStateChange = func(id string) {
+		net.OnThreadState(id)
+		notices.ThreadState(id)
+		net.ThreadStateChanged()
+		if f := finishSoon.Load(); f != nil {
+			(*f)()
+		}
 	}
 	go reconciler.Run(ctx)
 	go rt.Follow(ctx, rt.Paths(home))
 	gh := github.New(func(ctx context.Context) (map[string]string, error) { return followed(ctx, store) }, github.NewAuth(filepath.Join(cfg.DataDir, "github.token"), ghToken))
 	// A pull request change is not a stored write: tell clients directly.
 	srv := &api.Server{
-		Store: store, Runtime: rt, GitHub: gh, Dictation: dictationManager(), Events: events,
+		Store: store, NodeState: state, Runtime: rt, GitHub: gh, Dictation: dictationManager(), Events: events,
 		SpeechModels: dictation.NewLocalModels(ctx, filepath.Join(cfg.DataDir, "dictation-models"), os.Getenv("DORY_NEMO_SPEECH_BIN")),
 		Node: api.Node{ID: log_.Node(), Name: cfg.NodeName, OS: goruntime.GOOS, Version: version.Read().Short,
 			DataDir: cfg.DataDir, Listen: cfg.Listen, Platform: goruntime.GOOS + "/" + goruntime.GOARCH},
 	}
 	srv.Devices = devices.NewManager()
 	srv.Skills = reconciler
-	srv.Settings = api.NewSettingsStore(cfg.DataDir, api.Settings{ArchiveThreadsOnFinish: cfg.Tasks.ArchiveThreadsOnFinish, RemoveWorktreeOnArchive: cfg.Threads.RemoveWorktreeOnArchive, AgentsUseDevices: true, SourceControl: api.SourceControlSettings{AutoPull: true}})
+	srv.Settings = api.NewSettingsStore(state, api.Settings{ArchiveThreadsOnFinish: cfg.Tasks.ArchiveThreadsOnFinish, RemoveWorktreeOnArchive: cfg.Threads.RemoveWorktreeOnArchive, AgentsUseDevices: true, SourceControl: api.SourceControlSettings{AutoPull: true}})
+	srv.Remote = net
+	srv.PeerClient = net.Client()
+	srv.Threads = &app.Threads{
+		Store: store, Runtime: rt, Workspace: workspace.Git{}, Settings: srv.Settings, Peers: srv.PeerClient,
+		Namer: app.ModelBranchNamer{Runtime: rt}, Node: log_.Node(), DataDir: cfg.DataDir,
+	}
+	srv.Plans = &app.Plans{Store: store}
+	srv.Memories = &app.Memories{Store: store}
+	srv.Projects = &app.Projects{Store: store}
+	srv.Ideas = &app.Ideas{Store: store, Titles: rt}
+	srv.Tasks = &app.Tasks{Store: store, Threads: srv.Threads, Plans: srv.Plans, Node: log_.Node(), ArchiveOnFinish: func() bool { return srv.Settings.Get().ArchiveThreadsOnFinish }}
+	srv.PullReviews = &app.PullReviews{Store: store, Threads: srv.Threads}
+	finish := func() { srv.Tasks.FinishSoon(ctx) }
+	finishSoon.Store(&finish)
 	go gh.Watch(ctx, func() {
+		changed, err := srv.Tasks.RefreshPulls(ctx, gh)
+		if err != nil {
+			log.Printf("refresh pull requests: %v", err)
+		}
 		events.Changed("github", "")
 		notices.Github()
-		srv.FinishTasks(ctx)
+		if changed {
+			srv.Tasks.Finish(ctx)
+		}
 	})
-	srv.StartWorktreeMaintenance(ctx)
-	srv.Remote = net
-	rt.PeerComplete = srv.CompleteOnPeer
+	srv.Tasks.StartWorktreeMaintenance(ctx)
+	// What this node owes other nodes waits here until they are connected.
+	out := outbox.New(store.LocalDB(), srv.PeerClient)
+	rt.Outbox = out
+	net.Connected = func(node string) { out.KickNode(ctx, node) }
+	go out.Run(ctx)
 	srv.MeshPort = cfg.MeshPort
-	srv.Browser = &browser.Manager{DB: store.DB(), Profile: filepath.Join(cfg.DataDir, "browser-profile"),
+	srv.Browser = &browser.Manager{DB: store.LocalDB(), Profile: filepath.Join(cfg.DataDir, "browser-profile"),
 		Changed: func(id string) { events.Changed("browser", id) }}
 	go srv.Browser.Run(ctx)
-	notices.Columns = srv.TaskColumns
+	notices.Columns = srv.Tasks.Columns
 	notices.InfoChanged = net.Changed
 	notices.PeerInfo = func(ctx context.Context) []json.RawMessage {
 		peers, _ := net.Peers(ctx)
@@ -186,7 +247,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	go notices.Run(ctx)
 	srv.InfoChanged = net.Changed
 	srv.Updater = &update.Updater{DataDir: cfg.DataDir, Active: rt.Active, Providers: rt.UpdateAll, Restart: func() {
-		runtime.CloseAllLive()
+		pool.CloseAll()
 		if srv.Settings.Get().StopServicesOnShutdown {
 			rt.StopAllServices()
 		}
@@ -196,7 +257,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 			var out []update.Installed
 			for _, p := range rt.Providers(ctx) {
 				if p.Installed {
-					out = append(out, update.Installed{ID: p.ID, Name: p.Name, Version: p.Version})
+					out = append(out, update.Installed{ID: p.ID, Name: p.Name, Version: p.Version, Latest: rt.LatestVersion(p.ID)})
 				}
 			}
 			return out
@@ -221,7 +282,14 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	srv.Register(mux)
 	auth.Register(mux, store.Accounts(), cfg)
 	auth.RegisterDevices(mux, store.Accounts())
-	mux.Handle("/mcp", mcp.Handler(srv))
+	mux.Handle("/mcp", mcp.Handler(&mcp.Deps{
+		Store: store, Node: mcp.Node{ID: srv.Node.ID, Name: srv.Node.Name},
+		Threads: srv.Threads, Tasks: srv.Tasks, Plans: srv.Plans, Memories: srv.Memories, Projects: srv.Projects,
+		Session: &app.Session{Node: srv.Node.ID, Tasks: srv.Tasks, Memories: srv.Memories, Projects: srv.Projects},
+		Runtime: rt, Peers: net, PeerClient: srv.PeerClient, Devices: srv.Devices, Browser: srv.Browser,
+		AgentsUseDevices: func() bool { return srv.Settings.Get().AgentsUseDevices },
+		Notify:           func(entity, id string, data any) { events.Notify(api.Change{Entity: entity, ID: id, Data: data}) },
+	}))
 	mux.Handle("/", web.Handler())
 	control, err := controlToken(cfg.DataDir)
 	if err != nil {
@@ -236,7 +304,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		return auth.IssueDevice(ctx, store.Accounts(), name)
 	}
 	net.DeviceSession = func(w http.ResponseWriter, r *http.Request) { auth.DeviceSession(w, r, store.Accounts(), cfg) }
-	net.Info = func(ctx context.Context) any {
+	net.Info = func(ctx context.Context) map[string]any {
 		return map[string]any{"node": srv.Info(), "providers": rt.Providers(ctx), "presence": notices.Presence(), "push": notices.HasPush(ctx)}
 	}
 	done := make(chan error, 2)
@@ -257,7 +325,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		}
 		return err
 	case <-ctx.Done():
-		runtime.CloseAllLive()
+		pool.CloseAll()
 		if srv.Settings.Get().StopServicesOnShutdown {
 			rt.StopAllServices()
 		}
@@ -269,7 +337,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 
 // followed maps the remote of every repository of an active project to it.
 func followed(ctx context.Context, store *data.Store) (map[string]string, error) {
-	repos, err := store.Repositories().List(ctx, data.Filter{Limit: 1000})
+	repos, err := store.Repositories().ListAll(ctx, data.Filter{})
 	if err != nil {
 		return nil, err
 	}

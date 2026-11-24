@@ -1,16 +1,17 @@
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { api, usable, type UsageBreakdownRow, type UsageRange, type UsageReport, type UsageRow, type UsageTurnCall, type UsageWindow } from "../api/client";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { api, usable, type UsageReport, type UsageWindow } from "../api/client";
 import { Card, ErrorText, Select, iconButton } from "../components/ui";
 import { AreaChart, StackedBar, compact, percent, providerColor, usd } from "../components/usage-charts";
-import { ProviderIcon, useNodes } from "../components/launch-picker";
+import { ProviderIcon, useNodes } from "../features/composer/launch-picker";
 import { expectedRemaining, paceTitle, windowLabel, windowMinutes, windowReset } from "../lib/usage-pace";
 import { PaceMark } from "../components/pace-mark";
+import { qk } from "../api/queries/keys";
+import { useNode } from "../api/queries/hooks";
+import { Breakdown } from "./usage-breakdown";
+import { type Tab, type Search, RANGES, TABS, PROVIDER_NAMES, TYPE_COLORS, TYPE_LABELS, type Kind, KINDS, tokensOf, costOf, cx, date } from "./usage-shared";
 
 
-const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(" ");
-const date = (iso: string) => new Date(iso).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" });
 
 // Limit shows what is left of one usage window and the expected pace.
 export function Limit({ w }: { w: UsageWindow }) {
@@ -34,7 +35,7 @@ export function Limit({ w }: { w: UsageWindow }) {
 // Limits shows the remaining allowance of each provider (requirement 4.7).
 // The harness reports it while a turn runs, so it updates as the agents work.
 function Limits({ only }: { only: string }) {
-  const node = useQuery({ queryKey: ["node"], queryFn: api.node, refetchInterval: 30_000 });
+  const node = useNode({ refetchInterval: 30_000 });
   const usage = node.data?.usage ?? {};
   return (
     <div className="space-y-3">
@@ -50,19 +51,6 @@ function Limits({ only }: { only: string }) {
     </div>
   );
 }
-
-type Tab = "cost" | "tokens" | "breakdown" | "limits";
-type Search = { tab?: Tab; range?: UsageRange; provider?: string; by?: "model" | "day"; envs?: string };
-const RANGES: [UsageRange, string][] = [["24h", "24 h"], ["7d", "7 días"], ["30d", "30 días"], ["90d", "90 días"]];
-const TABS: [Tab, string][] = [["cost", "Coste"], ["tokens", "Tokens"], ["breakdown", "Desglose"], ["limits", "Límites"]];
-const PROVIDER_NAMES: Record<string, string> = { claude: "Claude Code", codex: "Codex", opencode: "OpenCode", antigravity: "Antigravity" };
-const TYPE_COLORS = { input: "#6366f1", cache_read: "#14b8a6", cache_write: "#f59e0b", output: "#ec4899" };
-const TYPE_LABELS = { input: "Entrada", cache_read: "Lectura de caché", cache_write: "Escritura de caché", output: "Salida" };
-type Kind = keyof typeof TYPE_COLORS;
-const KINDS = Object.keys(TYPE_COLORS) as Kind[];
-
-const tokensOf = (r: UsageRow) => r.tokens.input + r.tokens.output + r.tokens.cache_write + r.tokens.cache_read;
-const costOf = (r: UsageRow) => r.cost.input + r.cost.output + r.cost.cache_write + r.cost.cache_read;
 
 const segment = (active: boolean) => cx("min-h-11 rounded px-2.5 py-1 text-xs font-medium sm:min-h-0", active ? "bg-white text-slate-900 shadow-sm dark:bg-raised dark:text-white" : "text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white");
 function Segmented<T extends string>({ value, options, onChange }: { value: T; options: [T, string][]; onChange: (v: T) => void }) {
@@ -111,7 +99,7 @@ export function Usage() {
     const next = current.includes(id) ? current.filter((v) => v !== id) : [...current, id];
     set({ envs: next.length === nodes.length || !next.length ? undefined : next.join(",") });
   };
-  const results = useQueries({ queries: selected.map((n) => ({ queryKey: ["usage-history", range, n.value], queryFn: () => api.usageHistory(range, n.value), enabled: tab === "cost" || tab === "tokens" })) });
+  const results = useQueries({ queries: selected.map((n) => ({ queryKey: qk.usageHistory(range, n.value), queryFn: () => api.usageHistory(range, n.value), enabled: tab === "cost" || tab === "tokens" })) });
   const loaded = results.filter((r) => r.data).map((r) => r.data!);
   const history = {
     isFetching: results.some((r) => r.isFetching),
@@ -119,7 +107,7 @@ export function Usage() {
     data: results.length && results.every((r) => !r.isPending) && loaded.length ? merge(loaded) : undefined,
   };
   const breakdown = useQueries({ queries: selected.map((n) => ({
-    queryKey: ["usage-breakdown", range, n.value], queryFn: () => api.usageBreakdown(range, n.value), enabled: tab === "breakdown",
+    queryKey: qk.usageBreakdown(range, n.value), queryFn: () => api.usageBreakdown(range, n.value), enabled: tab === "breakdown",
   })) });
   const breakdownError = breakdown.find((r) => r.error)?.error;
   const qc = useQueryClient();
@@ -136,7 +124,7 @@ export function Usage() {
           {tab !== "limits" && <Segmented value={range} options={RANGES} onChange={(v) => set({ range: v })} />}
           <Segmented value={tab} options={TABS} onChange={(v) => set({ tab: v })} />
           <button type="button" className={iconButton} title="Recargar" aria-label="Recargar"
-            onClick={() => qc.invalidateQueries({ queryKey: tab === "limits" ? ["node"] : tab === "breakdown" ? ["usage-breakdown"] : ["usage-history"] })}>
+            onClick={() => qc.invalidateQueries({ queryKey: tab === "limits" ? qk.node() : tab === "breakdown" ? qk.usageBreakdown() : qk.usageHistory() })}>
             <svg viewBox="0 0 24 24" className={cx("size-4", (history.isFetching || breakdown.some((r) => r.isFetching)) && "animate-spin")} fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5" /></svg>
           </button>
         </div>
@@ -166,151 +154,6 @@ export function Usage() {
       )}
     </div>
   );
-}
-
-const CATEGORY_LABELS: Record<string, string> = {
-  base: "Contexto sin atribuir", system: "Instrucciones de Dory", user: "Mensajes del usuario", history: "Conversación",
-  response: "Respuestas del agente", reasoning: "Razonamiento", tool: "Otras herramientas", subagent: "Subagentes",
-  mcp: "Llamadas MCP", skill: "Skills", command: "Comandos", read: "Lectura de archivos",
-  unattributed_output: "Salida sin atribuir",
-};
-
-function Breakdown({ rows, range, provider }: { rows: (UsageBreakdownRow & { node: string })[]; range: UsageRange; provider: string }) {
-  const [thread, setThread] = useState("");
-  const threads = new Map(rows.map((r) => [r.thread, r.title || r.thread.slice(0, 8)]));
-  const selected = threads.has(thread) ? thread : "";
-  const visible = rows.filter((r) => !selected || r.thread === selected);
-  const node = visible[0]?.node;
-  const totalOf = (r: Pick<UsageBreakdownRow, Kind>) => KINDS.reduce((sum, kind) => sum + r[kind], 0);
-  const sumOf = (group: UsageBreakdownRow[], kind: Kind) => group.reduce((sum, r) => sum + r[kind], 0);
-  const total = visible.reduce((sum, row) => sum + totalOf(row), 0);
-  const costOfGroup = (group: UsageBreakdownRow[]) => group.reduce((sum, row) => sum + row.cost, 0);
-  const priced = visible.reduce((sum, row) => sum + row.priced_tokens, 0);
-  const cost = costOfGroup(visible);
-  const groups = new Map<string, UsageBreakdownRow[]>();
-  for (const row of visible) {
-    const key = row.category === "tool" ? row.label.split(":", 1)[0] : row.category;
-    const category = CATEGORY_LABELS[key] ? key : "tool";
-    const group = groups.get(category) ?? [];
-    group.push(row);
-    groups.set(category, group);
-  }
-  const summary = [...groups].map(([key, group]) => ({ key, group, tokens: group.reduce((sum, row) => sum + totalOf(row), 0) }))
-    .sort((a, b) => b.tokens - a.tokens);
-  if (!rows.length) return <Card><p className="text-sm">Sin turnos registrados en este periodo.</p></Card>;
-  return (
-    <div className="space-y-3">
-      <Card>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="text-lg font-semibold tabular-nums">{compact(total)} tokens registrados</p>
-            <p className="text-sm text-slate-500 dark:text-muted">Reparto estimado de los turnos que Dory ha registrado.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Select value={selected} onChange={setThread} options={[{ value: "", label: "Todos los hilos" },
-              ...[...threads].sort((a, b) => a[1].localeCompare(b[1])).map(([value, label]) => ({ value, label }))]} />
-            {selected && <Link className="text-sm underline" to="/threads/$threadId" params={{ threadId: selected }}>Abrir hilo</Link>}
-          </div>
-        </div>
-        <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          {KINDS.map((kind) => <div key={kind}><dt className="text-slate-500 dark:text-muted">{TYPE_LABELS[kind]}</dt>
-            <dd className="tabular-nums">{compact(sumOf(visible, kind))} <span className="text-xs text-slate-500 dark:text-muted">{total > 0 && percent(sumOf(visible, kind) / total)}</span></dd>
-          </div>)}
-        </dl>
-        {priced > 0 && <p className="mt-3 text-sm tabular-nums">{usd(cost)} a tarifa API · Cobertura {percent(Math.min(1, priced / total))} de los tokens</p>}
-      </Card>
-      {selected && node && <ThreadUsage thread={selected} range={range} node={node} provider={provider} />}
-      <Card>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs text-slate-500 dark:text-muted">
-              <tr><th scope="col" className="py-2 pr-4">Categoría</th><th scope="col" className="px-2 text-right">Entrada</th>
-                <th scope="col" className="px-2 text-right">Caché leída</th><th scope="col" className="px-2 text-right">Caché escrita</th>
-                <th scope="col" className="px-2 text-right">Salida</th><th scope="col" className="pl-2 text-right">% de tokens</th>
-                {priced > 0 && <th scope="col" className="px-2 text-right">Coste API</th>}</tr>
-            </thead>
-            <tbody>
-              {summary.map(({ key, group, tokens }) => {
-                const labels = new Map<string, number>();
-                for (const row of group) {
-                  if (row.label && key !== "subagent") {
-                    const name = row.label.replace(/^(mcp|skill):/, "");
-                    if (name !== key) labels.set(name, (labels.get(name) ?? 0) + totalOf(row));
-                  }
-                }
-                return <tr key={key} className="border-t border-slate-200 align-top dark:border-border">
-                  <th scope="row" className="py-2 pr-4 font-medium">
-                    {labels.size ? <details><summary className="cursor-pointer whitespace-nowrap">{CATEGORY_LABELS[key]}</summary>
-                      <ul className="mt-2 space-y-1 pl-3 text-xs font-normal text-slate-500 dark:text-muted">
-                        {[...labels].sort((a, b) => b[1] - a[1]).map(([name, value]) =>
-                          <li key={name} className="break-all">{name} · {compact(value)} · {percent(total > 0 ? value / total : 0)}</li>)}
-                      </ul>
-                    </details> : CATEGORY_LABELS[key]}
-                  </th>
-                  {KINDS.map((kind) => <td key={kind} className="px-2 py-2 text-right tabular-nums">{compact(sumOf(group, kind))}</td>)}
-                  <td className="whitespace-nowrap py-2 pl-2 text-right tabular-nums">{percent(total > 0 ? tokens / total : 0)}</td>
-                  {priced > 0 && <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">
-                    {group.some((row) => row.priced_tokens > 0) ? usd(costOfGroup(group)) : "—"}
-                    {cost > 0 && costOfGroup(group) > 0 && <span className="ml-1 text-xs text-slate-500 dark:text-muted">{percent(costOfGroup(group) / cost)}</span>}
-                  </td>}
-                </tr>;
-              })}
-            </tbody>
-          </table>
-        </div>
-        <p className="mt-3 text-xs text-slate-500 dark:text-muted">El contexto sin atribuir puede incluir historial previo, instrucciones del proveedor y esquemas de herramientas. El coste usa tarifas API de referencia y escrituras de caché de corta duración.</p>
-      </Card>
-    </div>
-  );
-}
-
-const callInput = (call: UsageTurnCall) => call.input + call.cache_read + call.cache_write;
-const exact = new Intl.NumberFormat("es-ES");
-const signed = new Intl.NumberFormat("es-ES", { signDisplay: "exceptZero" });
-const CALL_COLUMNS = ["Llamada", "Modelo", "Entrada total", "Cambio de entrada", "Sin caché", "Caché leída", "Caché escrita", "Salida", "Razonamiento"];
-
-function ThreadUsage({ thread, range, node, provider }: { thread: string; range: UsageRange; node: string; provider: string }) {
-  const { data, error, isPending } = useQuery({
-    queryKey: ["usage-breakdown", "turns", node, thread, range],
-    queryFn: () => api.threadUsageTurns(thread, range, node),
-  });
-  const turns = (data ?? []).filter((turn) => !provider || turn.provider === provider);
-
-  return <Card>
-    <h2 className="font-semibold">Uso por turno</h2>
-    <p className="mb-2 text-sm text-slate-500 dark:text-muted">Contadores del proveedor. La diferencia compara la entrada total con la llamada anterior del mismo turno. El razonamiento registrado forma parte de la salida.</p>
-    <ErrorText error={error} />
-    {isPending && <p className="text-sm">Leyendo los turnos…</p>}
-    {data && !turns.length && <p className="text-sm">Sin turnos registrados en este periodo.</p>}
-    {turns.map((turn) => <details key={turn.id} className="border-t border-slate-200 py-2 dark:border-border">
-      <summary className="cursor-pointer text-sm">
-        <span className="font-medium">{turn.preview || date(turn.created_at)}</span>
-        <span className="ml-2 text-slate-500 dark:text-muted">
-          {turn.preview && `${date(turn.created_at)} · `}{PROVIDER_NAMES[turn.provider] ?? turn.provider} · {turn.calls.length} {turn.calls.length === 1 ? "llamada" : "llamadas"} · {exact.format(turn.calls.reduce((sum, call) => sum + callInput(call), 0))} tokens de entrada
-        </span>
-      </summary>
-      <div className="mt-2 overflow-x-auto">
-        <table className="w-full whitespace-nowrap text-sm">
-          <thead className="text-xs text-slate-500 dark:text-muted">
-            <tr>{CALL_COLUMNS.map((label, i) => <th key={label} scope="col" className={`px-2 py-1 ${i < 2 ? "text-left" : "text-right"}`}>{label}</th>)}</tr>
-          </thead>
-          <tbody>
-            {turn.calls.map((call, i) => {
-              const previous = turn.calls[i - 1];
-              const delta = previous && !call.subagent && !previous.subagent && call.model === previous.model ? callInput(call) - callInput(previous) : null;
-              return <tr key={call.ordinal} className="border-t border-slate-200 tabular-nums dark:border-border">
-                <th scope="row" className="px-2 py-1 text-left font-medium">{call.ordinal + 1}{call.subagent && " · Subagente"}</th>
-                <td className="px-2 py-1">{call.model || "—"}</td>
-                <td className="px-2 py-1 text-right">{exact.format(callInput(call))}</td>
-                <td className="px-2 py-1 text-right">{delta === null ? "—" : signed.format(delta)}</td>
-                {[...KINDS.map((kind) => call[kind]), call.reasoning].map((n, index) => <td key={CALL_COLUMNS[index + 4]} className="px-2 py-1 text-right">{exact.format(n)}</td>)}
-              </tr>;
-            })}
-          </tbody>
-        </table>
-      </div>
-    </details>)}
-  </Card>;
 }
 
 function History({ report, provider, money, by, setBy }: { report: UsageReport; provider: string; money: boolean; by: "model" | "day"; setBy: (v: "model" | "day") => void }) {

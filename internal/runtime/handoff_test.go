@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/migueel15/dory/internal/data"
 	"strings"
 	"testing"
+
+	"github.com/migueel15/dory/internal/harness"
 )
 
 type capturedProvider struct {
@@ -14,7 +17,7 @@ type capturedProvider struct {
 	ends  chan chan Event
 }
 
-func (p capturedProvider) ID() string { return p.id }
+func (p capturedProvider) Info() harness.Info { return harness.Info{ID: p.id, Driver: p.id} }
 
 func (p capturedProvider) Usage(context.Context) ([]Window, error) { return nil, ErrNoUsage }
 
@@ -22,11 +25,11 @@ func (p capturedProvider) Detect(context.Context) Status {
 	return Status{ID: p.id, Installed: true}
 }
 
-func (p capturedProvider) Run(_ context.Context, turn Turn) (<-chan Event, error) {
+func (p capturedProvider) Start(_ context.Context, turn Turn) (Session, error) {
 	events := make(chan Event, 3)
 	p.turns <- turn
 	p.ends <- events
-	return events, nil
+	return adapt(events, rejectResponse), nil
 }
 
 func TestSwitchProviderKeepsThreadAndHandsOffText(t *testing.T) {
@@ -34,9 +37,10 @@ func TestSwitchProviderKeepsThreadAndHandsOffText(t *testing.T) {
 	m, store := manager(t, 0)
 	claude := capturedProvider{"claude", make(chan Turn, 1), make(chan chan Event, 1)}
 	codex := capturedProvider{"codex", make(chan Turn, 1), make(chan chan Event, 1)}
-	m.providers[claude.id], m.providers[codex.id] = claude, codex
+	m.registry.Register(claude)
+	m.registry.Register(codex)
 
-	thread, err := m.Create(ctx, NewThread{Provider: claude.id, Model: "haiku"})
+	thread, err := registerTestThread(ctx, m, data.Thread{Provider: claude.id, Model: "haiku"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,9 +53,9 @@ func TestSwitchProviderKeepsThreadAndHandsOffText(t *testing.T) {
 	}
 	finish := func(turn Turn, events chan Event, session, answer string) {
 		t.Helper()
-		events <- Event{Session: session}
-		events <- Event{Message: &Message{ID: turn.RunID + ":assistant", Role: "assistant", Text: answer}}
-		events <- Event{Done: true}
+		events <- harness.SessionBound{ID: session}
+		events <- harness.TextDone{ItemID: turn.RunID + ":assistant", Kind: harness.Assistant, Text: answer}
+		events <- harness.TurnEnded{Reason: harness.Completed}
 		close(events)
 		wait(t, store, thread.ID, "idle")
 	}
@@ -61,7 +65,7 @@ func TestSwitchProviderKeepsThreadAndHandsOffText(t *testing.T) {
 	if _, err := m.Configure(ctx, thread.ID, selection); !errors.Is(err, ErrBusy) {
 		t.Fatalf("switch during a turn: %v", err)
 	}
-	events <- Event{Settings: &ReportedSettings{Model: "claude-haiku-5-5"}}
+	events <- harness.SettingsReported{Model: "claude-haiku-5-5"}
 	finish(first, events, "claude-session", "Usaremos azul")
 
 	updated, err := m.Configure(ctx, thread.ID, selection)
@@ -71,7 +75,7 @@ func TestSwitchProviderKeepsThreadAndHandsOffText(t *testing.T) {
 	if last := m.LastTurnModel(ctx, thread.ID); last == nil || last.Provider != claude.id || last.ReportedModel != "claude-haiku-5-5" {
 		t.Fatalf("selecting a provider changed the last applied model: %+v", last)
 	}
-	updates, unsubscribe := m.Subscribe(thread.ID)
+	updates, _, unsubscribe := m.SubscribeEvents(thread.ID)
 	defer unsubscribe()
 	second, events := run(codex, "¿Qué color acordamos?")
 	if second.Session != "" || second.Dir != first.Dir || second.Model != model || second.Effort != effort {
@@ -88,8 +92,13 @@ func TestSwitchProviderKeepsThreadAndHandsOffText(t *testing.T) {
 	}
 	var streamed *TurnModel
 	for len(updates) > 0 {
-		if update := <-updates; update.LastTurnModel != nil {
-			streamed = update.LastTurnModel
+		if e := <-updates; e.Type == EventSettings {
+			var p struct {
+				Model *TurnModel `json:"last_turn_model"`
+			}
+			if json.Unmarshal(e.Payload, &p) == nil && p.Model != nil {
+				streamed = p.Model
+			}
 		}
 	}
 	if streamed == nil || streamed.Provider != codex.id || streamed.Model == nil || *streamed.Model != model {

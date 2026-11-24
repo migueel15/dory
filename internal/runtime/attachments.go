@@ -3,7 +3,6 @@ package runtime
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"mime"
 	"os"
@@ -11,21 +10,15 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/migueel15/dory/internal/cmdexec"
+	"github.com/migueel15/dory/internal/apperr"
+	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/kit"
+	"github.com/migueel15/dory/internal/workspace"
 )
-
-const attachmentFooter = "Ficheros adjuntos (léelos desde su ruta):"
 
 var attachmentIDPrefix = regexp.MustCompile(`^run-[a-z0-9]{12}-[0-9]{1,6}-`)
 
-// Attachment is a file the user sent with a message. It is saved on the node
-// of the thread and the agent reads it from its path.
-type Attachment struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Mime string `json:"mime"`
-	Path string `json:"path"`
-}
+type Attachment = harness.Attachment
 
 // maxAttachment bounds one uploaded file.
 const maxAttachment = 25 << 20
@@ -51,7 +44,7 @@ func (m *Manager) SaveAttachment(threadID, name, mime string, r io.Reader) (Atta
 		err = cerr
 	}
 	if err == nil && n > maxAttachment {
-		err = fmt.Errorf("el fichero pasa de %d MB", maxAttachment>>20)
+		err = apperr.New(apperr.PayloadTooLarge, "the file is larger than the attachment limit").With("reason", "attachment").With("mb", maxAttachment>>20)
 	}
 	if err != nil {
 		os.Remove(a.Path)
@@ -85,30 +78,17 @@ func (m *Manager) Attachment(threadID, id string) (Attachment, error) {
 // WithAttachments is withAttachments for answers to the agent's questions.
 func WithAttachments(text string, files []Attachment) string { return withAttachments(text, files) }
 
-func withAttachments(text string, files []Attachment) string {
-	if len(files) == 0 {
-		return text
-	}
-	var b strings.Builder
-	b.WriteString(text)
-	b.WriteString("\n\n" + attachmentFooter)
-	for _, f := range files {
-		fmt.Fprintf(&b, "\n- %s (%s)", f.Path, f.Name)
-	}
-	return b.String()
-}
-
-// restoreAttachments recovers Dory's attachment metadata from a harness prompt.
+func withAttachments(text string, files []Attachment) string { return kit.WithAttachments(text, files) }
 func (m *Manager) restoreAttachments(thread string, msg *Message) {
 	if msg.Role != "user" || msg.Detail != "" {
 		return
 	}
-	marker := "\n\n" + attachmentFooter + "\n"
+	marker := "\n\n" + kit.AttachmentFooter + "\n"
 	start := strings.LastIndex(msg.Text, marker)
 	var text, footer string
 	if start >= 0 {
 		text, footer = msg.Text[:start], msg.Text[start+len(marker):]
-	} else if rest, ok := strings.CutPrefix(msg.Text, attachmentFooter+"\n"); ok {
+	} else if rest, ok := strings.CutPrefix(msg.Text, kit.AttachmentFooter+"\n"); ok {
 		footer = rest
 	} else {
 		return
@@ -151,13 +131,13 @@ func attachmentsDetail(files []Attachment) string {
 // Files lists up to limit files of a folder whose path contains q, from git
 // when it is a repository.
 func Files(ctx context.Context, dir, q string, limit int) []string {
-	out, err := cmdexec.CommandContext(ctx, "git", "-C", dir, "ls-files", "--cached", "--others", "--exclude-standard").Output()
+	all, err := workspace.Files(ctx, dir)
 	if err != nil {
 		return []string{}
 	}
 	q = strings.ToLower(q)
 	list := []string{}
-	for _, f := range strings.Split(string(out), "\n") {
+	for _, f := range all {
 		if f != "" && strings.Contains(strings.ToLower(f), q) {
 			list = append(list, f)
 			if len(list) == limit {

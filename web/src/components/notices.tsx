@@ -1,8 +1,11 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Bell,BellRinging,Tray,X } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Bell, BellRinging, Tray, X } from "@phosphor-icons/react";
-import { api, req } from "../api/client";
+import { useEffect,useId,useRef,useState } from "react";
+import { req } from "../api/client";
+import { qk } from "../api/queries/keys";
+import { useNotices as useNoticeInbox,useReadNotices } from "../api/queries/settings";
+import type { Notice } from "../api/types.gen";
 import { Button } from "./ui";
 
 const b64 = (s: string) => {
@@ -38,11 +41,10 @@ export function NoticesToggle() {
 }
 
 type NoticeSetting = { kind: string; title: string; mode: "auto" | "push" | "app" | "off" };
-type Notice = { id: string; kind: string; title: string; body: string; url: string; read_at: string | null; created_at: string };
 
 // useNotices lists the inbox, newest first; it is shared by every device of the mesh.
 function useNotices() {
-  return useQuery({ queryKey: ["notices"], queryFn: () => req<Notice[]>("GET", "/notices"), refetchInterval: 15_000, refetchIntervalInBackground: true });
+  return useNoticeInbox({ refetchInterval: 15_000, refetchIntervalInBackground: true });
 }
 
 // NoticeInbox shows the inbox with its unread counter. Reading a notice marks
@@ -54,7 +56,9 @@ export function NoticeInbox() {
   const notices = useNotices();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const read = useMutation({ mutationFn: (ids: string[]) => req("POST", "/notices/read", { ids }), onSettled: () => qc.invalidateQueries({ queryKey: ["notices"] }) });
+  const read = useReadNotices({
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.notices() })
+  });
   const list = notices.data ?? [];
   const unread = list.filter((n) => !n.read_at);
   const go = (n: Notice) => {

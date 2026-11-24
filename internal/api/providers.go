@@ -1,11 +1,9 @@
 package api
 
 import (
-	"errors"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"strings"
-
-	"github.com/migueel15/dory/internal/runtime"
 )
 
 // mountProviders manages the harnesses of any node of the mesh (requirements
@@ -20,7 +18,7 @@ func (s *Server) mountProviders(mux *http.ServeMux) {
 				return
 			}
 			if s.Remote == nil || !s.Remote.Forward(w, r, node) {
-				writeError(w, http.StatusServiceUnavailable, "node_offline", "el nodo no está conectado")
+				writeErr(w, r, apperr.New(apperr.NodeOffline, "the node is not connected"))
 			}
 		}
 	}
@@ -36,7 +34,7 @@ func (s *Server) mountProviders(mux *http.ServeMux) {
 			return
 		}
 		if err := s.Runtime.SetEnabled(r.Context(), r.PathValue("id"), body.Enabled); err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -52,7 +50,7 @@ func (s *Server) mountProviders(mux *http.ServeMux) {
 		}
 		a, err := s.Runtime.AddAccount(r.Context(), body.Driver, body.Name, body.Home)
 		if err != nil {
-			writeAccountError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, a)
@@ -66,14 +64,14 @@ func (s *Server) mountProviders(mux *http.ServeMux) {
 			return
 		}
 		if err := s.Runtime.UpdateAccount(r.Context(), r.PathValue("id"), body.Name, body.Home); err != nil {
-			writeAccountError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	mux.HandleFunc("DELETE /api/nodes/{node}/accounts/{id}", here(func(w http.ResponseWriter, r *http.Request) {
 		if err := s.Runtime.RemoveAccount(r.PathValue("id")); err != nil {
-			writeAccountError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -81,7 +79,7 @@ func (s *Server) mountProviders(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/nodes/{node}/providers/{id}/{kind}", here(func(w http.ResponseWriter, r *http.Request) {
 		job, err := s.Runtime.StartJob(r.PathValue("id"), r.PathValue("kind"))
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, job)
@@ -90,7 +88,7 @@ func (s *Server) mountProviders(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "no-store")
 		job, ok := s.Runtime.JobState(r.PathValue("id"))
 		if !ok {
-			writeError(w, http.StatusNotFound, "not_found", "job not found")
+			writeErr(w, r, apperr.New(apperr.NotFound, "job not found"))
 			return
 		}
 		writeJSON(w, http.StatusOK, job)
@@ -105,26 +103,14 @@ func (s *Server) mountProviders(mux *http.ServeMux) {
 		}
 		code := strings.TrimSpace(body.Code)
 		if code == "" || len(code) > 2048 || strings.ContainsAny(code, "\r\n\x00") {
-			writeError(w, http.StatusBadRequest, "invalid_code", "pega el código de autorización en una sola línea")
+			writeErr(w, r, apperr.New(apperr.InvalidCode, "paste the authorization code in a single line"))
 			return
 		}
 		err := s.Runtime.SubmitLoginCode(r.PathValue("id"), code)
-		if errors.Is(err, runtime.ErrJobInputClosed) {
-			writeError(w, http.StatusConflict, "job_input_closed", err.Error())
-			return
-		}
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
-}
-
-func writeAccountError(w http.ResponseWriter, err error) {
-	if errors.Is(err, runtime.ErrAccount) {
-		writeError(w, http.StatusBadRequest, "invalid_account", err.Error())
-		return
-	}
-	writeDataError(w, err)
 }

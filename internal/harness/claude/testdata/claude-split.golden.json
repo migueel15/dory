@@ -1,0 +1,52 @@
+[
+  {
+    "Type": "TextDelta",
+    "Event": {
+      "ItemID": "msg_1:0",
+      "Kind": "reasoning",
+      "Delta": "Pienso",
+      "Replace": false,
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "TextDone",
+    "Event": {
+      "ItemID": "msg_1:0",
+      "Kind": "reasoning",
+      "Text": "Pienso",
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "TextDelta",
+    "Event": {
+      "ItemID": "msg_1:1",
+      "Kind": "assistant",
+      "Delta": "Respondo.",
+      "Replace": false,
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "TextDone",
+    "Event": {
+      "ItemID": "msg_1:1",
+      "Kind": "assistant",
+      "Text": "Respondo.",
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  }
+]

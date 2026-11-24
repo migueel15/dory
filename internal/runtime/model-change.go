@@ -37,7 +37,7 @@ func (m *Manager) saveTurnModel(ctx context.Context, thread string, model TurnMo
 		log.Printf("runtime: save turn model: %v", err)
 		return
 	}
-	m.publish(Update{ThreadID: thread, LastTurnModel: &model})
+	m.emitJSON(ctx, thread, EventSettings, map[string]any{"last_turn_model": &model})
 }
 
 func (m *Manager) saveModelChange(ctx context.Context, marker Message, change modelChange) {

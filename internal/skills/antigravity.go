@@ -9,14 +9,10 @@ import (
 
 const linkPrefix = "link:"
 
-func antigravitySkillDir(home string) string {
-	return filepath.Join(home, ".gemini", "config", "skills")
-}
-
-// antigravityTarget links a skill to Dory's managed copy. Windows can fall
+// linkTarget links a skill to Dory's managed copy. Windows can fall
 // back to the normal file reconciliation when symlinks are unavailable.
-func (r *Reconciler) antigravityTarget(dir, name string, m manifest, want map[string]bool) (string, error) {
-	target, err := filepath.Abs(filepath.Join(filepath.Dir(r.Manifest), "antigravity-skills", name))
+func (r *Reconciler) linkTarget(dir, target string, m manifest, want map[string]bool) (string, error) {
+	target, err := filepath.Abs(target)
 	if err != nil {
 		return "", err
 	}

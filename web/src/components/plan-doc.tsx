@@ -1,16 +1,20 @@
-import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Crosshair } from "@phosphor-icons/react";
-import { EditorContent, Extension, useEditor, type Editor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import { TaskItem, TaskList } from "@tiptap/extension-list";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { Check,Crosshair } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
+import { TaskItem,TaskList } from "@tiptap/extension-list";
 import { Markdown } from "@tiptap/markdown";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { api, ApiError, type Plan } from "../api/client";
+import { Plugin,PluginKey } from "@tiptap/pm/state";
+import { Decoration,DecorationSet } from "@tiptap/pm/view";
+import { EditorContent,Extension,useEditor,type Editor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import { useEffect,useRef,useState } from "react";
+import { ApiError,api,type Plan } from "../api/client";
+import { usePlan } from "../api/queries/hooks";
+import { qk } from "../api/queries/keys";
+import { useAcceptPlan } from "../api/queries/tasks";
 import { merge3 } from "../lib/merge3";
-import { Button, ErrorText, prose } from "./ui";
+import { storage,storageKeys } from "../lib/storage";
+import { Button,ErrorText,prose } from "./ui";
 
 // PlanDoc shows the plan of a task: one Markdown document that the user and
 // the agents edit. It is edited in place already rendered (headings, lists and
@@ -21,15 +25,14 @@ import { Button, ErrorText, prose } from "./ui";
 // and "Aceptar plan" sits after the text, so it is read before accepting.
 export function PlanDoc({ taskId, showStatus = true, reader = false, onAccepted }: { taskId: string; showStatus?: boolean; reader?: boolean; onAccepted?: () => void }) {
   const qc = useQueryClient();
-  const plan = useQuery({ queryKey: ["plans", taskId, "doc"], queryFn: () => api.plan(taskId) });
+  const plan = usePlan(taskId);
   const p = plan.data;
   // Following the agent is a choice kept in this browser; on by default.
-  const [following, setFollowing] = useState(() => { try { return localStorage.getItem("dory.plan-follow") !== "0"; } catch { return true; } });
-  const setFollow = (v: boolean) => { setFollowing(v); try { localStorage.setItem("dory.plan-follow", v ? "1" : "0"); } catch { /* per-browser only */ } };
+  const [following, setFollowing] = useState(() => { try { return storage.get(storageKeys.planFollow) !== "0"; } catch { return true; } });
+  const setFollow = (v: boolean) => { setFollowing(v); try { storage.set(storageKeys.planFollow, v ? "1" : "0"); } catch { /* per-browser only */ } };
   const doc = usePlanEditor(taskId, p, following && !reader);
-  const accept = useMutation({
-    mutationFn: () => api.acceptPlan(taskId),
-    onSuccess: () => { onAccepted?.(); qc.invalidateQueries({ queryKey: ["plans", taskId] }); qc.invalidateQueries({ queryKey: ["card", taskId] }); qc.invalidateQueries({ queryKey: ["board"] }); },
+  const accept = useAcceptPlan(taskId, {
+    onSuccess: () => { onAccepted?.(); qc.invalidateQueries({ queryKey: qk.plans(taskId) }); qc.invalidateQueries({ queryKey: qk.card(taskId) }); qc.invalidateQueries({ queryKey: qk.board() }); }
   });
 
   if (plan.error) return <div className="p-4"><ErrorText error={plan.error} /></div>;
@@ -106,7 +109,7 @@ function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) 
       base.current = next.revision;
       stored.current = next.body_md;
       qc.setQueryData(["plans", taskId, "doc"], next);
-      qc.invalidateQueries({ queryKey: ["card", taskId] });
+      qc.invalidateQueries({ queryKey: qk.card(taskId) });
       setError(undefined);
       // Typing during the save leaves more to save.
       if (edits.current !== at) { setState("dirty"); stateRef.current = "dirty"; timer.current = setTimeout(() => save(ed), 700); }
@@ -117,7 +120,7 @@ function usePlanEditor(taskId: string, p: Plan | undefined, following: boolean) 
         setState("dirty");
         stateRef.current = "dirty";
         try {
-          const fresh = await qc.fetchQuery({ queryKey: ["plans", taskId, "doc"], queryFn: () => api.plan(taskId), staleTime: 0 });
+          const fresh = await qc.fetchQuery({ queryKey: qk.planDoc(taskId), queryFn: () => api.plan(taskId), staleTime: 0 });
           latest.current = fresh;
           rebase(ed, fresh);
         } catch (err) { setError(err); }

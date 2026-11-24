@@ -1,7 +1,9 @@
+import { ArrowCircleUp,ArrowsClockwise } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowCircleUp, ArrowsClockwise } from "@phosphor-icons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type NodeUpdate } from "../api/client";
+import { type NodeUpdate } from "../api/client";
+import { qk } from "../api/queries/keys";
+import { useMeshUpdates as useMeshUpdatesQuery,useUpdateMesh } from "../api/queries/settings";
 import { askConfirm } from "./confirm";
 import { HoverCard } from "./tooltip";
 
@@ -15,8 +17,7 @@ function pendingOf(n: NodeUpdate) {
 // useMeshUpdates reads the update state of every connected node; it polls
 // faster while one of them is updating.
 export function useMeshUpdates(enabled = true) {
-  return useQuery({
-    queryKey: ["mesh-update"], queryFn: () => api.meshUpdates(), enabled,
+  return useMeshUpdatesQuery({ enabled,
     refetchInterval: (q) => (q.state.data?.some((n) => n.status?.state === "updating") ? 3_000 : 5 * 60_000),
   });
 }
@@ -32,9 +33,8 @@ export function MeshUpdateButton() {
   const rows = nodes.map((n) => ({ n, p: pendingOf(n) })).filter((r) => r.p.core || r.p.providers.length);
   const working = nodes.some((n) => n.status?.state === "updating");
   const providers = rows.some((r) => r.p.providers.length > 0);
-  const run = useMutation({
-    mutationFn: () => api.updateMesh({ providers, force: false }),
-    onSuccess: (data) => qc.setQueryData(["mesh-update"], data),
+  const run = useUpdateMesh({ providers, force: false }, {
+    onSuccess: (data) => qc.setQueryData(qk.meshUpdate(), data)
   });
   if (!rows.length && !working) return null;
   const busy = working || run.isPending;

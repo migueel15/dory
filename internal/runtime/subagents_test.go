@@ -2,11 +2,15 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"github.com/migueel15/dory/internal/harness"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/outbox"
 )
 
 func TestSpawnRunsChildAndWakesParent(t *testing.T) {
@@ -14,30 +18,31 @@ func TestSpawnRunsChildAndWakesParent(t *testing.T) {
 	m, store := manager(t, 0)
 	claude := capturedProvider{"claude", make(chan Turn, 2), make(chan chan Event, 2)}
 	codex := capturedProvider{"codex", make(chan Turn, 1), make(chan chan Event, 1)}
-	m.providers[claude.id], m.providers[codex.id] = claude, codex
-	parent, err := m.Create(ctx, NewThread{Provider: claude.id, Model: "opus", RuntimeMode: "approval-required"})
+	m.registry.Register(claude)
+	m.registry.Register(codex)
+	parent, err := registerTestThread(ctx, m, data.Thread{Provider: claude.id, Model: "opus", RuntimeMode: "approval-required"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	child, err := m.Spawn(ctx, parent.ID, Subagent{Prompt: "Revisa el login\ncon detalle", Provider: "codex", Model: "gpt-6.2-sol"})
+	child, err := registerTestThread(ctx, m, data.Thread{ParentID: &parent.ID, Provider: codex.id, Title: "Revisa el login"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := m.RecordDelegation(ctx, parent.ID, child.ID, m.node, child.Title); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Send(ctx, child.ID, "Revisa el login\ncon detalle"); err != nil {
+		t.Fatal(err)
+	}
 	turn := <-codex.turns
-	if child.ParentID == nil || *child.ParentID != parent.ID || child.Title != "Revisa el login" || child.RuntimeMode != "approval-required" || turn.Model != "gpt-6.2-sol" {
-		t.Fatalf("child %+v turn %+v", child, turn)
-	}
-	if parentDir, _ := m.Dir(ctx, parent.ID); turn.Dir != parentDir {
-		t.Fatalf("child dir %q, parent %q", turn.Dir, parentDir)
-	}
-	if _, err = m.Spawn(ctx, child.ID, Subagent{Prompt: "nieto"}); !errors.Is(err, data.ErrInvalid) {
+	if err = m.CanSpawn(ctx, child); !errors.Is(err, data.ErrInvalid) {
 		t.Fatalf("grandchild accepted: %v", err)
 	}
 
 	events := <-codex.ends
-	events <- Event{Message: &Message{ID: turn.RunID + ":a", Role: "assistant", Text: "Login correcto \uE200cite\uE202turn0search0\uE201"}}
-	events <- Event{Done: true}
+	events <- harness.TextDone{ItemID: turn.RunID + ":a", Kind: harness.Assistant, Text: "Login correcto \uE200cite\uE202turn0search0\uE201"}
+	events <- harness.TurnEnded{Reason: harness.Completed}
 	close(events)
 
 	wake := <-claude.turns
@@ -58,17 +63,17 @@ func TestSpawnRunsChildAndWakesParent(t *testing.T) {
 func TestSpawnLimitsActiveChildren(t *testing.T) {
 	ctx := context.Background()
 	m, store := manager(t, 0)
-	parent, _ := m.Create(ctx, NewThread{Provider: "replay", Model: "grabacion"})
+	parent, _ := registerTestThread(ctx, m, data.Thread{Provider: "replay", Model: "grabacion"})
 	for range MaxActiveChildren {
-		child, err := m.Create(ctx, NewThread{Provider: "replay", ParentID: &parent.ID})
+		child, err := registerTestThread(ctx, m, data.Thread{Provider: "replay", ParentID: &parent.ID})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = store.PatchThread(ctx, child.ID, map[string]any{"status": "working"}); err != nil {
+		if err = store.SetThreadState(ctx, child.ID, "working", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := m.Spawn(ctx, parent.ID, Subagent{Prompt: "uno más"}); !errors.Is(err, data.ErrInvalid) {
+	if err := m.CanSpawn(ctx, parent); !errors.Is(err, data.ErrInvalid) {
 		t.Fatalf("limit not enforced: %v", err)
 	}
 }
@@ -77,20 +82,14 @@ func TestChildOnAnotherNodeNotifiesItsParentThroughThePeer(t *testing.T) {
 	ctx := context.Background()
 	m, store := manager(t, 0)
 	codex := capturedProvider{"codex", make(chan Turn, 1), make(chan chan Event, 1)}
-	m.providers[codex.id] = codex
-	parent, err := store.Threads().Put(ctx, data.Thread{NodeID: "other-node", Provider: "claude", Title: "Padre"})
+	m.registry.Register(codex)
+	parent, err := store.Threads().Create(ctx, data.Thread{NodeID: "other-node", Provider: "claude", Title: "Padre"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	sent := make(chan Outcome, 1)
-	m.PeerComplete = func(_ context.Context, node string, o Outcome) error {
-		if node != "other-node" {
-			t.Errorf("sent to %s", node)
-		}
-		sent <- o
-		return nil
-	}
-	child, err := m.Create(ctx, NewThread{Provider: codex.id, ParentID: &parent.ID, Title: "Prueba el binario"})
+	sender := &outboxSender{offline: true}
+	m.Outbox = outbox.New(m.db, sender)
+	child, err := registerTestThread(ctx, m, data.Thread{Provider: codex.id, ParentID: &parent.ID, Title: "Prueba el binario"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,22 +98,104 @@ func TestChildOnAnotherNodeNotifiesItsParentThroughThePeer(t *testing.T) {
 	}
 	turn := <-codex.turns
 	events := <-codex.ends
-	events <- Event{Message: &Message{ID: turn.RunID + ":a", Role: "assistant", Text: "Funciona"}}
-	events <- Event{Done: true}
+	events <- harness.TextDone{ItemID: turn.RunID + ":a", Kind: harness.Assistant, Text: "Funciona"}
+	events <- harness.TurnEnded{Reason: harness.Completed}
 	close(events)
-	got := <-sent
+	// The parent's node is not connected: the outcome waits in the outbox.
+	var queued []outbox.Delivery
+	for range 200 {
+		if queued, err = m.Outbox.List(ctx, "pending"); err == nil && len(queued) == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(queued) != 1 || queued[0].Node != "other-node" || queued[0].Kind != DelegationComplete {
+		t.Fatalf("queued %+v (%v)", queued, err)
+	}
+	var got Outcome
+	if err = json.Unmarshal(queued[0].Payload, &got); err != nil {
+		t.Fatal(err)
+	}
 	if got.ParentThreadID != parent.ID || got.ChildThreadID != child.ID || got.Status != "completed" || got.Result != "Funciona" {
 		t.Fatalf("peer outcome %+v", got)
 	}
+	// Once the node is back it arrives, and only once.
+	sender.offline = false
+	m.Outbox.KickNode(ctx, "other-node")
+	if err = m.Outbox.Flush(ctx); err != nil || len(sender.delivered) != 1 || sender.delivered[0] != queued[0].ID {
+		t.Fatalf("delivered %v (%v)", sender.delivered, err)
+	}
+	if err = m.Outbox.Flush(ctx); err != nil || len(sender.delivered) != 1 {
+		t.Fatalf("delivered twice: %v (%v)", sender.delivered, err)
+	}
+}
+
+type outboxSender struct {
+	offline   bool
+	delivered []string
+}
+
+func (s *outboxSender) Deliver(_ context.Context, _, _, id string, _ json.RawMessage) error {
+	if s.offline {
+		return errors.New("offline")
+	}
+	s.delivered = append(s.delivered, id)
+	return nil
+}
+
+func TestCompleteIsIdempotentByDeliveryID(t *testing.T) {
+	ctx := context.Background()
+	m, store := manager(t, 0)
+	claude := capturedProvider{"claude", make(chan Turn, 4), make(chan chan Event, 4)}
+	m.registry.Register(claude)
+	parent, err := registerTestThread(ctx, m, data.Thread{Provider: claude.id, Model: "opus"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := Outcome{ParentThreadID: parent.ID, ChildThreadID: "child", ChildNodeID: "other", Title: "Tarea", Status: "completed", Result: "hecho", DeliveryID: "dlv-1"}
+	if err = m.Complete(ctx, o); err != nil {
+		t.Fatal(err)
+	}
+	if err = m.Complete(ctx, o); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err = m.db.QueryRow(`SELECT count(*) FROM thread_delegations WHERE parent_thread_id = ?`, parent.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("delegations %d (%v)", count, err)
+	}
+	msgs, err := m.Messages(ctx, parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	woken := 0
+	for _, msg := range msgs {
+		if msg.Role == "user" && strings.Contains(msg.Text, "hecho") {
+			woken++
+		}
+	}
+	if woken != 1 {
+		t.Fatalf("parent woken %d times: %+v", woken, msgs)
+	}
+	// A failed attempt does not consume the id.
+	bad := Outcome{ParentThreadID: "missing", Status: "completed", DeliveryID: "dlv-2"}
+	if err = m.Complete(ctx, bad); err == nil {
+		t.Fatal("unknown parent accepted")
+	}
+	var applied int
+	m.db.QueryRow(`SELECT count(*) FROM applied_deliveries WHERE id = 'dlv-2'`).Scan(&applied)
+	if applied != 0 {
+		t.Fatal("failed delivery was recorded as applied")
+	}
+	_ = store
 }
 
 func TestDelegationRecordsOutcomeAndFollowUps(t *testing.T) {
 	ctx := context.Background()
 	m, store := manager(t, 0)
 	claude := capturedProvider{"claude", make(chan Turn, 2), make(chan chan Event, 2)}
-	m.providers[claude.id] = claude
-	parent, _ := m.Create(ctx, NewThread{Provider: claude.id})
-	child, _ := m.Create(ctx, NewThread{Provider: "replay", ParentID: &parent.ID, Title: "Hijo"})
+	m.registry.Register(claude)
+	parent, _ := registerTestThread(ctx, m, data.Thread{Provider: claude.id})
+	child, _ := registerTestThread(ctx, m, data.Thread{Provider: "replay", ParentID: &parent.ID, Title: "Hijo"})
 	d, err := m.RecordDelegation(ctx, parent.ID, child.ID, m.node, "Hijo")
 	if err != nil || d.Status != "running" {
 		t.Fatalf("record %+v %v", d, err)

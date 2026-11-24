@@ -32,3 +32,13 @@ archive_threads_on_finish = false
 # Borrar el worktree al archivar un hilo. Si tiene cambios sin commitear se
 # conserva y se avisa en el hilo archivado.
 remove_worktree_on_archive = true
+
+# Arneses extra que hablan ACP (Agent Client Protocol). Cada [[acp]] aparece
+# como proveedor si su comando existe. Dory arranca `command args...` y habla
+# ACP por stdio; el modelo es el predeterminado del arnés.
+# [[acp]]
+# id = "gemini"          # minúsculas, números y guiones
+# name = "Gemini CLI"    # opcional; por defecto, el id
+# command = "gemini"
+# args = ["--experimental-acp"]
+# env = ["GEMINI_API_KEY=..."]   # opcional, KEY=VALUE

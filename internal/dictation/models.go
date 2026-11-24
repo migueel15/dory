@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
+	"github.com/migueel15/dory/internal/i18n"
 	"io"
 	"net"
 	"net/http"
@@ -19,7 +21,7 @@ import (
 	"github.com/migueel15/dory/internal/cmdexec"
 )
 
-var ErrModelMissing = errors.New("descarga el modelo de dictado antes de usarlo")
+var ErrModelMissing = apperr.New(apperr.ModelMissing, "download the dictation model before using it")
 
 type localModel struct {
 	ID, Name, Revision, SHA string
@@ -157,11 +159,11 @@ func (m *LocalModels) download(model localModel) error {
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return errors.New("no se pudo descargar el modelo de Hugging Face")
+		return errors.New(i18n.Text("dictation.no_pudo_descargar_modelo"))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Hugging Face respondió con HTTP %d", resp.StatusCode)
+		return fmt.Errorf(i18n.Text("dictation.hugging_face_respondio_http"), resp.StatusCode)
 	}
 	hash := sha256.New()
 	size, err := io.Copy(io.MultiWriter(file, hash), io.LimitReader(resp.Body, model.Bytes+1))
@@ -172,7 +174,7 @@ func (m *LocalModels) download(model localModel) error {
 		return err
 	}
 	if size != model.Bytes || hex.EncodeToString(hash.Sum(nil)) != model.SHA {
-		return errors.New("el archivo descargado no coincide con el modelo publicado")
+		return errors.New(i18n.Text("dictation.archivo_descargado_no_coincide"))
 	}
 	return os.Rename(file.Name(), m.path(model))
 }
@@ -243,11 +245,11 @@ func (m *LocalModels) startWorker(bin string, model localModel, worker *nemoWork
 		}
 		select {
 		case <-worker.exited:
-			worker.err = errors.New("NeMo-Speech terminó antes de cargar el modelo")
+			worker.err = errors.New(i18n.Text("dictation.nemo_speech_termino_antes"))
 			return
 		case <-ctx.Done():
 			_ = cmd.Process.Kill()
-			worker.err = errors.New("NeMo-Speech tardó demasiado en cargar el modelo")
+			worker.err = errors.New(i18n.Text("dictation.nemo_speech_tardo_demasiado"))
 			return
 		case <-tick.C:
 		}

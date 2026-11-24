@@ -9,6 +9,15 @@ import (
 	"time"
 )
 
+// ProjectRepository returns the first repository of a project, or an empty id.
+func (s *Store) ProjectRepository(ctx context.Context, projectID string) (string, error) {
+	repos, err := s.Repositories().List(ctx, Filter{Fields: Fields{"project_id": projectID}, Limit: 1})
+	if err != nil || len(repos) == 0 {
+		return "", err
+	}
+	return repos[0].ID, nil
+}
+
 // RepositoryPath returns where this node keeps a repository cloned. The path
 // is local: it never replicates.
 func (s *Store) RepositoryPath(ctx context.Context, repositoryID string) (string, error) {
@@ -55,7 +64,7 @@ func (s *Store) SetRepositoryPath(ctx context.Context, repositoryID, path string
 	}
 	path = filepath.Clean(path)
 	if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
-		return errors.Join(ErrInvalid, errors.New("not a git checkout: "+path))
+		return ErrInvalid.Msgf("not a git checkout: %s", path)
 	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO repository_paths(repository_id, path, updated_at) VALUES (?, ?, ?)
 		ON CONFLICT(repository_id) DO UPDATE SET path = excluded.path, updated_at = excluded.updated_at`,
@@ -72,7 +81,7 @@ func (s *Store) publishLocation(ctx context.Context, repositoryID, path string) 
 	if err == nil && current.Path == path {
 		return nil
 	}
-	_, err = s.RepositoryLocations().Put(ctx, RepositoryLocation{RepositoryID: repositoryID, NodeID: s.log.Node(), Path: path})
+	_, err = s.RepositoryLocations().Upsert(ctx, RepositoryLocation{RepositoryID: repositoryID, NodeID: s.log.Node(), Path: path})
 	return err
 }
 

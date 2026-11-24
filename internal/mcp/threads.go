@@ -2,16 +2,16 @@ package mcp
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net/http"
 	"slices"
 	"strings"
 
-	"github.com/migueel15/dory/internal/api"
+	"github.com/migueel15/dory/internal/app"
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/mesh"
+	"github.com/migueel15/dory/internal/mesh/peerapi"
 	"github.com/migueel15/dory/internal/runtime"
 )
 
@@ -33,7 +33,7 @@ func target(ctx context.Context, id string) (string, error) {
 		return id, nil
 	}
 	if id = caller(ctx); id == "" {
-		return "", errors.New("thread_id is required outside a Dory thread")
+		return "", apperr.New(apperr.Invalid, "thread_id is required outside a Dory thread")
 	}
 	return id, nil
 }
@@ -56,7 +56,7 @@ type threadConfigureInput struct {
 	ContinueWith string  `json:"continue_with,omitempty" jsonschema:"Message that starts the next turn with the new selection"`
 }
 
-func addThreadTools(srv *sdkServer, s *api.Server) {
+func addThreadTools(srv *sdkServer, s *Deps) {
 	m := s.Runtime
 	add(srv, "list_models", "List providers, models and efforts of this node. Use it to turn \"haiku\", \"opus\" or \"codex\" into provider and model. A model is accepted by slug, display name (\"Sonnet 5.5\") or resolved id (\"claude-sonnet-5-5\").", func(ctx context.Context, in struct {
 		Provider string `json:"provider,omitempty"`
@@ -77,7 +77,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 				fields[k] = v
 			}
 		}
-		threads, err := s.Store.Threads().List(ctx, data.Filter{Fields: fields, IncludeArchived: in.IncludeArchived, Limit: 1000})
+		threads, err := s.Store.Threads().ListAll(ctx, data.Filter{Fields: fields, IncludeArchived: in.IncludeArchived})
 		if err != nil {
 			return nil, err
 		}
@@ -155,7 +155,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		settings := runtime.ThreadSettings{Provider: in.Provider, Model: in.Model, Effort: in.Effort}
 		if in.Provider == nil && in.Model == nil && in.Effort == nil {
 			if in.ContinueWith != "" {
-				return nil, errors.New("continue_with needs a provider, model or effort to change; use thread_send to message another thread")
+				return nil, apperr.New(apperr.Invalid, "continue_with needs a provider, model or effort to change; use thread_send to message another thread")
 			}
 			t, err := s.Store.Threads().Get(ctx, id)
 			if err != nil {
@@ -190,10 +190,10 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 	}) (any, error) {
 		from := caller(ctx)
 		if in.ThreadID == "" || in.ThreadID == from {
-			return nil, errors.New("thread_send needs another thread; to continue this one use thread_configure with continue_with")
+			return nil, apperr.New(apperr.Invalid, "thread_send needs another thread; to continue this one use thread_configure with continue_with")
 		}
 		if strings.TrimSpace(in.Text) == "" {
-			return nil, errors.New("thread_send needs text")
+			return nil, apperr.New(apperr.Invalid, "thread_send needs text")
 		}
 		text := in.Text
 		if from != "" {
@@ -215,11 +215,21 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 			base, _ = s.Store.Threads().Get(ctx, id)
 			origin = &id
 		}
-		return createThread(ctx, s, base, in, nil, origin)
+		req, err := threadInput(ctx, s, in, base.NodeID, base.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		req.Inherit, req.OriginID = &base, origin
+		t, err := s.Threads.Create(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"thread_id": t.ID, "title": t.Title, "provider": t.Provider, "model": t.Model,
+			"project_id": t.ProjectID, "environment": t.NodeID, "started": strings.TrimSpace(in.Prompt) != ""}, nil
 	})
 	add(srv, "list_environments", "List environments (this node and its peers) and whether they are connected.", func(ctx context.Context, _ struct{}) (any, error) {
 		out := []map[string]any{{"id": s.Node.ID, "name": s.Node.Name, "connected": true, "this_node": true}}
-		if peers, ok := s.Remote.(peerLister); ok {
+		if peers := s.Peers; peers != nil {
 			list, err := peers.Peers(ctx)
 			if err != nil {
 				return nil, err
@@ -235,56 +245,25 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 	add(srv, "subagent_spawn", "Launch a subagent (\"lanza un subagente…\", \"delega…\"): a hidden child thread whose result comes back here. Same folder, project, environment and model by default. Not for a new chat: use thread_create.", func(ctx context.Context, in newThreadInput) (any, error) {
 		id := caller(ctx)
 		if id == "" {
-			return nil, errors.New("subagent_spawn only works inside a Dory thread")
+			return nil, apperr.New(apperr.Invalid, "subagent_spawn only works inside a Dory thread")
 		}
 		if strings.TrimSpace(in.Prompt) == "" {
-			return nil, errors.New("subagent_spawn needs a prompt")
+			return nil, apperr.New(apperr.Invalid, "subagent_spawn needs a prompt")
 		}
 		parent, err := s.Store.Threads().Get(ctx, id)
 		if err != nil {
 			return nil, err
 		}
-		node, err := findEnvironment(ctx, s, in.Environment)
+		req, err := threadInput(ctx, s, in, parent.NodeID, parent.ProjectID)
 		if err != nil {
 			return nil, err
 		}
-		sameProject := in.Project == ""
-		if !sameProject && parent.ProjectID != nil {
-			if p, err := findProjectByName(ctx, s.Store, in.Project); err == nil && p.ID == *parent.ProjectID {
-				sameProject = true
-			}
-		}
-		next := "Its result will arrive here as a message when it finishes. Do not poll it; continue with other work or end your turn."
-		if node == parent.NodeID && sameProject {
-			// Same place: the child shares the parent's folder and branch.
-			child, err := m.Spawn(ctx, id, runtime.Subagent{Prompt: in.Prompt, Title: in.Title, Provider: in.Provider, Model: in.Model, Effort: in.Effort})
-			if err != nil {
-				return nil, err
-			}
-			// Spawn recorded the delegation; it may have ended already.
-			task, err := m.LatestDelegation(ctx, id, child.ID)
-			if err != nil {
-				return nil, err
-			}
-			return map[string]any{"task_id": task.ID, "thread_id": child.ID, "title": child.Title, "provider": child.Provider, "model": child.Model, "effort": child.Effort,
-				"environment": child.NodeID, "status": child.Status, "next": next}, nil
-		}
-		if err = m.CanSpawn(ctx, parent); err != nil {
-			return nil, err
-		}
-		if in.TaskID == "" && parent.TaskID != nil {
-			in.TaskID = *parent.TaskID
-		}
-		out, err := createThread(ctx, s, parent, in, &parent.ID, nil)
+		child, task, err := s.Threads.Spawn(ctx, id, req)
 		if err != nil {
 			return nil, err
 		}
-		task, err := m.RecordDelegation(ctx, id, out["thread_id"].(string), out["environment"].(string), out["title"].(string))
-		if err != nil {
-			return nil, err
-		}
-		out["task_id"], out["next"] = task.ID, next
-		return out, nil
+		return map[string]any{"task_id": task.ID, "thread_id": child.ID, "title": child.Title, "provider": child.Provider, "model": child.Model, "effort": child.Effort,
+			"environment": child.NodeID, "status": task.Status, "next": "Its result will arrive here as a message when it finishes. Do not poll it; continue with other work or end your turn."}, nil
 	})
 	add(srv, "subagent_status", "Read a delegated task by task_id (status and result), or list this thread's tasks. Not to wait: the end wakes you.", func(ctx context.Context, in struct {
 		TaskID string `json:"task_id,omitempty"`
@@ -292,7 +271,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		id := caller(ctx)
 		if in.TaskID == "" {
 			if id == "" {
-				return nil, errors.New("subagent_status needs task_id outside a Dory thread")
+				return nil, apperr.New(apperr.Invalid, "subagent_status needs task_id outside a Dory thread")
 			}
 			return m.Delegations(ctx, id)
 		}
@@ -317,7 +296,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 			if d.ChildNodeID == s.Node.ID {
 				err = m.Interrupt(ctx, d.ChildThreadID)
 			} else {
-				err = s.PeerCall(ctx, d.ChildNodeID, http.MethodPost, "/api/threads/"+d.ChildThreadID+"/interrupt", struct{}{}, nil)
+				err = s.PeerClient.InterruptThread(ctx, d.ChildNodeID, d.ChildThreadID)
 			}
 		}
 		return map[string]any{"task_id": d.ID, "status": d.Status}, err
@@ -326,7 +305,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		ThreadID string `json:"thread_id"`
 	}) (any, error) {
 		if in.ThreadID == "" {
-			return nil, errors.New("thread_stop needs thread_id")
+			return nil, apperr.New(apperr.Invalid, "thread_stop needs thread_id")
 		}
 		if err := m.Interrupt(ctx, in.ThreadID); err != nil {
 			return nil, err
@@ -338,7 +317,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 func threadSummary(ctx context.Context, m *runtime.Manager, t data.Thread) map[string]any {
 	out := map[string]any{"id": t.ID, "title": t.Title, "provider": t.Provider, "model": t.Model, "effort": t.Effort,
 		"status": t.Status, "parent_id": t.ParentID, "task_id": t.TaskID, "project_id": t.ProjectID, "node_id": t.NodeID,
-		"last_activity_at": t.LastActivityAt, "archived": t.ArchivedAt != nil}
+		"last_activity_at": t.LastActivityAt, "unread": t.Unread, "state_stale": t.StateStale, "archived": t.ArchivedAt != nil}
 	if reqs, err := m.Requests(ctx, t.ID); err == nil {
 		out["pending_requests"] = len(reqs)
 	}
@@ -352,17 +331,18 @@ func activity(t data.Thread) string {
 	return t.CreatedAt
 }
 
-type peerLister interface {
+// PeerLister lists the nodes of the mesh.
+type PeerLister interface {
 	Peers(context.Context) ([]mesh.Peer, error)
 }
 
 // findEnvironment resolves a node id or name; empty is this node.
-func findEnvironment(ctx context.Context, s *api.Server, name string) (string, error) {
+func findEnvironment(ctx context.Context, s *Deps, name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || name == "local" || name == s.Node.ID || strings.EqualFold(name, s.Node.Name) {
 		return s.Node.ID, nil
 	}
-	if peers, ok := s.Remote.(peerLister); ok {
+	if peers := s.Peers; peers != nil {
 		list, err := peers.Peers(ctx)
 		if err != nil {
 			return "", err
@@ -370,18 +350,18 @@ func findEnvironment(ctx context.Context, s *api.Server, name string) (string, e
 		for _, p := range list {
 			if !p.Revoked && (p.ID == name || strings.EqualFold(p.Name, name)) {
 				if !p.Connected {
-					return "", fmt.Errorf("the environment %s is not connected", p.Name)
+					return "", apperr.Newf(apperr.NodeOffline, "the environment %s is not connected", p.Name)
 				}
 				return p.ID, nil
 			}
 		}
 	}
-	return "", fmt.Errorf("unknown environment %q; use list_environments", name)
+	return "", apperr.Newf(apperr.NotFound, "unknown environment %q; use list_environments", name)
 }
 
 // findProjectByName resolves a project id, slug or name.
 func findProjectByName(ctx context.Context, store *data.Store, name string) (data.Project, error) {
-	projects, err := store.Projects().List(ctx, data.Filter{Limit: 1000})
+	projects, err := store.Projects().ListAll(ctx, data.Filter{})
 	if err != nil {
 		return data.Project{}, err
 	}
@@ -390,7 +370,7 @@ func findProjectByName(ctx context.Context, store *data.Store, name string) (dat
 			return p, nil
 		}
 	}
-	return data.Project{}, fmt.Errorf("unknown project %q; use list_projects", name)
+	return data.Project{}, apperr.Newf(apperr.NotFound, "unknown project %q; use list_projects", name)
 }
 
 type newThreadInput struct {
@@ -404,107 +384,29 @@ type newThreadInput struct {
 	TaskID      string `json:"task_id,omitempty" jsonschema:"Task to link the new thread to"`
 }
 
-// createThread creates a thread from base's selection with the changes in
-// in, on this node or on a peer through the mesh. parent makes it a subagent.
-func createThread(ctx context.Context, s *api.Server, base data.Thread, in newThreadInput, parent, origin *string) (map[string]any, error) {
-	m := s.Runtime
-	env := in.Environment
-	if env == "" && base.NodeID != "" {
-		env = base.NodeID
+// threadInput resolves the names accepted by MCP before calling the application.
+func threadInput(ctx context.Context, s *Deps, in newThreadInput, node string, project *string) (app.CreateThread, error) {
+	if in.Environment != "" {
+		node = in.Environment
 	}
-	node, err := findEnvironment(ctx, s, env)
+	node, err := findEnvironment(ctx, s, node)
 	if err != nil {
-		return nil, err
+		return app.CreateThread{}, err
 	}
-	n := runtime.NewThread{Provider: base.Provider, Model: base.Model, Effort: base.Effort, RuntimeMode: base.RuntimeMode, ProjectID: base.ProjectID, ParentID: parent, OriginID: origin, Title: in.Title}
 	if in.Project != "" {
 		p, err := findProjectByName(ctx, s.Store, in.Project)
 		if err != nil {
-			return nil, err
+			return app.CreateThread{}, err
 		}
-		n.ProjectID = &p.ID
+		project = &p.ID
 	}
+	req := app.CreateThread{Node: node, CreateThreadRequest: peerapi.CreateThreadRequest{
+		ProjectID: project, Provider: in.Provider, Model: in.Model, Effort: in.Effort, Title: in.Title, Text: in.Prompt,
+	}}
 	if in.TaskID != "" {
-		n.TaskID = &in.TaskID
+		req.TaskID = &in.TaskID
 	}
-	if in.Provider != "" && !strings.EqualFold(in.Provider, n.Provider) {
-		if in.Model == "" {
-			return nil, fmt.Errorf("choose a model for provider %s; use list_models", in.Provider)
-		}
-		n.Provider, n.Model, n.Effort = strings.ToLower(in.Provider), "", ""
-	}
-	if n.Provider == "" {
-		return nil, errors.New("a provider is needed outside a Dory thread; use list_models")
-	}
-	if in.Model != "" {
-		n.Model = in.Model
-	}
-	if in.Effort != "" {
-		n.Effort = in.Effort
-	}
-	if n.Title = firstLine(n.Title, 80); n.Title == "" {
-		n.Title = firstLine(in.Prompt, 60)
-	}
-	if n.Title == "" {
-		n.Title = "Hilo nuevo"
-	}
-	out := map[string]any{"title": n.Title, "provider": n.Provider, "project_id": n.ProjectID, "environment": node, "started": in.Prompt != ""}
-	if node != s.Node.ID {
-		// The peer checks the selection against its own harnesses.
-		var created struct {
-			ThreadID string `json:"thread_id"`
-		}
-		err := s.PeerCall(ctx, node, http.MethodPost, "/api/threads", map[string]any{"project_id": n.ProjectID, "task_id": n.TaskID, "parent_id": n.ParentID, "origin_id": n.OriginID,
-			"provider": n.Provider, "model": n.Model, "effort": n.Effort, "runtime_mode": n.RuntimeMode, "title": n.Title, "text": in.Prompt}, &created)
-		if err != nil {
-			return nil, err
-		}
-		out["thread_id"], out["model"] = created.ThreadID, n.Model
-		return out, nil
-	}
-	settings := runtime.ThreadSettings{}
-	if n.Model != "" {
-		settings.Model = &n.Model
-	}
-	if n.Effort != "" {
-		settings.Effort = &n.Effort
-	}
-	if err := m.ResolveSettings(ctx, data.Thread{Provider: n.Provider, Model: n.Model}, &settings); err != nil {
-		return nil, err
-	}
-	if settings.Model != nil {
-		n.Model = *settings.Model
-	}
-	if settings.Effort != nil {
-		n.Effort = *settings.Effort
-	}
-	if n.ProjectID != nil {
-		if n.RepoPath, err = s.ProjectDir(ctx, *n.ProjectID); err != nil {
-			return nil, err
-		}
-	}
-	t, err := m.Create(ctx, n)
-	if err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(in.Prompt) != "" {
-		if err = m.Send(ctx, t.ID, in.Prompt); err != nil {
-			return nil, err
-		}
-	}
-	out["thread_id"], out["model"] = t.ID, t.Model
-	return out, nil
-}
-
-func firstLine(text string, limit int) string {
-	text = strings.TrimSpace(text)
-	if i := strings.IndexByte(text, '\n'); i >= 0 {
-		text = text[:i]
-	}
-	if r := []rune(text); len(r) > limit {
-		return string(r[:limit]) + "…"
-	}
-	return text
+	return req, nil
 }
 
 func clip(text string) string {

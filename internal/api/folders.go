@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -9,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/migueel15/dory/internal/cmdexec"
+	"github.com/migueel15/dory/internal/workspace"
 )
 
 // Folder is a directory of a node, as the project picker lists it.
@@ -40,7 +41,7 @@ func (s *Server) mountFolders(mux *http.ServeMux) {
 		dir = filepath.Clean(dir)
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+			writeErr(w, r, apperr.Wrap(apperr.Invalid, err, "the folder cannot be read"))
 			return
 		}
 		folders := []Folder{}
@@ -80,7 +81,7 @@ func (s *Server) mountFolders(mux *http.ServeMux) {
 			time.Sleep(250 * time.Millisecond)
 		}
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -91,11 +92,11 @@ func (s *Server) mountFolders(mux *http.ServeMux) {
 func inspect(ctx context.Context, dir string) Checkout {
 	c := Checkout{Path: dir, Name: filepath.Base(dir)}
 	git := func(args ...string) string {
-		out, err := cmdexec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).Output()
+		out, err := workspace.Output(ctx, dir, args...)
 		if err != nil {
 			return ""
 		}
-		return strings.TrimSpace(string(out))
+		return out
 	}
 	if git("rev-parse", "--is-inside-work-tree") != "true" {
 		return c
@@ -126,7 +127,7 @@ func (s *Server) onNode(h http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if s.Remote == nil || !s.Remote.Forward(w, r, node) {
-			writeError(w, http.StatusServiceUnavailable, "node_offline", "el nodo no está conectado")
+			writeErr(w, r, apperr.New(apperr.NodeOffline, "the node is not connected"))
 		}
 	}
 }

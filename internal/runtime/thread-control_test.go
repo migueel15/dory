@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"github.com/migueel15/dory/internal/harness"
 	"testing"
 
 	"github.com/migueel15/dory/internal/data"
@@ -13,8 +14,9 @@ func TestConfigureRunningThreadAppliesAfterTurn(t *testing.T) {
 	m, store := manager(t, 0)
 	claude := capturedProvider{"claude", make(chan Turn, 1), make(chan chan Event, 1)}
 	codex := capturedProvider{"codex", make(chan Turn, 1), make(chan chan Event, 1)}
-	m.providers[claude.id], m.providers[codex.id] = claude, codex
-	thread, err := m.Create(ctx, NewThread{Provider: claude.id, Model: "opus"})
+	m.registry.Register(claude)
+	m.registry.Register(codex)
+	thread, err := registerTestThread(ctx, m, data.Thread{Provider: claude.id, Model: "opus"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +37,7 @@ func TestConfigureRunningThreadAppliesAfterTurn(t *testing.T) {
 	if err = m.Send(ctx, thread.ID, "ejecuta"); err != nil {
 		t.Fatal(err)
 	}
-	events <- Event{Done: true}
+	events <- harness.TurnEnded{Reason: harness.Completed}
 	close(events)
 
 	next := <-codex.turns
@@ -54,7 +56,7 @@ func TestConfigureRunningThreadAppliesAfterTurn(t *testing.T) {
 func TestConfigureIdleThreadAndResolveNames(t *testing.T) {
 	ctx := context.Background()
 	m, _ := manager(t, 0)
-	thread, err := m.Create(ctx, NewThread{Provider: "replay", Model: "grabacion"})
+	thread, err := registerTestThread(ctx, m, data.Thread{Provider: "replay", Model: "grabacion"})
 	if err != nil {
 		t.Fatal(err)
 	}

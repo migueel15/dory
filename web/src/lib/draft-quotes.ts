@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { DraftQuote } from "../components/quote-selection";
+import type { DraftQuote } from "../features/chat/quote-selection";
 
 // The quotes waiting in each thread's message box: pieces of the chat and
 // references to code from its diff. The chat and the side panel both add to

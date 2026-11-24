@@ -23,7 +23,7 @@ func (s *Server) mountExternal(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/nodes/{node}/external", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		adopted, err := s.Runtime.Adopted(r.Context())
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		out := []ExternalView{}
@@ -35,12 +35,12 @@ func (s *Server) mountExternal(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/nodes/{node}/external/{provider}/{id}", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		e, err := s.Runtime.FindExternal(r.Context(), s.Runtime.Paths(home), r.PathValue("provider"), r.PathValue("id"))
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		msgs, err := s.Runtime.ReadExternal(r.Context(), e)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"session": e, "messages": msgs})
@@ -48,12 +48,12 @@ func (s *Server) mountExternal(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/nodes/{node}/external/{provider}/{id}/adopt", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		e, err := s.Runtime.FindExternal(r.Context(), s.Runtime.Paths(home), r.PathValue("provider"), r.PathValue("id"))
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
-		t, err := s.Runtime.Adopt(r.Context(), e, s.projectOf(r.Context(), e.Dir))
+		t, err := s.Threads.Adopt(r.Context(), e, s.projectOf(r.Context(), e.Dir))
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"thread_id": t.ID})

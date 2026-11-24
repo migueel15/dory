@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/migueel15/dory/internal/data"
@@ -25,33 +24,18 @@ func (m *Manager) ConfigureThread(ctx context.Context, id string, settings Threa
 	if err = m.ResolveSettings(ctx, t, &settings); err != nil {
 		return t, "", err
 	}
-	m.mu.Lock()
-	if _, busy := m.running[id]; busy {
-		m.pending[id] = mergeSettings(m.pending[id], settings)
-		m.mu.Unlock()
-		m.publish(Update{ThreadID: id, Reload: true})
-		return t, AppliedAfterTurn, nil
-	}
-	t, err = m.configureLocked(ctx, id, settings, true)
-	m.mu.Unlock()
-	return t, AppliedNow, err
+	r := m.do(id, &command{kind: cmdConfigure, ctx: ctx, settings: settings, deferred: true})
+	return r.thread, r.applied, r.err
 }
 
 // Pending returns the settings waiting for the running turn of a thread to end.
-func (m *Manager) Pending(id string) *ThreadSettings {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if s, ok := m.pending[id]; ok {
-		return &s
-	}
-	return nil
-}
+func (m *Manager) Pending(id string) *ThreadSettings { return m.view(id).Pending }
 
 // ResolveSettings checks a selection against the harnesses of this node and
 // turns a model or effort name into the slug the harness expects.
 func (m *Manager) ResolveSettings(ctx context.Context, t data.Thread, s *ThreadSettings) error {
 	if s.RuntimeMode != nil {
-		return fmt.Errorf("%w: agents cannot change the runtime mode", data.ErrInvalid)
+		return data.ErrInvalid.Msgf("agents cannot change the runtime mode")
 	}
 	provider := t.Provider
 	if s.Provider != nil {
@@ -66,16 +50,16 @@ func (m *Manager) ResolveSettings(ctx context.Context, t data.Thread, s *ThreadS
 		}
 	}
 	if status == nil || !status.Installed {
-		return fmt.Errorf("%w: %s; use list_models", ErrProvider, provider)
+		return ErrProvider.Msgf("%s; use list_models", provider)
 	}
 	if !status.Enabled {
-		return fmt.Errorf("%w: %s is turned off on this node", data.ErrInvalid, provider)
+		return ErrProvider.Msgf("%s is turned off on this node", provider)
 	}
 	model := t.Model
 	if s.Model != nil {
 		found, ok := findModel(status.Models, *s.Model)
 		if !ok {
-			return fmt.Errorf("%w: model %q is not offered by %s; valid: %s", data.ErrInvalid, *s.Model, provider, modelSlugs(status.Models))
+			return data.ErrInvalid.Msgf("model %q is not offered by %s; valid: %s", *s.Model, provider, modelSlugs(status.Models))
 		}
 		model = found.Slug
 		s.Model = &model
@@ -88,7 +72,7 @@ func (m *Manager) ResolveSettings(ctx context.Context, t data.Thread, s *ThreadS
 				valid = valid || e == effort
 			}
 			if !valid {
-				return fmt.Errorf("%w: effort %q is not valid for %s; valid: %s", data.ErrInvalid, *s.Effort, model, strings.Join(found.Efforts, ", "))
+				return data.ErrInvalid.Msgf("effort %q is not valid for %s; valid: %s", *s.Effort, model, strings.Join(found.Efforts, ", "))
 			}
 			s.Effort = &effort
 		}

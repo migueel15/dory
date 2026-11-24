@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
+	"github.com/migueel15/dory/internal/i18n"
 	"strings"
 	"sync"
 	"time"
@@ -26,7 +28,7 @@ const (
 )
 
 // ErrUserControl refuses the agent's actions while the user drives the tab.
-var ErrUserControl = errors.New("el usuario ha tomado el control del navegador: puedes leer y capturar, pero no actuar hasta que lo devuelva")
+var ErrUserControl = apperr.New(apperr.UserControl, "the user took control of the browser: you can read and capture, but not act until they hand it back")
 
 // Tab is one tab of a thread's browser.
 type Tab struct {
@@ -187,9 +189,9 @@ func (m *Manager) tab(ctx context.Context, threadID, id string) (Tab, error) {
 		}
 	}
 	if id == "" {
-		return Tab{}, errors.New("el hilo no tiene pestañas abiertas: abre una con browser_open")
+		return Tab{}, errors.New(i18n.Text("browser.hilo_no_tiene_pestanas"))
 	}
-	return Tab{}, fmt.Errorf("no existe la pestaña %s en este hilo", id)
+	return Tab{}, fmt.Errorf(i18n.Text("browser.no_existe_pestana_este"), id)
 }
 
 func (m *Manager) insert(ctx context.Context, threadID, url string) (Tab, error) {

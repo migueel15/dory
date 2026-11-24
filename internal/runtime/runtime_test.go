@@ -9,102 +9,32 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/harness"
 	"github.com/migueel15/dory/internal/localdb"
+	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/oplog"
+	"github.com/migueel15/dory/internal/workspace"
 )
 
-func parseFile(t *testing.T, name string, parse func([]byte, func(Event))) []Event {
-	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("testdata", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var events []Event
-	for _, line := range bytes.Split(raw, []byte("\n")) {
-		parse(line, func(e Event) { events = append(events, e) })
-	}
-	return events
+// Event is what test providers emit.
+type Event = harness.Event
+
+// scripted is a test session over a channel of events.
+type scripted struct {
+	events  <-chan Event
+	respond func(string, [][]string) error
 }
 
-// final keeps the last version of each message, as the store would.
-func final(events []Event) (map[string]Message, []string) {
-	msgs := map[string]Message{}
-	var order []string
-	for _, e := range events {
-		if e.Message != nil {
-			if _, ok := msgs[e.Message.ID]; !ok {
-				order = append(order, e.Message.ID)
-			}
-			msgs[e.Message.ID] = *e.Message
-		}
+func (s scripted) Events() <-chan Event { return s.events }
+func (s scripted) Respond(id string, a [][]string) error {
+	if s.respond == nil {
+		return ErrNoRequest
 	}
-	return msgs, order
+	return s.respond(id, a)
 }
 
-func TestClaudeParser(t *testing.T) {
-	p := &claudeParser{run: "r1", texts: map[string]*Message{}, tools: map[string]*Message{}}
-	events := parseFile(t, "claude.jsonl", p.parse)
-	if events[0].Session != "s-1" {
-		t.Fatalf("session: %+v", events[0])
-	}
-	if got := events[1].Settings; got == nil || *got != (ReportedSettings{Model: "claude-opus-4-6", Effort: "high"}) {
-		t.Fatalf("reported settings: %+v", got)
-	}
-	msgs, order := final(events)
-	want := []struct{ id, role, text, status string }{
-		{"msg_1:0", "reasoning", "Miro el repo", ""},
-		{"msg_1:1", "assistant", "Voy a listar.", ""},
-		{"tu_1", "tool", "go.mod\nREADME.md", "completed"},
-		{"msg_2:0", "assistant", "Hecho.", ""},
-	}
-	if len(order) != len(want) {
-		t.Fatalf("messages %v", order)
-	}
-	for i, w := range want {
-		m := msgs[order[i]]
-		if m.ID != w.id || m.Role != w.role || m.Text != w.text || m.Status != w.status || m.Streaming {
-			t.Errorf("message %d: %+v", i, m)
-		}
-	}
-	if msgs["tu_1"].Title != "Bash" || msgs["tu_1"].Detail != "ls -la" {
-		t.Errorf("tool: %+v", msgs["tu_1"])
-	}
-	var usage []Window
-	for _, e := range events {
-		if e.Usage != nil {
-			usage = e.Usage
-		}
-	}
-	if len(usage) != 2 || usage[0].Kind != "five_hour" || usage[0].Utilization != 0.07 {
-		t.Errorf("usage: %+v", usage)
-	}
-	if last := events[len(events)-1]; !last.Done || last.Err != "" {
-		t.Errorf("end: %+v", last)
-	}
-}
-
-func TestCodexParser(t *testing.T) {
-	p := &codexParser{run: "r1"}
-	events := parseFile(t, "codex.jsonl", p.parse)
-	if events[0].Session != "c-1" {
-		t.Fatalf("session: %+v", events[0])
-	}
-	msgs, order := final(events)
-	if len(order) != 4 {
-		t.Fatalf("messages %v (config warning must be skipped)", order)
-	}
-	if m := msgs["r1:item_2"]; m.Role != "tool" || m.Status != "completed" || m.Detail != "bash -lc ls" || m.Text != "go.mod" {
-		t.Errorf("command: %+v", m)
-	}
-	if m := msgs["r1:item_3"]; m.Detail != "update a.go" {
-		t.Errorf("file change: %+v", m)
-	}
-	if m := msgs["r1:item_4"]; m.Role != "assistant" || m.Text != "hola" {
-		t.Errorf("answer: %+v", m)
-	}
-	if !events[len(events)-1].Done {
-		t.Error("turn not finished")
-	}
+func adapt(events <-chan Event, respond func(string, [][]string) error) Session {
+	return scripted{events, respond}
 }
 
 func manager(t *testing.T, delay time.Duration) (*Manager, *data.Store) {
@@ -122,7 +52,7 @@ func manager(t *testing.T, delay time.Duration) (*Manager, *data.Store) {
 	}
 	store := data.New(db, log)
 	file, _ := filepath.Abs(filepath.Join("testdata", "claude.jsonl"))
-	return NewManager(db, store, log.Node(), dir, Replay{File: file, Delay: delay}), store
+	return NewManager(db, store, log.Node(), dir, nodestate.New(db), nil, Replay{File: file, Delay: delay}), store
 }
 
 func wait(t *testing.T, store *data.Store, id, status string) data.Thread {
@@ -143,8 +73,12 @@ func TestManagerRunsAndQueues(t *testing.T) {
 	m, store := manager(t, 2*time.Millisecond)
 	updates, stop := m.Subscribe("")
 	defer stop()
-	th, err := m.Create(ctx, NewThread{Provider: "replay", Title: "Prueba"})
+	th, err := registerTestThread(ctx, m, data.Thread{Provider: "replay", Title: "Prueba"})
 	if err != nil {
+		t.Fatal(err)
+	}
+	var before int
+	if err := m.db.QueryRowContext(ctx, "SELECT count(*) FROM ops").Scan(&before); err != nil {
 		t.Fatal(err)
 	}
 	if err = m.Send(ctx, th.ID, "lista"); err != nil {
@@ -162,20 +96,32 @@ func TestManagerRunsAndQueues(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	th = wait(t, store, th.ID, "idle")
-	msgs, err := m.Messages(ctx, th.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// The queued turn starts a moment after the first one ends.
 	users := 0
-	for _, msg := range msgs {
-		if msg.Role == "user" {
-			users++
+	for range 300 {
+		th = wait(t, store, th.ID, "idle")
+		msgs, err := m.Messages(ctx, th.ID)
+		if err != nil {
+			t.Fatal(err)
 		}
+		users = 0
+		for _, msg := range msgs {
+			if msg.Role == "user" {
+				users++
+			}
+		}
+		if users == 2 && !m.Running(th.ID) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	// Both turns ran; the replay reuses message ids, so each turn adds its user message.
-	if users != 2 || th.ReadAt != nil || th.LastActivityAt == nil {
+	if users != 2 || !th.Unread || th.ReadAt != nil || th.LastActivityAt == nil {
 		t.Fatalf("users=%d thread=%+v", users, th)
+	}
+	var after int
+	if err := m.db.QueryRowContext(ctx, "SELECT count(*) FROM ops").Scan(&after); err != nil || after != before {
+		t.Fatalf("turns changed log size from %d to %d: %v", before, after, err)
 	}
 	var session string
 	m.db.QueryRow(`SELECT session_id FROM thread_runtime WHERE thread_id = ?`, th.ID).Scan(&session)
@@ -190,7 +136,7 @@ func TestManagerRunsAndQueues(t *testing.T) {
 func TestManagerInterrupt(t *testing.T) {
 	ctx := context.Background()
 	m, store := manager(t, 50*time.Millisecond)
-	th, _ := m.Create(ctx, NewThread{Provider: "replay"})
+	th, _ := registerTestThread(ctx, m, data.Thread{Provider: "replay"})
 	m.Send(ctx, th.ID, "larga")
 	time.Sleep(20 * time.Millisecond)
 	if err := m.Interrupt(ctx, th.ID); err != nil {
@@ -198,7 +144,7 @@ func TestManagerInterrupt(t *testing.T) {
 	}
 	wait(t, store, th.ID, "idle")
 	msgs, _ := m.Messages(ctx, th.ID)
-	if last := msgs[len(msgs)-1]; last.Role != "interrupt" {
+	if last := msgs[len(msgs)-1]; last.Role != "interrupt" || last.Code != "turn.interrupted" {
 		t.Fatalf("last message %+v", last)
 	}
 }
@@ -206,14 +152,32 @@ func TestManagerInterrupt(t *testing.T) {
 func TestRecoverMarksDeadTurns(t *testing.T) {
 	ctx := context.Background()
 	m, store := manager(t, 0)
-	th, _ := m.Create(ctx, NewThread{Provider: "replay"})
-	th.Status = "working"
-	store.Threads().Put(ctx, th)
+	th, _ := registerTestThread(ctx, m, data.Thread{Provider: "replay"})
+	if err := store.SetThreadState(ctx, th.ID, "working", ""); err != nil {
+		t.Fatal(err)
+	}
 	if err := m.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := store.Threads().Get(ctx, th.ID); got.Status != "error" {
 		t.Fatalf("status %s", got.Status)
+	}
+	msgs, _ := m.Messages(ctx, th.ID)
+	if last := msgs[len(msgs)-1]; last.Role != "system" || last.Code != "node.restarted" || last.Text != "" {
+		t.Fatalf("message %+v", last)
+	}
+}
+
+func TestClearMessageHasCode(t *testing.T) {
+	ctx := context.Background()
+	m, _ := manager(t, 0)
+	th, _ := registerTestThread(ctx, m, data.Thread{Provider: "replay"})
+	if err := m.Clear(ctx, th.ID); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ := m.Messages(ctx, th.ID)
+	if last := msgs[len(msgs)-1]; last.Role != "clear" || last.Code != "context.cleared" {
+		t.Fatalf("message %+v", last)
 	}
 }
 
@@ -222,22 +186,27 @@ func TestWorktreePerThread(t *testing.T) {
 	m, _ := manager(t, 0)
 	repo := t.TempDir()
 	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "base"}} {
-		if out, err := gitCmd(ctx, repo, args...); err != nil {
+		if out, err := workspace.Run(ctx, repo, args...); err != nil {
 			t.Fatalf("%s %v", out, err)
 		}
 	}
-	th, err := m.Create(ctx, NewThread{Provider: "replay", Worktree: true, RepoPath: repo, Branch: "feat/1-prueba", BaseBranch: "main"})
+	th := data.Thread{ID: data.NewThreadID(), NodeID: m.node, Provider: "replay", Branch: "feat/1-prueba"}
+	dir := filepath.Join(m.dataDir, "worktrees", th.ID)
+	if err := workspace.AddWorktree(ctx, repo, dir, th.Branch, "main"); err != nil {
+		t.Fatal(err)
+	}
+	th, err := m.Register(ctx, th, dir, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir, _ := m.Dir(ctx, th.ID)
+	dir, _ = m.Dir(ctx, th.ID)
 	os.WriteFile(filepath.Join(dir, "nuevo.txt"), []byte("hola\n"), 0o644)
-	gitCmd(ctx, dir, "add", "nuevo.txt")
+	workspace.Run(ctx, dir, "add", "nuevo.txt")
 	diff, err := m.Diff(ctx, th.ID)
 	if err != nil || !bytes.Contains([]byte(diff), []byte("+hola")) {
 		t.Fatalf("diff %q %v", diff, err)
 	}
-	if out, _ := gitCmd(ctx, dir, "branch", "--show-current"); string(bytes.TrimSpace(out)) != "feat/1-prueba" {
+	if out, _ := workspace.Run(ctx, dir, "branch", "--show-current"); string(bytes.TrimSpace(out)) != "feat/1-prueba" {
 		t.Fatalf("branch %q", out)
 	}
 }
@@ -245,7 +214,7 @@ func TestWorktreePerThread(t *testing.T) {
 func TestAskWaitsForTheAnswer(t *testing.T) {
 	m, _ := manager(t, 0)
 	ctx := context.Background()
-	th, err := m.Create(ctx, NewThread{Provider: "replay", Title: "Pregunta"})
+	th, err := registerTestThread(ctx, m, data.Thread{Provider: "replay", Title: "Pregunta"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,21 +253,17 @@ func TestAskWaitsForTheAnswer(t *testing.T) {
 	}
 }
 
-// Claude Code writes each content block of a message on its own line: the
-// text must not overwrite the thinking that came before it in the message.
-func TestClaudeParserBlockPerLine(t *testing.T) {
-	p := &claudeParser{run: "r1", texts: map[string]*Message{}, tools: map[string]*Message{}}
-	msgs, order := final(parseFile(t, "claude-split.jsonl", p.parse))
-	want := []struct{ id, role, text string }{
-		{"msg_1:0", "reasoning", "Pienso"},
-		{"msg_1:1", "assistant", "Respondo."},
+func testNodeState(t *testing.T) *nodestate.Store {
+	t.Helper()
+	db, err := localdb.Open(context.Background(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(order) != len(want) {
-		t.Fatalf("messages %v", order)
-	}
-	for i, w := range want {
-		if m := msgs[order[i]]; m.ID != w.id || m.Role != w.role || m.Text != w.text || m.Streaming {
-			t.Errorf("message %d: %+v", i, m)
-		}
-	}
+	t.Cleanup(func() { db.Close() })
+	return nodestate.New(db)
+}
+
+func registerTestThread(ctx context.Context, m *Manager, thread data.Thread) (data.Thread, error) {
+	thread.ID, thread.NodeID = data.NewThreadID(), m.node
+	return m.Register(ctx, thread, "", "")
 }

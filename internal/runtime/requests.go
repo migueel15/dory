@@ -18,7 +18,7 @@ func (m *Manager) request(ctx context.Context, thread string, r Request) {
 		return
 	}
 	m.setStatus(ctx, thread, "waiting", "")
-	m.publish(Update{ThreadID: thread, Reload: true})
+	m.emitJSON(ctx, thread, EventRequestOpened, map[string]string{"id": r.ID, "kind": r.Kind})
 }
 
 // Requests returns what the agent of a thread is waiting for, oldest first.
@@ -54,27 +54,7 @@ func (m *Manager) Answer(ctx context.Context, thread, id string, answers [][]str
 	if _, err := m.local(ctx, thread); err != nil {
 		return err
 	}
-	m.mu.Lock()
-	s := m.sessions[thread]
-	waiter, asked := m.waiters[id]
-	delete(m.waiters, id)
-	m.mu.Unlock()
-	if asked {
-		// An ask_user call: its tool call returns the answers.
-		waiter <- answers
-		return m.resolved(ctx, thread, id)
-	}
-	var exists bool
-	if err := m.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM thread_requests WHERE id = ? AND thread_id = ? AND kind <> 'secret')`, id, thread).Scan(&exists); err != nil {
-		return err
-	}
-	if s == nil || !exists {
-		return ErrNoRequest
-	}
-	if err := s.Answer(id, answers); err != nil {
-		return err
-	}
-	return m.resolved(ctx, thread, id)
+	return m.do(thread, &command{kind: cmdAnswer, ctx: ctx, req: id, answers: answers}).err
 }
 
 // resolved forgets an answered request; the turn goes on.
@@ -87,7 +67,7 @@ func (m *Manager) resolved(ctx context.Context, thread, id string) error {
 	if !left {
 		m.setStatus(ctx, thread, "working", "")
 	}
-	m.publish(Update{ThreadID: thread, Reload: true})
+	m.emitJSON(ctx, thread, EventRequestResolved, map[string]string{"id": id})
 	return nil
 }
 
@@ -111,7 +91,7 @@ func (m *Manager) dropRequests(ctx context.Context) error {
 			continue
 		}
 		m.setStatus(ctx, id, "error", "")
-		m.save(ctx, Message{ID: newRunID(), ThreadID: id, Role: "system", Text: "El nodo se reinició mientras el agente esperaba una respuesta; el turno se interrumpió.", CreatedAt: now()})
+		m.save(ctx, Message{ID: newRunID(), ThreadID: id, Role: "system", Code: "node.restarted_waiting", CreatedAt: now()})
 	}
 	_, err = m.db.ExecContext(ctx, `DELETE FROM thread_requests`)
 	return err

@@ -2,6 +2,7 @@ package mesh
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -14,6 +15,7 @@ import (
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/localdb"
 	"github.com/migueel15/dory/internal/oplog"
+	"github.com/migueel15/dory/internal/schema"
 )
 
 type node struct {
@@ -48,7 +50,7 @@ func start(t *testing.T, ctx context.Context, name string) node {
 	}
 	m := New(db, log, id, name, freePort(t))
 	log.OnChange = func(string, string) { m.Changed() }
-	m.Info = func(context.Context) any { return map[string]string{"name": name} }
+	m.Info = func(context.Context) map[string]any { return map[string]any{"name": name} }
 	m.API = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprintf(w, "%s answered %s", name, r.URL.Path) })
 	go m.Serve(ctx)
 	// Wait until the listener is up.
@@ -99,20 +101,32 @@ func TestPairSyncAndForward(t *testing.T) {
 	}
 
 	// A change on either side reaches the other.
-	project, err := a.store.Projects().Put(ctx, data.Project{Slug: "dory", Name: "Dory"})
+	project, err := a.store.Projects().Create(ctx, data.Project{Slug: "dory", Name: "Dory"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	eventually(t, "project on b", func() bool { _, err := b.store.Projects().Get(ctx, project.ID); return err == nil })
-	task, _ := b.store.Tasks().Put(ctx, data.Task{ProjectID: &project.ID, Title: "Desde el servidor"})
+	task, _ := b.store.Tasks().Create(ctx, data.Task{ProjectID: &project.ID, Title: "Desde el servidor"})
 	eventually(t, "task on a", func() bool { _, err := a.store.Tasks().Get(ctx, task.ID); return err == nil })
 
 	// Presence: each side sees the other connected.
 	eventually(t, "presence", func() bool {
 		pa, _ := a.m.Peers(ctx)
 		pb, _ := b.m.Peers(ctx)
-		return len(pa) == 1 && pa[0].Connected && len(pb) == 1 && pb[0].Connected
+		return len(pa) == 1 && pa[0].Connected && pa[0].Protocol == ProtocolVersion &&
+			len(pb) == 1 && pb[0].Connected && pb[0].Protocol == ProtocolVersion
 	})
+
+	peers, err := a.m.Peers(ctx)
+	if err != nil || len(peers) != 1 {
+		t.Fatalf("peers = %+v, %v", peers, err)
+	}
+	var info struct {
+		Schema string `json:"schema"`
+	}
+	if err := json.Unmarshal(peers[0].Info, &info); err != nil || info.Schema != schema.Hash() {
+		t.Fatalf("peer schema = %q, want %q, decode error: %v", info.Schema, schema.Hash(), err)
+	}
 
 	// A call for a thread of a is answered by a.
 	rec := httptest.NewRecorder()
@@ -129,9 +143,61 @@ func TestPairSyncAndForward(t *testing.T) {
 	if err = a.m.Revoke(ctx, b.m.log.Node()); err != nil {
 		t.Fatal(err)
 	}
-	late, _ := b.store.Tasks().Put(ctx, data.Task{Title: "Tras revocar"})
+	late, _ := b.store.Tasks().Create(ctx, data.Task{Title: "Tras revocar"})
 	time.Sleep(500 * time.Millisecond)
 	if _, err := a.store.Tasks().Get(ctx, late.ID); err == nil {
 		t.Fatal("revoked node still syncs")
+	}
+}
+
+func TestMeshSharesThreadState(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a, b := start(t, ctx, "owner"), start(t, ctx, "observer")
+	thread, err := a.store.Threads().Create(ctx, data.Thread{NodeID: a.m.log.Node(), Provider: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archived, err := a.store.Threads().Create(ctx, data.Thread{NodeID: a.m.log.Node(), Provider: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.store.Threads().Archive(ctx, archived.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.store.SetThreadState(ctx, thread.ID, "working", ""); err != nil {
+		t.Fatal(err)
+	}
+	own, err := b.store.Threads().Create(ctx, data.Thread{NodeID: b.m.log.Node(), Provider: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _ := a.m.PairCode()
+	if _, err := b.m.Pair(ctx, fmt.Sprintf("127.0.0.1:%d", a.m.port), code); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "owner state on observer", func() bool {
+		got, err := b.store.Threads().Get(ctx, thread.ID)
+		return err == nil && got.Status == "working" && !got.StateStale && got.Unread
+	})
+	if err := a.store.SetThreadState(ctx, thread.ID, "error", "provider failed"); err != nil {
+		t.Fatal(err)
+	}
+	a.m.ThreadStateChanged()
+	eventually(t, "changed owner state on observer", func() bool {
+		var status, failure string
+		err := b.m.db.QueryRowContext(ctx, `SELECT status, error FROM thread_state WHERE thread_id = ?`, thread.ID).Scan(&status, &failure)
+		return err == nil && status == "error" && failure == "provider failed"
+	})
+	var count int
+	if err := b.m.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM thread_state WHERE thread_id IN (?, ?)`, archived.ID, own.ID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("cached archived or local state: %d, %v", count, err)
+	}
+	if err := b.m.SetEnabled(ctx, a.m.log.Node(), false); err != nil {
+		t.Fatal(err)
+	}
+	got, err := b.store.Threads().Get(ctx, thread.ID)
+	if err != nil || !got.StateStale || got.Status != "error" {
+		t.Fatalf("offline state = %+v: %v", got, err)
 	}
 }

@@ -1,8 +1,9 @@
 import type { Model } from "./api/client";
+import { storage, storageKeys } from "./lib/storage";
 
 type ModelChoice = { provider: string; model?: string; effort?: string };
-const lastModelKey = "dory.last-model";
-const effortKey = (provider: string, model: string) => `effort:${provider}:${model}`;
+const lastModelKey = storageKeys.lastModel;
+const effortKey = (provider: string, model: string) => storageKeys.effort(provider, model);
 
 export const modelId = (model: Model) => model.resolved_model || model.slug;
 
@@ -21,7 +22,7 @@ export function findModel(models: Model[], id: string) {
 
 export function lastModel(): ModelChoice | undefined {
   try {
-    return JSON.parse(localStorage.getItem(lastModelKey) ?? "null") ?? undefined;
+    return JSON.parse(storage.get(lastModelKey) ?? "null") ?? undefined;
   } catch {
     return undefined;
   }
@@ -31,8 +32,8 @@ export function modelEffort(provider: string, model: Model) {
   const values = model.efforts ?? [];
   let saved = "";
   try {
-    saved = localStorage.getItem(effortKey(provider, modelId(model))) ??
-      localStorage.getItem(`effort:${model.slug}`) ?? "";
+    saved = storage.get(effortKey(provider, modelId(model))) ??
+      storage.get(storageKeys.effortLegacy(model.slug)) ?? "";
   } catch {
     // Storage can be unavailable in private browsing.
   }
@@ -44,8 +45,8 @@ export function modelEffort(provider: string, model: Model) {
 export function rememberModel({ provider, model, effort }: ModelChoice) {
   if (!model || model === "default") return;
   try {
-    localStorage.setItem(lastModelKey, JSON.stringify({ provider, model }));
-    if (effort) localStorage.setItem(effortKey(provider, model), effort);
+    storage.set(lastModelKey, JSON.stringify({ provider, model }));
+    if (effort) storage.set(effortKey(provider, model), effort);
   } catch {
     // Storage can be unavailable in private browsing.
   }

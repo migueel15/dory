@@ -1,12 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { CaretUpDown,Check,FolderSimple,MagnifyingGlass,SquaresFour } from "@phosphor-icons/react";
+import { useEffect,useLayoutEffect,useRef,useState,type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { CaretUpDown, Check, FolderSimple, MagnifyingGlass, SquaresFour } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "../api/client";
-import { setProject, useProject } from "../project";
+import { useProjects } from "../api/queries/hooks";
+import { formatChord } from "../features/composer/dictation-shortcut";
+import { setProject,useProject } from "../project";
+import { useCommand,useShortcuts } from "./shortcuts";
 import { Input } from "./ui";
-import { useCommand, useShortcuts } from "./shortcuts";
-import { formatChord } from "./dictation-shortcut";
 
 // ProjectSwitcher picks the global project. It looks like a sidebar link and opens a
 // searchable menu; "compact" fits the phone top bar.
@@ -15,7 +14,7 @@ import { formatChord } from "./dictation-shortcut";
 export function ProjectSwitcher({ compact = false, folded = false }: { compact?: boolean; folded?: boolean }) {
   const project = useProject();
   const getShortcut = useShortcuts();
-  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
+  const projects = useProjects();
   const current = projects.data?.find((p) => p.id === project);
   // Forget a selection that no longer exists (archived or from another database).
   const gone = !!project && !!projects.data && !current;

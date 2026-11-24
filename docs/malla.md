@@ -29,17 +29,28 @@ Al crear un hilo, el selector **Nodo** muestra este nodo y los nodos emparejados
 ## Qué se replica
 
 - **Se replica:** proyectos, repositorios, tareas, dependencias, planes, memorias, skills y su estado por nodo, la bandeja de avisos y sus ajustes, y la organización de los hilos (título, fijado, leído, tarea).
+- **Se anuncia en la malla:** el nodo dueño publica el estado de los hilos sin archivar y su última actividad. Si pierde la conexión, los demás conservan la última copia y la interfaz muestra «Sin conexión».
 - **Se queda en cada nodo:** la ruta local de cada repositorio, las cuentas y tokens, las credenciales de los agentes, la conversación y el worktree de cada hilo, y las suscripciones a avisos.
 
 Un cambio llega al otro nodo en menos de 2 s si están conectados. Sin conexión, los cambios esperan y convergen al reconectar:
 - Gana el último cambio de cada campo.
 - En las memorias, si dos nodos editaron el texto a la vez, se conservan las dos versiones.
 
+## Compactación del registro
+
+Cada nodo pliega en instantáneas las operaciones que todos sus pares activos han confirmado. Un par deja de frenar la compactación tras 30 días sin sincronizar. Al conectar un nodo nuevo o atrasado, la malla combina las instantáneas con las operaciones pendientes y conserva las ediciones locales que todavía no se habían sincronizado.
+
+## Entregas entre nodos
+
+El resultado de un subagente que corre en otro nodo se guarda en una bandeja de salida local y se reintenta, con espera creciente, hasta que el padre lo acepta o pasan 7 días. Se aplica una sola vez aunque se entregue más de una. Crear un hilo remoto o interrumpir un subagente remoto siguen siendo llamadas inmediatas que devuelven el error.
+
 ## Nodos con versiones distintas
 
-La malla no compara versiones al sincronizar: un nodo desactualizado sigue recibiendo y enviando cambios. Cada nodo interpreta los datos con el código de su binario:
+Los nodos anuncian su protocolo en `/peer/v2/info` antes de intercambiar operaciones. Si un par usa otro protocolo, Dory pausa la sincronización y muestra un aviso en **Entornos** y **Conexiones**. Actualiza Dory en ese nodo para reanudarla con el mismo emparejamiento. Los móviles se conectan mediante `/device/v1`.
 
-- Guarda en su registro todas las operaciones que recibe, pero al escribir sus tablas solo usa las columnas que conoce su binario. Ignora las demás.
+Los nodos con el mismo protocolo pueden tener esquemas distintos:
+
+- Cada nodo reenvía los cambios que recibe en operaciones o instantáneas. Conserva las operaciones de entidades desconocidas y materializa las entidades y columnas que conoce. Un par con una versión sin soporte de instantáneas puede seguir sincronizando mientras ya tenga el tramo compactado.
 - Aplica las reglas de su versión. Por ejemplo, un nodo anterior a las skills del sistema (ADR-028) instala también las skills desactivadas y los forks, y deja editar las skills del sistema; los nodos actualizados restauran después su contenido.
 
 Al actualizarse, el nodo se corrige solo: la migración recupera del registro los valores de las columnas nuevas que había recibido, las skills del sistema vuelven a su contenido y el reconciliador reinstala lo que corresponde en las carpetas de los agentes. Para acortar ese periodo, actualiza toda la malla a la vez desde **Entornos**.
@@ -48,11 +59,12 @@ Si mientras el nodo estaba desactualizado se editó a mano el fichero de una ski
 
 ### Añadir una columna replicada
 
-Dory no reconstruye las filas a partir del registro. Al añadir una columna a una entidad replicada (la lista de `internal/oplog/apply.go`):
+Las migraciones recuperan los cambios ya recibidos desde las operaciones y las instantáneas. Al incorporar una entidad, su migración materializa sus filas a partir de esas operaciones. Para añadir una columna a una entidad replicada, sigue estos pasos.
 
 1. Añade la columna en una migración.
-2. En la misma migración, recupera su valor de las operaciones ya recibidas: para cada fila, el último valor por `hlc` de esa clave en `ops`. Distingue la clave ausente (`json_type(...) IS NULL`) de un `null` explícito. `00022_system_skills.sql` es el ejemplo.
-3. Si la columna cambia qué hace un nodo (instalar, mostrar, permitir), escribe qué hará mientras tanto un nodo antiguo y cómo se corrige al actualizarse.
+2. En la misma migración, recupera su valor de las operaciones ya recibidas: para cada fila, compara el último valor de esa clave en `ops` con el valor y el reloj guardados en `row_snapshots.columns`. Ordena por reloj, nodo y secuencia. Distingue la clave ausente (`json_type(...) IS NULL`) de un `null` explícito.
+3. Añade la columna al registro en `internal/schema` y al struct de la entidad en `internal/data/types.go`. Si el struct está expuesto a la web, ejecuta `go generate ./cmd/gen-ts` y guarda `web/src/api/types.gen.ts` junto con el cambio.
+4. Si la columna cambia qué hace un nodo (instalar, mostrar, permitir), escribe qué hará mientras tanto un nodo antiguo y cómo se corrige al actualizarse.
 
 Sin el paso 2, un nodo que recibió esos cambios antes de actualizarse no los ve hasta que llegue otra operación sobre la misma fila.
 

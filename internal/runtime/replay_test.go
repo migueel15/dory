@@ -5,6 +5,9 @@ import (
 	"context"
 	"os"
 	"time"
+
+	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/claude"
 )
 
 // Replay is a test provider: it plays back a recorded Claude Code stream-json
@@ -14,7 +17,9 @@ type Replay struct {
 	Delay time.Duration
 }
 
-func (Replay) ID() string { return "replay" }
+func (Replay) Info() harness.Info {
+	return harness.Info{ID: "replay", Driver: "replay", Name: "Reproducción"}
+}
 
 func (Replay) Usage(context.Context) ([]Window, error) { return nil, ErrNoUsage }
 
@@ -24,32 +29,39 @@ func (r Replay) Detect(context.Context) Status {
 		Models: []Model{{Slug: "grabacion", Name: "Grabación"}}, Capabilities: []string{"interrupt"}}
 }
 
-func (r Replay) Run(ctx context.Context, t Turn) (<-chan Event, error) {
+func (r Replay) Start(ctx context.Context, t Turn) (Session, error) {
 	raw, err := os.ReadFile(r.File)
 	if err != nil {
 		return nil, err
 	}
-	events := make(chan Event, 64)
-	p := &claudeParser{run: t.RunID, texts: map[string]*Message{}, tools: map[string]*Message{}}
+	events := make(chan harness.Event, 64)
+	parse := claude.LineParser(t.RunID)
 	go func() {
 		defer close(events)
 		done := false
-		emit := func(e Event) {
-			done = done || e.Done
+		emit := func(e harness.Event) {
+			_, end := e.(harness.TurnEnded)
+			done = done || end
 			events <- e
 		}
 		for _, line := range bytes.Split(raw, []byte("\n")) {
 			select {
 			case <-ctx.Done():
-				events <- Event{Done: true, Err: "interrumpido"}
+				events <- harness.TurnEnded{Reason: harness.Interrupted}
 				return
 			case <-time.After(r.Delay):
 			}
-			p.parse(line, emit)
+			parse(line, emit)
 		}
 		if !done {
-			events <- Event{Done: true}
+			events <- harness.TurnEnded{Reason: harness.Completed}
 		}
 	}()
-	return events, nil
+	return replaySession{events}, nil
 }
+
+type replaySession struct{ events <-chan harness.Event }
+
+func (s replaySession) Events() <-chan harness.Event   { return s.events }
+func (replaySession) Respond(string, [][]string) error { return ErrNoRequest }
+func rejectResponse(string, [][]string) error          { return ErrNoRequest }

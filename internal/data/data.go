@@ -9,17 +9,22 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/oplog"
+	"github.com/migueel15/dory/internal/schema"
 )
 
-var ErrNotFound = errors.New("resource not found")
-var ErrInvalid = errors.New("invalid argument")
+// ErrNotFound and ErrInvalid are the domain errors of the store; details are
+// added with Msgf.
+var (
+	ErrNotFound = apperr.New(apperr.NotFound, "resource not found")
+	ErrInvalid  = apperr.New(apperr.Invalid, "invalid argument")
+)
 
 // Store gives typed access to the replicated tables.
 type Store struct {
@@ -44,14 +49,6 @@ func (s *Store) Threads() Resource[Thread]   { return Resource[Thread]{s, "threa
 func (s *Store) Notices() Resource[Notice]   { return Resource[Notice]{s, "notice"} }
 func (s *Store) Settings() Resource[Setting] { return Resource[Setting]{s, "setting"} }
 
-// EnsureThreadTask reuses the thread's task or creates and links one atomically.
-func (s *Store) EnsureThreadTask(ctx context.Context, thread, title, description string) (Task, error) {
-	id, err := s.log.EnsureThreadTask(ctx, thread, title, description)
-	if err != nil {
-		return Task{}, err
-	}
-	return s.Tasks().Get(ctx, id)
-}
 func (s *Store) Skills() Resource[Skill] { return Resource[Skill]{s, "skill"} }
 func (s *Store) RepositoryLocations() Resource[RepositoryLocation] {
 	return Resource[RepositoryLocation]{s, "repository_location"}
@@ -59,33 +56,6 @@ func (s *Store) RepositoryLocations() Resource[RepositoryLocation] {
 
 func (s *Store) SkillStates() Resource[SkillState] {
 	return Resource[SkillState]{s, "skill_state"}
-}
-
-// PatchThread writes only the fields owned by an action, so a concurrent
-// status or metadata update cannot restore a stale provider selection.
-func (s *Store) PatchThread(ctx context.Context, id string, fields map[string]any) (Thread, error) {
-	t, err := s.Threads().Get(ctx, id)
-	if err != nil || len(fields) == 0 {
-		return t, err
-	}
-	fields["updated_at"] = s.now().UTC().Format(time.RFC3339Nano)
-	if _, err = s.log.Write(ctx, "thread", id, fields); err != nil {
-		return t, fmt.Errorf("%w: %v", ErrInvalid, err)
-	}
-	return s.Threads().Get(ctx, id)
-}
-
-// jsonColumns are stored as JSON text and read back as JSON values.
-var jsonColumns = []string{"sections", "open_questions", "labels", "files", "targets"}
-
-// defaults fill columns left empty by a Put.
-var defaults = map[string]map[string]any{
-	"repository": {"default_branch": "main"},
-	"task":       {"stage": "inbox"},
-	"plan":       {"author": "agent", "sections": map[string]any{}, "open_questions": []any{}},
-	"memory":     {"kind": "context", "labels": []any{}},
-	"thread":     {"runtime_mode": "full-access", "status": "idle"},
-	"skill":      {"files": map[string]any{}, "targets": map[string]any{}},
 }
 
 // Filter matches columns exactly. Limit defaults to 100 (maximum 1000).
@@ -102,19 +72,39 @@ type Resource[T any] struct {
 }
 
 func (r Resource[T]) Get(ctx context.Context, id string) (T, error) {
+	return r.get(ctx, r.s.db, id, false)
+}
+
+func (r Resource[T]) get(ctx context.Context, q querier, id string, archived bool) (T, error) {
 	var zero T
-	rows, err := r.s.query(ctx, r.entity, Filter{Fields: r.keyFields(id), Limit: 1})
+	row, err := r.row(ctx, q, id, archived)
 	if err != nil {
 		return zero, err
 	}
-	if len(rows) == 0 {
-		return zero, ErrNotFound
+	return decode[T](row)
+}
+
+func (r Resource[T]) row(ctx context.Context, q querier, id string, archived bool) (json.RawMessage, error) {
+	keys := r.keyFields(id)
+	if keys == nil {
+		return nil, ErrInvalid
 	}
-	return decode[T](rows[0])
+	rows, err := queryRows(ctx, q, r.entity, Filter{Fields: keys, Limit: 1, IncludeArchived: archived})
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, ErrNotFound
+	}
+	return rows[0], nil
 }
 
 func (r Resource[T]) List(ctx context.Context, f Filter) ([]T, error) {
-	rows, err := r.s.query(ctx, r.entity, f)
+	return r.list(ctx, r.s.db, f, false)
+}
+
+func (r Resource[T]) list(ctx context.Context, q querier, f Filter, lookahead bool) ([]T, error) {
+	rows, err := queryRowsLimit(ctx, q, r.entity, f, lookahead)
 	if err != nil {
 		return nil, err
 	}
@@ -129,93 +119,20 @@ func (r Resource[T]) List(ctx context.Context, f Filter) ([]T, error) {
 	return out, nil
 }
 
-// Put creates or replaces a row. Only the fields that differ from the stored
-// row become an operation; an unchanged Put writes nothing.
-func (r Resource[T]) Put(ctx context.Context, v T) (T, error) {
-	var zero T
-	raw, err := json.Marshal(v)
-	if err != nil {
-		return zero, err
-	}
-	next := map[string]any{}
-	if err = json.Unmarshal(raw, &next); err != nil {
-		return zero, err
-	}
-	key, columns, _ := oplog.Columns(r.entity)
-	id, err := r.identity(next, key)
-	if err != nil {
-		return zero, err
-	}
-	current := map[string]any{}
-	if rows, err := r.s.query(ctx, r.entity, Filter{Fields: r.keyFields(id), Limit: 1, IncludeArchived: true}); err != nil {
-		return zero, err
-	} else if len(rows) > 0 {
-		json.Unmarshal(rows[0], &current)
-	}
-	for col, def := range defaults[r.entity] {
-		if empty(next[col]) {
-			next[col] = def
-		}
-	}
-	now := r.s.now().UTC().Format(time.RFC3339Nano)
-	changed := map[string]any{}
-	for _, col := range columns {
-		if col == "created_at" || col == "updated_at" {
-			continue
-		}
-		if !same(next[col], current[col]) {
-			changed[col] = next[col]
-		}
-	}
-	if len(changed) == 0 && len(current) > 0 {
-		return decode[T](mustJSON(current))
-	}
-	if len(current) == 0 {
-		changed["created_at"] = now
-	}
-	if slices.Contains(columns, "updated_at") {
-		changed["updated_at"] = now
-	}
-	if _, err = r.s.log.Write(ctx, r.entity, id, changed); err != nil {
-		return zero, fmt.Errorf("%w: %v", ErrInvalid, err)
-	}
-	return r.getAny(ctx, id)
-}
-
-// Archive hides a row. It replicates like any other change.
-func (r Resource[T]) Archive(ctx context.Context, id string) error {
-	if _, err := r.Get(ctx, id); err != nil {
-		return err
-	}
-	now := r.s.now().UTC().Format(time.RFC3339Nano)
-	fields := map[string]any{"archived_at": now}
-	if _, columns, _ := oplog.Columns(r.entity); slices.Contains(columns, "updated_at") {
-		fields["updated_at"] = now
-	}
-	_, err := r.s.log.Write(ctx, r.entity, id, fields)
-	return err
-}
-
-func (r Resource[T]) getAny(ctx context.Context, id string) (T, error) {
-	var zero T
-	rows, err := r.s.query(ctx, r.entity, Filter{Fields: r.keyFields(id), Limit: 1, IncludeArchived: true})
-	if err != nil || len(rows) == 0 {
-		return zero, errors.Join(ErrNotFound, err)
-	}
-	return decode[T](rows[0])
-}
-
 // identity returns the op entity id of a row, creating an id when missing.
 func (r Resource[T]) identity(row map[string]any, key []string) (string, error) {
 	if r.entity == "repository" {
 		remote, _ := row["remote_url"].(string)
 		if remote == "" {
-			return "", fmt.Errorf("%w: remote_url required", ErrInvalid)
+			return "", ErrInvalid.Msgf("remote_url required")
 		}
 		row["id"] = oplog.RepositoryID(remote)
 	}
 	if len(key) == 1 {
 		if id, _ := row["id"].(string); id != "" {
+			if strings.Contains(id, "/") {
+				return "", fmt.Errorf("%w: id cannot contain a slash", ErrInvalid)
+			}
 			return id, nil
 		}
 		row["id"] = newID()
@@ -225,27 +142,36 @@ func (r Resource[T]) identity(row map[string]any, key []string) (string, error) 
 	for i, k := range key {
 		parts[i], _ = row[k].(string)
 		if parts[i] == "" || strings.Contains(parts[i], "/") {
-			return "", fmt.Errorf("%w: %s required", ErrInvalid, k)
+			return "", ErrInvalid.Msgf("%s required", k)
 		}
 	}
 	return strings.Join(parts, "/"), nil
 }
 
 func (r Resource[T]) keyFields(id string) map[string]any {
-	key, _, _ := oplog.Columns(r.entity)
+	spec, _ := schema.Lookup(r.entity)
 	parts := strings.Split(id, "/")
+	if len(parts) != len(spec.Key) || slices.Contains(parts, "") {
+		return nil
+	}
 	fields := map[string]any{}
-	for i, k := range key {
-		if i < len(parts) {
-			fields[k] = parts[i]
-		}
+	for i, k := range spec.Key {
+		fields[k] = parts[i]
 	}
 	return fields
 }
 
-// query returns matching rows as JSON objects.
-func (s *Store) query(ctx context.Context, entity string, f Filter) ([]json.RawMessage, error) {
-	key, columns, ok := oplog.Columns(entity)
+type querier interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+// queryRows returns matching rows as JSON objects.
+func queryRows(ctx context.Context, q querier, entity string, f Filter) ([]json.RawMessage, error) {
+	return queryRowsLimit(ctx, q, entity, f, false)
+}
+
+func queryRowsLimit(ctx context.Context, q querier, entity string, f Filter, lookahead bool) ([]json.RawMessage, error) {
+	spec, ok := schema.Lookup(entity)
 	if !ok {
 		return nil, ErrInvalid
 	}
@@ -255,32 +181,47 @@ func (s *Store) query(ctx context.Context, entity string, f Filter) ([]json.RawM
 	if f.Limit == 0 {
 		f.Limit = 100
 	}
-	all := append(append([]string{}, key...), columns...)
+	if lookahead {
+		f.Limit++
+	}
+	all := append(append([]string{}, spec.Key...), spec.ColumnNames()...)
+	from := spec.Table + " AS row"
+	columns := make(map[string]string, len(all)+3)
+	for _, col := range all {
+		columns[col] = "row." + col
+	}
+	if entity == "thread" {
+		from += ` LEFT JOIN thread_state AS state ON state.thread_id = row.id AND state.node_id = row.node_id
+			LEFT JOIN peers ON peers.node_id = row.node_id`
+		columns["status"] = "COALESCE(state.status, 'idle')"
+		columns["last_activity_at"] = "state.last_activity_at"
+		columns["state_stale"] = `json(CASE WHEN row.node_id = (SELECT node_id FROM node_state WHERE id = 1)
+			OR (` + PeerConnectedSQL + `) THEN 'false' ELSE 'true' END)`
+		all = append(all, "status", "last_activity_at", "state_stale")
+	}
 	pairs := make([]string, 0, len(all))
 	for _, col := range all {
-		value := col
-		if slices.Contains(jsonColumns, col) {
-			value = "json(" + col + ")"
+		value := columns[col]
+		if spec.IsJSON(col) {
+			value = "json(" + value + ")"
 		}
 		pairs = append(pairs, fmt.Sprintf("'%s', %s", col, value))
 	}
 	where := []string{"1 = 1"}
 	args := []any{}
 	if !f.IncludeArchived {
-		where = append(where, "archived_at IS NULL")
+		where = append(where, "row.archived_at IS NULL")
 	}
 	for col, v := range f.Fields {
-		if !slices.Contains(all, col) {
-			return nil, fmt.Errorf("%w: unknown field %q", ErrInvalid, col)
+		if columns[col] == "" || col == "state_stale" {
+			return nil, ErrInvalid.Msgf("unknown field %q", col)
 		}
-		where = append(where, col+" = ?")
+		where = append(where, columns[col]+" = ?")
 		args = append(args, v)
 	}
-	table := map[string]string{"project": "projects", "repository": "repositories", "task": "tasks",
-		"task_dependency": "task_dependencies", "plan": "plans", "memory": "memories", "thread": "threads", "skill": "skills", "skill_state": "skill_states", "repository_location": "repository_locations", "notice": "notices", "setting": "settings"}[entity]
-	query := fmt.Sprintf("SELECT json_object(%s) FROM %s WHERE %s ORDER BY created_at, %s LIMIT ? OFFSET ?",
-		strings.Join(pairs, ", "), table, strings.Join(where, " AND "), strings.Join(key, ", "))
-	rows, err := s.db.QueryContext(ctx, query, append(args, f.Limit, f.Offset)...)
+	query := fmt.Sprintf("SELECT json_object(%s) FROM %s WHERE %s ORDER BY row.created_at, row.%s LIMIT ? OFFSET ?",
+		strings.Join(pairs, ", "), from, strings.Join(where, " AND "), strings.Join(spec.Key, ", row."))
+	rows, err := q.QueryContext(ctx, query, append(args, f.Limit, f.Offset)...)
 	if err != nil {
 		return nil, err
 	}
@@ -299,6 +240,9 @@ func (s *Store) query(ctx context.Context, entity string, f Filter) ([]json.RawM
 func decode[T any](raw []byte) (T, error) {
 	var v T
 	err := json.Unmarshal(raw, &v)
+	if t, ok := any(&v).(*Thread); ok {
+		t.Unread = threadUnread(t.LastActivityAt, t.ReadAt)
+	}
 	return v, err
 }
 
@@ -324,6 +268,9 @@ func mustJSON(v any) []byte {
 	return b
 }
 
+// NewThreadID reserves an identifier before its workspace is prepared.
+func NewThreadID() string { return newID() }
+
 func newID() string {
 	b := make([]byte, 16)
 	rand.Read(b)
@@ -332,5 +279,40 @@ func newID() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
-// DB returns the database of the node, for the local tables of other packages.
-func (s *Store) DB() *sql.DB { return s.db }
+// LocalDB is for a package’s own local tables. All replicated writes go through data/oplog.
+func (s *Store) LocalDB() *sql.DB { return s.db }
+
+// ListAll reads every matching row from the requested offset in bounded pages.
+// The read transaction keeps the ordering stable across pages.
+func (r Resource[T]) ListAll(ctx context.Context, f Filter) ([]T, error) {
+	tx, err := r.s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	f.Limit = 1000
+	out := []T{}
+	for {
+		page, err := r.list(ctx, tx, f, false)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, page...)
+		if len(page) < f.Limit {
+			return out, tx.Commit()
+		}
+		f.Offset += len(page)
+	}
+}
+
+// ListPage returns the requested page and the next offset, or zero at the end.
+func (r Resource[T]) ListPage(ctx context.Context, f Filter) ([]T, int, error) {
+	if f.Limit == 0 {
+		f.Limit = 100
+	}
+	rows, err := r.list(ctx, r.s.db, f, true)
+	if err != nil || len(rows) <= f.Limit {
+		return rows, 0, err
+	}
+	return rows[:f.Limit], f.Offset + f.Limit, nil
+}

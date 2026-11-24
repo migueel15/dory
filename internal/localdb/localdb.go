@@ -42,7 +42,7 @@ func migrate(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db, sub)
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db, sub, goose.WithGoMigrations(goose.NewGoMigration(33, &goose.GoFunc{RunTx: migrateMessageTools}, &goose.GoFunc{})))
 	if err != nil {
 		return err
 	}
@@ -50,10 +50,4 @@ func migrate(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("migrate: %w", err)
 	}
 	return nil
-}
-
-// NodeID returns the identity of this node.
-func NodeID(ctx context.Context, db *sql.DB) (id string, err error) {
-	err = db.QueryRowContext(ctx, `SELECT node_id FROM node_state WHERE id = 1`).Scan(&id)
-	return id, err
 }

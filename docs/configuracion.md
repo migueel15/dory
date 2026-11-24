@@ -5,14 +5,14 @@ Dory lee `~/.config/dory/config.toml` (o el fichero de `DORY_CONFIG`). Cada clav
 | Clave | Variable | Por defecto | Qué es |
 |---|---|---|---|
 | `listen` | `DORY_LISTEN` | `127.0.0.1:7700` | Dirección de la API, la interfaz y el MCP |
-| `data_dir` | `DORY_DATA_DIR` | `~/.dory/data` | Base SQLite, clave del nodo, adjuntos, worktrees y manifiestos |
+| `data_dir` | `DORY_DATA_DIR` | `~/.dory/data` | Base SQLite, clave del nodo, adjuntos y worktrees |
 | `node_name` | `DORY_NODE_NAME` | nombre del equipo | Nombre del nodo en la malla |
 | `mesh_port` | `DORY_MESH_PORT` | `7710` | Puerto entre nodos; `0` apaga la malla |
 | `cookie_secure` | `DORY_COOKIE_SECURE` | `false` | Cookie solo por HTTPS; actívala detrás de un proxy TLS |
 | `public_origin` | `DORY_PUBLIC_ORIGIN` | vacío | Origen HTTPS público detrás de un proxy |
 | `session_ttl` | `DORY_SESSION_TTL` | `168h` | Duración de la sesión web |
 
-Ajustes de limpieza del nodo, en las tablas `[tasks]` y `[threads]`. También se cambian en **Ajustes → Tareas**; lo que guardas allí va a `settings.json` del directorio de datos, no se replica y tiene prioridad sobre el fichero:
+Ajustes de limpieza del nodo, en las tablas `[tasks]` y `[threads]`. También se cambian en **Ajustes → Tareas**; los valores guardados allí son locales al nodo y tienen prioridad sobre los de `config.toml`.
 
 | Clave | Por defecto | Qué es |
 |---|---|---|
@@ -20,6 +20,19 @@ Ajustes de limpieza del nodo, en las tablas `[tasks]` y `[threads]`. También se
 | `threads.remove_worktree_on_archive` | `true` | Al archivar un hilo se borra su worktree si está limpio y ningún otro hilo lo usa. Con cambios sin commitear se conserva: la lista de hilos avisa y ofrece **Eliminar worktree**, que lo borra a la fuerza |
 
 En **Ajustes → Tareas e hilos**, «Cerrar los servicios de los hilos al reiniciar Dory» está desactivado por defecto. Si se activa, el nodo termina los procesos marcados de sus hilos al recibir la señal de parada. Al archivar un hilo también se detienen sus procesos marcados. El seguimiento de servicios usa `/proc` en Linux; en los demás sistemas no se muestran servicios. En systemd se necesita un gestor de usuario disponible para iniciar el proveedor en un scope separado.
+
+### Arneses ACP propios
+Cada `[[acp]]` de `config.toml` declara un arnés que hable ACP (Agent Client Protocol) por stdio, sin tocar código. Aparece como proveedor si su `command` existe en el equipo.
+
+| Clave | Qué es |
+|---|---|
+| `id` | Identificador del proveedor: minúsculas, números y guiones. No puede ser `claude`, `codex`, `opencode` ni `antigravity` |
+| `name` | Nombre visible; por defecto, el `id` |
+| `command` | Ejecutable que arranca el servidor ACP |
+| `args` | Argumentos del comando (por ejemplo, `["--experimental-acp"]`) |
+| `env` | Variables extra, `KEY=VALUE` |
+
+Un perfil declarado usa el modelo predeterminado del arnés y no tiene cuotas ni catálogo de modelos propios. Antigravity es el primer perfil ACP y ya viene integrado.
 
 Otras variables:
 
@@ -38,9 +51,10 @@ El token se resuelve en este orden: `DORY_GITHUB_TOKEN`, el guardado desde la in
 El entorno de desarrollo iniciado con `scripts/dev.sh` usa `~/.dory/dev`. Electron guarda su perfil en `~/.dory/desktop`. Las instalaciones con una base de datos o un perfil anterior siguen usando esas rutas hasta que su copia esté disponible en la nueva ubicación. Una ruta explícita de datos tiene prioridad.
 
 En `data_dir`:
-- `dory.db`: datos. Las tablas replicadas solo cambian por el registro de operaciones.
+- `dory.db`: datos. La tabla local `node_kv` contiene, entre otros, los ajustes, las cuentas de los proveedores y el manifiesto de las skills. Las tablas replicadas solo cambian por el registro de operaciones.
 - `attachments/<hilo>`: archivos adjuntos de los mensajes.
 - `node.key`: identidad del nodo (permisos 0600).
 - `vapid.json`: claves de los avisos push.
 - `worktrees/<hilo>`: un worktree por hilo de implementación.
-- `skills-manifest.json`: ficheros de skills que escribió el nodo.
+
+Al arrancar, Dory importa los archivos JSON de estado de versiones anteriores. Añade el sufijo `.migrated` al archivo tras guardar su contenido. Si la clave ya está en la base, conserva el valor de SQLite y deja el archivo como estaba.

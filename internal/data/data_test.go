@@ -34,11 +34,11 @@ func opCount(t *testing.T, s *Store) int {
 func TestEnsureThreadTask(t *testing.T) {
 	ctx := context.Background()
 	s := open(t)
-	p, err := s.Projects().Put(ctx, Project{Slug: "plan", Name: "Plan"})
+	p, err := s.Projects().Create(ctx, Project{Slug: "plan", Name: "Plan"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	th, err := s.Threads().Put(ctx, Thread{NodeID: s.log.Node(), ProjectID: &p.ID, Provider: "codex"})
+	th, err := s.Threads().Create(ctx, Thread{NodeID: s.log.Node(), ProjectID: &p.ID, Provider: "codex"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,11 +58,11 @@ func TestEnsureThreadTask(t *testing.T) {
 	if err != nil || len(tasks) != 1 {
 		t.Fatalf("tasks=%+v err=%v", tasks, err)
 	}
-	other, err := s.Tasks().Put(ctx, Task{Title: "Existente"})
+	other, err := s.Tasks().Create(ctx, Task{Title: "Existente"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	th2, err := s.Threads().Put(ctx, Thread{NodeID: s.log.Node(), TaskID: &other.ID, Provider: "codex"})
+	th2, err := s.Threads().Create(ctx, Thread{NodeID: s.log.Node(), TaskID: &other.ID, Provider: "codex"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,12 +75,12 @@ func TestEnsureThreadTask(t *testing.T) {
 func TestTaskLifecycle(t *testing.T) {
 	ctx := context.Background()
 	s := open(t)
-	p, err := s.Projects().Put(ctx, Project{Slug: "dory", Name: "Dory"})
+	p, err := s.Projects().Create(ctx, Project{Slug: "dory", Name: "Dory"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	issue := int64(148)
-	task, err := s.Tasks().Put(ctx, Task{ProjectID: &p.ID, Title: "Base local", IssueNumber: &issue})
+	task, err := s.Tasks().Create(ctx, Task{ProjectID: &p.ID, Title: "Base local", IssueNumber: &issue})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,14 +89,14 @@ func TestTaskLifecycle(t *testing.T) {
 	}
 
 	before := opCount(t, s)
-	if _, err = s.Tasks().Put(ctx, task); err != nil {
+	if _, err = s.Tasks().Patch(ctx, task.ID, Fields{"stage": task.Stage}); err != nil {
 		t.Fatal(err)
 	}
 	if opCount(t, s) != before {
-		t.Fatal("unchanged put wrote an op")
+		t.Fatal("unchanged patch wrote an op")
 	}
 	task.Stage = "ready"
-	if task, err = s.Tasks().Put(ctx, task); err != nil || task.Stage != "ready" {
+	if task, err = s.Tasks().Patch(ctx, task.ID, Fields{"stage": task.Stage}); err != nil || task.Stage != "ready" {
 		t.Fatalf("update: %+v %v", task, err)
 	}
 	var fields string
@@ -123,8 +123,8 @@ func TestTaskLifecycle(t *testing.T) {
 func TestRepositoryIDFromRemote(t *testing.T) {
 	ctx := context.Background()
 	s := open(t)
-	p, _ := s.Projects().Put(ctx, Project{Slug: "dory", Name: "Dory"})
-	r, err := s.Repositories().Put(ctx, Repository{ProjectID: p.ID, RemoteURL: "git@github.com:migueel15/dory.git"})
+	p, _ := s.Projects().Create(ctx, Project{Slug: "dory", Name: "Dory"})
+	r, err := s.Repositories().Upsert(ctx, Repository{ProjectID: p.ID, RemoteURL: "git@github.com:migueel15/dory.git"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,19 +136,19 @@ func TestRepositoryIDFromRemote(t *testing.T) {
 func TestPlansAndMemoriesKeepJSON(t *testing.T) {
 	ctx := context.Background()
 	s := open(t)
-	task, _ := s.Tasks().Put(ctx, Task{Title: "Con plan"})
-	plan, err := s.Plans().Put(ctx, Plan{TaskID: task.ID, Version: 1, Sections: []byte(`{"objetivo":"SQLite"}`), OpenQuestions: []string{"¿FTS?"}})
+	task, _ := s.Tasks().Create(ctx, Task{Title: "Con plan"})
+	plan, err := s.Plans().Create(ctx, Plan{TaskID: task.ID, Version: 1, Sections: []byte(`{"objetivo":"SQLite"}`), OpenQuestions: []string{"¿FTS?"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(plan.Sections) != `{"objetivo":"SQLite"}` || plan.OpenQuestions[0] != "¿FTS?" || plan.Author != "agent" {
 		t.Fatalf("got %+v", plan)
 	}
-	m, err := s.Memories().Put(ctx, Memory{Scope: "global", Title: "Decisión", Content: "La v2 usa SQLite", Labels: []string{"v2"}})
+	m, err := s.Memories().Create(ctx, Memory{Scope: "global", Title: "Decisión", Content: "La v2 usa SQLite", Labels: []string{"v2"}})
 	if err != nil || m.Kind != "context" || m.Labels[0] != "v2" {
 		t.Fatalf("memory: %+v %v", m, err)
 	}
-	if _, err = s.Memories().Put(ctx, Memory{Scope: "global", ScopeID: "x", Content: "mal"}); !errors.Is(err, ErrInvalid) {
+	if _, err = s.Memories().Create(ctx, Memory{Scope: "global", ScopeID: "x", Content: "mal"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("check constraint not enforced: %v", err)
 	}
 
@@ -164,9 +164,9 @@ func TestPlansAndMemoriesKeepJSON(t *testing.T) {
 func TestBlockers(t *testing.T) {
 	ctx := context.Background()
 	s := open(t)
-	t2, _ := s.Tasks().Put(ctx, Task{Title: "Dos"})
-	t3, _ := s.Tasks().Put(ctx, Task{Title: "Tres"})
-	if _, err := s.Dependencies().Put(ctx, Dependency{TaskID: t3.ID, DependsOnID: t2.ID}); err != nil {
+	t2, _ := s.Tasks().Create(ctx, Task{Title: "Dos"})
+	t3, _ := s.Tasks().Create(ctx, Task{Title: "Tres"})
+	if _, err := s.Dependencies().Upsert(ctx, Dependency{TaskID: t3.ID, DependsOnID: t2.ID}); err != nil {
 		t.Fatal(err)
 	}
 	blockers, err := s.Blockers(ctx, t3.ID)
@@ -174,17 +174,17 @@ func TestBlockers(t *testing.T) {
 		t.Fatalf("blockers: %+v %v", blockers, err)
 	}
 	t2.Stage = "cancelled"
-	s.Tasks().Put(ctx, t2)
+	s.Tasks().Patch(ctx, t2.ID, Fields{"stage": t2.Stage})
 	if blockers, _ = s.Blockers(ctx, t3.ID); len(blockers) != 0 {
 		t.Fatalf("cancelled task still blocks: %+v", blockers)
 	}
 }
 
-func TestRepositoryLocationPutGet(t *testing.T) {
+func TestRepositoryLocationUpsertGet(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
 	node := s.log.Node()
-	if _, err := s.RepositoryLocations().Put(ctx, RepositoryLocation{RepositoryID: "r1", NodeID: node, Path: "/src/r1"}); err != nil {
+	if _, err := s.RepositoryLocations().Upsert(ctx, RepositoryLocation{RepositoryID: "r1", NodeID: node, Path: "/src/r1"}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.RepositoryLocations().Get(ctx, "r1/"+node)
@@ -199,12 +199,12 @@ func TestRepositoryLocationPutGet(t *testing.T) {
 func TestLinkThread(t *testing.T) {
 	ctx := context.Background()
 	s := open(t)
-	p, _ := s.Projects().Put(ctx, Project{Slug: "a", Name: "A"})
-	q, _ := s.Projects().Put(ctx, Project{Slug: "b", Name: "B"})
-	t1, _ := s.Tasks().Put(ctx, Task{Title: "Uno", ProjectID: &p.ID})
-	t2, _ := s.Tasks().Put(ctx, Task{Title: "Dos", ProjectID: &p.ID})
-	foreign, _ := s.Tasks().Put(ctx, Task{Title: "Ajena", ProjectID: &q.ID})
-	th, _ := s.Threads().Put(ctx, Thread{NodeID: "otro-nodo", ProjectID: &p.ID, Provider: "codex"})
+	p, _ := s.Projects().Create(ctx, Project{Slug: "a", Name: "A"})
+	q, _ := s.Projects().Create(ctx, Project{Slug: "b", Name: "B"})
+	t1, _ := s.Tasks().Create(ctx, Task{Title: "Uno", ProjectID: &p.ID})
+	t2, _ := s.Tasks().Create(ctx, Task{Title: "Dos", ProjectID: &p.ID})
+	foreign, _ := s.Tasks().Create(ctx, Task{Title: "Ajena", ProjectID: &q.ID})
+	th, _ := s.Threads().Create(ctx, Thread{NodeID: "otro-nodo", ProjectID: &p.ID, Provider: "codex"})
 
 	got, err := s.LinkThread(ctx, th.ID, t1.ID, false)
 	if err != nil || got.TaskID == nil || *got.TaskID != t1.ID {
@@ -235,9 +235,9 @@ func TestLinkThread(t *testing.T) {
 func TestDependencies(t *testing.T) {
 	ctx := context.Background()
 	s := open(t)
-	a, _ := s.Tasks().Put(ctx, Task{Title: "A"})
-	b, _ := s.Tasks().Put(ctx, Task{Title: "B"})
-	c, _ := s.Tasks().Put(ctx, Task{Title: "C"})
+	a, _ := s.Tasks().Create(ctx, Task{Title: "A"})
+	b, _ := s.Tasks().Create(ctx, Task{Title: "B"})
+	c, _ := s.Tasks().Create(ctx, Task{Title: "C"})
 	if _, err := s.AddDependency(ctx, a.ID, a.ID); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("self: %v", err)
 	}
@@ -267,10 +267,10 @@ func TestDependencies(t *testing.T) {
 func TestLinksReplicate(t *testing.T) {
 	ctx := context.Background()
 	src, dst := open(t), open(t)
-	p, _ := src.Projects().Put(ctx, Project{Slug: "a", Name: "A"})
-	a, _ := src.Tasks().Put(ctx, Task{Title: "A", ProjectID: &p.ID})
-	b, _ := src.Tasks().Put(ctx, Task{Title: "B", ProjectID: &p.ID})
-	th, _ := src.Threads().Put(ctx, Thread{NodeID: src.log.Node(), ProjectID: &p.ID, Provider: "codex"})
+	p, _ := src.Projects().Create(ctx, Project{Slug: "a", Name: "A"})
+	a, _ := src.Tasks().Create(ctx, Task{Title: "A", ProjectID: &p.ID})
+	b, _ := src.Tasks().Create(ctx, Task{Title: "B", ProjectID: &p.ID})
+	th, _ := src.Threads().Create(ctx, Thread{NodeID: src.log.Node(), ProjectID: &p.ID, Provider: "codex"})
 	sync := func() {
 		ops, err := src.log.Since(ctx, nil, 10000)
 		if err == nil {
@@ -294,5 +294,30 @@ func TestLinksReplicate(t *testing.T) {
 	}
 	if deps, _ := dst.Dependencies().List(ctx, Filter{}); len(deps) != 0 {
 		t.Fatalf("removal not replicated: %+v", deps)
+	}
+}
+
+// Readers that must see every thread, like the cleanup of merged worktrees,
+// read past the page size, archived threads included.
+func TestListAllReadsPastOnePage(t *testing.T) {
+	ctx := t.Context()
+	s := open(t)
+	const n = 1005
+	var last Thread
+	for range n {
+		th, err := s.Threads().Create(ctx, Thread{NodeID: s.log.Node(), Provider: "codex"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		last = th
+	}
+	if err := s.Threads().Archive(ctx, last.ID); err != nil {
+		t.Fatal(err)
+	}
+	if all, err := s.Threads().ListAll(ctx, Filter{}); err != nil || len(all) != n-1 {
+		t.Fatalf("active threads = %d, %v", len(all), err)
+	}
+	if all, err := s.Threads().ListAll(ctx, Filter{IncludeArchived: true}); err != nil || len(all) != n {
+		t.Fatalf("threads with archived = %d, %v", len(all), err)
 	}
 }

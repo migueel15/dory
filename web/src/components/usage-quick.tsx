@@ -1,17 +1,18 @@
-import { PaceMark } from "./pace-mark";
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { createPortal } from "react-dom";
-import { ArrowClockwise, PushPin } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
+import { ArrowClockwise,PushPin } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
-import { api, type UsageWindow } from "../api/client";
-import { expectedRemaining, paceTitle, windowLabel, windowMinutes, windowReset } from "../lib/usage-pace";
-import { ProviderIcon } from "./launch-picker";
+import { Fragment,useEffect,useLayoutEffect,useRef,useState,type CSSProperties } from "react";
+import { createPortal } from "react-dom";
+import { type UsageWindow } from "../api/client";
+import { useNode } from "../api/queries/hooks";
+import { ProviderIcon } from "../features/composer/launch-picker";
+import { storage,storageKeys } from "../lib/storage";
+import { expectedRemaining,paceTitle,windowLabel,windowMinutes,windowReset } from "../lib/usage-pace";
+import { PaceMark } from "./pace-mark";
 import { HoverCard } from "./tooltip";
 import { Arrow } from "./ui";
 
-const pinKey = "dory-usage-provider";
-const readPin = () => { try { return localStorage.getItem(pinKey) ?? ""; } catch { return ""; } };
+const pinKey = storageKeys.usageProvider;
+const readPin = () => { try { return storage.get(pinKey) ?? ""; } catch { return ""; } };
 const time = (iso: string) => new Date(iso).toLocaleString("es-ES", { weekday: "short", hour: "2-digit", minute: "2-digit" });
 const usedOf = (w: UsageWindow) => Math.round(w.utilization * 100);
 
@@ -54,7 +55,7 @@ export function UsageQuick() {
   const [pos, setPos] = useState<CSSProperties>({});
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const node = useQuery({ queryKey: ["node"], queryFn: api.node, refetchInterval: open ? 30_000 : 5 * 60_000 });
+  const node = useNode({ refetchInterval: open ? 30_000 : 5 * 60_000 });
   const names = new Map((node.data?.providers ?? []).map((p) => [p.id, p.name]));
   const list = Object.entries(node.data?.usage ?? {}).filter(([, ws]) => ws.length > 0).sort(([a], [b]) => a.localeCompare(b));
   const [pin, setPin] = useState(readPin);
@@ -66,7 +67,7 @@ export function UsageQuick() {
     ?? (byLength.length > 1 ? byLength[byLength.length - 1] : undefined);
   const rows = byLength.map((w) => ({ label: windowLabel(w), left: `queda ${100 - usedOf(w)} %`, reset: until(windowReset(w), windowMinutes(w) <= 300) }));
   const summary = shown ? `${names.get(shown[0]) ?? shown[0]}. ${rows.map((r) => `${r.label}: ${r.left}${r.reset ? `, se reinicia en ${r.reset}` : ""}`).join(". ")}` : "Límites restantes";
-  const pinProvider = (id: string) => { setPin(id); try { localStorage.setItem(pinKey, id); } catch { /* per-viewer only */ } };
+  const pinProvider = (id: string) => { setPin(id); try { storage.set(pinKey, id); } catch { /* per-viewer only */ } };
 
   useLayoutEffect(() => {
     if (!open || !trigger.current) return;

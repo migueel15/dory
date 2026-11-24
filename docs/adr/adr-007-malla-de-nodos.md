@@ -25,4 +25,4 @@ Dory v1 era un servidor central con Postgres. Hablaba con T3 Code en cada máqui
 
 - Un nodo funciona sin red, y los nodos convergen al reconectar.
 - La v2 empieza vacía: no hay migración de datos de la v1.
-- El registro de operaciones crece sin compactar. La compactación queda pendiente.
+- El registro de operaciones crece sin compactar. La compactación se resolvió en ADR-041.

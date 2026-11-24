@@ -2,11 +2,12 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
+	"log"
 	"os"
-	"path/filepath"
+
+	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/nodestate"
 )
 
 // TitleModel is the provider and model that write the titles of new ideas.
@@ -16,13 +17,12 @@ type TitleModel struct {
 	Model    string `json:"model"`
 }
 
-func (m *Manager) titleModelFile() string { return filepath.Join(m.dataDir, "title-model.json") }
-
 // TitleModel returns the model chosen in the settings of this node.
 func (m *Manager) TitleModel() TitleModel {
 	var t TitleModel
-	if raw, err := os.ReadFile(m.titleModelFile()); err == nil {
-		_ = json.Unmarshal(raw, &t)
+	if _, err := m.state.Get(context.Background(), nodestate.KeyTitleModel, &t); err != nil {
+		log.Printf("runtime: load title model: %v", err)
+		return TitleModel{}
 	}
 	return t
 }
@@ -32,11 +32,10 @@ func (m *Manager) TitleModel() TitleModel {
 func (m *Manager) SetTitleModel(t TitleModel) error {
 	if t.Provider != "" {
 		if _, ok := m.provider(t.Provider); !ok {
-			return fmt.Errorf("%w: %s", ErrProvider, t.Provider)
+			return ErrProvider.Msgf("%s", t.Provider)
 		}
 	}
-	raw, _ := json.Marshal(t)
-	return os.WriteFile(m.titleModelFile(), raw, 0o600)
+	return m.state.Put(context.Background(), nodestate.KeyTitleModel, t)
 }
 
 // OneShot runs a single turn outside any thread: nothing is stored, it runs
@@ -45,7 +44,7 @@ func (m *Manager) SetTitleModel(t TitleModel) error {
 func (m *Manager) OneShot(ctx context.Context, provider, model, prompt string) (string, error) {
 	p, ok := m.provider(provider)
 	if !ok || !m.Enabled(provider) {
-		return "", fmt.Errorf("%w: %s", ErrProvider, provider)
+		return "", ErrProvider.Msgf("%s", provider)
 	}
 	dir, err := os.MkdirTemp("", "dory-oneshot-")
 	if err != nil {
@@ -55,34 +54,28 @@ func (m *Manager) OneShot(ctx context.Context, provider, model, prompt string) (
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	turn := Turn{RunID: newRunID(), Dir: dir, Text: prompt, Model: model}
-	var events <-chan Event
-	switch p := p.(type) {
-	case Interactive:
-		s, err := p.Start(ctx, turn)
-		if err != nil {
-			return "", err
-		}
-		events = s.Events()
-	case Runner:
-		if events, err = p.Run(ctx, turn); err != nil {
-			return "", err
-		}
-	default:
-		return "", fmt.Errorf("%w: %s cannot run turns", ErrProvider, provider)
+	session, err := p.Start(ctx, turn)
+	if err != nil {
+		return "", err
 	}
 	var answer, failure string
-	for e := range events {
-		switch {
-		case e.Message != nil && e.Message.Role == "assistant":
-			answer = e.Message.Text
-		case e.Request != nil:
+	messages := turnMessages{run: turn.RunID, items: map[string]Message{}}
+	for e := range session.Events() {
+		if msg, ok := messages.apply(e); ok && msg.Role == "assistant" {
+			answer = msg.Text
+		}
+		switch e := e.(type) {
+		case harness.RequestOpened:
 			// Nobody can answer: stop the turn.
 			failure = "the agent asked for input"
 			cancel()
-		case e.Done && e.Err != "":
-			failure = e.Err
+		case harness.TurnEnded:
+			if msg := turnError(e); msg != "" {
+				failure = msg
+			}
 		}
 	}
+
 	if ctx.Err() != nil && failure == "" {
 		failure = ctx.Err().Error()
 	}

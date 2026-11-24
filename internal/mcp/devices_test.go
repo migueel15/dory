@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/migueel15/dory/internal/api"
 	"github.com/migueel15/dory/internal/devices"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -34,7 +33,7 @@ func toolsOf(t *testing.T, srv *sdk.Server) map[string]*sdk.Tool {
 }
 
 func TestDeviceToolsOnlyWhenEnabled(t *testing.T) {
-	s := &api.Server{Devices: devices.NewManager()}
+	s := &Deps{Devices: devices.NewManager()}
 	for name := range toolsOf(t, build(s, false)) {
 		if strings.HasPrefix(name, "device_") {
 			t.Errorf("%s should be hidden", name)

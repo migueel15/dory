@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "tsc src/stack.ts src/stack.test.ts src/lib/merge3.ts src/lib/merge3.test.ts src/lib/turn-changes.ts src/lib/turn-changes.test.ts --outDir .test --module nodenext --moduleResolution nodenext --target es2022 --strict --skipLibCheck && echo '{\"type\":\"module\"}' > .test/package.json && node --test .test/stack.test.js .test/lib/merge3.test.js .test/lib/turn-changes.test.js; rm -rf .test",
+    "test": "tsc src/stack.ts src/stack.test.ts src/lib/merge3.ts src/lib/merge3.test.ts src/lib/turn-changes.ts src/lib/turn-changes.test.ts src/lib/errors.ts src/lib/errors.test.ts src/lib/error-codes.test.ts src/i18n/es.ts src/i18n/es.test.ts src/api/types.gen.ts src/api/thread-reducer.ts src/api/thread-reducer.test.ts --outDir .test --module nodenext --moduleResolution nodenext --target es2022 --strict --skipLibCheck && echo '{\"type\":\"module\"}' > .test/package.json && node --test .test/stack.test.js .test/lib/merge3.test.js .test/lib/turn-changes.test.js .test/lib/errors.test.js .test/lib/error-codes.test.js .test/i18n/es.test.js .test/api/thread-reducer.test.js; test_status=$?; rm -rf .test; exit $test_status",
     "build": "tsc --noEmit && vite build && touch dist/.gitkeep",
+    "gen:types": "cd .. && go run ./cmd/gen-ts",
     "preview": "vite preview"
   },
   "dependencies": {

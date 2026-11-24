@@ -1,14 +1,15 @@
 import { useSyncExternalStore } from "react";
+import { storage, storageKeys } from "./lib/storage";
 
 // The selected project is global app state: every page filters by it.
 // "" means all projects. It is remembered per browser in localStorage.
-const KEY = "project";
+const KEY = storageKeys.project;
 const listeners = new Set<() => void>();
-let current = (() => { try { return localStorage.getItem(KEY) ?? ""; } catch { return ""; } })();
+let current = (() => { try { return storage.get(KEY) ?? ""; } catch { return ""; } })();
 
 export function setProject(id: string) {
   current = id;
-  try { if (id) localStorage.setItem(KEY, id); else localStorage.removeItem(KEY); } catch { /* storage unavailable */ }
+  try { if (id) storage.set(KEY, id); else storage.remove(KEY); } catch { /* storage unavailable */ }
   listeners.forEach((l) => l());
 }
 

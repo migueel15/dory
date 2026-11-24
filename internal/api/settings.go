@@ -1,19 +1,24 @@
 package api
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
+	"log"
+	"maps"
 	"net/http"
-	"os"
 	"path/filepath"
 	"regexp"
-	"sync"
+
+	"github.com/migueel15/dory/internal/app"
+	"github.com/migueel15/dory/internal/apperr"
+	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/nodestate"
+	"github.com/migueel15/dory/internal/runtime"
 )
 
 // Settings are the choices of a node about how finished work is cleaned up.
 // They belong to the node and are not replicated: config.toml gives the
-// defaults and settings.json in the data directory keeps what the user
-// changes from the interface.
+// defaults and SQLite keeps what the user changes from the interface.
 type Settings struct {
 	ArchiveThreadsOnFinish  bool `json:"archive_threads_on_finish"`
 	RemoveWorktreeOnArchive bool `json:"remove_worktree_on_archive"`
@@ -98,27 +103,45 @@ type ModelChoice struct {
 // ThreadDefaults are what a new thread gets when the request does not say.
 type ThreadDefaults struct {
 	// DefaultModel is used for new threads; FallbackModel replaces it when the
-	// default cannot start (provider missing, not logged in, error at start).
+	// selected provider is unavailable.
 	DefaultModel  ModelChoice `json:"default_model"`
 	FallbackModel ModelChoice `json:"fallback_model"`
 	// DefaultWorkspace is "checkout" (current branch, the default) or "worktree".
 	DefaultWorkspace string `json:"default_workspace"`
 }
 
-// SettingsStore reads and saves the Settings of a node.
-type SettingsStore struct {
-	mu   sync.Mutex
-	path string
-	cur  Settings
+// ThreadSettings supplies the application layer with the node's current defaults.
+func (st *SettingsStore) ThreadSettings() app.ThreadSettings {
+	s := st.Get()
+	return app.ThreadSettings{
+		DefaultModel: app.ModelChoice(s.Threads.DefaultModel), FallbackModel: app.ModelChoice(s.Threads.FallbackModel),
+		DefaultWorkspace: s.Threads.DefaultWorkspace, WorktreeRoot: s.Worktrees.Location, BranchNaming: s.Worktrees.BranchNaming,
+		AutoPull: s.SourceControl.AutoPull, RemoveWorktreeOnArchive: s.RemoveWorktreeOnArchive,
+		RemoveWorktreeOnMerge: s.Worktrees.RemoveOnMerge,
+	}
 }
 
-// NewSettingsStore starts from defaults and applies the saved file in dir.
-func NewSettingsStore(dir string, defaults Settings) *SettingsStore {
-	st := &SettingsStore{path: filepath.Join(dir, "settings.json"), cur: defaults}
-	if raw, err := os.ReadFile(st.path); err == nil {
-		_ = json.Unmarshal(raw, &st.cur)
+// SettingsStore reads and saves the Settings of a node.
+type SettingsStore struct {
+	value *nodestate.Value[Settings]
+}
+
+// NewSettingsStore starts from defaults and applies the saved settings.
+func NewSettingsStore(store *nodestate.Store, defaults Settings) *SettingsStore {
+	value := nodestate.NewValue(store, nodestate.KeySettings, cloneSettings(defaults))
+	if err := value.Load(context.Background()); err != nil {
+		log.Printf("api: load settings: %v", err)
 	}
-	return st
+	return &SettingsStore{value: value}
+}
+
+func cloneSettings(v Settings) Settings {
+	if v.Input != nil {
+		input := *v.Input
+		input.Shortcuts = maps.Clone(input.Shortcuts)
+		v.Input = &input
+	}
+	return v
 }
 
 // Get returns the current settings; without a store it returns the built-in defaults.
@@ -126,25 +149,18 @@ func (st *SettingsStore) Get() Settings {
 	if st == nil {
 		return Settings{RemoveWorktreeOnArchive: true}
 	}
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	return st.cur
+	return cloneSettings(st.value.Get())
 }
 
 // Set saves the settings.
 func (st *SettingsStore) Set(v Settings) error {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	raw, _ := json.Marshal(v)
-	tmp := st.path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, st.path); err != nil {
-		return err
-	}
-	st.cur = v
-	return nil
+	return st.value.Set(context.Background(), cloneSettings(v))
+}
+
+type NodeDefaults struct {
+	runtime.Defaults
+	ClaudeHome string `json:"claude_home"`
+	CodexHome  string `json:"codex_home"`
 }
 
 func (s *Server) mountSettings(mux *http.ServeMux) {
@@ -152,7 +168,12 @@ func (s *Server) mountSettings(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, s.Settings.Get())
 	}))
 	mux.HandleFunc("GET /api/nodes/{node}/defaults", s.onNode(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, s.Runtime.Defaults())
+		defaults := s.Runtime.Defaults()
+		writeJSON(w, http.StatusOK, NodeDefaults{
+			Defaults:   defaults,
+			ClaudeHome: harness.DefaultConfigDir(defaults.Home, "claude"),
+			CodexHome:  harness.DefaultConfigDir(defaults.Home, "codex"),
+		})
 	}))
 	mux.HandleFunc("PUT /api/nodes/{node}/settings", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		v := s.Settings.Get()
@@ -167,7 +188,7 @@ func (s *Server) mountSettings(mux *http.ServeMux) {
 			v.Input = prev
 		}
 		if s.Settings == nil {
-			writeError(w, http.StatusServiceUnavailable, "unavailable", "settings are not available")
+			writeErr(w, r, apperr.New(apperr.Unavailable, "settings are not available"))
 			return
 		}
 		if v.Input != nil {
@@ -175,16 +196,16 @@ func (s *Server) mountSettings(mux *http.ServeMux) {
 				v.Input.Shortcuts = map[string]Chord{}
 			}
 			if err := v.Input.validate(); err != nil {
-				writeError(w, http.StatusBadRequest, "invalid", err.Error())
+				writeErr(w, r, apperr.New(apperr.Invalid, err.Error()))
 				return
 			}
 		}
 		if loc := v.Worktrees.Location; loc != "" && !filepath.IsAbs(loc) {
-			writeError(w, http.StatusBadRequest, "invalid", "la ubicación de los worktrees debe ser una ruta absoluta")
+			writeErr(w, r, apperr.New(apperr.Invalid, "the worktree location must be an absolute path").With("reason", "worktree_root_not_absolute"))
 			return
 		}
 		if err := s.Settings.Set(v); err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, v)

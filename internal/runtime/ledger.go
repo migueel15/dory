@@ -8,20 +8,11 @@ import (
 	"path"
 	"strings"
 	"time"
+
+	"github.com/migueel15/dory/internal/harness"
 )
 
-// StepUsage is what a provider reports for one model call of a turn. Input
-// excludes the cached tokens; Reasoning is part of Output. Subagent is set
-// when the call belongs to a subagent the turn launched.
-type StepUsage struct {
-	Model      string
-	Input      int64
-	CacheRead  int64
-	CacheWrite int64
-	Output     int64
-	Reasoning  int64
-	Subagent   string
-}
+type StepUsage = harness.StepUsage
 
 // Usage categories. The provider totals are exact; their split among
 // categories is estimated from the size of what each one put in the context.

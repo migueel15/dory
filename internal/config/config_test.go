@@ -16,3 +16,20 @@ func TestValidateOrigin(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateACP(t *testing.T) {
+	if err := validateACP([]ACPConfig{{ID: "gemini", Command: "gemini", Args: []string{"--acp"}, Env: []string{"A=b"}}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, list := range [][]ACPConfig{
+		{{ID: "Gemini", Command: "gemini"}},
+		{{ID: "claude", Command: "x"}},
+		{{ID: "gemini"}},
+		{{ID: "a", Command: "x"}, {ID: "a", Command: "y"}},
+		{{ID: "a", Command: "x", Env: []string{"novalue"}}},
+	} {
+		if validateACP(list) == nil {
+			t.Errorf("accepted %+v", list)
+		}
+	}
+}

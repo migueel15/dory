@@ -3,6 +3,7 @@ package devices
 import (
 	"context"
 	"errors"
+	"github.com/migueel15/dory/internal/i18n"
 	"io"
 	"sync"
 	"time"
@@ -141,7 +142,7 @@ func (m *Manager) Control(serial string, msg []byte) error {
 	s := m.sessions[serial]
 	m.mu.Unlock()
 	if s == nil {
-		return errors.New("no hay sesión activa")
+		return errors.New(i18n.Text("devices.no_hay_sesion_activa"))
 	}
 	return s.Control(msg)
 }
@@ -204,18 +205,18 @@ func (s *Session) run() {
 // Control writes one control message; only known types pass.
 func (s *Session) Control(msg []byte) error {
 	if len(msg) == 0 || len(msg) > maxControlSize {
-		return errors.New("mensaje de control no válido")
+		return errors.New(i18n.Text("devices.mensaje_control_no_valido"))
 	}
 	switch msg[0] {
 	case CtlKeycode, CtlText, CtlTouch, CtlScroll, CtlBackOrOn, CtlDisplayPwr, CtlResetVideo:
 	default:
-		return errors.New("tipo de control no admitido")
+		return errors.New(i18n.Text("devices.tipo_control_no_admitido"))
 	}
 	s.mu.Lock()
 	c := s.conn
 	s.mu.Unlock()
 	if c == nil {
-		return errors.New("sesión cerrada")
+		return errors.New(i18n.Text("devices.sesion_cerrada"))
 	}
 	s.ctlMu.Lock()
 	defer s.ctlMu.Unlock()

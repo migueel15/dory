@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"image"
 	"image/png"
 	"regexp"
@@ -55,15 +56,15 @@ func ParseUI(dump string) ([]UIElement, error) {
 	if !strings.Contains(dump, "<hierarchy") {
 		msg := strings.TrimSpace(dump)
 		if msg == "" || strings.HasPrefix(msg, "UI hierchary") {
-			msg = "la pantalla no devolvió interfaz"
+			msg = i18n.Text("devices.pantalla_no_devolvio_interfaz")
 		}
-		return nil, fmt.Errorf("no se pudo leer la interfaz (pantalla animada, bloqueada o protegida; usa device_screenshot): %s", msg)
+		return nil, fmt.Errorf(i18n.Text("devices.no_pudo_leer_interfaz"), msg)
 	}
 	var root struct {
 		Nodes []uiNode `xml:"node"`
 	}
 	if err := xml.Unmarshal([]byte(dump), &root); err != nil {
-		return nil, fmt.Errorf("no se pudo leer la interfaz: %w", err)
+		return nil, fmt.Errorf(i18n.Text("devices.no_pudo_leer_interfaz_2"), err)
 	}
 	var out []UIElement
 	var walk func(n uiNode)
@@ -159,7 +160,7 @@ func (m *Manager) Resolve(serial string, t Target) (int, int, string, error) {
 			return x, y, what, nil
 		}
 	}
-	return 0, 0, "", errors.New("no hay ningún elemento así en la última interfaz leída; vuelve a llamar a device_ui")
+	return 0, 0, "", errors.New(i18n.Text("devices.no_hay_ningun_elemento"))
 }
 
 func firstNonEmpty(v ...string) string {
@@ -200,11 +201,11 @@ func isASCII(s string) bool {
 // anything else needs an open scrcpy session, whose control channel injects it.
 func (m *Manager) InputText(ctx context.Context, serial, text string) error {
 	if text == "" || len(text) > 2000 {
-		return errors.New("el texto debe tener entre 1 y 2000 caracteres")
+		return errors.New(i18n.Text("devices.texto_debe_tener_entre"))
 	}
 	if !isASCII(text) {
 		if !m.Active(serial) {
-			return errors.New("el texto con caracteres no ASCII necesita el dispositivo abierto en el panel (device_open)")
+			return errors.New(i18n.Text("devices.texto_caracteres_no_ascii"))
 		}
 		b := make([]byte, 5, 5+len(text))
 		b[0] = CtlText
@@ -240,24 +241,12 @@ func (m *Manager) Key(ctx context.Context, serial, name string) error {
 	return err
 }
 
-// Launch opens an app by package name.
-func (m *Manager) Launch(ctx context.Context, serial, pkg string) error {
-	if !ident.MatchString(pkg) {
-		return errors.New("paquete no válido")
-	}
-	out, err := m.ADB.Shell(ctx, serial, 10*time.Second, "monkey", "-p", pkg, "-c", "android.intent.category.LAUNCHER", "1")
-	if err == nil && strings.Contains(out, "No activities found") {
-		err = fmt.Errorf("%s no está instalada o no tiene pantalla de inicio", pkg)
-	}
-	return err
-}
-
 var schemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.\-]*:`)
 
 // OpenURL opens a link or deep link with the app that handles it.
 func (m *Manager) OpenURL(ctx context.Context, serial, url string) error {
 	if !schemeRe.MatchString(url) || len(url) > 2000 || strings.ContainsFunc(url, unicode.IsControl) {
-		return errors.New("enlace no válido: debe empezar por un esquema como https: o whatsapp:")
+		return errors.New(i18n.Text("devices.enlace_no_valido_debe"))
 	}
 	out, err := m.ADB.Shell(ctx, serial, 10*time.Second, "am", "start", "-a", "android.intent.action.VIEW", "-d", "'"+strings.ReplaceAll(url, "'", `'\''`)+"'")
 	if err == nil && strings.Contains(out, "Error") {
@@ -294,7 +283,7 @@ func (m *Manager) Screenshot(ctx context.Context, serial string, maxSide int) ([
 	}
 	img, err := png.Decode(bytes.NewReader(raw))
 	if err != nil {
-		return nil, 0, 0, errors.New("la captura no es una imagen válida (¿pantalla bloqueada o protegida?)")
+		return nil, 0, 0, errors.New(i18n.Text("devices.captura_no_es_imagen"))
 	}
 	b := img.Bounds()
 	w, h := b.Dx(), b.Dy()

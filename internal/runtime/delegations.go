@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 )
 
 // Delegation is one piece of work a thread handed to a subagent, kept on the
@@ -34,7 +35,14 @@ type Outcome struct {
 	Title          string `json:"title"`
 	Status         string `json:"status"`
 	Result         string `json:"result"`
+	// DeliveryID is the id of the outbox delivery that carried the outcome;
+	// the parent's node applies each id once, so a retry changes nothing.
+	DeliveryID string `json:"delivery_id,omitempty"`
 }
+
+// DelegationComplete is the outbox kind of a subagent outcome sent to the
+// node of its parent.
+const DelegationComplete = "delegation.complete"
 
 var stateLabel = map[string]string{"completed": "terminó", "failed": "falló", "waiting": "espera una respuesta", "interrupted": "se detuvo", "cancelled": "se canceló"}
 
@@ -116,10 +124,28 @@ func (m *Manager) CancelDelegation(ctx context.Context, id string) (Delegation, 
 // Complete records how a subagent turn ended on the parent's node and wakes
 // the parent with the result. A child that runs again after its delegation
 // ended opens a follow-up delegation, as T3 Code does.
-func (m *Manager) Complete(ctx context.Context, o Outcome) error {
+//
+// It is idempotent by DeliveryID: an outcome whose id was already applied is
+// ignored. The id is kept in applied_deliveries, a small local table, rather
+// than in thread_delegations, because a delivery may find no delegation row
+// to hold it (a follow-up turn opens a new one) and cancelled or archived
+// parents must not apply it later either.
+func (m *Manager) Complete(ctx context.Context, o Outcome) (err error) {
 	parent, err := m.local(ctx, o.ParentThreadID)
 	if err != nil {
 		return err
+	}
+	if o.DeliveryID != "" {
+		first, err := m.claimDelivery(ctx, o.DeliveryID)
+		if err != nil || !first {
+			return err
+		}
+		// A failed attempt is retried by the sender, so it must not count.
+		defer func() {
+			if err != nil {
+				m.db.ExecContext(context.WithoutCancel(ctx), `DELETE FROM applied_deliveries WHERE id = ?`, o.DeliveryID)
+			}
+		}()
 	}
 	if parent.ArchivedAt != nil {
 		return nil
@@ -143,6 +169,19 @@ func (m *Manager) Complete(ctx context.Context, o Outcome) error {
 	return m.SendFrom(ctx, o.ParentThreadID, o.ChildThreadID, wakeText(d.ID, o))
 }
 
+// claimDelivery records that a delivery is being applied; false means it
+// already was. Ids older than a month are dropped on the way.
+func (m *Manager) claimDelivery(ctx context.Context, id string) (bool, error) {
+	at := time.Now().UTC()
+	m.db.ExecContext(ctx, `DELETE FROM applied_deliveries WHERE applied_at < ?`, at.AddDate(0, -1, 0).Format(time.RFC3339Nano))
+	res, err := m.db.ExecContext(ctx, `INSERT OR IGNORE INTO applied_deliveries(id, applied_at) VALUES (?, ?)`, id, at.Format(time.RFC3339Nano))
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
 // wakeText is the message that wakes the parent. Its first line is the header
 // the interface recognises a subagent result by.
 func wakeText(task string, o Outcome) string {
@@ -156,13 +195,18 @@ func wakeText(task string, o Outcome) string {
 	return text + fmt.Sprintf("\n\n(task_id %s: subagent_status para releerlo, subagent_cancel para pararlo)", task)
 }
 
-// deliver hands an outcome to the parent's node.
+// deliver is the one way out of an outcome. On the parent's node it is
+// applied at once; on another node it goes through the outbox, so it arrives
+// when that node is connected again even if it is not now.
 func (m *Manager) deliver(ctx context.Context, node string, o Outcome) {
 	var err error
-	if node == m.node {
+	switch {
+	case node == m.node:
 		err = m.Complete(ctx, o)
-	} else if m.PeerComplete != nil {
-		err = m.PeerComplete(ctx, node, o)
+	case m.Outbox == nil:
+		err = errors.New("no outbox to reach another node")
+	default:
+		_, err = m.Outbox.Enqueue(ctx, node, DelegationComplete, o)
 	}
 	if err != nil {
 		log.Printf("runtime: subagent %s outcome: %v", o.ChildThreadID, err)

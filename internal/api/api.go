@@ -4,22 +4,25 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
-	"github.com/migueel15/dory/internal/update"
-
+	"github.com/migueel15/dory/internal/app"
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/browser"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/devices"
 	"github.com/migueel15/dory/internal/dictation"
 	"github.com/migueel15/dory/internal/github"
+	"github.com/migueel15/dory/internal/mesh"
+	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/runtime"
 	"github.com/migueel15/dory/internal/skills"
+	"github.com/migueel15/dory/internal/update"
 	"github.com/migueel15/dory/internal/version"
 )
 
@@ -40,7 +43,15 @@ type Node struct {
 // Server holds what the handlers need.
 type Server struct {
 	Store        *data.Store
+	NodeState    *nodestate.Store
 	Runtime      *runtime.Manager
+	Threads      *app.Threads
+	Tasks        *app.Tasks
+	PullReviews  *app.PullReviews
+	Plans        *app.Plans
+	Memories     *app.Memories
+	Projects     *app.Projects
+	Ideas        *app.Ideas
 	GitHub       *github.Client
 	Dictation    *dictation.Manager
 	SpeechModels *dictation.LocalModels
@@ -50,6 +61,8 @@ type Server struct {
 	Peers func() any
 	// Remote forwards thread calls to the node that owns the thread.
 	Remote Remote
+	// PeerClient calls another node from Go.
+	PeerClient *mesh.Client
 	// Updater moves this node to the latest release; nil disables the routes.
 	Updater *update.Updater
 	// Mesh lists the peers that answer now.
@@ -73,7 +86,7 @@ type Server struct {
 func (s *Server) Register(mux *http.ServeMux) {
 	mountResource(mux, "projects", s.Store.Projects())
 	mountResource(mux, "repositories", s.Store.Repositories())
-	mountResource(mux, "tasks", s.Store.Tasks(), s.SaveTask)
+	mountResource(mux, "tasks", s.Store.Tasks(), resourceWrites[data.Task]{s.Tasks.Create, s.Tasks.Patch})
 	mountResource(mux, "memories", s.Store.Memories())
 	mux.HandleFunc("GET /api/version", version.Handler())
 	mux.HandleFunc("GET /api/node", s.node)
@@ -84,12 +97,6 @@ func (s *Server) Register(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("GET /api/search", s.search)
 	mux.HandleFunc("GET /api/events", func(w http.ResponseWriter, r *http.Request) {
-		// The live stream of another node's thread comes from that node.
-		if id := r.URL.Query().Get("thread"); id != "" {
-			if t, err := s.Store.Threads().Get(r.Context(), id); err == nil && t.NodeID != s.Node.ID && s.Remote != nil && s.Remote.Forward(w, r, t.NodeID) {
-				return
-			}
-		}
 		s.Events.serve(w, r)
 	})
 	s.mountRepositoryPaths(mux)
@@ -114,7 +121,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	s.mountDevices(mux)
 	s.mountBrowser(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
-		writeError(w, http.StatusNotFound, "not_found", "route not found")
+		writeErr(w, r, apperr.New(apperr.NotFound, "route not found"))
 	})
 }
 
@@ -131,25 +138,15 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	var hits []data.Hit
 	var err error
 	if r.URL.Query().Get("type") == "task" {
-		hits, err = s.Store.SearchTasks(r.Context(), r.URL.Query().Get("q"), limit)
+		hits, err = s.Memories.SearchTasks(r.Context(), r.URL.Query().Get("q"), limit)
 	} else {
-		hits, err = s.Store.Search(r.Context(), r.URL.Query().Get("q"), limit)
+		hits, err = s.Memories.Search(r.Context(), r.URL.Query().Get("q"), limit)
 	}
 	if err != nil {
-		writeDataError(w, err)
+		writeErr(w, r, err)
 		return
 	}
-	if hits == nil {
-		hits = []data.Hit{}
-	}
 	writeJSON(w, http.StatusOK, hits)
-}
-
-type errorBody struct {
-	Error struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -160,33 +157,20 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
-func writeError(w http.ResponseWriter, status int, code, message string) {
-	var b errorBody
-	b.Error.Code, b.Error.Message = code, message
-	writeJSON(w, status, b)
-}
+// writeErr answers with the status and envelope of a domain error. An error
+// that is not a domain error is an internal one: its text only goes to the log.
+func writeErr(w http.ResponseWriter, r *http.Request, err error) { apperr.WriteHTTP(w, r, err) }
 
-// writeDataError maps store and runtime errors to the JSON error envelope.
-func writeDataError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, data.ErrNotFound), errors.Is(err, runtime.ErrNotFound):
-		writeError(w, http.StatusNotFound, "not_found", err.Error())
-	case errors.Is(err, data.ErrInvalid), errors.Is(err, runtime.ErrProvider):
-		writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
-	case errors.Is(err, runtime.ErrBusy):
-		writeError(w, http.StatusConflict, "thread_busy", err.Error())
-	case errors.Is(err, runtime.ErrRemote):
-		writeError(w, http.StatusConflict, "remote", err.Error())
-	default:
-		log.Printf("api: %v", err)
-		writeError(w, http.StatusInternalServerError, "internal", err.Error())
-	}
+// upstream wraps the failure of a service Dory calls (GitHub, a peer). Its text
+// is meant for the user, so it travels as a parameter.
+func upstream(err error) *apperr.Error {
+	return apperr.Wrap(apperr.Upstream, err, "upstream request failed").With("detail", err.Error())
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
 	if err := dec.Decode(v); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_argument", "invalid JSON body: "+err.Error())
+		writeErr(w, r, apperr.Wrap(apperr.Invalid, err, "invalid JSON body"))
 		return false
 	}
 	return true
@@ -194,18 +178,35 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 
 func actor(r *http.Request) string { return auth.Actor(r.Context()) }
 
-// mountResource registers list/get/create/replace/archive for one entity.
-func mountResource[T any](mux *http.ServeMux, path string, res data.Resource[T], save ...func(context.Context, T) (T, error)) {
+type resourceWrites[T any] struct {
+	create func(context.Context, T) (T, error)
+	patch  func(context.Context, string, *string, data.Fields) (T, error)
+}
+
+// mountResource registers list/get/create/patch/archive for one entity.
+func mountResource[T any](mux *http.ServeMux, path string, res data.Resource[T], custom ...resourceWrites[T]) {
 	base := "/api/" + path
+	writes := resourceWrites[T]{
+		create: res.Create,
+		patch: func(ctx context.Context, id string, expected *string, fields data.Fields) (T, error) {
+			if expected != nil {
+				return res.PatchIf(ctx, id, *expected, fields)
+			}
+			return res.Patch(ctx, id, fields)
+		},
+	}
+	if len(custom) > 0 {
+		writes = custom[0]
+	}
 	mux.HandleFunc("GET "+base, func(w http.ResponseWriter, r *http.Request) {
 		f, err := parseFilter(r)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+			writeErr(w, r, err)
 			return
 		}
 		items, err := res.List(r.Context(), f)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, items)
@@ -213,59 +214,92 @@ func mountResource[T any](mux *http.ServeMux, path string, res data.Resource[T],
 	mux.HandleFunc("GET "+base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
 		v, err := res.Get(r.Context(), r.PathValue("id"))
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, v)
 	})
-	put := func(w http.ResponseWriter, r *http.Request, id string) {
-		var body map[string]any
-		if !decode(w, r, &body) {
+	mux.HandleFunc("POST "+base, func(w http.ResponseWriter, r *http.Request) {
+		body, ok := decodeResource(w, r)
+		if !ok {
 			return
 		}
-		if id != "" {
-			// Fields left out keep their stored value.
-			if current, err := res.Get(r.Context(), id); err == nil {
-				raw, _ := json.Marshal(current)
-				merged := map[string]any{}
-				json.Unmarshal(raw, &merged)
-				for k, v := range body {
-					merged[k] = v
-				}
-				body = merged
-			}
-			body["id"] = id
-		}
-		// Server-owned fields are never taken from the client.
-		delete(body, "created_at")
 		delete(body, "updated_at")
-		delete(body, "archived_at")
 		raw, _ := json.Marshal(body)
 		var v T
 		if err := json.Unmarshal(raw, &v); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_argument", err.Error())
+			writeErr(w, r, apperr.Wrap(apperr.Invalid, err, "invalid body"))
 			return
 		}
-		put := res.Put
-		if len(save) > 0 {
-			put = save[0]
-		}
-		out, err := put(r.Context(), v)
+		out, err := writes.create(r.Context(), v)
 		if err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	patch := func(w http.ResponseWriter, r *http.Request) {
+		body, ok := decodeResource(w, r)
+		if !ok {
+			return
+		}
+		expected, err := resourceVersion(r, body)
+		if err != nil {
+			writeErr(w, r, err)
+			return
+		}
+		delete(body, "id")
+		delete(body, "updated_at")
+		out, err := writes.patch(r.Context(), r.PathValue("id"), expected, body)
+		if err != nil {
+			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
 	}
-	mux.HandleFunc("POST "+base, func(w http.ResponseWriter, r *http.Request) { put(w, r, "") })
-	mux.HandleFunc("PUT "+base+"/{id}", func(w http.ResponseWriter, r *http.Request) { put(w, r, r.PathValue("id")) })
+	mux.HandleFunc("PUT "+base+"/{id}", patch)
+	mux.HandleFunc("PATCH "+base+"/{id}", patch)
 	mux.HandleFunc("DELETE "+base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if err := res.Archive(r.Context(), r.PathValue("id")); err != nil {
-			writeDataError(w, err)
+			writeErr(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+func decodeResource(w http.ResponseWriter, r *http.Request) (data.Fields, bool) {
+	var body data.Fields
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
+	dec.UseNumber()
+	if err := dec.Decode(&body); err != nil || body == nil {
+		writeErr(w, r, apperr.New(apperr.Invalid, "expected a JSON object"))
+		return nil, false
+	}
+	delete(body, "created_at")
+	delete(body, "archived_at")
+	return body, true
+}
+
+func resourceVersion(r *http.Request, body data.Fields) (*string, error) {
+	if match := strings.TrimSpace(r.Header.Get("If-Match")); match != "" && match != "*" {
+		if strings.HasPrefix(match, `"`) {
+			value, err := strconv.Unquote(match)
+			if err != nil {
+				return nil, data.ErrInvalid.Msgf("invalid If-Match")
+			}
+			match = value
+		}
+		return &match, nil
+	}
+	if v, present := body["updated_at"]; present {
+		version, ok := v.(string)
+		if !ok {
+			return nil, data.ErrInvalid.Msgf("updated_at must be a string")
+		}
+		return &version, nil
+	}
+	return nil, nil
 }
 
 func parseFilter(r *http.Request) (data.Filter, error) {
@@ -275,7 +309,7 @@ func parseFilter(r *http.Request) (data.Filter, error) {
 		if s := q.Get(name); s != "" {
 			n, err := strconv.Atoi(s)
 			if err != nil || n < 0 {
-				return f, errors.New(name + " is out of range")
+				return f, apperr.Newf(apperr.Invalid, "%s is out of range", name)
 			}
 			*dst = n
 		}
@@ -283,7 +317,7 @@ func parseFilter(r *http.Request) (data.Filter, error) {
 	f.IncludeArchived = q.Get("include_archived") == "true"
 	if s := q.Get("filter"); s != "" {
 		if err := json.Unmarshal([]byte(s), &f.Fields); err != nil {
-			return f, errors.New("filter must be a JSON object")
+			return f, apperr.New(apperr.Invalid, "filter must be a JSON object")
 		}
 	}
 	return f, nil

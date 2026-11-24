@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/runtime"
 )
 
@@ -22,7 +23,7 @@ func (s *Server) mountUsageHistory(mux *http.ServeMux) {
 		}
 		span, ok := usageRanges[name]
 		if !ok {
-			writeError(w, http.StatusBadRequest, "invalid_range", "range must be 24h, 7d, 30d or 90d")
+			writeErr(w, r, apperr.New(apperr.InvalidRange, "range must be 24h, 7d, 30d or 90d"))
 			return
 		}
 		loc := time.Local
@@ -44,7 +45,7 @@ func (s *Server) mountUsageHistory(mux *http.ServeMux) {
 			}
 			turns, err := s.Runtime.ThreadUsageTurns(r.Context(), thread, from)
 			if err != nil {
-				writeError(w, http.StatusInternalServerError, "usage_turns_failed", "No se pudo leer el consumo del hilo")
+				writeErr(w, r, apperr.New(apperr.Internal, "could not read the thread usage").With("reason", "usage_turns"))
 				return
 			}
 			writeJSON(w, http.StatusOK, turns)
@@ -57,13 +58,13 @@ func (s *Server) mountUsageHistory(mux *http.ServeMux) {
 			}
 			rows, err := s.Runtime.UsageBreakdown(r.Context(), from)
 			if err != nil {
-				writeError(w, http.StatusInternalServerError, "usage_breakdown_failed", "No se pudo leer el desglose de uso")
+				writeErr(w, r, apperr.New(apperr.Internal, "could not read the usage breakdown").With("reason", "usage_breakdown"))
 				return
 			}
 			writeJSON(w, http.StatusOK, rows)
 			return
 		}
-		writeJSON(w, http.StatusOK, runtime.UsageHistory(s.Runtime.Paths(home), from, name == "24h", loc))
+		writeJSON(w, http.StatusOK, s.Runtime.UsageHistory(s.Runtime.Paths(home), from, name == "24h", loc))
 	}
 	mux.HandleFunc("GET /api/nodes/{node}/usage/history", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		serve(w, r, false)

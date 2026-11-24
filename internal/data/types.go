@@ -81,8 +81,8 @@ type Memory struct {
 	ArchivedAt *string  `json:"archived_at"`
 }
 
-// Thread is the replicated part of a conversation with an agent. NodeID is
-// the node that runs it; only that node holds its messages and processes.
+// Thread combines replicated metadata with the last known state of its owner.
+// Only the owner holds the messages and processes.
 type Thread struct {
 	ID        string  `json:"id"`
 	NodeID    string  `json:"node_id"`
@@ -100,6 +100,8 @@ type Thread struct {
 	Title          string  `json:"title"`
 	Branch         string  `json:"branch"`
 	Status         string  `json:"status"`
+	StateStale     bool    `json:"state_stale,omitempty"`
+	Unread         bool    `json:"unread"`
 	PinnedAt       *string `json:"pinned_at"`
 	ReadAt         *string `json:"read_at"`
 	LastActivityAt *string `json:"last_activity_at"`

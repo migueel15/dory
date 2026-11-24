@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
+import { events } from "./lib/store";
+import { storage, storageKeys } from "./lib/storage";
 
 export type Theme = "light" | "dark" | "system";
-const KEY = "theme";
-const EVENT = "ui-theme";
+const KEY = storageKeys.theme;
 const media = window.matchMedia("(prefers-color-scheme: dark)");
 
 export const storedTheme = (): Theme => {
-  const t = localStorage.getItem(KEY);
+  const t = storage.get(KEY);
   return t === "light" || t === "dark" ? t : "system";
 };
 
@@ -18,10 +19,10 @@ export function applyTheme(t: Theme = storedTheme()) {
 
 // setTheme saves the choice of this browser and tells every useTheme.
 export function setTheme(t: Theme) {
-  if (t === "system") localStorage.removeItem(KEY);
-  else localStorage.setItem(KEY, t);
+  if (t === "system") storage.remove(KEY);
+  else storage.set(KEY, t);
   applyTheme(t);
-  window.dispatchEvent(new Event(EVENT));
+  events.themeChanged.emit();
 }
 
 // Theme choice persisted in localStorage; "system" tracks the OS preference live.
@@ -36,9 +37,9 @@ export function useTheme() {
       setDark(isDark(t));
       applyTheme(t);
     };
-    window.addEventListener(EVENT, sync);
+    const off = events.themeChanged.on(sync);
     media.addEventListener("change", sync);
-    return () => { window.removeEventListener(EVENT, sync); media.removeEventListener("change", sync); };
+    return () => { off(); media.removeEventListener("change", sync); };
   }, []);
   return [dark, setTheme, theme] as const;
 }

@@ -3,7 +3,9 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -25,10 +27,13 @@ type Events struct {
 	runtime *runtime.Manager
 	mu      sync.Mutex
 	subs    map[chan Change]struct{}
+	// epoch changes with every start of the node: a client that sees another
+	// one has missed whatever happened in between and refetches everything.
+	epoch string
 }
 
 func NewEvents(rt *runtime.Manager) *Events {
-	return &Events{runtime: rt, subs: map[chan Change]struct{}{}}
+	return &Events{runtime: rt, subs: map[chan Change]struct{}{}, epoch: strconv.FormatInt(time.Now().UnixNano(), 36)}
 }
 
 // Changed is called after every committed write, local or replicated.
@@ -55,12 +60,13 @@ func (e *Events) Notify(c Change) {
 	}
 }
 
-// serve streams "change" events for data and "thread" events for thread
-// updates. ?thread=<id> limits thread updates to one thread.
+// serve streams "change" events for data and "thread" events with the
+// activity of the threads: hints to refetch, not the record of a thread (that
+// is /api/threads/{id}/stream). It starts with a "hello" carrying the epoch.
 func (e *Events) serve(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeError(w, http.StatusInternalServerError, "internal", "streaming unsupported")
+		writeErr(w, r, apperr.New(apperr.Internal, "streaming unsupported"))
 		return
 	}
 	changes := make(chan Change, 256)
@@ -72,14 +78,14 @@ func (e *Events) serve(w http.ResponseWriter, r *http.Request) {
 		delete(e.subs, changes)
 		e.mu.Unlock()
 	}()
-	updates, stop := e.runtime.Subscribe(r.URL.Query().Get("thread"))
+	updates, stop := e.runtime.Subscribe("")
 	defer stop()
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, ": ready\n\n")
+	fmt.Fprintf(w, ": ready\n\nevent: hello\ndata: {\"epoch\":%q}\n\n", e.epoch)
 	flusher.Flush()
 	ping := time.NewTicker(25 * time.Second)
 	defer ping.Stop()

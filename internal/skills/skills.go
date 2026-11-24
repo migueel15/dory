@@ -7,9 +7,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"log"
 	"os"
 	"path/filepath"
@@ -21,36 +21,20 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/nodestate"
 )
 
 var namePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
-// Dirs maps each harness to the folder where it reads skills.
-func Dirs(home string, config func(driver string) string) map[string]string {
-	dir := func(driver, def string) string {
-		if config != nil {
-			if d := config(driver); d != "" {
-				return d
-			}
-		}
-		return filepath.Join(home, def)
-	}
-	return map[string]string{
-		"claude":      filepath.Join(dir("claude", ".claude"), "skills"),
-		"codex":       filepath.Join(dir("codex", ".codex"), "skills"),
-		"opencode":    filepath.Join(home, ".config", "opencode", "skills"),
-		"antigravity": antigravitySkillDir(home),
-	}
-}
-
 // Save creates or updates a skill, bumping its version when its content changes.
 func Save(ctx context.Context, store *data.Store, s data.Skill) (data.Skill, error) {
 	if !namePattern.MatchString(s.Name) {
-		return s, fmt.Errorf("%w: the name must be kebab-case", data.ErrInvalid)
+		return s, data.ErrInvalid.Msgf("the name must be kebab-case")
 	}
 	for path := range s.Files {
 		if path == "SKILL.md" || filepath.IsAbs(path) || strings.Contains(filepath.Clean(path), "..") {
-			return s, fmt.Errorf("%w: bad file path %q", data.ErrInvalid, path)
+			return s, data.ErrInvalid.Msgf("bad file path %q", path)
 		}
 	}
 	shipped, err := System()
@@ -59,24 +43,31 @@ func Save(ctx context.Context, store *data.Store, s data.Skill) (data.Skill, err
 	}
 	for _, sys := range shipped {
 		if sys.Name == s.Name && s.ID != sys.ID {
-			return s, fmt.Errorf("%w: %s es una skill del sistema; haz un fork con otro nombre", data.ErrInvalid, s.Name)
+			return s, data.ErrInvalid.Msgf("%s is a system skill; fork it under another name", s.Name).With("reason", "system_skill_name").With("name", s.Name)
 		}
 	}
 	s.Version, s.Source, s.SystemVersion = 1, "", 0
-	if s.ID != "" {
-		if old, err := store.Skills().Get(ctx, s.ID); err == nil {
-			if old.Source == "system" {
-				return old, fmt.Errorf("%w: las skills del sistema no se pueden editar; haz un fork", data.ErrInvalid)
-			}
-			// Activation and the fork link change only through SetEnabled and Fork.
-			s.ForkedFrom, s.DisabledAt = old.ForkedFrom, old.DisabledAt
-			s.Version = old.Version
-			if old.BodyMD != s.BodyMD || old.Description != s.Description || !maps(old.Files, s.Files) || old.Name != s.Name {
-				s.Version++
-			}
-		}
+	if s.ID == "" {
+		return store.Skills().Create(ctx, s)
 	}
-	return store.Skills().Put(ctx, s)
+	old, err := store.Skills().Get(ctx, s.ID)
+	if err != nil {
+		return old, err
+	}
+	if old.Source == "system" {
+		return old, data.ErrInvalid.Msgf("system skills cannot be edited; fork it").With("reason", "system_skill_readonly")
+	}
+	s.Version = old.Version
+	if old.BodyMD != s.BodyMD || old.Description != s.Description || !maps(old.Files, s.Files) || old.Name != s.Name {
+		s.Version++
+	}
+	if s.Files == nil {
+		s.Files = map[string]string{}
+	}
+	return store.Skills().PatchIf(ctx, s.ID, old.UpdatedAt, data.Fields{
+		"name": s.Name, "description": s.Description, "body_md": s.BodyMD,
+		"files": s.Files, "targets": s.Targets, "version": s.Version,
+	})
 }
 
 func maps(a, b map[string]string) bool {
@@ -98,14 +89,14 @@ func render(s data.Skill) string {
 
 // Reconciler keeps this node's harness folders in line with the catalog.
 type Reconciler struct {
-	Store *data.Store
-	Node  string
-	Home  string
-	// Config resolves the configuration directory of a harness through its
-	// default account; nil uses ~/.claude and ~/.codex.
-	Config func(driver string) string
-	// Manifest is the file where the reconciler remembers what it wrote.
-	Manifest string
+	Store     *data.Store
+	Node      string
+	Home      string
+	Locations func() map[string]harness.SkillLocation
+	// State remembers the files written by this reconciler.
+	State *nodestate.Store
+	// DataDir holds managed Antigravity skills and backups.
+	DataDir string
 	// Installed reports which harnesses this machine has.
 	Installed func(ctx context.Context) []string
 
@@ -118,18 +109,19 @@ type Reconciler struct {
 // manifest maps each file the reconciler wrote to the hash it wrote.
 type manifest map[string]string
 
-func (r *Reconciler) load() manifest {
-	m := manifest{}
-	raw, err := os.ReadFile(r.Manifest)
-	if err == nil {
-		json.Unmarshal(raw, &m)
+func (r *Reconciler) load(ctx context.Context) (manifest, error) {
+	var m manifest
+	if _, err := r.State.Get(ctx, nodestate.KeySkillsManifest, &m); err != nil {
+		return nil, err
 	}
-	return m
+	if m == nil {
+		m = make(manifest)
+	}
+	return m, nil
 }
 
-func (r *Reconciler) save(m manifest) error {
-	raw, _ := json.MarshalIndent(m, "", "  ")
-	return os.WriteFile(r.Manifest, raw, 0o600)
+func (r *Reconciler) save(ctx context.Context, m manifest) error {
+	return r.State.Put(ctx, nodestate.KeySkillsManifest, m)
 }
 
 func hash(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
@@ -183,13 +175,16 @@ func (r *Reconciler) reconcile(ctx context.Context) error {
 	if err := SeedSystem(ctx, r.Store); err != nil {
 		log.Printf("skills: system skills: %v", err)
 	}
-	all, err := r.Store.Skills().List(ctx, data.Filter{Limit: 1000, IncludeArchived: true})
+	all, err := r.Store.Skills().ListAll(ctx, data.Filter{IncludeArchived: true})
 	if err != nil {
 		return err
 	}
 	installed := r.Installed(ctx)
-	dirs := Dirs(r.Home, r.Config)
-	m := r.load()
+	dirs := r.locations()
+	m, err := r.load(ctx)
+	if err != nil {
+		return err
+	}
 	want := map[string]bool{}
 	states := map[string]data.SkillState{}
 	for _, s := range all {
@@ -205,9 +200,13 @@ func (r *Reconciler) reconcile(ctx context.Context) error {
 			if len(s.Targets.Harnesses) > 0 && !slices.Contains(s.Targets.Harnesses, harness) {
 				continue
 			}
-			dir := filepath.Join(dirs[harness], s.Name)
-			if harness == "antigravity" {
-				dir, err = r.antigravityTarget(dir, s.Name, m, want)
+			target, ok := dirs[harness]
+			if !ok {
+				continue
+			}
+			dir := filepath.Join(target.Dir, s.Name)
+			if target.ManagedSubdir != "" {
+				dir, err = r.linkTarget(dir, filepath.Join(r.DataDir, target.ManagedSubdir, s.Name), m, want)
 				if err != nil {
 					problems = append(problems, err.Error())
 					if !strings.HasPrefix(err.Error(), "conflicto:") {
@@ -264,7 +263,7 @@ func (r *Reconciler) reconcile(ctx context.Context) error {
 			if id, ok := byName[r.ownerName(path)]; ok {
 				st := states[id]
 				st.SkillID, st.NodeID, st.Status = id, r.Node, "conflict"
-				st.Message = strings.TrimSpace(st.Message + "\nconflicto: " + path + " se editó a mano y Dory no la quita")
+				st.Message = strings.TrimSpace(st.Message + "\n" + i18n.Textf("skills.conflict_edited_left", path))
 				states[id] = st
 				continue
 			}
@@ -277,7 +276,7 @@ func (r *Reconciler) reconcile(ctx context.Context) error {
 			delete(m, path)
 		}
 	}
-	if err = r.save(m); err != nil {
+	if err = r.save(ctx, m); err != nil {
 		return err
 	}
 	return r.publish(ctx, states)
@@ -285,9 +284,12 @@ func (r *Reconciler) reconcile(ctx context.Context) error {
 
 // roots are the folders that hold one folder per skill on this node.
 func (r *Reconciler) roots() []string {
-	out := []string{filepath.Join(filepath.Dir(r.Manifest), "antigravity-skills")}
-	for _, dir := range Dirs(r.Home, r.Config) {
-		out = append(out, dir)
+	var out []string
+	for _, loc := range r.locations() {
+		out = append(out, loc.Dir)
+		if loc.ManagedSubdir != "" {
+			out = append(out, filepath.Join(r.DataDir, loc.ManagedSubdir))
+		}
 	}
 	return out
 }
@@ -312,13 +314,13 @@ func (r *Reconciler) write(path string, content []byte, m manifest) string {
 			return ""
 		}
 		if prev, ours := m[path]; !ours || prev != hash(current) {
-			return "conflicto: " + path + " no lo escribió Dory o se editó a mano"
+			return i18n.Textf("skills.conflict_not_ours", path)
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "error: " + err.Error()
 	}
 	if info, err := os.Lstat(filepath.Dir(path)); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return "conflicto: " + filepath.Dir(path) + " es un enlace simbólico ajeno"
+		return i18n.Textf("skills.conflict_foreign_symlink", filepath.Dir(path))
 	}
 	if err = os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "error: " + err.Error()
@@ -341,7 +343,7 @@ func removeEmpty(dir, stop string) {
 
 // publish writes this node's states, only where they changed.
 func (r *Reconciler) publish(ctx context.Context, states map[string]data.SkillState) error {
-	current, err := r.Store.SkillStates().List(ctx, data.Filter{Fields: map[string]any{"node_id": r.Node}, Limit: 1000, IncludeArchived: true})
+	current, err := r.Store.SkillStates().ListAll(ctx, data.Filter{Fields: map[string]any{"node_id": r.Node}, IncludeArchived: true})
 	if err != nil {
 		return err
 	}
@@ -353,9 +355,16 @@ func (r *Reconciler) publish(ctx context.Context, states map[string]data.SkillSt
 		if old, ok := have[id]; ok && old.Status == st.Status && old.Version == st.Version && old.Message == st.Message {
 			continue
 		}
-		if _, err = r.Store.SkillStates().Put(ctx, st); err != nil {
+		if _, err = r.Store.SkillStates().Upsert(ctx, st); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (r *Reconciler) locations() map[string]harness.SkillLocation {
+	if r.Locations == nil {
+		return nil
+	}
+	return r.Locations()
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
 	"io"
 	"math/rand/v2"
 	"net"
@@ -72,7 +73,7 @@ func ReadPacket(r io.Reader) (Packet, error) {
 	v := binary.BigEndian.Uint64(h[:8])
 	size := binary.BigEndian.Uint32(h[8:])
 	if size > 16<<20 {
-		return Packet{}, errors.New("paquete de vídeo demasiado grande")
+		return Packet{}, errors.New(i18n.Text("devices.paquete_video_demasiado_grande"))
 	}
 	p := Packet{Config: v>>63 == 1, Key: v>>62&1 == 1, PTS: int64(v & (1<<62 - 1)), Data: make([]byte, size)}
 	_, err := io.ReadFull(r, p.Data)
@@ -143,7 +144,7 @@ func startScrcpy(ctx context.Context, a ADB, serial string, o Options) (*scrcpyC
 	var port int
 	fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &port)
 	if port == 0 {
-		return nil, fmt.Errorf("adb forward no devolvió un puerto: %q", out)
+		return nil, fmt.Errorf(i18n.Text("devices.adb_forward_no_devolvio"), out)
 	}
 	c := &scrcpyConn{serial: serial, adb: a, port: port}
 	args := []string{"-s", serial, "shell", "CLASSPATH=" + remoteJar, "app_process", "/", "com.genymobile.scrcpy.Server", ScrcpyVersion,
@@ -173,7 +174,7 @@ func startScrcpy(ctx context.Context, a ADB, serial string, o Options) (*scrcpyC
 		}
 		if time.Now().After(deadline) || ctx.Err() != nil {
 			c.close()
-			return nil, errors.New("scrcpy no respondió en el dispositivo")
+			return nil, errors.New(i18n.Text("devices.scrcpy_no_respondio_dispositivo"))
 		}
 		time.Sleep(150 * time.Millisecond)
 	}

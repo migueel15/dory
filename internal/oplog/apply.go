@@ -4,160 +4,41 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha1"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"slices"
+	"log"
 	"sort"
 	"strings"
-	"time"
+	stdsync "sync"
 
 	"github.com/migueel15/dory/internal/hlc"
+	"github.com/migueel15/dory/internal/schema"
 )
 
-// table describes a replicated table. Key columns identify the row; for a
-// single id column the op entity id is the row id, for composite keys the
-// entity id is the key values joined by "/".
-type table struct {
-	name    string
-	key     []string
-	columns []string
-	// unique is a column that must not repeat. When two nodes pick the same
-	// value offline, the row with the smallest id keeps it and the others get
-	// a suffix, the same on every node.
-	unique string
-	// merge is a text column where concurrent edits keep every version: the
-	// winner first, then each text it did not see, so no text is lost.
-	merge string
-}
-
-// EnsureThreadTask creates a task and links it to a thread in the same local
-// transaction. Repeated calls reuse the link, including after a lost response.
-func (l *Log) EnsureThreadTask(ctx context.Context, thread, title, description string) (string, error) {
-	tx, err := l.begin(ctx)
-	if err != nil {
-		return "", err
-	}
-	defer tx.Rollback()
-	var existing, project sql.NullString
-	if err := tx.QueryRowContext(ctx, `SELECT task_id, project_id FROM threads WHERE id = ? AND archived_at IS NULL`, thread).Scan(&existing, &project); err != nil {
-		return "", err
-	}
-	if existing.Valid && existing.String != "" {
-		return existing.String, nil
-	}
-	if strings.TrimSpace(title) == "" {
-		return "", fmt.Errorf("title is required")
-	}
-	sum := sha256.Sum256([]byte("dory:plan-task:" + thread))
-	sum[6] = (sum[6] & 0x0f) | 0x50
-	sum[8] = (sum[8] & 0x3f) | 0x80
-	id := fmt.Sprintf("%x-%x-%x-%x-%x", sum[:4], sum[4:6], sum[6:8], sum[8:10], sum[10:16])
-	var exists int
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM tasks WHERE id = ?`, id).Scan(&exists); err != nil {
-		return "", err
-	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if exists == 0 {
-		fields := map[string]any{"title": title, "description": description, "stage": "inbox", "created_at": now, "updated_at": now}
-		if project.Valid {
-			fields["project_id"] = project.String
-		}
-		if _, err = l.Append(ctx, tx, "task", id, fields); err != nil {
-			return "", err
-		}
-		if err = materialize(ctx, tx, "task", id); err != nil {
-			return "", err
-		}
-	} else {
-		var archived sql.NullString
-		if err = tx.QueryRowContext(ctx, `SELECT archived_at FROM tasks WHERE id = ?`, id).Scan(&archived); err != nil {
-			return "", err
-		}
-		if archived.Valid {
-			return "", fmt.Errorf("the task previously linked to this thread is archived")
-		}
-	}
-	if _, err = l.Append(ctx, tx, "thread", thread, map[string]any{"task_id": id, "updated_at": now}); err != nil {
-		return "", err
-	}
-	if err = materialize(ctx, tx, "thread", thread); err != nil {
-		return "", err
-	}
-	if err = tx.Commit(); err != nil {
-		return "", err
-	}
-	if l.OnChange != nil {
-		if exists == 0 {
-			l.OnChange("task", id)
-		}
-		l.OnChange("thread", thread)
-	}
-	return id, nil
-}
-
-var tables = map[string]table{
-	"project":             {"projects", []string{"id"}, []string{"slug", "name", "description", "created_at", "updated_at", "archived_at"}, "slug", ""},
-	"repository":          {"repositories", []string{"id"}, []string{"project_id", "remote_url", "default_branch", "created_at", "updated_at", "archived_at"}, "", ""},
-	"repository_location": {"repository_locations", []string{"repository_id", "node_id"}, []string{"path", "created_at", "updated_at", "archived_at"}, "", ""},
-	"task":                {"tasks", []string{"id"}, []string{"project_id", "repository_id", "title", "description", "stage", "branch", "issue_number", "pr_number", "position", "created_at", "updated_at", "archived_at"}, "", ""},
-	"task_dependency":     {"task_dependencies", []string{"task_id", "depends_on_id"}, []string{"created_at", "archived_at"}, "", ""},
-	"plan":                {"plans", []string{"id"}, []string{"task_id", "version", "sections", "open_questions", "author", "accepted_at", "body_md", "revision", "created_at", "updated_at", "archived_at"}, "", ""},
-	"memory":              {"memories", []string{"id"}, []string{"scope", "scope_id", "kind", "title", "content", "labels", "created_at", "updated_at", "archived_at"}, "", "content"},
-	"skill":               {"skills", []string{"id"}, []string{"name", "description", "body_md", "files", "version", "targets", "source", "system_version", "forked_from", "disabled_at", "created_at", "updated_at", "archived_at"}, "name", ""},
-	"skill_state":         {"skill_states", []string{"skill_id", "node_id"}, []string{"status", "version", "message", "created_at", "updated_at", "archived_at"}, "", ""},
-	"notice":              {"notices", []string{"id"}, []string{"kind", "title", "body", "url", "read_at", "created_at", "updated_at", "archived_at"}, "", ""},
-	"setting":             {"settings", []string{"id"}, []string{"value", "created_at", "updated_at", "archived_at"}, "", ""},
-	"thread":              {"threads", []string{"id"}, []string{"node_id", "project_id", "task_id", "task_linked_at", "parent_id", "origin_id", "provider", "model", "effort", "runtime_mode", "title", "branch", "status", "pinned_at", "read_at", "last_activity_at", "snoozed_until", "settled_at", "created_at", "updated_at", "archived_at"}, "", ""},
-}
-
-// Write records a local change and applies it to its table in one
-// transaction. Unknown entities or columns are refused.
-func (l *Log) Write(ctx context.Context, entity, id string, fields map[string]any) (Op, error) {
-	t, ok := tables[entity]
-	if !ok {
-		return Op{}, fmt.Errorf("oplog: unknown entity %q", entity)
-	}
-	for name := range fields {
-		if !slices.Contains(t.columns, name) {
-			return Op{}, fmt.Errorf("oplog: %s has no column %q", entity, name)
-		}
-	}
-	if remote, ok := fields["remote_url"].(string); ok && entity == "repository" && id != RepositoryID(remote) {
-		return Op{}, fmt.Errorf("oplog: repository id must be RepositoryID(%q)", remote)
-	}
-	tx, err := l.begin(ctx)
-	if err != nil {
-		return Op{}, err
-	}
-	defer tx.Rollback()
-	op, err := l.Append(ctx, tx, entity, id, fields)
-	if err == nil {
-		err = materialize(ctx, tx, entity, id)
-	}
-	if err == nil {
-		err = tx.Commit()
-	}
-	if err == nil && l.OnChange != nil {
-		l.OnChange(entity, id)
-	}
-	return op, err
-}
+var reportedUnknownEntities stdsync.Map
 
 // Apply stores operations received from another node and updates the rows
-// they touch. Operations already known are skipped, so applying twice is safe.
+// they touch. Operations for future entities are kept for replication and
+// migration without materializing a row. Applying twice is safe.
 func (l *Log) Apply(ctx context.Context, ops []Op) error {
 	tx, err := l.begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	touched := map[[2]string]bool{}
-	var latest hlc.Timestamp
+	horizon, err := readHorizon(ctx, tx)
+	if err != nil {
+		return err
+	}
+	return l.apply(ctx, tx, ops, horizon, map[[2]string]bool{}, hlc.Timestamp{})
+}
+
+func (l *Log) apply(ctx context.Context, tx *sql.Tx, ops []Op, horizon Vector, touched map[[2]string]bool, latest hlc.Timestamp) error {
 	for _, op := range ops {
-		if _, ok := tables[op.Entity]; !ok {
-			return fmt.Errorf("oplog: unknown entity %q", op.Entity)
+		if op.Seq <= horizon[op.Node] {
+			continue
 		}
 		ts, err := hlc.Parse(op.HLC)
 		if err != nil {
@@ -177,21 +58,29 @@ func (l *Log) Apply(ctx context.Context, ops []Op) error {
 		}
 	}
 	for key := range touched {
-		if err = materialize(ctx, tx, key[0], key[1]); err != nil {
+		if _, known := schema.Lookup(key[0]); !known {
+			continue
+		}
+		if err := materialize(ctx, tx, key[0], key[1]); err != nil {
 			return err
 		}
 	}
 	if len(touched) > 0 {
 		next := l.clock.Observe(latest)
-		if _, err = tx.ExecContext(ctx, `UPDATE node_state SET hlc = ? WHERE id = 1`, next.String()); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE node_state SET hlc = ? WHERE id = 1`, next.String()); err != nil {
 			return err
 		}
 	}
-	if err = tx.Commit(); err != nil {
+	if err := tx.Commit(); err != nil {
 		return err
 	}
-	if l.OnChange != nil {
-		for key := range touched {
+	for key := range touched {
+		if _, known := schema.Lookup(key[0]); !known {
+			if _, reported := reportedUnknownEntities.LoadOrStore(key[0], struct{}{}); !reported {
+				log.Printf("oplog: preserved operations for unknown entity %q", key[0])
+			}
+		}
+		if l.OnChange != nil {
 			l.OnChange(key[0], key[1])
 		}
 	}
@@ -212,86 +101,92 @@ func (l *Log) begin(ctx context.Context) (*sql.Tx, error) {
 	return tx, nil
 }
 
-// materialize rebuilds a row from all its operations: each column takes the
-// value of the latest operation, by clock, that set it.
+// materialize rebuilds a row from its snapshot and remaining operations.
+// Each column takes the value of the latest operation that set it.
 func materialize(ctx context.Context, tx *sql.Tx, entity, id string) error {
-	t := tables[entity]
-	rows, err := tx.QueryContext(ctx, `SELECT fields, hlc, base FROM ops WHERE entity = ? AND entity_id = ? ORDER BY hlc`, entity, id)
+	t, _ := schema.Lookup(entity)
+	s, err := readSnapshot(ctx, tx, entity, id)
 	if err != nil {
 		return err
 	}
-	values := map[string]any{}
-	var versions []version
-	for rows.Next() {
-		var raw string
-		var v version
-		if err = rows.Scan(&raw, &v.hlc, &v.base); err != nil {
-			rows.Close()
-			return err
-		}
-		fields := map[string]any{}
-		dec := json.NewDecoder(strings.NewReader(raw))
-		dec.UseNumber()
-		if err = dec.Decode(&fields); err != nil {
-			rows.Close()
-			return err
-		}
-		for name, v := range fields {
-			values[name] = v
-		}
-		if text, ok := fields[t.merge].(string); ok && t.merge != "" {
-			v.text = text
-			versions = append(versions, v)
-		}
-	}
-	rows.Close()
-	if err = rows.Err(); err != nil {
+	rows, err := tx.QueryContext(ctx, `SELECT node_id, seq, hlc, entity, entity_id, fields, base FROM ops
+		WHERE entity = ? AND entity_id = ?`, entity, id)
+	if err != nil {
 		return err
 	}
-	if len(versions) > 1 {
-		values[t.merge] = merged(versions)
+	ops, err := scanOps(rows)
+	if err != nil {
+		return err
+	}
+	for _, op := range ops {
+		if err := s.fold(op, t.Merge); err != nil {
+			return err
+		}
+	}
+	values, err := s.values(ctx, tx, t.Merge)
+	if err != nil {
+		return err
 	}
 
 	keys := strings.Split(id, "/")
-	if len(keys) != len(t.key) {
-		return fmt.Errorf("oplog: %s id %q needs %d parts", entity, id, len(t.key))
+	if len(keys) != len(t.Key) {
+		return fmt.Errorf("oplog: %s id %q needs %d parts", entity, id, len(t.Key))
 	}
-	cols := append([]string{}, t.key...)
-	args := make([]any, 0, len(t.key)+len(values))
+	cols := append([]string{}, t.Key...)
+	args := make([]any, 0, len(t.Key)+len(values))
 	for _, k := range keys {
 		args = append(args, k)
 	}
 	set := []string{}
 	names := make([]string, 0, len(values))
 	for name := range values {
-		if slices.Contains(t.columns, name) {
+		if _, ok := t.Column(name); ok {
 			names = append(names, name)
 		}
 	}
 	sort.Strings(names)
+	var previous string
+	var unique any
 	for _, name := range names {
 		v, err := column(values[name])
 		if err != nil {
 			return err
 		}
-		if name == t.unique {
+		if name == t.Unique {
+			err := tx.QueryRowContext(ctx, fmt.Sprintf(`SELECT %s FROM %s WHERE id = ?`, t.Unique, t.Table), id).Scan(&previous)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
 			if v, err = claim(ctx, tx, entity, id, v); err != nil {
 				return err
 			}
+			unique = v
 		}
 		cols = append(cols, name)
 		args = append(args, v)
 		set = append(set, name+" = excluded."+name)
 	}
 	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) ON CONFLICT (%s) DO ",
-		t.name, strings.Join(cols, ", "), strings.TrimSuffix(strings.Repeat("?, ", len(cols)), ", "), strings.Join(t.key, ", "))
+		t.Table, strings.Join(cols, ", "), strings.TrimSuffix(strings.Repeat("?, ", len(cols)), ", "), strings.Join(t.Key, ", "))
 	if len(set) == 0 {
 		query += "NOTHING"
 	} else {
 		query += "UPDATE SET " + strings.Join(set, ", ")
 	}
-	_, err = tx.ExecContext(ctx, query, args...)
-	return err
+	if _, err = tx.ExecContext(ctx, query, args...); err != nil {
+		return err
+	}
+	if previous != "" && previous != unique {
+		owner, err := uniqueOwner(ctx, tx, entity, t.Unique, previous)
+		if err != nil {
+			return err
+		}
+		if owner.Valid {
+			_, err = tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET %s = ? WHERE id = ?`, t.Table, t.Unique), previous, owner.String)
+			return err
+		}
+	}
+	return nil
 }
 
 // column converts a decoded JSON value to what SQLite stores: objects and
@@ -320,21 +215,15 @@ func column(v any) (any, error) {
 // whose latest wish is value keeps it; the rest get value plus a suffix of
 // their own id. If this row owns value, rows already holding it are renamed.
 func claim(ctx context.Context, tx *sql.Tx, entity, id string, value any) (any, error) {
-	t := tables[entity]
-	path := "$." + t.unique
-	var owner string
-	err := tx.QueryRowContext(ctx, `SELECT MIN(o.entity_id) FROM ops o
-		WHERE o.entity = ? AND json_extract(o.fields, ?) = ?
-		AND NOT EXISTS (SELECT 1 FROM ops p WHERE p.entity = o.entity AND p.entity_id = o.entity_id
-			AND p.hlc > o.hlc AND json_extract(p.fields, ?) IS NOT NULL)`,
-		entity, path, value, path).Scan(&owner)
+	t, _ := schema.Lookup(entity)
+	owner, err := uniqueOwner(ctx, tx, entity, t.Unique, value)
 	if err != nil {
 		return nil, err
 	}
-	if owner != id {
+	if !owner.Valid || owner.String != id {
 		return suffixed(value, id), nil
 	}
-	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT id FROM %s WHERE %s = ? AND id <> ?`, t.name, t.unique), value, id)
+	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT id FROM %s WHERE %s = ? AND id <> ?`, t.Table, t.Unique), value, id)
 	if err != nil {
 		return nil, err
 	}
@@ -348,12 +237,37 @@ func claim(ctx context.Context, tx *sql.Tx, entity, id string, value any) (any, 
 		holders = append(holders, other)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	for _, other := range holders {
-		if _, err = tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET %s = ? WHERE id = ?`, t.name, t.unique), suffixed(value, other), other); err != nil {
+		if _, err = tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET %s = ? WHERE id = ?`, t.Table, t.Unique), suffixed(value, other), other); err != nil {
 			return nil, err
 		}
 	}
 	return value, nil
+}
+
+// uniqueOwner arbitrates over the latest wish of each row, including
+// wishes whose original operations have been compacted.
+func uniqueOwner(ctx context.Context, tx *sql.Tx, entity, name string, value any) (sql.NullString, error) {
+	var owner sql.NullString
+	err := tx.QueryRowContext(ctx, `WITH wishes AS (
+		SELECT entity_id, hlc, node_id, seq, json_extract(fields, :field) AS value
+		FROM ops WHERE entity = :entity AND json_type(fields, :field) IS NOT NULL
+		UNION ALL
+		SELECT entity_id, json_extract(columns, :hlc), json_extract(columns, :node),
+			json_extract(columns, :seq), json_extract(columns, :value)
+		FROM row_snapshots WHERE entity = :entity AND json_type(columns, :value) IS NOT NULL
+	), ranked AS (
+		SELECT entity_id, value, ROW_NUMBER() OVER (PARTITION BY entity_id
+			ORDER BY hlc DESC, node_id DESC, seq DESC) AS rank FROM wishes
+	)
+	SELECT MIN(entity_id) FROM ranked WHERE rank = 1 AND value = :wanted`,
+		sql.Named("entity", entity), sql.Named("field", "$."+name), sql.Named("hlc", "$."+name+".hlc"),
+		sql.Named("node", "$."+name+".node"), sql.Named("seq", "$."+name+".seq"),
+		sql.Named("value", "$."+name+".v"), sql.Named("wanted", value)).Scan(&owner)
+	return owner, err
 }
 
 func suffixed(value any, id string) string {
@@ -396,10 +310,4 @@ func merged(versions []version) string {
 		}
 	}
 	return out
-}
-
-// Columns returns the key and the replicated columns of an entity.
-func Columns(entity string) (key, columns []string, ok bool) {
-	t, ok := tables[entity]
-	return t.key, t.columns, ok
 }

@@ -1,50 +1,16 @@
 package runtime
 
 import (
-	"bufio"
-	"encoding/json"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"sort"
-	"strings"
-	"sync"
 	"time"
+
+	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/kit"
 )
 
-// usageEvent is the token usage of one model response read from the local
-// logs of a harness.
-type usageEvent struct {
-	Time      time.Time
-	Provider  string
-	Session   string
-	Model     string
-	Key       string // dedup key; empty when the format needs none
-	Tokens    UsageTokens
-	Reasoning int64
-}
+type usageEvent = harness.UsageEvent
+type UsageTokens = harness.UsageTokens
 
-// UsageTokens splits the tokens of a response by how they are billed. Input
-// excludes the cached part.
-type UsageTokens struct {
-	Input      int64 `json:"input"`
-	Output     int64 `json:"output"`
-	CacheWrite int64 `json:"cache_write"`
-	CacheRead  int64 `json:"cache_read"`
-	// CacheWrite1h is the part of CacheWrite kept for an hour, which costs
-	// more than the 5 minute writes (Claude Code writes its cache this way).
-	CacheWrite1h int64 `json:"cache_write_1h"`
-}
-
-func (t *UsageTokens) add(o UsageTokens) {
-	t.Input += o.Input
-	t.Output += o.Output
-	t.CacheWrite += o.CacheWrite
-	t.CacheRead += o.CacheRead
-	t.CacheWrite1h += o.CacheWrite1h
-}
-
-// UsageCost is the API list price of some tokens, by type, in dollars.
 type UsageCost struct {
 	Input      float64 `json:"input"`
 	Output     float64 `json:"output"`
@@ -76,12 +42,15 @@ type UsageReport struct {
 	Sessions map[string]int `json:"sessions"`
 }
 
-// UsageHistory reads the Claude Code and Codex logs under home and sums the
-// usage since from, by hour or by day in loc.
-func UsageHistory(p Paths, from time.Time, hourly bool, loc *time.Location) UsageReport {
-	events := usageEvents(filepath.Join(p.Dir("claude"), "projects"), "claude", readClaudeUsage)
-	events = append(events, usageEvents(filepath.Join(p.Dir("codex"), "sessions"), "codex", readCodexUsage)...)
-	events = append(events, antigravityUsageEvents(p.Home, from)...)
+// UsageHistory aggregates local adapter histories.
+func (m *Manager) UsageHistory(p Paths, from time.Time, hourly bool, loc *time.Location) UsageReport {
+	var events []usageEvent
+	for _, d := range m.registry.All() {
+		info := d.Info()
+		if d.History != nil && info.ID == info.Driver {
+			events = append(events, d.History.UsageHistory(p, from)...)
+		}
+	}
 	return aggregateUsage(events, from, hourly, loc)
 }
 
@@ -116,7 +85,7 @@ func aggregateUsage(events []usageEvent, from time.Time, hourly bool, loc *time.
 			r = &UsageRow{Bucket: b, Provider: e.Provider, Model: e.Model, Priced: ok}
 			rows[k], rowSessions[k] = r, map[string]bool{}
 		}
-		r.Tokens.add(e.Tokens)
+		kit.AddUsageTokens(&r.Tokens, e.Tokens)
 		rowSessions[k][e.Session] = true
 		if sessions[e.Provider] == nil {
 			sessions[e.Provider] = map[string]bool{}
@@ -154,150 +123,3 @@ func aggregateUsage(events []usageEvent, from time.Time, hourly bool, loc *time.
 }
 
 // usageFile caches the events of one log while its size and mtime hold.
-type usageFile struct {
-	mod    time.Time
-	size   int64
-	events []usageEvent
-}
-
-var usageCache = struct {
-	sync.Mutex
-	files map[string]usageFile
-}{files: map[string]usageFile{}}
-
-// usageEvents reads every JSONL under root, reusing the events of the files
-// that did not change since the last read.
-func usageEvents(root, provider string, read func(path string) []usageEvent) []usageEvent {
-	var out []usageEvent
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".jsonl") {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		usageCache.Lock()
-		f, ok := usageCache.files[path]
-		usageCache.Unlock()
-		if !ok || !f.mod.Equal(info.ModTime()) || f.size != info.Size() {
-			f = usageFile{mod: info.ModTime(), size: info.Size(), events: read(path)}
-			usageCache.Lock()
-			usageCache.files[path] = f
-			usageCache.Unlock()
-		}
-		out = append(out, f.events...)
-		return nil
-	})
-	return out
-}
-
-// eachLine calls fn with every line of a file; long lines are kept whole.
-func eachLine(path string, fn func(line []byte)) {
-	file, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer file.Close()
-	sc := bufio.NewScanner(file)
-	sc.Buffer(make([]byte, 0, 1<<20), 64<<20)
-	for sc.Scan() {
-		fn(sc.Bytes())
-	}
-}
-
-// readClaudeUsage reads the assistant messages of a Claude Code session. One
-// response is written once per content block with the same usage, and resumed
-// sessions copy earlier ones, so each carries a message.id:requestId key.
-func readClaudeUsage(path string) []usageEvent {
-	var out []usageEvent
-	session := strings.TrimSuffix(filepath.Base(path), ".jsonl")
-	eachLine(path, func(line []byte) {
-		var l struct {
-			Type      string    `json:"type"`
-			Timestamp time.Time `json:"timestamp"`
-			SessionID string    `json:"sessionId"`
-			RequestID string    `json:"requestId"`
-			Message   struct {
-				ID    string `json:"id"`
-				Model string `json:"model"`
-				Usage *struct {
-					Input      int64 `json:"input_tokens"`
-					Output     int64 `json:"output_tokens"`
-					CacheWrite int64 `json:"cache_creation_input_tokens"`
-					CacheRead  int64 `json:"cache_read_input_tokens"`
-					Creation   struct {
-						Hour int64 `json:"ephemeral_1h_input_tokens"`
-					} `json:"cache_creation"`
-				} `json:"usage"`
-			} `json:"message"`
-		}
-		if json.Unmarshal(line, &l) != nil || l.Type != "assistant" || l.Message.Usage == nil || l.Message.Model == "" || l.Message.Model == "<synthetic>" {
-			return
-		}
-		s := l.SessionID
-		if s == "" {
-			s = session
-		}
-		u := l.Message.Usage
-		key := ""
-		if l.Message.ID != "" {
-			key = "claude:" + l.Message.ID + ":" + l.RequestID
-		}
-		out = append(out, usageEvent{Time: l.Timestamp, Provider: "claude", Session: s, Model: l.Message.Model, Key: key,
-			Tokens: UsageTokens{Input: u.Input, Output: u.Output, CacheWrite: u.CacheWrite, CacheRead: u.CacheRead, CacheWrite1h: min(u.Creation.Hour, u.CacheWrite)}})
-	})
-	return out
-}
-
-// readCodexUsage reads the token_count events of a Codex session. Each one
-// carries the usage of the last response; Codex repeats an event when nothing
-// changed, which shows as the same running total.
-func readCodexUsage(path string) []usageEvent {
-	var out []usageEvent
-	session := strings.TrimSuffix(filepath.Base(path), ".jsonl")
-	model := ""
-	var last json.RawMessage
-	eachLine(path, func(line []byte) {
-		var l struct {
-			Timestamp time.Time `json:"timestamp"`
-			Type      string    `json:"type"`
-			Payload   struct {
-				Type  string `json:"type"`
-				ID    string `json:"id"`
-				Model string `json:"model"`
-				Info  *struct {
-					Total json.RawMessage `json:"total_token_usage"`
-					Last  struct {
-						Input      int64 `json:"input_tokens"`
-						Cached     int64 `json:"cached_input_tokens"`
-						CacheWrite int64 `json:"cache_write_input_tokens"`
-						Output     int64 `json:"output_tokens"`
-					} `json:"last_token_usage"`
-				} `json:"info"`
-			} `json:"payload"`
-		}
-		if json.Unmarshal(line, &l) != nil {
-			return
-		}
-		switch {
-		case l.Type == "session_meta" && l.Payload.ID != "":
-			session = l.Payload.ID
-		case l.Type == "turn_context" && l.Payload.Model != "":
-			model = l.Payload.Model
-		case l.Type == "event_msg" && l.Payload.Type == "token_count" && l.Payload.Info != nil:
-			if string(l.Payload.Info.Total) == string(last) {
-				return
-			}
-			last = l.Payload.Info.Total
-			u := l.Payload.Info.Last
-			m := model
-			if m == "" {
-				m = "codex"
-			}
-			out = append(out, usageEvent{Time: l.Timestamp, Provider: "codex", Session: session, Model: m,
-				Tokens: UsageTokens{Input: max(u.Input-u.Cached-u.CacheWrite, 0), Output: u.Output, CacheWrite: u.CacheWrite, CacheRead: u.Cached}})
-		}
-	})
-	return out
-}

@@ -1,15 +1,19 @@
-import { DictationField } from "../components/dictation-field";
-import { useDictationInProgress } from "../components/local-dictation";
-import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ArrowsClockwise, Desktop, Plus } from "@phosphor-icons/react";
+import { ArrowsClockwise,Desktop,Plus } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate,useSearch } from "@tanstack/react-router";
+import { useEffect,useRef,useState } from "react";
+import { type Memory,type MemoryInput,type NodeUpdate } from "../api/client";
+import { useMemories,useMesh,useNode,usePairedDevices,useProjects } from "../api/queries/hooks";
+import { qk } from "../api/queries/keys";
+import { useArchiveMemory,useSaveMemory } from "../api/queries/projects";
+import { useCheckMeshUpdates,usePair,usePairCode,useRevokeDevice,useRevokePeer,useSetPeerEnabled,useUpdateMesh } from "../api/queries/settings";
+import { askConfirm } from "../components/confirm";
 import { EnvIconPicker } from "../components/env-icon";
 import { useMeshUpdates } from "../components/mesh-update";
-import { api, type Memory, type MemoryInput, type NodeUpdate } from "../api/client";
-import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, PageHeader, Select, StatusPill, csv } from "../components/ui";
+import { Badge,Button,Card,ErrorText,Input,Label,Md,Modal,PageHeader,Select,StatusPill,csv } from "../components/ui";
+import { DictationField } from "../features/composer/dictation-field";
+import { useDictationInProgress } from "../features/composer/local-dictation";
 import { useProject } from "../project";
-import { askConfirm } from "../components/confirm";
 
 export const memorySearch = (s: Record<string, unknown>) => ({ q: typeof s.q === "string" ? s.q : undefined, kind: typeof s.kind === "string" ? s.kind : undefined });
 
@@ -21,7 +25,7 @@ export function Memories() {
   const project = useProject();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { q?: string; kind?: string };
-  const memories = useQuery({ queryKey: ["memories"], queryFn: () => api.memories.list() });
+  const memories = useMemories();
   const [editing, setEditing] = useState<Memory | "new">();
   const q = (search.q ?? "").toLowerCase();
   const shown = (memories.data ?? [])
@@ -62,17 +66,15 @@ function MemoryForm({ memory, onClose }: { memory?: Memory; onClose: () => void 
   const qc = useQueryClient();
   const dictating = useDictationInProgress();
   const project = useProject();
-  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
+  const projects = useProjects();
   const [m, setM] = useState<MemoryInput>(memory ?? { scope: project ? "project" : "global", scope_id: project, kind: "context", title: "", content: "", labels: [] });
   const [labels, setLabels] = useState((memory?.labels ?? []).join(", "));
-  const save = useMutation({
-    mutationFn: () => {
-      const body = { ...m, labels: csv(labels), scope_id: m.scope === "global" ? "" : m.scope_id };
-      return memory ? api.memories.update(memory.id, body) : api.memories.create(body);
-    },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["memories"] }); onClose(); },
+  const save = useSaveMemory(memory?.id, () => ({ ...m, labels: csv(labels), scope_id: m.scope === "global" ? "" : m.scope_id }), {
+    onSuccess: () => { qc.invalidateQueries({ queryKey: qk.memories() }); onClose(); },
   });
-  const archive = useMutation({ mutationFn: () => api.memories.archive(memory!.id), onSuccess: () => { qc.invalidateQueries({ queryKey: ["memories"] }); onClose(); } });
+  const archive = useArchiveMemory(memory?.id, {
+    onSuccess: () => { qc.invalidateQueries({ queryKey: qk.memories() }); onClose(); }
+  });
   return (
     <Modal title={memory ? "Memoria" : "Nueva memoria"} onClose={onClose} wide>
       <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (!dictating && m.content.trim()) save.mutate(); }}>
@@ -99,18 +101,28 @@ function MemoryForm({ memory, onClose }: { memory?: Memory; onClose: () => void 
 // their harnesses (requirements RF-06, RF-07), and pairs new ones (RF-05).
 export function Environments() {
   const qc = useQueryClient();
-  const node = useQuery({ queryKey: ["node"], queryFn: api.node, refetchInterval: 15_000 });
-  const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh, refetchInterval: 5_000 });
+  const node = useNode({ refetchInterval: 15_000 });
+  const mesh = useMesh({ refetchInterval: 5_000 });
   const [code, setCode] = useState<{ code: string; expires_at: string; fingerprint: string; port: number }>();
   const [address, setAddress] = useState("");
   const [typed, setTyped] = useState("");
-  const open = useMutation({ mutationFn: api.pairCode, onSuccess: setCode });
-  const pair = useMutation({ mutationFn: () => api.pair(address.trim(), typed.trim()), onSuccess: () => { setAddress(""); setTyped(""); qc.invalidateQueries({ queryKey: ["mesh"] }); } });
-  const revoke = useMutation({ mutationFn: api.revokePeer, onSuccess: () => qc.invalidateQueries({ queryKey: ["mesh"] }) });
-  const toggle = useMutation({ mutationFn: (v: { id: string; enabled: boolean }) => api.setPeerEnabled(v.id, v.enabled), onSuccess: () => qc.invalidateQueries({ queryKey: ["mesh"] }) });
+  const open = usePairCode({
+    onSuccess: setCode
+  });
+  const pair = usePair(address.trim(), typed.trim(), {
+    onSuccess: () => { setAddress(""); setTyped(""); qc.invalidateQueries({ queryKey: qk.mesh() }); }
+  });
+  const revoke = useRevokePeer({
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.mesh() })
+  });
+  const toggle = useSetPeerEnabled({
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.mesh() })
+  });
   const codeInput = useRef<HTMLInputElement>(null);
-  const devices = useQuery({ queryKey: ["devices"], queryFn: api.devices, refetchInterval: 15_000 });
-  const revokeDevice = useMutation({ mutationFn: api.revokeDevice, onSuccess: () => qc.invalidateQueries({ queryKey: ["devices"] }) });
+  const devices = usePairedDevices({ refetchInterval: 15_000 });
+  const revokeDevice = useRevokeDevice({
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.devices() })
+  });
   const n = node.data;
   const search = useSearch({ strict: false }) as { node?: string };
   const targetReady = !!search.node && (n?.node.id === search.node || !!mesh.data?.peers.some((p) => !p.revoked && p.id === search.node));
@@ -145,6 +157,7 @@ export function Environments() {
               <Button variant="ghost" className="ml-auto text-xs" disabled={toggle.isPending} onClick={() => toggle.mutate({ id: p.id, enabled: !!p.disabled })}>{p.disabled ? "Activar" : "Desactivar"}</Button>
               <Button variant="ghost" className="text-xs" onClick={() => askConfirm(`¿Eliminar ${p.name}? Dejará de sincronizarse con este nodo y habrá que emparejarlo de nuevo.`, "Eliminar").then((ok) => ok && revoke.mutate(p.id))}>Eliminar</Button>
             </div>
+            {p.incompatible && <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">Versión de malla incompatible. Actualiza Dory en {p.name}.</p>}
           </Card></div>
         );
       })}
@@ -204,9 +217,13 @@ function MeshUpdate() {
   const [providers, setProviders] = useState(false);
   const [force, setForce] = useState(false);
   const list = useMeshUpdates();
-  const run = useMutation({ mutationFn: () => api.updateMesh({ providers, force }), onSuccess: (data) => qc.setQueryData(["mesh-update"], data) });
+  const run = useUpdateMesh({ providers, force }, {
+    onSuccess: (data) => qc.setQueryData(qk.meshUpdate(), data)
+  });
   // Checks the releases now instead of waiting for the next poll.
-  const recheck = useMutation({ mutationFn: () => api.meshUpdates(true), onSuccess: (data) => qc.setQueryData(["mesh-update"], data) });
+  const recheck = useCheckMeshUpdates({
+    onSuccess: (data) => qc.setQueryData(qk.meshUpdate(), data)
+  });
   const nodes = list.data ?? [];
   const pending = nodes.some((n) => n.status?.available || n.status?.providers.some((p) => p.available)) || providers;
   const label = (n: NodeUpdate) => {

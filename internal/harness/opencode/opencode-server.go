@@ -1,0 +1,610 @@
+package opencode
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"github.com/migueel15/dory/internal/i18n"
+	"io"
+	"maps"
+	"net/http"
+	"os"
+	"os/exec"
+	"slices"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/kit"
+)
+
+// Start runs a turn on the "opencode serve" of its thread: Dory opens the
+// session, follows its events and sends the prompt over the HTTP API. The
+// question tool opens a form that pauses the turn until the user replies.
+// The server stays open for the next turn of the thread (see live.go), so
+// what the agent left running survives the turn.
+func (o OpenCode) Start(ctx context.Context, t harness.Turn) (harness.Session, error) {
+	srv, _ := o.pool.Get(t.ThreadID, o.ID()).(*openCodeServer)
+	if srv != nil && (srv.key != openCodeServerKey(t) || srv.Busy() || srv.exited()) {
+		o.pool.Drop(t.ThreadID, o.ID(), srv)
+		go srv.Close()
+		srv = nil
+	}
+	if srv == nil {
+		var err error
+		if srv, err = o.serve(ctx, t); err != nil {
+			return nil, err
+		}
+		if t.ThreadID != "" {
+			o.pool.Set(t.ThreadID, o.ID(), srv)
+			if srv.exited() {
+				o.pool.Drop(t.ThreadID, o.ID(), srv)
+			}
+		}
+	}
+	srv.mu.Lock()
+	srv.busy = true
+	srv.mu.Unlock()
+	events := make(chan harness.Event, 64)
+	s := &openCodeSession{api: srv.api, turn: t, events: events,
+		parser: newOpenCodeEvents(t.RunID)}
+	go func() {
+		s.run(ctx, events)
+		srv.mu.Lock()
+		srv.busy, srv.idle = false, time.Now()
+		srv.mu.Unlock()
+		if t.ThreadID == "" {
+			srv.Close()
+		}
+	}()
+	return s, nil
+}
+
+func openCodeServerKey(t harness.Turn) string {
+	return t.Dir + "\x00" + t.MCPURL
+}
+
+// serve starts an "opencode serve" for the thread.
+func (o OpenCode) serve(ctx context.Context, t harness.Turn) (*openCodeServer, error) {
+	password := rand.Text()
+	cmd := kit.ProviderCommand(context.Background(), t.ThreadID, o.bin(), "serve", "--hostname", "127.0.0.1", "--port", "0")
+	cmd.Dir = t.Dir
+	cmd.Env = append(os.Environ(), "OPENCODE_SERVER_PASSWORD="+password)
+	cmd.Env = kit.ThreadEnv(cmd.Env, t.ThreadID)
+	kit.Interruptible(cmd)
+	cmd.WaitDelay = 10 * time.Second
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	var stderr strings.Builder
+	cmd.Stderr = kit.LimitWriter(&stderr, 8<<10)
+	if err = cmd.Start(); err != nil {
+		return nil, err
+	}
+	base, err := listening(out, 30*time.Second)
+	if err != nil {
+		cmd.Process.Kill()
+		cmd.Wait()
+		return nil, fmt.Errorf("opencode serve: %v %s", err, strings.TrimSpace(stderr.String()))
+	}
+	go io.Copy(io.Discard, out)
+	srv := &openCodeServer{key: openCodeServerKey(t), cmd: cmd, api: &openCodeAPI{base: base, password: password}, dead: make(chan struct{}), idle: time.Now()}
+	go func() {
+		cmd.Wait()
+		close(srv.dead)
+		o.pool.Drop(t.ThreadID, o.ID(), srv)
+	}()
+	if t.MCPURL != "" {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		if err := srv.api.registerDory(ctx, t); err != nil {
+			srv.Close()
+			return nil, err
+		}
+	}
+	return srv, nil
+}
+
+// openCodeServer is the "opencode serve" of a thread, kept between turns.
+type openCodeServer struct {
+	key  string
+	cmd  *exec.Cmd
+	api  *openCodeAPI
+	dead chan struct{}
+
+	mu   sync.Mutex
+	busy bool
+	idle time.Time
+}
+
+func (s *openCodeServer) Busy() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.busy
+}
+
+func (s *openCodeServer) IdleSince() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.idle
+}
+
+func (s *openCodeServer) exited() bool {
+	select {
+	case <-s.dead:
+		return true
+	default:
+		return false
+	}
+}
+
+// Close stops the server's process group, with what the agent started.
+func (s *openCodeServer) Close() {
+	kit.StopGroup(s.cmd, syscall.SIGTERM)
+	select {
+	case <-s.dead:
+	case <-time.After(5 * time.Second):
+		kit.StopGroup(s.cmd, syscall.SIGKILL)
+	}
+}
+
+// listening reads the server banner until it says where it listens.
+func listening(r io.Reader, timeout time.Duration) (string, error) {
+	found := make(chan string, 1)
+	go func() {
+		scan := bufio.NewScanner(r)
+		for scan.Scan() {
+			if _, url, ok := strings.Cut(scan.Text(), "listening on "); ok {
+				found <- strings.TrimSpace(url)
+				return
+			}
+		}
+		close(found)
+	}()
+	select {
+	case url, ok := <-found:
+		if !ok {
+			return "", errors.New("the server exited")
+		}
+		return url, nil
+	case <-time.After(timeout):
+		return "", errors.New("the server did not start")
+	}
+}
+
+// openCodeAPI calls the HTTP API of one opencode serve.
+type openCodeAPI struct {
+	base, password string
+}
+
+func (a *openCodeAPI) registerDory(ctx context.Context, t harness.Turn) error {
+	config := map[string]any{
+		"type": "remote", "url": t.MCPURL, "oauth": false,
+		"headers": map[string]string{"Authorization": "Bearer " + t.MCPToken},
+	}
+	if err := a.do(ctx, http.MethodPut, "/api/experimental/mcp/dory", map[string]any{"config": config}, nil); err != nil {
+		// The server may echo configuration when rejecting a request.
+		return errors.New(i18n.Text("opencode.opencode_no_pudo_registrar"))
+	}
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var catalog struct {
+			Data []struct {
+				Name   string
+				Status struct{ Status string }
+			}
+		}
+		if err := a.do(ctx, http.MethodGet, "/api/mcp", nil, &catalog); err != nil {
+			return errors.New(i18n.Text("opencode.opencode_no_pudo_consultar"))
+		}
+		for _, server := range catalog.Data {
+			if server.Name != "dory" {
+				continue
+			}
+			switch server.Status.Status {
+			case "connected":
+				return nil
+			case "pending":
+			default:
+				return errors.New(i18n.Text("opencode.opencode_servidor_mcp_dory"))
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return errors.New(i18n.Text("opencode.opencode_agoto_tiempo_conexion"))
+		case <-ticker.C:
+		}
+	}
+}
+
+func (a *openCodeAPI) do(ctx context.Context, method, path string, body, out any) error {
+	var rd io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		rd = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, a.base+path, rd)
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth("opencode", a.password)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		msg, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
+		return fmt.Errorf("%s %s: %s %s", method, path, res.Status, strings.TrimSpace(string(msg)))
+	}
+	if out != nil {
+		return json.NewDecoder(res.Body).Decode(out)
+	}
+	return nil
+}
+
+type openCodeSession struct {
+	api    *openCodeAPI
+	turn   harness.Turn
+	events chan harness.Event
+	parser *openCodeEvents
+
+	mu      sync.Mutex
+	session string
+	forms   map[string]openCodeForm
+}
+
+// openCodeForm is a form of the question tool waiting for the user.
+type openCodeForm struct {
+	fields []openCodeField
+}
+
+func (s *openCodeSession) Events() <-chan harness.Event { return s.events }
+
+// Respond replies to the form: one value per field key, a list for
+// multiselect fields.
+func (s *openCodeSession) Respond(id string, answers [][]string) error {
+	s.mu.Lock()
+	form, ok := s.forms[id]
+	delete(s.forms, id)
+	session := s.session
+	s.mu.Unlock()
+	if !ok {
+		return harness.ErrNoRequest
+	}
+	answer := map[string]any{}
+	for i, f := range form.fields {
+		var a []string
+		if i < len(answers) {
+			a = answers[i]
+		}
+		if f.Type == "multiselect" {
+			answer[f.Key] = append([]string{}, a...)
+		} else {
+			answer[f.Key] = strings.Join(a, ", ")
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return s.api.do(ctx, "POST", "/api/session/"+session+"/form/"+id+"/reply", map[string]any{"answer": answer}, nil)
+}
+
+// run opens or resumes the session, follows its events, sends the prompt
+// and stops the server when the turn ends.
+func (s *openCodeSession) run(ctx context.Context, events chan<- harness.Event) {
+	defer close(events)
+	// The stream outlives a cancellation until the session confirms it stopped.
+	streamCtx, stop := context.WithCancel(context.WithoutCancel(ctx))
+	defer stop()
+	fail := func(err error) {
+		events <- kit.ProcessEnd(ctx.Err(), err, "")
+	}
+	t := s.turn
+	session := t.Session
+	if session == "" {
+		var res struct {
+			Data struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		}
+		if err := s.api.do(ctx, "POST", "/api/session", map[string]any{}, &res); err != nil {
+			fail(err)
+			return
+		}
+		session = res.Data.ID
+	}
+	s.mu.Lock()
+	s.session, s.forms = session, map[string]openCodeForm{}
+	s.mu.Unlock()
+	events <- harness.SessionBound{ID: session}
+	if t.Instructions != "" {
+		// Session instructions join OpenCode's system prompt, not the history.
+		if err := s.api.do(ctx, "PUT", "/api/experimental/session/"+session+"/instructions/entries/dory", map[string]any{"value": t.Instructions}, nil); err != nil {
+			fail(err)
+			return
+		}
+	}
+	if provider, model, ok := strings.Cut(t.Model, "/"); ok {
+		if err := s.api.do(ctx, "POST", "/api/session/"+session+"/model", map[string]any{"model": map[string]string{"providerID": provider, "id": model}}, nil); err != nil {
+			fail(err)
+			return
+		}
+	}
+	req, err := http.NewRequestWithContext(streamCtx, "GET", s.api.base+"/api/event", nil)
+	if err != nil {
+		fail(err)
+		return
+	}
+	req.SetBasicAuth("opencode", s.api.password)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fail(err)
+		return
+	}
+	defer res.Body.Close()
+	go func() {
+		select {
+		case <-streamCtx.Done():
+		case <-ctx.Done():
+			// Interrupting is a request to the server, which stays open.
+			bg, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if s.api.do(bg, "POST", "/api/session/"+session+"/interrupt", map[string]any{}, nil) != nil {
+				stop()
+			}
+			cancel()
+			select {
+			case <-streamCtx.Done():
+			case <-time.After(10 * time.Second):
+				stop()
+			}
+		}
+	}()
+	go func() {
+		if err := s.api.do(streamCtx, "POST", "/api/session/"+session+"/prompt", map[string]any{"text": t.Text}, nil); err != nil {
+			s.parser.failed(err.Error())
+			stop()
+		}
+	}()
+	scan := bufio.NewScanner(res.Body)
+	scan.Buffer(make([]byte, 64<<10), 32<<20)
+	done := false
+	for scan.Scan() && !done {
+		data, ok := strings.CutPrefix(scan.Text(), "data:")
+		if !ok {
+			continue
+		}
+		s.parser.handle(session, []byte(strings.TrimSpace(data)), func(e harness.Event) {
+			if request, ok := e.(harness.RequestOpened); ok {
+				s.mu.Lock()
+				s.forms[request.Request.ID] = openCodeForm{fields: s.parser.fields[request.Request.ID]}
+				s.mu.Unlock()
+			}
+			_, done = e.(harness.TurnEnded)
+			events <- e
+		})
+	}
+	if !done {
+		s.parser.mu.Lock()
+		msg := s.parser.failure
+		s.parser.mu.Unlock()
+		s.parser.close(func(e harness.Event) { events <- e }, kit.ProcessEnd(ctx.Err(), scan.Err(), msg))
+	}
+}
+
+// openCodeEvents turns the events of one session of opencode serve into
+// Dory's messages.
+type openCodeEvents struct {
+	run      string
+	model    string
+	lastStep string
+	names    map[string]string // tool call id → tool name
+	tools    map[string]*harness.Message
+	texts    map[string]*kit.Text
+	fields   map[string][]openCodeField // form id → fields
+	mu       sync.Mutex
+	failure  string
+}
+
+type openCodeField struct {
+	Key         string `json:"key"`
+	Type        string `json:"type"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Options     []struct {
+		Label       string `json:"label"`
+		Description string `json:"description"`
+	} `json:"options"`
+}
+
+func newOpenCodeEvents(run string) *openCodeEvents {
+	return &openCodeEvents{run: run, names: map[string]string{}, tools: map[string]*harness.Message{}, texts: map[string]*kit.Text{}, fields: map[string][]openCodeField{}}
+}
+
+func (p *openCodeEvents) failed(msg string) {
+	p.mu.Lock()
+	p.failure = msg
+	p.mu.Unlock()
+}
+
+type openCodeEvent struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+	Data struct {
+		SessionID          string          `json:"sessionID"`
+		AssistantMessageID string          `json:"assistantMessageID"`
+		Ordinal            int             `json:"ordinal"`
+		Delta              string          `json:"delta"`
+		Text               string          `json:"text"`
+		ID                 string          `json:"id"`
+		Name               string          `json:"name"`
+		Input              json.RawMessage `json:"input"`
+		Content            []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+		Metadata struct {
+			Answers [][]string `json:"answers"`
+		} `json:"metadata"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+		Tokens *struct {
+			Input     int64 `json:"input"`
+			Output    int64 `json:"output"`
+			Reasoning int64 `json:"reasoning"`
+			Cache     struct {
+				Read  int64 `json:"read"`
+				Write int64 `json:"write"`
+			} `json:"cache"`
+		} `json:"tokens"`
+		Model *struct {
+			ID         string `json:"id"`
+			ProviderID string `json:"providerID"`
+		} `json:"model"`
+		Form struct {
+			ID        string `json:"id"`
+			SessionID string `json:"sessionID"`
+			Metadata  struct {
+				Tool struct {
+					ID string `json:"id"`
+				} `json:"tool"`
+			} `json:"metadata"`
+			Fields []openCodeField `json:"fields"`
+		} `json:"form"`
+	} `json:"data"`
+}
+
+func (p *openCodeEvents) handle(session string, line []byte, emit func(harness.Event)) {
+	var e openCodeEvent
+	if json.Unmarshal(line, &e) != nil {
+		return
+	}
+	d := e.Data
+	if d.SessionID != session && d.Form.SessionID != session {
+		return
+	}
+	textID := fmt.Sprintf("%s:%s:%d", p.run, d.AssistantMessageID, d.Ordinal)
+	switch e.Type {
+	case "session.step.started":
+		if d.Model != nil && d.Model.ID != "" {
+			p.model = d.Model.ProviderID + "/" + d.Model.ID
+			emit(harness.SettingsReported{Model: p.model})
+		}
+	case "session.step.ended", "session.step.failed":
+		if u := d.Tokens; u != nil && (e.ID == "" || e.ID != p.lastStep) {
+			p.lastStep = e.ID
+			emit(harness.StepUsage{Model: p.model, Input: u.Input, Output: u.Output + u.Reasoning, Reasoning: u.Reasoning, CacheRead: u.Cache.Read, CacheWrite: u.Cache.Write})
+		}
+	case "session.text.started", "session.reasoning.started":
+		kind := harness.Assistant
+		if e.Type == "session.reasoning.started" {
+			textID, kind = textID+":r", harness.Reasoning
+		}
+		p.texts[textID] = kit.NewText(textID, p.run, kind)
+	case "session.text.delta", "session.reasoning.delta", "session.text.ended", "session.reasoning.ended":
+		if strings.HasPrefix(e.Type, "session.reasoning") {
+			textID += ":r"
+		}
+		text := p.texts[textID]
+		if text == nil {
+			return
+		}
+		if strings.HasSuffix(e.Type, ".ended") {
+			delete(p.texts, textID)
+			if d.Text != "" || text.String() != "" {
+				emit(text.Done(d.Text))
+			}
+		} else {
+			text.Append(d.Delta, emit)
+		}
+	case "session.tool.input.started":
+		p.names[d.ID] = d.Name
+	case "session.tool.called":
+		name := p.names[d.ID]
+		m := &harness.Message{ID: p.run + ":" + d.ID, RunID: p.run, Role: "tool", Title: name, Detail: kit.ToolDetail(name, d.Input),
+			Status: "running", CreatedAt: kit.Now(), Tool: kit.ToolCallFromInput(name, d.Input)}
+		if m.Tool.Kind == "todo" {
+			m.Role = "plan"
+		}
+		if name, ok := strings.CutPrefix(name, "dory_"); ok && name != "" {
+			m.Tool.Kind, m.Tool.Server, m.Tool.Tool = "mcp", "dory", name
+		}
+		m.InputChars = len(d.Input)
+		p.tools[d.ID] = m
+		emit(kit.StartTool(m))
+	case "session.tool.success", "session.tool.failed":
+		m := p.tools[d.ID]
+		if m == nil {
+			return
+		}
+		var parts []string
+		for _, c := range d.Content {
+			parts = append(parts, c.Text)
+		}
+		output := strings.Join(parts, "\n")
+		m.ResultChars = len(output)
+		m.Status, m.Text = "completed", kit.Clip(output, 4000)
+		if e.Type == "session.tool.failed" {
+			m.Status = "failed"
+			if d.Error != nil && m.Text == "" {
+				m.Text = d.Error.Message
+				m.ResultChars = len(d.Error.Message)
+			}
+		}
+		if m.Tool.Kind == "question" && len(d.Metadata.Answers) > 0 {
+			m.Tool.Questions = kit.Answered(m.Tool.Questions, d.Metadata.Answers)
+			m.Text = ""
+		}
+		emit(kit.FinishTool(m))
+	case "form.created":
+		f := d.Form
+		var qs []harness.Question
+		for _, x := range f.Fields {
+			q := harness.Question{ID: x.Key, Header: x.Title, Question: x.Description, MultiSelect: x.Type == "multiselect"}
+			if q.Question == "" {
+				q.Question, q.Header = x.Title, ""
+			}
+			for _, o := range x.Options {
+				q.Options = append(q.Options, harness.Option{Label: o.Label, Description: o.Description})
+			}
+			qs = append(qs, q)
+		}
+		p.fields[f.ID] = f.Fields
+		msg := ""
+		if f.Metadata.Tool.ID != "" {
+			msg = p.run + ":" + f.Metadata.Tool.ID
+		}
+		emit(harness.RequestOpened{Request: harness.Request{ID: f.ID, Kind: "question", MessageID: msg, Questions: qs, CreatedAt: kit.Now()}})
+	case "session.execution.succeeded":
+		p.close(emit, harness.TurnEnded{Reason: harness.Completed})
+	case "session.execution.interrupted":
+		p.close(emit, harness.TurnEnded{Reason: harness.Interrupted})
+	case "session.execution.failed":
+		msg := ""
+		if d.Error != nil {
+			msg = d.Error.Message
+		}
+		p.close(emit, harness.TurnEnded{Reason: harness.Failed, Error: msg})
+	}
+}
+
+func (p *openCodeEvents) close(emit func(harness.Event), end harness.TurnEnded) {
+	for _, id := range slices.Sorted(maps.Keys(p.texts)) {
+		text := p.texts[id]
+		if text.String() != "" {
+			emit(text.Done(text.String()))
+		}
+	}
+	emit(end)
+}

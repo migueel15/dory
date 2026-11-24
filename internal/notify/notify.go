@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -19,17 +20,19 @@ import (
 	"time"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/i18n"
 )
 
 // Event kinds that produce a notice, with their text.
 var titles = map[string]string{
-	"thread.idle":         "El agente terminó",
-	"thread.error":        "El agente falló",
-	"thread.waiting":      "Un agente te necesita",
-	"plan.ready":          "Plan listo para revisar",
-	"plan.accepted":       "Tarea lista para implementar",
-	"task.ready_to_merge": "Tarea lista para mergear",
+	"thread.idle":         i18n.Text("push.thread.idle"),
+	"thread.error":        i18n.Text("push.thread.error"),
+	"thread.waiting":      i18n.Text("push.thread.waiting"),
+	"plan.ready":          i18n.Text("push.plan.ready"),
+	"plan.accepted":       i18n.Text("push.plan.accepted"),
+	"task.ready_to_merge": i18n.Text("push.task.ready_to_merge"),
 }
 
 // kinds lists the events in the order the settings show them.
@@ -85,10 +88,10 @@ func New(ctx context.Context, store *data.Store, node, dir string) (*Notifier, e
 			return nil, err
 		}
 	}
-	n := &Notifier{db: store.DB(), store: store, node: node, private: keys.Private, public: keys.Public,
+	n := &Notifier{db: store.LocalDB(), store: store, node: node, private: keys.Private, public: keys.Public,
 		last: map[string]string{}, pushed: map[string]bool{}}
 	// Start from the current states, so a restart does not notify old news.
-	threads, err := store.Threads().List(ctx, data.Filter{Limit: 1000})
+	threads, err := store.Threads().ListAll(ctx, data.Filter{})
 	if err != nil {
 		return nil, err
 	}
@@ -98,12 +101,12 @@ func New(ctx context.Context, store *data.Store, node, dir string) (*Notifier, e
 	return n, nil
 }
 
-// Run deletes the notices read more than 30 days ago, every hour.
+// Run archives the notices read more than 30 days ago, every hour.
 func (n *Notifier) Run(ctx context.Context) {
 	go n.expire(ctx)
 	for {
-		cutoff := time.Now().Add(-retention).UTC().Format(time.RFC3339Nano)
-		if _, err := n.db.ExecContext(ctx, `DELETE FROM notices WHERE read_at IS NOT NULL AND read_at < ?`, cutoff); err != nil && ctx.Err() == nil {
+		cutoff := time.Now().Add(-retention)
+		if err := n.store.ArchiveReadNotices(ctx, cutoff); err != nil && ctx.Err() == nil {
 			log.Printf("notify: retention: %v", err)
 		}
 		select {
@@ -114,11 +117,9 @@ func (n *Notifier) Run(ctx context.Context) {
 	}
 }
 
-// Changed is called after every write, local or replicated.
+// Changed is called after a replicated write.
 func (n *Notifier) Changed(entity, id string) {
 	switch entity {
-	case "thread":
-		go n.checkThread(id)
 	case "plan":
 		go n.checkPlan(id)
 	case "notice":
@@ -160,11 +161,12 @@ func (n *Notifier) Github() {
 	}()
 }
 
-func (n *Notifier) checkThread(id string) {
+// ThreadState captures each local transition before the next one can replace it.
+func (n *Notifier) ThreadState(id string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	t, err := n.store.Threads().Get(ctx, id)
-	if err != nil {
+	if err != nil || t.NodeID != n.node || t.LastActivityAt == nil {
 		return
 	}
 	n.mu.Lock()
@@ -172,22 +174,26 @@ func (n *Notifier) checkThread(id string) {
 	n.last[id] = t.Status
 	n.mu.Unlock()
 	// The node that runs the thread raises the event; the others get the notice replicated.
-	if t.NodeID != n.node || prev == t.Status || prev != "working" && t.Status != "waiting" {
+	if prev == t.Status || prev != "working" && t.Status != "waiting" {
 		return
 	}
 	kind := "thread." + t.Status
 	if titles[kind] == "" {
 		return
 	}
-	if kind == "thread.idle" && t.TaskID != nil && n.planPending(ctx, *t.TaskID) {
-		kind = "plan.ready"
-	}
-	n.Emit(ctx, kind, t.ID, t.UpdatedAt, t.Title, "/threads/"+t.ID)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if kind == "thread.idle" && t.TaskID != nil && n.planPending(ctx, *t.TaskID) {
+			kind = "plan.ready"
+		}
+		n.Emit(ctx, kind, t.ID, *t.LastActivityAt, t.Title, "/threads/"+t.ID)
+	}()
 }
 
 // planPending says whether the latest plan of the task waits to be accepted.
 func (n *Notifier) planPending(ctx context.Context, task string) bool {
-	plans, err := n.store.Plans().List(ctx, data.Filter{Fields: map[string]any{"task_id": task}, Limit: 1000})
+	plans, err := n.store.Plans().ListAll(ctx, data.Filter{Fields: map[string]any{"task_id": task}})
 	if err != nil || len(plans) == 0 {
 		return false
 	}
@@ -231,10 +237,7 @@ func (n *Notifier) Emit(ctx context.Context, kind, subject, stamp, body, url str
 	}
 	sum := sha256.Sum256([]byte(kind + "\x00" + subject + "\x00" + stamp))
 	id := hex.EncodeToString(sum[:16])
-	if _, err := n.store.Notices().Get(ctx, id); err == nil {
-		return
-	}
-	if _, err := n.store.Notices().Put(ctx, data.Notice{ID: id, Kind: kind, Title: title, Body: body, URL: url}); err != nil {
+	if _, err := n.store.Notices().Create(ctx, data.Notice{ID: id, Kind: kind, Title: title, Body: body, URL: url}); err != nil && !errors.Is(err, data.ErrConflict) {
 		log.Printf("notify: %v", err)
 	}
 }
@@ -316,14 +319,14 @@ func (n *Notifier) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/push/subscriptions", func(w http.ResponseWriter, r *http.Request) {
 		var sub webpush.Subscription
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&sub); err != nil || sub.Endpoint == "" {
-			http.Error(w, "invalid subscription", http.StatusBadRequest)
+			apperr.WriteHTTP(w, r, apperr.New(apperr.Invalid, "invalid subscription"))
 			return
 		}
 		raw, _ := json.Marshal(sub)
 		_, err := n.db.ExecContext(r.Context(), `INSERT INTO push_subscriptions(endpoint, subscription, created_at) VALUES (?, ?, ?)
 			ON CONFLICT(endpoint) DO UPDATE SET subscription = excluded.subscription`, sub.Endpoint, string(raw), time.Now().UTC().Format(time.RFC3339))
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			apperr.WriteHTTP(w, r, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -332,9 +335,9 @@ func (n *Notifier) Mount(mux *http.ServeMux) {
 		}
 	})
 	mux.HandleFunc("GET /api/notices", func(w http.ResponseWriter, r *http.Request) {
-		list, err := n.store.Notices().List(r.Context(), data.Filter{Limit: 1000})
+		list, err := n.store.Notices().ListAll(r.Context(), data.Filter{})
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			apperr.WriteHTTP(w, r, err)
 			return
 		}
 		slices.Reverse(list)
@@ -347,17 +350,16 @@ func (n *Notifier) Mount(mux *http.ServeMux) {
 			IDs []string `json:"ids"`
 		}
 		json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body)
-		list, err := n.store.Notices().List(r.Context(), data.Filter{Limit: 1000})
+		list, err := n.store.Notices().ListAll(r.Context(), data.Filter{})
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			apperr.WriteHTTP(w, r, err)
 			return
 		}
 		at := time.Now().UTC().Format(time.RFC3339Nano)
 		for _, nt := range list {
 			if nt.ReadAt == nil && (len(body.IDs) == 0 || slices.Contains(body.IDs, nt.ID)) {
-				nt.ReadAt = &at
-				if _, err := n.store.Notices().Put(r.Context(), nt); err != nil {
-					http.Error(w, err.Error(), 500)
+				if _, err := n.store.Notices().Patch(r.Context(), nt.ID, data.Fields{"read_at": at}); err != nil && !errors.Is(err, data.ErrNotFound) {
+					apperr.WriteHTTP(w, r, err)
 					return
 				}
 			}

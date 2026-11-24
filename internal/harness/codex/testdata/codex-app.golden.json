@@ -1,0 +1,157 @@
+[
+  {
+    "Type": "SessionBound",
+    "Event": {
+      "ID": "01a1ee4d-0862-7162-8921-3f4994d95588"
+    }
+  },
+  {
+    "Type": "SettingsReported",
+    "Event": {
+      "model": "gpt-6-luna",
+      "effort": "medium"
+    }
+  },
+  {
+    "Type": "ToolStarted",
+    "Event": {
+      "ItemID": "r1:call_e7a712e8c08e4669868fc50a715562d6",
+      "Call": {
+        "kind": "question",
+        "name": "request_user_input",
+        "questions": [
+          {
+            "id": "preferred_color",
+            "question": "Which color do you prefer?",
+            "header": "Color",
+            "options": [
+              {
+                "label": "Red",
+                "description": "Choose red."
+              },
+              {
+                "label": "Blue",
+                "description": "Choose blue."
+              }
+            ]
+          }
+        ]
+      },
+      "Title": "request_user_input",
+      "Detail": "",
+      "InputChars": 0,
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "RequestOpened",
+    "Event": {
+      "Request": {
+        "id": "call_e7a712e8c08e4669868fc50a715562d6",
+        "kind": "question",
+        "message_id": "r1:call_e7a712e8c08e4669868fc50a715562d6",
+        "questions": [
+          {
+            "id": "preferred_color",
+            "question": "Which color do you prefer?",
+            "header": "Color",
+            "options": [
+              {
+                "label": "Red",
+                "description": "Choose red."
+              },
+              {
+                "label": "Blue",
+                "description": "Choose blue."
+              }
+            ]
+          }
+        ],
+        "created_at": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "ToolDone",
+    "Event": {
+      "ItemID": "r1:call_e7a712e8c08e4669868fc50a715562d6",
+      "Status": "completed",
+      "Result": "",
+      "ResultChars": 0,
+      "Call": null,
+      "Update": {
+        "ItemID": "r1:call_e7a712e8c08e4669868fc50a715562d6",
+        "Call": {
+          "kind": "question",
+          "name": "request_user_input",
+          "questions": [
+            {
+              "id": "preferred_color",
+              "question": "Which color do you prefer?",
+              "header": "Color",
+              "options": [
+                {
+                  "label": "Red",
+                  "description": "Choose red."
+                },
+                {
+                  "label": "Blue",
+                  "description": "Choose blue."
+                }
+              ],
+              "answer": [
+                "Blue"
+              ]
+            }
+          ]
+        },
+        "Title": "request_user_input",
+        "Detail": "",
+        "Status": "completed",
+        "Result": "",
+        "InputChars": 0,
+        "ResultChars": 0,
+        "Streaming": false,
+        "Meta": {
+          "RunID": "r1",
+          "CreatedAt": "<time>"
+        }
+      }
+    }
+  },
+  {
+    "Type": "TextDelta",
+    "Event": {
+      "ItemID": "r1:msg_000a970bc8682c1a016afd84614c4087d2bd6e535796a43126",
+      "Kind": "assistant",
+      "Delta": "Blue",
+      "Replace": false,
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "TextDone",
+    "Event": {
+      "ItemID": "r1:msg_000a970bc8682c1a016afd84614c4087d2bd6e535796a43126",
+      "Kind": "assistant",
+      "Text": "Blue",
+      "Meta": {
+        "RunID": "r1",
+        "CreatedAt": "<time>"
+      }
+    }
+  },
+  {
+    "Type": "TurnEnded",
+    "Event": {
+      "Reason": "completed",
+      "Error": ""
+    }
+  }
+]
