@@ -11,6 +11,7 @@ import { type Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { useProject } from "../project";
 import { GithubLogin } from "../components/github-login";
 import { buildStacks, groupByStack, pullKey } from "../stack";
+import { qk } from "../api/queries/keys";
 
 const ok = "text-green-700 dark:text-green-400";
 const bad = "text-red-600 dark:text-red-400";
@@ -166,7 +167,7 @@ const linked = (repo: string, prefix: "PR" | "Issue", refs: { number: number; ti
 
 // The server answers from its cache and refreshes in the background; while it
 // does, poll every second so each repository shows up as soon as it is ready.
-export const useGithubOpen = () => useQuery({ queryKey: ["github"], queryFn: () => api.github(), refetchInterval: (q) => (q.state.data?.refreshing ? 1_000 : 60_000), retry: false });
+export const useGithubOpen = () => useQuery({ queryKey: qk.github(), queryFn: () => api.github(), refetchInterval: (q) => (q.state.data?.refreshing ? 1_000 : 60_000), retry: false });
 
 type Tab = "pulls" | "issues";
 type State = "open" | "closed" | "all";
@@ -237,14 +238,14 @@ export function Github() {
   const refresh = async () => {
     setAsking(true);
     try { qc.setQueryData(["github"], await api.github(true)); } finally { setAsking(false); }
-    qc.invalidateQueries({ queryKey: ["github-detail"] });
+    qc.invalidateQueries({ queryKey: qk.githubDetail() });
   };
   const setTab = (t: Tab) => { setTabState(t); setFilter(""); setMilestone(""); try { localStorage.setItem("github-tab", t); } catch { /* storage unavailable */ } };
   const project = useProject();
   const me = data.data?.viewer ?? "";
   // Closed items are read from GitHub only when asked for, one page per repository at a time.
   const closed = useInfiniteQuery({
-    queryKey: ["github-closed", tab, project],
+    queryKey: qk.githubClosed(tab, project),
     queryFn: ({ pageParam }) => api.githubClosed(tab, project, pageParam),
     initialPageParam: "",
     getNextPageParam: (last) => last.cursor || undefined,

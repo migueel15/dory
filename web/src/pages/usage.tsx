@@ -7,6 +7,7 @@ import { AreaChart, StackedBar, compact, percent, providerColor, usd } from "../
 import { ProviderIcon, useNodes } from "../components/launch-picker";
 import { expectedRemaining, paceTitle, windowLabel, windowMinutes, windowReset } from "../lib/usage-pace";
 import { PaceMark } from "../components/pace-mark";
+import { qk } from "../api/queries/keys";
 
 
 const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(" ");
@@ -34,7 +35,7 @@ export function Limit({ w }: { w: UsageWindow }) {
 // Limits shows the remaining allowance of each provider (requirement 4.7).
 // The harness reports it while a turn runs, so it updates as the agents work.
 function Limits({ only }: { only: string }) {
-  const node = useQuery({ queryKey: ["node"], queryFn: api.node, refetchInterval: 30_000 });
+  const node = useQuery({ queryKey: qk.node(), queryFn: api.node, refetchInterval: 30_000 });
   const usage = node.data?.usage ?? {};
   return (
     <div className="space-y-3">
@@ -111,7 +112,7 @@ export function Usage() {
     const next = current.includes(id) ? current.filter((v) => v !== id) : [...current, id];
     set({ envs: next.length === nodes.length || !next.length ? undefined : next.join(",") });
   };
-  const results = useQueries({ queries: selected.map((n) => ({ queryKey: ["usage-history", range, n.value], queryFn: () => api.usageHistory(range, n.value), enabled: tab === "cost" || tab === "tokens" })) });
+  const results = useQueries({ queries: selected.map((n) => ({ queryKey: qk.usageHistory(range, n.value), queryFn: () => api.usageHistory(range, n.value), enabled: tab === "cost" || tab === "tokens" })) });
   const loaded = results.filter((r) => r.data).map((r) => r.data!);
   const history = {
     isFetching: results.some((r) => r.isFetching),
@@ -119,7 +120,7 @@ export function Usage() {
     data: results.length && results.every((r) => !r.isPending) && loaded.length ? merge(loaded) : undefined,
   };
   const breakdown = useQueries({ queries: selected.map((n) => ({
-    queryKey: ["usage-breakdown", range, n.value], queryFn: () => api.usageBreakdown(range, n.value), enabled: tab === "breakdown",
+    queryKey: qk.usageBreakdown(range, n.value), queryFn: () => api.usageBreakdown(range, n.value), enabled: tab === "breakdown",
   })) });
   const breakdownError = breakdown.find((r) => r.error)?.error;
   const qc = useQueryClient();
@@ -136,7 +137,7 @@ export function Usage() {
           {tab !== "limits" && <Segmented value={range} options={RANGES} onChange={(v) => set({ range: v })} />}
           <Segmented value={tab} options={TABS} onChange={(v) => set({ tab: v })} />
           <button type="button" className={iconButton} title="Recargar" aria-label="Recargar"
-            onClick={() => qc.invalidateQueries({ queryKey: tab === "limits" ? ["node"] : tab === "breakdown" ? ["usage-breakdown"] : ["usage-history"] })}>
+            onClick={() => qc.invalidateQueries({ queryKey: tab === "limits" ? qk.node() : tab === "breakdown" ? qk.usageBreakdown() : qk.usageHistory() })}>
             <svg viewBox="0 0 24 24" className={cx("size-4", (history.isFetching || breakdown.some((r) => r.isFetching)) && "animate-spin")} fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5" /></svg>
           </button>
         </div>
@@ -271,7 +272,7 @@ const CALL_COLUMNS = ["Llamada", "Modelo", "Entrada total", "Cambio de entrada",
 
 function ThreadUsage({ thread, range, node, provider }: { thread: string; range: UsageRange; node: string; provider: string }) {
   const { data, error, isPending } = useQuery({
-    queryKey: ["usage-breakdown", "turns", node, thread, range],
+    queryKey: qk.usageTurns(node, thread, range),
     queryFn: () => api.threadUsageTurns(thread, range, node),
   });
   const turns = (data ?? []).filter((turn) => !provider || turn.provider === provider);

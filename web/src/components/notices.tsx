@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Bell, BellRinging, Tray, X } from "@phosphor-icons/react";
 import { api, req } from "../api/client";
 import { Button } from "./ui";
+import { qk } from "../api/queries/keys";
 
 const b64 = (s: string) => {
   const raw = atob((s + "=".repeat((4 - (s.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
@@ -42,7 +43,7 @@ type Notice = { id: string; kind: string; title: string; body: string; url: stri
 
 // useNotices lists the inbox, newest first; it is shared by every device of the mesh.
 function useNotices() {
-  return useQuery({ queryKey: ["notices"], queryFn: () => req<Notice[]>("GET", "/notices"), refetchInterval: 15_000, refetchIntervalInBackground: true });
+  return useQuery({ queryKey: qk.notices(), queryFn: () => req<Notice[]>("GET", "/notices"), refetchInterval: 15_000, refetchIntervalInBackground: true });
 }
 
 // NoticeInbox shows the inbox with its unread counter. Reading a notice marks
@@ -54,7 +55,7 @@ export function NoticeInbox() {
   const notices = useNotices();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const read = useMutation({ mutationFn: (ids: string[]) => req("POST", "/notices/read", { ids }), onSettled: () => qc.invalidateQueries({ queryKey: ["notices"] }) });
+  const read = useMutation({ mutationFn: (ids: string[]) => req("POST", "/notices/read", { ids }), onSettled: () => qc.invalidateQueries({ queryKey: qk.notices() }) });
   const list = notices.data ?? [];
   const unread = list.filter((n) => !n.read_at);
   const go = (n: Notice) => {

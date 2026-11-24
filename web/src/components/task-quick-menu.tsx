@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { api, type Card, type Stage } from "../api/client";
 import { askConfirm } from "./confirm";
 import { ContextMenu, type ContextAction } from "./context-menu";
+import { qk } from "../api/queries/keys";
 
 export type QuickLaunch = "define" | "implement";
 
@@ -11,7 +12,7 @@ export type QuickLaunch = "define" | "implement";
 export function TaskQuickMenu({ c, x, y, onClose, onOpen, onError }: { c: Card; x: number; y: number; onClose: () => void; onOpen: (launch?: QuickLaunch) => void; onError: (e: unknown) => void }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const refresh = () => { qc.invalidateQueries({ queryKey: ["board"] }); qc.invalidateQueries({ queryKey: ["card", c.id] }); };
+  const refresh = () => { qc.invalidateQueries({ queryKey: qk.board() }); qc.invalidateQueries({ queryKey: qk.card(c.id) }); };
   const stage = useMutation({ mutationFn: (s: Stage) => api.tasks.update(c.id, { stage: s }), onSuccess: refresh, onError: onError });
   const archive = useMutation({ mutationFn: () => api.tasks.archive(c.id), onSuccess: refresh, onError: onError });
   const latest = c.threads.length ? c.threads.reduce((a, b) => ((b.last_activity_at ?? b.updated_at) >= (a.last_activity_at ?? a.updated_at) ? b : a)) : undefined;

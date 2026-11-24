@@ -4,6 +4,7 @@ import { api, usable, type LaunchChoice, type Model } from "../api/client";
 import { Label, Select } from "./ui";
 import { explicitModels, findModel, lastModel, modelEffort, modelId, rememberModel } from "../effort";
 import { ModelLogo } from "./model-logo";
+import { qk } from "../api/queries/keys";
 
 export const ProviderIcon = (props: Parameters<typeof ModelLogo>[0]) => <ModelLogo {...props} />;
 
@@ -14,14 +15,14 @@ const stored = (section: string): Partial<LaunchChoice> => {
 
 // useProviders lists the harnesses installed on a node, this one by default.
 export function useProviders(node = "local") {
-  const local = useQuery({ queryKey: ["node"], queryFn: api.node, staleTime: 60_000, select: (n) => n.providers.filter(usable), enabled: node === "local" });
-  const remote = useQuery({ queryKey: ["node-providers", node], queryFn: () => api.nodeProviders(node), staleTime: 60_000, select: (ps) => ps.filter(usable), enabled: node !== "local" });
+  const local = useQuery({ queryKey: qk.node(), queryFn: api.node, staleTime: 60_000, select: (n) => n.providers.filter(usable), enabled: node === "local" });
+  const remote = useQuery({ queryKey: qk.providers(node), queryFn: () => api.nodeProviders(node), staleTime: 60_000, select: (ps) => ps.filter(usable), enabled: node !== "local" });
   return node === "local" ? local : remote;
 }
 
 // useNodes lists where a new thread can run: this node and the connected peers.
 export function useNodes() {
-  const status = useQuery({ queryKey: ["node"], queryFn: api.node, staleTime: 60_000 });
+  const status = useQuery({ queryKey: qk.node(), queryFn: api.node, staleTime: 60_000 });
   const peers = (status.data?.peers ?? []).filter((p) => p.connected && !p.revoked);
   return [{ value: "local", label: status.data?.node.name ?? "Este nodo" }, ...peers.map((p) => ({ value: p.id, label: p.name }))];
 }
@@ -29,9 +30,9 @@ export function useNodes() {
 // useProjectNodes lists the nodes that keep a repository of a project, with
 // this node as "local". Empty when the project has no known environment.
 export function useProjectNodes(project?: string | null) {
-  const status = useQuery({ queryKey: ["node"], queryFn: api.node, staleTime: 60_000 });
-  const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list(), enabled: !!project });
-  const locations = useQuery({ queryKey: ["repository-locations"], queryFn: api.repositoryLocations, enabled: !!project });
+  const status = useQuery({ queryKey: qk.node(), queryFn: api.node, staleTime: 60_000 });
+  const repos = useQuery({ queryKey: qk.repositories(), queryFn: () => api.repositories.list(), enabled: !!project });
+  const locations = useQuery({ queryKey: qk.repositoryLocations(), queryFn: api.repositoryLocations, enabled: !!project });
   const ids = new Set((repos.data ?? []).filter((r) => r.project_id === project).map((r) => r.id));
   const self = status.data?.node.id;
   return [...new Set((locations.data ?? []).filter((l) => ids.has(l.repository_id)).map((l) => (l.node_id === self ? "local" : l.node_id)))];
@@ -48,7 +49,7 @@ export function useLaunchForm({ section, project, borderless }: { section: strin
   const node = nodes.some((n) => n.value === picked) ? picked : nodes[0]?.value ?? "local";
   const providers = useProviders(node);
   const [draft, setDraft] = useState<Partial<LaunchChoice>>({});
-  const defaults = useQuery({ queryKey: ["node-settings", node], queryFn: () => api.nodeSettings(node), staleTime: 60_000 }).data?.threads;
+  const defaults = useQuery({ queryKey: qk.nodeSettings(node), queryFn: () => api.nodeSettings(node), staleTime: 60_000 }).data?.threads;
   const last = lastModel() ?? stored(section);
   const list = (providers.data ?? []).map((p) => ({ ...p, models: explicitModels(p.models) })).filter((p) => p.models.length > 0);
   // Precedence: what the user picked in this form, the node's default model,

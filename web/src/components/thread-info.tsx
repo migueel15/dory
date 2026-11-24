@@ -10,6 +10,7 @@ import { HoverCard } from "./tooltip";
 import { EnvIcon } from "./env-icon";
 import { copyText } from "./ui";
 import { Related, Subagents } from "./subagents";
+import { qk } from "../api/queries/keys";
 
 // diffStat counts added and removed lines of a unified diff.
 function diffStat(diff: string) {
@@ -56,7 +57,7 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false, hi
   useEffect(() => { if (hidden) { setPop(false); setOpen(false); } }, [hidden]); // eslint-disable-line react-hooks/exhaustive-deps
   const shown = !hidden && (popup ? pop : open);
   const qc = useQueryClient();
-  const services = useQuery({ queryKey: ["thread-services", t.id], queryFn: () => api.threadServices(t.id), enabled: shown, refetchInterval: 3000 });
+  const services = useQuery({ queryKey: qk.threadServices(t.id), queryFn: () => api.threadServices(t.id), enabled: shown, refetchInterval: 3000 });
   const [serviceRows, setServiceRows] = useState<{ service: ThreadService; leaving: boolean }[]>([]);
   useEffect(() => {
     const next = services.data ?? [];
@@ -66,7 +67,7 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false, hi
     const timer = setTimeout(() => setServiceRows((rows) => rows.filter((row) => !row.leaving)), 180);
     return () => clearTimeout(timer);
   }, [services.data]);
-  const stopService = useMutation({ mutationFn: (pid: number) => api.stopThreadService(t.id, pid), onSettled: () => qc.invalidateQueries({ queryKey: ["thread-services", t.id] }) });
+  const stopService = useMutation({ mutationFn: (pid: number) => api.stopThreadService(t.id, pid), onSettled: () => qc.invalidateQueries({ queryKey: qk.threadServices(t.id) }) });
   const toggle = () => {
     if (hidden) { onOpen?.(); return popup ? setPop(true) : setOpen(true); }
     return popup ? setPop(!pop) : setOpen(!open);
@@ -78,16 +79,16 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false, hi
   const wait = useRef<ReturnType<typeof setTimeout>>(undefined);
   const setHover = (h: { el: HTMLElement; w: UsageWindow } | null) => { clearTimeout(wait.current); if (h) wait.current = setTimeout(() => setHoverNow(h), 500); else setHoverNow(null); };
   useEffect(() => () => clearTimeout(wait.current), []);
-  const node = useQuery({ queryKey: ["node"], queryFn: api.node, staleTime: 60_000 });
-  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
+  const node = useQuery({ queryKey: qk.node(), queryFn: api.node, staleTime: 60_000 });
+  const projects = useQuery({ queryKey: qk.projects(), queryFn: () => api.projects.list() });
   const projectName = t.project_id ? projects.data?.find((p) => p.id === t.project_id)?.name : undefined;
   // The pull request is the task's: a thread does not keep its own.
-  const card = useQuery({ queryKey: ["card", t.task_id], queryFn: () => api.card(t.task_id!), enabled: shown && !!t.task_id, staleTime: 30_000 });
+  const card = useQuery({ queryKey: qk.card(t.task_id), queryFn: () => api.card(t.task_id!), enabled: shown && !!t.task_id, staleTime: 30_000 });
   const pr = card.data?.repo && card.data.pr_number ? { repo: card.data.repo, number: card.data.pr_number, title: card.data.pull?.title, state: card.data.pr_state } : undefined;
   const base = useDiffBase(t.id);
-  const diff = useQuery({ queryKey: ["thread-diff", t.id, base], queryFn: () => api.threadDiff(t.id, base), enabled: shown && t.local, refetchInterval: shown ? 5000 : false });
+  const diff = useQuery({ queryKey: qk.threadDiff(t.id, base), queryFn: () => api.threadDiff(t.id, base), enabled: shown && t.local, refetchInterval: shown ? 5000 : false });
   // The environment the thread runs in, which may be a peer of this node.
-  const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh, staleTime: 60_000, enabled: shown });
+  const mesh = useQuery({ queryKey: qk.mesh(), queryFn: api.mesh, staleTime: 60_000, enabled: shown });
   const self = node.data?.node;
   const env = self && t.node_id === self.id ? self : mesh.data?.peers.find((p) => p.id === t.node_id)?.info.node;
   const where = env?.name ?? mesh.data?.peers.find((p) => p.id === t.node_id)?.name ?? `entorno ${t.node_id.slice(0, 8)}`;

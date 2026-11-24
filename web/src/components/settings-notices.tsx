@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { req } from "../api/client";
 import { ErrorText, Select } from "./ui";
+import { qk } from "../api/queries/keys";
 
 type Setting = { kind: string; title: string; mode: string };
 
@@ -15,10 +16,10 @@ const MODES = [
 // choice is shared by every device of the mesh.
 export function NoticesSettings() {
   const qc = useQueryClient();
-  const list = useQuery({ queryKey: ["notice-settings"], queryFn: () => req<Setting[]>("GET", "/notice-settings") });
+  const list = useQuery({ queryKey: qk.noticeSettings(), queryFn: () => req<Setting[]>("GET", "/notice-settings") });
   const save = useMutation({
     mutationFn: (s: { kind: string; mode: string }) => req("PUT", "/notice-settings", s),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["notice-settings"] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.noticeSettings() }),
   });
   return (
     <section aria-labelledby="notices-title" className="space-y-3">

@@ -8,6 +8,7 @@ import { useMeshUpdates } from "./mesh-update";
 import { askConfirm } from "./confirm";
 import { Button, ErrorText, Input } from "./ui";
 import type { SectionProps } from "./settings-node";
+import { qk } from "../api/queries/keys";
 
 type Row = { id: string; name: string; icon?: string; os?: string; version?: string; local: boolean; state: "on" | "off" | "disabled"; seen?: string; incompatible?: boolean };
 
@@ -16,8 +17,8 @@ type Row = { id: string; name: string; icon?: string; os?: string; version?: str
 // add a new one. It is global, so it ignores the node selector.
 export function ConnectionsSettings(_: SectionProps) {
   const qc = useQueryClient();
-  const node = useQuery({ queryKey: ["node"], queryFn: api.node, refetchInterval: 15_000 });
-  const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh, refetchInterval: 5_000 });
+  const node = useQuery({ queryKey: qk.node(), queryFn: api.node, refetchInterval: 15_000 });
+  const mesh = useQuery({ queryKey: qk.mesh(), queryFn: api.mesh, refetchInterval: 5_000 });
   const updates = useMeshUpdates();
   const recheck = useMutation({ mutationFn: () => api.meshUpdates(true), onSuccess: (d) => qc.setQueryData(["mesh-update"], d) });
   const all = useMutation({ mutationFn: () => api.updateMesh({ providers: true, force: false }), onSuccess: (d) => qc.setQueryData(["mesh-update"], d) });
@@ -61,16 +62,16 @@ const STATE = {
 function NodeCard({ row: r, update }: { row: Row; update?: NodeUpdate }) {
   const qc = useQueryClient();
   const [menu, setMenu] = useState(false);
-  const providers = useQuery({ queryKey: ["node-providers", r.local ? "local" : r.id], queryFn: () => api.nodeProviders(r.local ? "local" : r.id), enabled: r.state === "on", staleTime: 60_000 });
+  const providers = useQuery({ queryKey: qk.providers(r.local ? "local" : r.id), queryFn: () => api.nodeProviders(r.local ? "local" : r.id), enabled: r.state === "on", staleTime: 60_000 });
   const st = update?.status;
   const core = !!st?.available;
   const provUpdates = st?.providers.filter((p) => p.available) ?? [];
   const run = useMutation({
     mutationFn: (force: boolean) => api.updateNode(r.local ? "local" : r.id, { providers: provUpdates.length > 0, force }),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["mesh-update"] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.meshUpdate() }),
   });
-  const toggle = useMutation({ mutationFn: () => api.setPeerEnabled(r.id, r.state === "disabled"), onSuccess: () => qc.invalidateQueries({ queryKey: ["mesh"] }) });
-  const remove = useMutation({ mutationFn: () => api.revokePeer(r.id), onSuccess: () => qc.invalidateQueries({ queryKey: ["mesh"] }) });
+  const toggle = useMutation({ mutationFn: () => api.setPeerEnabled(r.id, r.state === "disabled"), onSuccess: () => qc.invalidateQueries({ queryKey: qk.mesh() }) });
+  const remove = useMutation({ mutationFn: () => api.revokePeer(r.id), onSuccess: () => qc.invalidateQueries({ queryKey: qk.mesh() }) });
   const failure = (run.error as Error | null)?.message || update?.error;
   const updating = st?.state === "updating" || run.isPending;
   const s = STATE[r.state];
@@ -163,7 +164,7 @@ function AddConnection({ discovered }: { discovered: { id: string; name: string;
   const show = useMutation({ mutationFn: api.pairCode, onSuccess: setCode });
   const pair = useMutation({
     mutationFn: () => api.pair(target!.address.trim(), typed.trim()),
-    onSuccess: () => { setTarget(null); setTyped(""); setManual(false); qc.invalidateQueries({ queryKey: ["mesh"] }); },
+    onSuccess: () => { setTarget(null); setTyped(""); setManual(false); qc.invalidateQueries({ queryKey: qk.mesh() }); },
   });
   const pick = (address: string, name?: string) => { setTarget({ address, name }); setTimeout(() => codeInput.current?.focus(), 0); };
   return (
@@ -209,8 +210,8 @@ function AddConnection({ discovered }: { discovered: { id: string; name: string;
 // Phones lists the paired mobile apps.
 function Phones() {
   const qc = useQueryClient();
-  const devices = useQuery({ queryKey: ["devices"], queryFn: api.devices, refetchInterval: 15_000 });
-  const revoke = useMutation({ mutationFn: api.revokeDevice, onSuccess: () => qc.invalidateQueries({ queryKey: ["devices"] }) });
+  const devices = useQuery({ queryKey: qk.devices(), queryFn: api.devices, refetchInterval: 15_000 });
+  const revoke = useMutation({ mutationFn: api.revokeDevice, onSuccess: () => qc.invalidateQueries({ queryKey: qk.devices() }) });
   if (!devices.data?.length) return null;
   return (
     <div className="space-y-2">

@@ -10,6 +10,7 @@ import { api, type Memory, type MemoryInput, type NodeUpdate } from "../api/clie
 import { Badge, Button, Card, ErrorText, Input, Label, Md, Modal, PageHeader, Select, StatusPill, csv } from "../components/ui";
 import { useProject } from "../project";
 import { askConfirm } from "../components/confirm";
+import { qk } from "../api/queries/keys";
 
 export const memorySearch = (s: Record<string, unknown>) => ({ q: typeof s.q === "string" ? s.q : undefined, kind: typeof s.kind === "string" ? s.kind : undefined });
 
@@ -21,7 +22,7 @@ export function Memories() {
   const project = useProject();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { q?: string; kind?: string };
-  const memories = useQuery({ queryKey: ["memories"], queryFn: () => api.memories.list() });
+  const memories = useQuery({ queryKey: qk.memories(), queryFn: () => api.memories.list() });
   const [editing, setEditing] = useState<Memory | "new">();
   const q = (search.q ?? "").toLowerCase();
   const shown = (memories.data ?? [])
@@ -62,7 +63,7 @@ function MemoryForm({ memory, onClose }: { memory?: Memory; onClose: () => void 
   const qc = useQueryClient();
   const dictating = useDictationInProgress();
   const project = useProject();
-  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
+  const projects = useQuery({ queryKey: qk.projects(), queryFn: () => api.projects.list() });
   const [m, setM] = useState<MemoryInput>(memory ?? { scope: project ? "project" : "global", scope_id: project, kind: "context", title: "", content: "", labels: [] });
   const [labels, setLabels] = useState((memory?.labels ?? []).join(", "));
   const save = useMutation({
@@ -70,9 +71,9 @@ function MemoryForm({ memory, onClose }: { memory?: Memory; onClose: () => void 
       const body = { ...m, labels: csv(labels), scope_id: m.scope === "global" ? "" : m.scope_id };
       return memory ? api.memories.update(memory.id, body) : api.memories.create(body);
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["memories"] }); onClose(); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: qk.memories() }); onClose(); },
   });
-  const archive = useMutation({ mutationFn: () => api.memories.archive(memory!.id), onSuccess: () => { qc.invalidateQueries({ queryKey: ["memories"] }); onClose(); } });
+  const archive = useMutation({ mutationFn: () => api.memories.archive(memory!.id), onSuccess: () => { qc.invalidateQueries({ queryKey: qk.memories() }); onClose(); } });
   return (
     <Modal title={memory ? "Memoria" : "Nueva memoria"} onClose={onClose} wide>
       <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (!dictating && m.content.trim()) save.mutate(); }}>
@@ -99,18 +100,18 @@ function MemoryForm({ memory, onClose }: { memory?: Memory; onClose: () => void 
 // their harnesses (requirements RF-06, RF-07), and pairs new ones (RF-05).
 export function Environments() {
   const qc = useQueryClient();
-  const node = useQuery({ queryKey: ["node"], queryFn: api.node, refetchInterval: 15_000 });
-  const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh, refetchInterval: 5_000 });
+  const node = useQuery({ queryKey: qk.node(), queryFn: api.node, refetchInterval: 15_000 });
+  const mesh = useQuery({ queryKey: qk.mesh(), queryFn: api.mesh, refetchInterval: 5_000 });
   const [code, setCode] = useState<{ code: string; expires_at: string; fingerprint: string; port: number }>();
   const [address, setAddress] = useState("");
   const [typed, setTyped] = useState("");
   const open = useMutation({ mutationFn: api.pairCode, onSuccess: setCode });
-  const pair = useMutation({ mutationFn: () => api.pair(address.trim(), typed.trim()), onSuccess: () => { setAddress(""); setTyped(""); qc.invalidateQueries({ queryKey: ["mesh"] }); } });
-  const revoke = useMutation({ mutationFn: api.revokePeer, onSuccess: () => qc.invalidateQueries({ queryKey: ["mesh"] }) });
-  const toggle = useMutation({ mutationFn: (v: { id: string; enabled: boolean }) => api.setPeerEnabled(v.id, v.enabled), onSuccess: () => qc.invalidateQueries({ queryKey: ["mesh"] }) });
+  const pair = useMutation({ mutationFn: () => api.pair(address.trim(), typed.trim()), onSuccess: () => { setAddress(""); setTyped(""); qc.invalidateQueries({ queryKey: qk.mesh() }); } });
+  const revoke = useMutation({ mutationFn: api.revokePeer, onSuccess: () => qc.invalidateQueries({ queryKey: qk.mesh() }) });
+  const toggle = useMutation({ mutationFn: (v: { id: string; enabled: boolean }) => api.setPeerEnabled(v.id, v.enabled), onSuccess: () => qc.invalidateQueries({ queryKey: qk.mesh() }) });
   const codeInput = useRef<HTMLInputElement>(null);
-  const devices = useQuery({ queryKey: ["devices"], queryFn: api.devices, refetchInterval: 15_000 });
-  const revokeDevice = useMutation({ mutationFn: api.revokeDevice, onSuccess: () => qc.invalidateQueries({ queryKey: ["devices"] }) });
+  const devices = useQuery({ queryKey: qk.devices(), queryFn: api.devices, refetchInterval: 15_000 });
+  const revokeDevice = useMutation({ mutationFn: api.revokeDevice, onSuccess: () => qc.invalidateQueries({ queryKey: qk.devices() }) });
   const n = node.data;
   const search = useSearch({ strict: false }) as { node?: string };
   const targetReady = !!search.node && (n?.node.id === search.node || !!mesh.data?.peers.some((p) => !p.revoked && p.id === search.node));

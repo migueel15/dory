@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle, CircleDashed, GitMerge, GitPullRequest, RadioButton, XCircle, type Icon } from "@phosphor-icons/react";
 import { api, type Card } from "../api/client";
 import { HoverCard } from "./tooltip";
+import { qk } from "../api/queries/keys";
 
 // A pull request or issue tied to a thread through its task, with its state.
 export type GhRef = { kind: "pull" | "issue"; number: number; title: string; state: string; repo?: string };
@@ -22,8 +23,8 @@ const look = (r: GhRef) => LOOK[`${r.kind}:${r.state}`] ?? { icon: CircleDashed,
 // useThreadRefs maps each task to its pull request and issue, with the state
 // from the board and titles from the open GitHub items (closed ones may lack it).
 export function useThreadRefs() {
-  const board = useQuery({ queryKey: ["board", ""], queryFn: () => api.board(), refetchInterval: 30_000 });
-  const gh = useQuery({ queryKey: ["github"], queryFn: () => api.github(), staleTime: 60_000, retry: false });
+  const board = useQuery({ queryKey: qk.board(""), queryFn: () => api.board(), refetchInterval: 30_000 });
+  const gh = useQuery({ queryKey: qk.github(), queryFn: () => api.github(), staleTime: 60_000, retry: false });
   const byTask = new Map<string, GhRef[]>();
   for (const c of board.data?.cards ?? []) {
     const refs: GhRef[] = [];
@@ -72,7 +73,7 @@ export function RefChip({ r, listVisible }: { r: GhRef; listVisible: boolean }) 
   }, [listVisible, needsTitle]);
 
   const detail = useQuery({
-    queryKey: ["github-detail", repo, kind, r.number],
+    queryKey: qk.githubDetail(repo, kind, r.number),
     queryFn: () => api.githubDetail(repo, kind, r.number),
     enabled: needsTitle && (Boolean(anchor) || (listVisible && inView)),
     staleTime: 60_000,

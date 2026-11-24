@@ -12,6 +12,7 @@ import type { LaunchChoice } from "../api/client";
 import type { FileRef } from "../components/refs";
 import { useArm } from "../components/github-ui";
 import { highlight, languageOf, loadLanguage } from "../highlight";
+import { qk } from "../api/queries/keys";
 
 type Side = "LEFT" | "RIGHT";
 type Line = { text: string; kind: "add" | "del" | "ctx" | "hunk"; old?: number; new?: number };
@@ -313,7 +314,7 @@ export const FullscreenHost = createContext<HTMLElement | null>(null);
 export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, steerable = true, onAsked, focus, fill = false, toolsHost }: { repo?: string; pr?: number; text?: string; onSuggest?: (s: Suggestion) => Promise<void>; steerable?: boolean; onAsked?: () => void; focus?: FileRef & { seq: number }; fill?: boolean; toolsHost?: HTMLElement | null }) {
   const qc = useQueryClient();
   const gh = !onSuggest && !!repo && !!pr;
-  const diff = useQuery({ queryKey: ["github-diff", repo, pr], queryFn: () => api.githubDiff(repo, pr), enabled: text === undefined });
+  const diff = useQuery({ queryKey: qk.githubDiff(repo, pr), queryFn: () => api.githubDiff(repo, pr), enabled: text === undefined });
   const source = text ?? diff.data?.diff ?? "";
   const files = useMemo(() => parseDiff(source), [source]);
   const [filter, setFilter] = useState("");
@@ -372,11 +373,11 @@ export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, ste
     Promise.all(files.map(async (f) => [f.path, await patchHash(f)] as const)).then((h) => live && setHashes(new Map(h)));
     return () => { live = false; };
   }, [files]);
-  const reviews = useQuery({ queryKey: ["pull-reviews", repo, pr], queryFn: () => api.pullReviews(repo, pr), enabled: gh });
+  const reviews = useQuery({ queryKey: qk.pullReviews(repo, pr), queryFn: () => api.pullReviews(repo, pr), enabled: gh });
   const reviewed = useMemo(() => new Set((reviews.data ?? []).filter((v) => v.patch_hash === hashes.get(v.path)).map((v) => v.path)), [reviews.data, hashes]);
   const mark = useMutation({
     mutationFn: ({ path, on }: { path: string; on: boolean }) => (on ? api.markPullReview(repo, pr, path, hashes.get(path)!) : api.unmarkPullReview(repo, pr, path)),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["pull-reviews", repo, pr] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.pullReviews(repo, pr) }),
   });
   // Reviewed files fold unless the user opens them.
   const [folded, setFolded] = useState(new Map<string, boolean>());
@@ -411,7 +412,7 @@ export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, ste
   }, []);
   const toggleFold = useCallback((path: string) => setFolded((m) => new Map(m).set(path, !(m.get(path) ?? now.current.reviewed.has(path)))), []);
   const commentFile = useCallback((path: string) => { setPick({ file: path, start: -1, end: -1 }); setOpen(true); }, []);
-  const agent = useQuery({ queryKey: ["pull-agent", repo, pr], queryFn: () => api.pullAgent(repo, pr), enabled: gh });
+  const agent = useQuery({ queryKey: qk.pullAgent(repo, pr), queryFn: () => api.pullAgent(repo, pr), enabled: gh });
   // The first question creates the review thread: it waits in launching while
   // the user picks the machine and model.
   const [launching, setLaunching] = useState<{ f: File; p: Pick; body: string }>();
@@ -424,7 +425,7 @@ export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, ste
       const nums = lines.map(number);
       return api.askPullAgent(repo, pr, { path: f.path, start: Math.min(...nums), end: Math.max(...nums), snippet: lines.map((l) => l.text).join("\n"), question: body.trim(), launch });
     },
-    onSuccess: () => { done(); setLaunching(undefined); qc.invalidateQueries({ queryKey: ["pull-agent", repo, pr] }); onAsked?.(); },
+    onSuccess: () => { done(); setLaunching(undefined); qc.invalidateQueries({ queryKey: qk.pullAgent(repo, pr) }); onAsked?.(); },
   });
   const askOrLaunch = (f: File, p: Pick, body: string) => (agent.data?.available ? ask.mutate({ f, p, body }) : setLaunching({ f, p, body }));
   const suggest = useMutation({
@@ -439,7 +440,7 @@ export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, ste
     mutationFn: (a: Parameters<typeof api.githubAct>[3]) => api.githubAct(repo, "pulls", pr, a),
     onSuccess: () => {
       done();
-      qc.invalidateQueries({ queryKey: ["github-detail", repo, "pulls", pr] });
+      qc.invalidateQueries({ queryKey: qk.githubDetail(repo, "pulls", pr) });
     },
   });
   // The search matches file paths and the text of the changed lines; typing stays responsive

@@ -7,6 +7,7 @@ import { setProject, useProject } from "../project";
 import { Input } from "./ui";
 import { useCommand, useShortcuts } from "./shortcuts";
 import { formatChord } from "./dictation-shortcut";
+import { qk } from "../api/queries/keys";
 
 // ProjectSwitcher picks the global project. It looks like a sidebar link and opens a
 // searchable menu; "compact" fits the phone top bar.
@@ -15,7 +16,7 @@ import { formatChord } from "./dictation-shortcut";
 export function ProjectSwitcher({ compact = false, folded = false }: { compact?: boolean; folded?: boolean }) {
   const project = useProject();
   const getShortcut = useShortcuts();
-  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
+  const projects = useQuery({ queryKey: qk.projects(), queryFn: () => api.projects.list() });
   const current = projects.data?.find((p) => p.id === project);
   // Forget a selection that no longer exists (archived or from another database).
   const gone = !!project && !!projects.data && !current;

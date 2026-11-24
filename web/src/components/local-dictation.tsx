@@ -8,6 +8,7 @@ import { playDictationSound, prepareDictationSound } from "./dictation-sound";
 import { openDictationMicrophone } from "./dictation-microphone";
 import { iconButton } from "./ui";
 import { modelEvent, modelKey, useInputSettingsSync } from "./input-settings";
+import { qk } from "../api/queries/keys";
 
 export type SpeechModel = {
   id: string; name: string; bytes: number; streaming: boolean;
@@ -16,7 +17,7 @@ export type SpeechModel = {
 export type SpeechCatalog = { runtime: boolean; models: SpeechModel[] };
 
 const modelsPath = "/dictation/models";
-export const speechKey = ["speech-models"];
+export const speechKey = qk.speechModels();
 const preferenceKey = modelKey;
 
 export function useSpeechModels() {

@@ -14,6 +14,7 @@ import { NewThread } from "./home";
 import { RefChip, useThreadRefs, type GhRef } from "../components/thread-refs";
 import { useThreadMenu } from "../components/thread-menu";
 import { EnvIcon } from "../components/env-icon";
+import { qk } from "../api/queries/keys";
 
 // Filters of the single inbox of threads (requirement RF-19).
 const FILTERS = { active: "Activos", needs: "Te necesitan", working: "Trabajando", archived: "Archivados", external: "En los agentes" } as const;
@@ -58,15 +59,15 @@ export function Threads() {
     window.addEventListener("pointerup", up);
   };
   const threads = useQuery({
-    queryKey: ["threads", filter],
+    queryKey: qk.threads(filter),
     queryFn: () => api.threads(undefined, filter === "archived"),
     refetchInterval: 15_000,
   });
-  const nodes = useQuery({ queryKey: ["node"], queryFn: api.node, staleTime: 60_000 });
+  const nodes = useQuery({ queryKey: qk.node(), queryFn: api.node, staleTime: 60_000 });
   // Conversations started in the harnesses of this node, outside Dory.
-  const external = useQuery({ queryKey: ["external", "local"], queryFn: () => api.externalSessions("local"), enabled: filter === "external", refetchInterval: 30_000 });
+  const external = useQuery({ queryKey: qk.external("local"), queryFn: () => api.externalSessions("local"), enabled: filter === "external", refetchInterval: 30_000 });
   const local = nodes.data?.node.id;
-  const mesh = useQuery({ queryKey: ["mesh"], queryFn: api.mesh, staleTime: 30_000 });
+  const mesh = useQuery({ queryKey: qk.mesh(), queryFn: api.mesh, staleTime: 30_000 });
   // The environment a thread runs in, to show its icon in the list.
   const envOf = (id: string) => {
     if (id === local && nodes.data) return { name: nodes.data.node.name, icon: nodes.data.node.icon, os: nodes.data.node.os };
@@ -76,7 +77,7 @@ export function Threads() {
   // Pull requests and issues of each thread, through its task.
   const refsOf = useThreadRefs();
   // Each thread shows the repositories of its project as owner/repo.
-  const repos = useQuery({ queryKey: ["repositories"], queryFn: () => api.repositories.list(), staleTime: 60_000 });
+  const repos = useQuery({ queryKey: qk.repositories(), queryFn: () => api.repositories.list(), staleTime: 60_000 });
   const repoOf = (projectID: string | null) => (repos.data ?? []).filter((r) => projectID && r.project_id === projectID && !r.archived_at).map((r) => repoName(r.remote_url)).join(", ");
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();

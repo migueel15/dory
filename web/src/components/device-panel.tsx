@@ -5,12 +5,13 @@ import { devicesApi, type Device, type DeviceList } from "../api/client";
 import { DeviceStream, Key, keyFor, webCodecsProblem, type StreamStatus } from "../lib/scrcpy";
 import { askConfirm } from "./confirm";
 import { Button, ErrorText, Input, Select, iconButton } from "./ui";
+import { qk } from "../api/queries/keys";
 
 // DevicePanel shows an Android device or emulator of the thread's node live.
 // Only the visible tab streams: it connects on mount and closes on unmount.
 // The chosen device is kept by the tab; if it drops, the tab waits for it.
 export function DevicePanel({ node, serial, onSerial, floating = false, onFloat }: { node: string; serial: string | null; onSerial: (serial: string | null, name: string) => void; floating?: boolean; onFloat?: (v: boolean) => void }) {
-  const list = useQuery({ queryKey: ["devices", node], queryFn: () => devicesApi.list(node), refetchInterval: 4000 });
+  const list = useQuery({ queryKey: qk.devices(node), queryFn: () => devicesApi.list(node), refetchInterval: 4000 });
   const problem = webCodecsProblem();
   if (problem) return <Notice title="Vídeo no disponible">{problem}</Notice>;
   if (list.error) return <div className="p-4"><ErrorText error={list.error} /></div>;
@@ -45,7 +46,7 @@ const label = (d: Device) => d.avd || d.model || d.serial;
 
 function Picker({ node, list, lost, onPick }: { node: string; list: DeviceList; lost: string | null; onPick: (d: Device) => void }) {
   const qc = useQueryClient();
-  const refresh = () => qc.invalidateQueries({ queryKey: ["devices", node] });
+  const refresh = () => qc.invalidateQueries({ queryKey: qk.devices(node) });
   const run = useMutation({ mutationFn: (f: () => Promise<unknown>) => f(), onSettled: refresh });
   const stopped = list.avds.filter((a) => !list.devices.some((d) => d.avd === a));
   const stop = async (d: Device) => {
@@ -236,7 +237,7 @@ function useDeviceInput(canvas: React.RefObject<HTMLCanvasElement | null>, strea
 // the device reports back after each change; only what the device supports shows.
 function Tools({ node, device, onClose }: { node: string; device: Device; onClose: () => void }) {
   const qc = useQueryClient();
-  const key = ["device-state", node, device.serial];
+  const key = qk.deviceState(node, device.serial);
   const state = useQuery({ queryKey: key, queryFn: () => devicesApi.action(device.serial, { action: "state" }, node), refetchInterval: 8000 });
   const apply = useMutation({
     mutationFn: (body: Record<string, unknown>) => devicesApi.action(device.serial, body, node),
@@ -315,7 +316,7 @@ const touchHelp = `Para controlar el móvil con el ratón y el teclado desde Dor
 // TouchStatus shows whether the device lets Dory inject touches and keys: lit
 // when it does, dimmed with the steps to enable it when it refuses.
 function TouchStatus({ node, device }: { node: string; device: Device }) {
-  const check = useQuery({ queryKey: ["device-input", node, device.serial], queryFn: () => devicesApi.action(device.serial, { action: "input_check" }, node), refetchInterval: 6000 });
+  const check = useQuery({ queryKey: qk.deviceInput(node, device.serial), queryFn: () => devicesApi.action(device.serial, { action: "input_check" }, node), refetchInterval: 6000 });
   const on = check.data?.input === "ok";
   const blocked = check.data?.input === "blocked";
   const title = on ? "Control táctil activado" : blocked ? touchHelp : check.isLoading ? "Comprobando el control táctil…" : "No se pudo comprobar el control táctil";

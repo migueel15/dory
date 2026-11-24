@@ -13,6 +13,7 @@ import { useCommand, useShortcuts } from "../components/shortcuts";
 import { formatChord } from "../components/dictation-shortcut";
 import { useComposerFiles } from "../components/composer-files";
 import { planMessage } from "../lib/auto-message";
+import { qk } from "../api/queries/keys";
 
 
 // NewThread is the chat box of the start screen (requirement 13.2): the
@@ -33,20 +34,20 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
   useCommand("plan", () => { if (!box.current?.getClientRects().length) return false; setPlan((value) => !value); });
   const dictation = useLocalDictation(text, setText, box, { panelShortcut: true, onEnter: (draft) => latestSendDraft.current(draft) });
   const showingDictation = !!dictation.preview;
-  const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
+  const projects = useQuery({ queryKey: qk.projects(), queryFn: () => api.projects.list() });
   const form = useLaunchForm({ section: "home" , project });
   const [pickedMode, setMode] = useState<"checkout" | "worktree" | "existing">();
   const mode = pickedMode ?? form.defaultWorkspace;
   const worktree = mode === "worktree";
   const [existing, setExisting] = useState("");
   const worktreeList = useQuery({
-    queryKey: ["project-worktrees", form.value.node, project], queryFn: () => api.projectWorktrees(form.value.node, project!),
+    queryKey: qk.projectWorktrees(form.value.node, project), queryFn: () => api.projectWorktrees(form.value.node, project!),
     enabled: !!project && mode === "existing", retry: false,
   });
   const chosen = worktreeList.data?.find((w) => w.path === existing) ?? worktreeList.data?.[0];
   const [base, setBase] = useState("");
   const branchList = useQuery({
-    queryKey: ["project-branches", form.value.node, project], queryFn: () => api.projectBranches(form.value.node, project!),
+    queryKey: qk.projectBranches(form.value.node, project), queryFn: () => api.projectBranches(form.value.node, project!),
     enabled: !!project, retry: false,
   });
   const checkoutBranch = branchList.data?.current ?? "";

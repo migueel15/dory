@@ -3,6 +3,7 @@ import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { Warning } from "@phosphor-icons/react";
 import { api, type NodeDefaults, type NodeSettings } from "../api/client";
 import { useNodes } from "./launch-picker";
+import { qk } from "../api/queries/keys";
 
 // Per-node settings helper.
 //
@@ -68,13 +69,13 @@ export function useNodeSettings(node: string) {
   const qc = useQueryClient();
   const nodes = useNodes();
   const targets = node === ALL_NODES ? nodes : nodes.filter((n) => n.value === node);
-  const queries = useQueries({ queries: targets.map((n) => ({ queryKey: ["node-settings", n.value], queryFn: () => api.nodeSettings(n.value) })) });
+  const queries = useQueries({ queries: targets.map((n) => ({ queryKey: qk.nodeSettings(n.value), queryFn: () => api.nodeSettings(n.value) })) });
   const save = useMutation({
     mutationFn: (patch: Patch) => Promise.all(targets.map((n, i) => {
       const current = queries[i].data;
       return current ? api.setNodeSettings({ ...current, ...(typeof patch === "function" ? patch(current) : patch) }, n.value).then((data) => qc.setQueryData(["node-settings", n.value], data)) : Promise.resolve();
     })),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["node-settings"] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.nodeSettings() }),
   });
   const loaded = queries.length > 0 && queries.every((q) => q.data);
   // values lists what each target node has for a field (key or path).
@@ -123,7 +124,7 @@ export function SettingRow<K extends SettingField>({ settings, field, title, hel
 export function useNodeDefault(node: string, pick: (d: NodeDefaults) => string, fallback: string): string {
   const nodes = useNodes();
   const ids = node === ALL_NODES ? nodes.map((n) => n.value) : [node];
-  const results = useQueries({ queries: ids.map((id) => ({ queryKey: ["node-defaults", id], queryFn: () => api.nodeDefaults(id), staleTime: 300_000 })) });
+  const results = useQueries({ queries: ids.map((id) => ({ queryKey: qk.nodeDefaults(id), queryFn: () => api.nodeDefaults(id), staleTime: 300_000 })) });
   const exact = results.map((r) => (r.data ? pick(r.data) : undefined)).filter((v): v is string => !!v);
   if (!exact.length) return fallback;
   if (exact.every((v) => v === exact[0])) return exact[0];

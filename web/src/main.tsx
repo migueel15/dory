@@ -23,6 +23,7 @@ import { Tasks } from "./pages/tasks";
 import { applyTheme, useTheme } from "./theme";
 import { applyScale, listenZoomKeys } from "./scale";
 import "./index.css";
+import { qk } from "./api/queries/keys";
 
 applyTheme();
 applyScale();
@@ -41,7 +42,7 @@ function Login() {
   const [confirmation, setConfirmation] = useState("");
   const [validationError, setValidationError] = useState<"short" | "mismatch" | null>(null);
   // A new node has no account: the first one is created from this machine.
-  const setup = useQuery({ queryKey: ["setup"], queryFn: api.setupNeeded, retry: false });
+  const setup = useQuery({ queryKey: qk.setup(), queryFn: api.setupNeeded, retry: false });
   const first = !!setup.data?.needed;
   const minimumLength = 8;
   const action = first ? "Crear cuenta" : "Iniciar sesión";
@@ -142,7 +143,7 @@ function SettingsLink() {
 }
 
 function VersionBadge() {
-  const v = useQuery({ queryKey: ["version"], queryFn: api.version, staleTime: Infinity });
+  const v = useQuery({ queryKey: qk.version(), queryFn: api.version, staleTime: Infinity });
   if (!v.data) return null;
   const { revision, short, time, modified } = v.data;
   const cls = "font-mono text-xs text-slate-400 dark:text-muted hover:underline";
@@ -153,13 +154,13 @@ function VersionBadge() {
 
 function Layout() {
   const qc = useQueryClient();
-  const me = useQuery({ queryKey: ["me"], queryFn: api.me, retry: false });
+  const me = useQuery({ queryKey: qk.me(), queryFn: api.me, retry: false });
   const logout = useMutation({ mutationFn: api.logout, onSuccess: () => qc.clear() });
   useLiveUpdates(!!me.data);
   // The board, threads and pull requests need the full width.
   const wide = useLocation({ select: (l) => l.pathname.startsWith("/threads") || /^\/github\/[^/]+\/[^/]+\/(pulls|issues)\//.test(l.pathname) || l.pathname === "/tasks" });
   // Threads that wait for the user show as a count on their link.
-  const threads = useQuery({ queryKey: ["threads", "attention"], queryFn: () => api.threads(), enabled: !!me.data, refetchInterval: 30_000 });
+  const threads = useQuery({ queryKey: qk.threadsAttention(), queryFn: () => api.threads(), enabled: !!me.data, refetchInterval: 30_000 });
   const attention = (threads.data ?? []).filter((t) => t.status === "waiting" || t.status === "error").length;
 
   const path = useLocation({ select: (l) => l.pathname });
