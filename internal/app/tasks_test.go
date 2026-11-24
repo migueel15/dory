@@ -106,6 +106,29 @@ func TestCheckDoneRefusesUnmergedPull(t *testing.T) {
 	}
 }
 
+func TestRecordPullStateMarksTaskDone(t *testing.T) {
+	ctx := context.Background()
+	a, repo := newTasks(t)
+	if _, err := a.Store.Tasks().Create(ctx, data.Task{Title: "t", RepositoryID: &repo.ID, Branch: "feat"}); err != nil {
+		t.Fatal(err)
+	}
+	src := &fakePulls{open: []github.Pull{{Repo: "o/r", Number: 7, HeadRef: "feat"}}}
+	if _, err := a.RefreshPulls(ctx, src); err != nil {
+		t.Fatal(err)
+	}
+	cards, err := a.Board(ctx, data.Filter{})
+	if err != nil || cards[0].Column != "ready_to_merge" {
+		t.Fatalf("before merge: cards=%+v err=%v", cards, err)
+	}
+	if err := a.RecordPullState(ctx, "o/r", 7, "merged"); err != nil {
+		t.Fatal(err)
+	}
+	cards, err = a.Board(ctx, data.Filter{})
+	if err != nil || cards[0].Column != "done" || cards[0].PRState != "merged" {
+		t.Fatalf("after merge: cards=%+v err=%v", cards, err)
+	}
+}
+
 func TestFinishIsIdempotentWithoutThreads(t *testing.T) {
 	ctx := context.Background()
 	a, _ := newTasks(t)

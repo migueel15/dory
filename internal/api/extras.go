@@ -155,6 +155,22 @@ func (s *Server) mountGitHub(mux *http.ServeMux) {
 			writeErr(w, r, githubFailure(err))
 			return
 		}
+		if r.PathValue("kind") == "pulls" {
+			var next string
+			switch action.Type {
+			case "merge":
+				next = "merged"
+			case "close_pull":
+				next = "closed"
+			}
+			if next != "" {
+				_ = s.Tasks.RecordPullState(r.Context(), repo(r), n, next)
+				if s.Events != nil {
+					s.Events.Changed("github", "")
+				}
+				s.Tasks.FinishSoon(r.Context())
+			}
+		}
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("GET /api/github/repos/{owner}/{repo}/pulls/{number}/diff", func(w http.ResponseWriter, r *http.Request) {

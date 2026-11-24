@@ -58,15 +58,15 @@ export function ColumnCards({ list, all, onExpand, card }: { list: Card[]; all: 
   );
 }
 
-// MergeButton squash-merges the card's pull request with the existing GitHub action, asking for a second click first.
+// MergeButton merges the card's pull request using the repository's allowed merge method, asking for a second click first.
 export function MergeButton({ c, pull }: { c: Card; pull: Pull }) {
   const qc = useQueryClient();
-  const merge = useGithubAct<void>(pull.repo, "pulls", pull.number, () => ({ type: "merge", method: "SQUASH" }), {
+  const merge = useGithubAct<void>(pull.repo, "pulls", pull.number, () => ({ type: "merge" }), {
     onSettled: () => qc.invalidateQueries({ queryKey: qk.board() }),
   });
   const [armed, click] = useArm(() => merge.mutate());
   return (
-    <button type="button" draggable={false} disabled={merge.isPending} title={merge.error ? merge.error.message : "Fusionar con squash"}
+    <button type="button" draggable={false} disabled={merge.isPending} title={merge.error ? merge.error.message : "Fusionar pull request"}
       onClick={(e) => { e.stopPropagation(); click(); }}
       className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium text-white disabled:opacity-50 ${merge.error ? "bg-red-600 hover:bg-red-700" : "bg-emerald-600 hover:bg-emerald-700"}`}>
       <GitMerge weight="bold" aria-hidden="true" className="size-3.5" />{merge.isPending ? "Fusionando…" : armed ? "¿Confirmar?" : "Merge"}

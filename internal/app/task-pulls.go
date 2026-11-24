@@ -158,6 +158,31 @@ func (a *Tasks) RefreshPulls(ctx context.Context, source TaskPullSource) (bool, 
 	return a.savePulls(ctx, updates, existing)
 }
 
+// RecordPullState updates the local pull request cache immediately after a
+// local GitHub action (such as merge or close), updating both the #number key
+// and any branch alias pointing to the same pull request.
+func (a *Tasks) RecordPullState(ctx context.Context, repo string, number int, state string) error {
+	if repo == "" || number <= 0 || state == "" {
+		return nil
+	}
+	now := time.Now().UTC()
+	repoKey := strings.ToLower(repo)
+	existing, err := a.cachedPulls(ctx)
+	if err != nil {
+		return err
+	}
+	updates := map[pullKey]cachedPull{
+		pullNumberKey(repo, int64(number)): {number: number, state: state, raw: "{}", at: now},
+	}
+	for k, p := range existing {
+		if k.repo == repoKey && p.number == number {
+			updates[k] = cachedPull{number: number, state: state, raw: "{}", at: now}
+		}
+	}
+	_, err = a.savePulls(ctx, updates, existing)
+	return err
+}
+
 func (a *Tasks) savePulls(ctx context.Context, updates, existing map[pullKey]cachedPull) (bool, error) {
 	tx, err := a.Store.LocalDB().BeginTx(ctx, nil)
 	if err != nil {

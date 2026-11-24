@@ -504,7 +504,7 @@ func validate(kind string, a Action) error {
 	if a.Type == "close_issue" && a.Method != "" && a.Method != "COMPLETED" && a.Method != "NOT_PLANNED" {
 		return ErrInvalid.Msgf("unknown close reason")
 	}
-	if a.Type == "merge" && !slices.Contains([]string{"MERGE", "SQUASH", "REBASE"}, a.Method) {
+	if a.Type == "merge" && a.Method != "" && !slices.Contains([]string{"MERGE", "SQUASH", "REBASE"}, a.Method) {
 		return ErrInvalid.Msgf("unknown merge method")
 	}
 	return nil
@@ -523,7 +523,7 @@ func (c *Client) Act(ctx context.Context, repo, kind string, number int, a Actio
 	var data struct {
 		Repository map[string]json.RawMessage `json:"repository"`
 	}
-	q := fmt.Sprintf(`query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { %s(number: $number) { id } } }`, field)
+	q := fmt.Sprintf(`query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { squashMergeAllowed mergeCommitAllowed rebaseMergeAllowed %s(number: $number) { id } } }`, field)
 	if err := c.graphql(ctx, q, map[string]any{"owner": owner, "name": short, "number": number}, &data); err != nil {
 		return err
 	}
@@ -533,6 +533,13 @@ func (c *Client) Act(ctx context.Context, repo, kind string, number int, a Actio
 	if err := json.Unmarshal(data.Repository[field], &node); err != nil || node.ID == "" {
 		return ErrUnknownRepo
 	}
+	if a.Type == "merge" && a.Method == "" {
+		var squash, merge, rebase bool
+		_ = json.Unmarshal(data.Repository["squashMergeAllowed"], &squash)
+		_ = json.Unmarshal(data.Repository["mergeCommitAllowed"], &merge)
+		_ = json.Unmarshal(data.Repository["rebaseMergeAllowed"], &rebase)
+		a.Method = pickMergeMethod(squash, merge, rebase)
+	}
 	m := mutations[a.Type]
 	var ignored struct{}
 	if err := c.graphql(ctx, m.query, map[string]any{"input": m.input(a, node.ID)}, &ignored); err != nil {
@@ -541,6 +548,19 @@ func (c *Client) Act(ctx context.Context, repo, kind string, number int, a Actio
 	c.forget()
 	c.Kick()
 	return nil
+}
+
+func pickMergeMethod(squash, merge, rebase bool) string {
+	switch {
+	case squash:
+		return "SQUASH"
+	case merge:
+		return "MERGE"
+	case rebase:
+		return "REBASE"
+	default:
+		return "SQUASH"
+	}
 }
 
 func nonNil(u []User) []User {

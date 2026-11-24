@@ -33,8 +33,9 @@ func TestValidate(t *testing.T) {
 		{"pulls", Action{Type: "edit_issue", Title: "Nuevo"}, false},
 		{"issues", Action{Type: "assign", UserIDs: []string{"U1"}}, true},
 		{"issues", Action{Type: "assign"}, false},
-		{"pulls", Action{Type: "merge"}, false},
+		{"pulls", Action{Type: "merge"}, true},
 		{"pulls", Action{Type: "merge", Method: "SQUASH"}, true},
+		{"pulls", Action{Type: "merge", Method: "FAST_FORWARD"}, false},
 		{"pulls", Action{Type: "delete"}, false},
 	}
 	for _, c := range cases {
@@ -44,9 +45,26 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+func TestPickMergeMethod(t *testing.T) {
+	cases := []struct {
+		squash, merge, rebase bool
+		want                  string
+	}{
+		{true, true, true, "SQUASH"},
+		{false, true, true, "MERGE"},
+		{false, false, true, "REBASE"},
+		{false, false, false, "SQUASH"},
+	}
+	for _, c := range cases {
+		if got := pickMergeMethod(c.squash, c.merge, c.rebase); got != c.want {
+			t.Errorf("pickMergeMethod(%v,%v,%v) = %q, want %q", c.squash, c.merge, c.rebase, got, c.want)
+		}
+	}
+}
+
 func TestUnique(t *testing.T) {
-	got := unique(map[string]string{"bancosol-tfg/intranet": "local", "Bancosol-TFG/intranet": "tfg", "migueel15/dory": "dory"})
-	want := map[string]string{"Bancosol-TFG/intranet": "tfg", "migueel15/dory": "dory"}
+	got := unique(map[string]string{"acme/app": "local", "Acme/app": "team", "octocat/hello-world": "demo"})
+	want := map[string]string{"Acme/app": "team", "octocat/hello-world": "demo"}
 	if len(got) != len(want) {
 		t.Fatalf("got %v", got)
 	}

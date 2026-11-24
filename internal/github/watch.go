@@ -105,6 +105,9 @@ func (c *Client) watchOnce(ctx context.Context, changed func()) time.Duration {
 		if data, err := c.fetchRepo(ctx, repo, project); err == nil {
 			c.mu.Lock()
 			c.byRepo[repo] = data
+			if c.fetched.IsZero() {
+				c.fetched = time.Now()
+			}
 			c.mu.Unlock()
 		}
 	}
