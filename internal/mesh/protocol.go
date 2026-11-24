@@ -25,8 +25,8 @@ func (m *Mesh) checkProtocol(ctx context.Context, c *http.Client, base, node, ad
 	defer resp.Body.Close()
 	var info json.RawMessage
 	var metadata struct {
-		Protocol int                `json:"protocol"`
-		Threads  []data.ThreadState `json:"threads"`
+		Protocol int             `json:"protocol"`
+		Threads  json.RawMessage `json:"threads"`
 	}
 	switch {
 	case resp.StatusCode == http.StatusNotFound,
@@ -52,6 +52,12 @@ func (m *Mesh) checkProtocol(ctx context.Context, c *http.Client, base, node, ad
 		_, err := m.db.ExecContext(ctx, `UPDATE peers SET protocol = ?, last_error = ?`+currentPeer, metadata.Protocol, message, node, address, key)
 		return false, err
 	}
+	var states []data.ThreadState
+	if len(metadata.Threads) > 0 {
+		if err := json.Unmarshal(metadata.Threads, &states); err != nil {
+			return false, err
+		}
+	}
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -67,7 +73,7 @@ func (m *Mesh) checkProtocol(ctx context.Context, c *http.Client, base, node, ad
 	if err != nil || n == 0 {
 		return false, err
 	}
-	changed, err := m.cacheThreadStates(ctx, tx, node, at, metadata.Threads)
+	changed, err := m.cacheThreadStates(ctx, tx, node, at, states)
 	if err != nil {
 		return false, err
 	}

@@ -35,7 +35,7 @@ func TestSyncRejectsIncompatibleProtocol(t *testing.T) {
 			fmt.Fprint(w, "<html></html>")
 		}, 1},
 		{"future", func(w http.ResponseWriter, _ *http.Request) {
-			reply(w, map[string]int{"protocol": 3})
+			reply(w, map[string]any{"protocol": 3, "threads": "future-format"})
 		}, 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
