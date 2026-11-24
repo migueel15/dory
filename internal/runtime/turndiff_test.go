@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestTurnSnapshotDiff(t *testing.T) {
@@ -43,9 +44,12 @@ func TestRestoreSnapshot(t *testing.T) {
 	write("a.txt", "2\n")
 	write("new.txt", "n\n")
 	os.Remove(filepath.Join(dir, "gone.txt"))
-	ok, err := restoreSnapshot(ctx, root, "th", "run1")
-	if !ok || err != nil {
-		t.Fatalf("restore: %v %v", ok, err)
+	snap, ok := snapshotAt(ctx, root, "th", "", time.Now())
+	if !ok {
+		t.Fatal("snapshot not found by time")
+	}
+	if err := restoreSnapshot(ctx, root, snap.ref); err != nil {
+		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(filepath.Join(dir, "a.txt")); string(b) != "1\n" {
 		t.Fatalf("a.txt = %q", b)
@@ -56,8 +60,8 @@ func TestRestoreSnapshot(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "gone.txt")); err != nil {
 		t.Fatal("gone.txt not restored")
 	}
-	dropSnapshots(ctx, root, "th", nil)
-	if ok, _ := restoreSnapshot(ctx, root, "th", "run1"); ok {
+	dropSnapshots(ctx, root, "th", 0)
+	if _, ok := snapshotAt(ctx, root, "th", "run1", time.Time{}); ok {
 		t.Fatal("ref kept")
 	}
 }

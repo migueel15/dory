@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/migueel15/dory/internal/cmdexec"
 )
@@ -87,41 +89,78 @@ func keepSnapshot(ctx context.Context, root, thread, run, tree string) {
 	_, _ = gitCmd(ctx, root, "update-ref", snapshotRef(thread, run), strings.TrimSpace(string(out)))
 }
 
-// dropSnapshots deletes the thread's snapshot refs whose run keep rejects.
-func dropSnapshots(ctx context.Context, root, thread string, keep func(run string) bool) {
+type turnSnapshot struct {
+	ref string
+	at  int64 // when the turn started, in Unix seconds
+}
+
+// snapshots lists the thread's snapshot refs, oldest first.
+func snapshots(ctx context.Context, root, thread string) []turnSnapshot {
 	if root == "" {
-		return
+		return nil
 	}
-	prefix := snapshotRef(thread, "")
-	out, err := gitCmd(ctx, root, "for-each-ref", "--format=%(refname)", prefix)
+	out, err := gitCmd(ctx, root, "for-each-ref", "--sort=committerdate", "--format=%(committerdate:unix) %(refname)", snapshotRef(thread, ""))
 	if err != nil {
-		return
+		return nil
 	}
-	for _, ref := range strings.Fields(string(out)) {
-		if keep == nil || !keep(strings.TrimPrefix(ref, prefix)) {
-			_, _ = gitCmd(ctx, root, "update-ref", "-d", ref)
+	var list []turnSnapshot
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		at, ref, ok := strings.Cut(l, " ")
+		if !ok {
+			continue
+		}
+		n, _ := strconv.ParseInt(at, 10, 64)
+		list = append(list, turnSnapshot{ref: ref, at: n})
+	}
+	return list
+}
+
+// snapshotAt finds the snapshot of the turn a user message started: by its
+// run, or, when the harness replaced the message with its own and the run is
+// lost, by the snapshot taken closest to the message's time.
+func snapshotAt(ctx context.Context, root, thread, run string, at time.Time) (turnSnapshot, bool) {
+	list := snapshots(ctx, root, thread)
+	best, gap := turnSnapshot{}, int64(120)
+	for _, s := range list {
+		if run != "" && s.ref == snapshotRef(thread, run) {
+			return s, true
+		}
+		d := s.at - at.Unix()
+		if d < 0 {
+			d = -d
+		}
+		if !at.IsZero() && d <= gap {
+			best, gap = s, d
+		}
+	}
+	return best, best.ref != ""
+}
+
+// dropSnapshots deletes the thread's snapshot refs taken at or after from,
+// or all of them when from is 0.
+func dropSnapshots(ctx context.Context, root, thread string, from int64) {
+	for _, s := range snapshots(ctx, root, thread) {
+		if s.at >= from {
+			_, _ = gitCmd(ctx, root, "update-ref", "-d", s.ref)
 		}
 	}
 }
 
 // restoreSnapshot puts the repository's files back as they were in a turn's
 // snapshot: it rewrites the files that changed, restores deleted ones and
-// removes the ones created since. It reports false when there is no snapshot.
-func restoreSnapshot(ctx context.Context, root, thread, run string) (bool, error) {
-	if root == "" {
-		return false, nil
-	}
-	out, err := gitCmd(ctx, root, "rev-parse", "--verify", "--quiet", snapshotRef(thread, run)+"^{tree}")
+// removes the ones created since.
+func restoreSnapshot(ctx context.Context, root, ref string) error {
+	out, err := gitCmd(ctx, root, "rev-parse", "--verify", "--quiet", ref+"^{tree}")
 	if err != nil {
-		return false, nil
+		return fmt.Errorf("snapshot %s: %w", ref, err)
 	}
 	base, now := strings.TrimSpace(string(out)), snapshot(ctx, root)
 	if now == "" {
-		return false, fmt.Errorf("snapshot of %s failed", root)
+		return fmt.Errorf("snapshot of %s failed", root)
 	}
 	added, err := gitCmd(ctx, root, "diff", "--name-only", "-z", "--no-renames", "--diff-filter=A", base, now)
 	if err != nil {
-		return false, err
+		return err
 	}
 	for _, p := range strings.Split(string(added), "\x00") {
 		if p != "" {
@@ -130,9 +169,9 @@ func restoreSnapshot(ctx context.Context, root, thread, run string) (bool, error
 	}
 	changed, err := gitCmd(ctx, root, "diff", "--name-only", "-z", "--no-renames", "--diff-filter=MDT", base, now)
 	if err != nil || len(changed) == 0 {
-		return true, err
+		return err
 	}
-	return true, withIndex(ctx, root, func(git func(string, ...string) ([]byte, error)) error {
+	return withIndex(ctx, root, func(git func(string, ...string) ([]byte, error)) error {
 		if _, err := git("", "read-tree", base); err != nil {
 			return err
 		}
@@ -246,10 +285,13 @@ func (m *Manager) Revert(ctx context.Context, id, messageID string) (Reverted, e
 	}
 	root := repoRoot(ctx, dir)
 	var out Reverted
-	if target.RunID != "" {
-		if out.FilesRestored, err = restoreSnapshot(ctx, root, id, target.RunID); err != nil {
+	sent, _ := time.Parse(time.RFC3339Nano, target.CreatedAt)
+	snap, ok := snapshotAt(ctx, root, id, target.RunID, sent)
+	if ok {
+		if err := restoreSnapshot(ctx, root, snap.ref); err != nil {
 			return Reverted{}, err
 		}
+		out.FilesRestored = true
 	}
 	if _, err := m.db.ExecContext(ctx, `DELETE FROM thread_messages WHERE thread_id = ? AND seq >= (SELECT seq FROM thread_messages WHERE id = ?)`, id, messageID); err != nil {
 		return Reverted{}, err
@@ -260,11 +302,11 @@ func (m *Manager) Revert(ctx context.Context, id, messageID string) (Reverted, e
 		return Reverted{}, err
 	}
 	CloseLive(id)
-	runs := map[string]bool{}
-	for _, msg := range msgs[:at] {
-		runs[msg.RunID] = true
+	if ok {
+		dropSnapshots(ctx, root, id, snap.at)
+	} else if !sent.IsZero() {
+		dropSnapshots(ctx, root, id, sent.Unix())
 	}
-	dropSnapshots(ctx, root, id, func(run string) bool { return runs[run] })
 	m.publish(Update{ThreadID: id, Reload: true})
 	out.Text = target.Text
 	return out, nil
@@ -273,6 +315,6 @@ func (m *Manager) Revert(ctx context.Context, id, messageID string) (Reverted, e
 // DropSnapshots deletes every turn snapshot of a thread.
 func (m *Manager) DropSnapshots(ctx context.Context, id string) {
 	if dir, err := m.Dir(ctx, id); err == nil {
-		dropSnapshots(ctx, repoRoot(ctx, dir), id, nil)
+		dropSnapshots(ctx, repoRoot(ctx, dir), id, 0)
 	}
 }
