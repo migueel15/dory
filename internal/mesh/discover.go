@@ -113,7 +113,7 @@ func (m *Mesh) tailscale(ctx context.Context) {
 				NodeID string `json:"node_id"`
 				Name   string `json:"name"`
 			}
-			if getJSON(ctx, c, "https://"+address+"/peer/v2/hello", &hello) == nil && hello.NodeID != "" {
+			if getJSON(ctx, c, "https://"+address+peerPrefix+"/hello", &hello) == nil && hello.NodeID != "" {
 				m.spotted(ctx, hello.NodeID, hello.Name, address)
 			}
 		}()

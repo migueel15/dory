@@ -9,7 +9,7 @@ import (
 	"net/url"
 )
 
-const proxyPrefix = "/peer/v2/proxy"
+const proxyPrefix = peerPrefix + "/proxy"
 
 // Forward sends an API call to the node that owns it and copies the answer,
 // streams included. False leaves the response available to the caller.

@@ -111,7 +111,8 @@ func TestPairSyncAndForward(t *testing.T) {
 	eventually(t, "presence", func() bool {
 		pa, _ := a.m.Peers(ctx)
 		pb, _ := b.m.Peers(ctx)
-		return len(pa) == 1 && pa[0].Connected && len(pb) == 1 && pb[0].Connected
+		return len(pa) == 1 && pa[0].Connected && pa[0].Protocol == ProtocolVersion &&
+			len(pb) == 1 && pb[0].Connected && pb[0].Protocol == ProtocolVersion
 	})
 
 	// A call for a thread of a is answered by a.

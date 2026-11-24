@@ -28,6 +28,7 @@ import (
 const (
 	// ProtocolVersion is the version of the node-to-node HTTP protocol.
 	ProtocolVersion      = 2
+	peerPrefix           = "/peer/v2"
 	incompatibleProtocol = "incompatible_protocol"
 	// DefaultPort is where nodes listen for each other.
 	DefaultPort = 7710
@@ -156,11 +157,11 @@ func (m *Mesh) seen(ctx context.Context, node string) {
 // Serve listens for peers on the mesh port until ctx ends.
 func (m *Mesh) Serve(ctx context.Context) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /peer/v2/hello", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET "+peerPrefix+"/hello", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, map[string]string{"node_id": m.log.Node(), "name": m.name, "public_key": m.id.PublicKey(), "device_pin": m.id.DevicePin})
 	})
-	mux.HandleFunc("POST /peer/v2/pair", m.acceptPair)
-	mux.HandleFunc("GET /peer/v2/info", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
+	mux.HandleFunc("POST "+peerPrefix+"/pair", m.acceptPair)
+	mux.HandleFunc("GET "+peerPrefix+"/info", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
 		info := map[string]any{}
 		if m.Info != nil {
 			maps.Copy(info, m.Info(r.Context()))
@@ -169,7 +170,7 @@ func (m *Mesh) Serve(ctx context.Context) error {
 		info["schema"] = "" // TODO(task 21): publish the schema hash.
 		reply(w, info)
 	}))
-	mux.HandleFunc("GET /peer/v2/vector", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
+	mux.HandleFunc("GET "+peerPrefix+"/vector", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
 		v, err := m.log.Vector(r.Context())
 		if err != nil {
 			apperr.WriteHTTP(w, r, err)
@@ -177,7 +178,7 @@ func (m *Mesh) Serve(ctx context.Context) error {
 		}
 		reply(w, v)
 	}))
-	mux.HandleFunc("POST /peer/v2/ops", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
+	mux.HandleFunc("POST "+peerPrefix+"/ops", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
 		var since oplog.Vector
 		if json.NewDecoder(r.Body).Decode(&since) != nil {
 			apperr.WriteHTTP(w, r, apperr.New(apperr.ForStatus(400), "bad vector"))
@@ -190,7 +191,7 @@ func (m *Mesh) Serve(ctx context.Context) error {
 		}
 		reply(w, ops)
 	}))
-	mux.HandleFunc("POST /peer/v2/apply", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
+	mux.HandleFunc("POST "+peerPrefix+"/apply", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
 		var ops []oplog.Op
 		if json.NewDecoder(io.LimitReader(r.Body, 64<<20)).Decode(&ops) != nil {
 			apperr.WriteHTTP(w, r, apperr.New(apperr.ForStatus(400), "bad ops"))
@@ -203,7 +204,7 @@ func (m *Mesh) Serve(ctx context.Context) error {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	// stream tells a peer each time this node has something new.
-	mux.HandleFunc("GET /peer/v2/stream", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
+	mux.HandleFunc("GET "+peerPrefix+"/stream", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
 		flusher, _ := w.(http.Flusher)
 		ch := make(chan struct{}, 1)
 		m.mu.Lock()
@@ -408,13 +409,13 @@ func (m *Mesh) Pair(ctx context.Context, address, code string) (Peer, error) {
 	hello := m.probeClient("", &theirKey)
 	defer hello.CloseIdleConnections()
 	var info json.RawMessage
-	if err := getJSON(ctx, hello, "https://"+address+"/peer/v2/hello", &info); err != nil {
+	if err := getJSON(ctx, hello, "https://"+address+peerPrefix+"/hello", &info); err != nil {
 		return Peer{}, fmt.Errorf("no se pudo conectar con %s: %w", address, err)
 	}
 	body, _ := json.Marshal(pairRequest{NodeID: m.log.Node(), Name: m.name, Address: fmt.Sprintf(":%d", m.port), Proof: proof(code, m.id.PublicKey(), theirKey)})
 	client := m.probeClient(theirKey, nil)
 	defer client.CloseIdleConnections()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+address+"/peer/v2/pair", strings.NewReader(string(body)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+address+peerPrefix+"/pair", strings.NewReader(string(body)))
 	if err != nil {
 		return Peer{}, err
 	}
@@ -579,7 +580,7 @@ func (m *Mesh) listen(ctx context.Context, node string, wake chan struct{}) {
 		if peer.address != "" {
 			c := peer.client()
 			c.Timeout = 0
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+peer.address+"/peer/v2/stream", nil)
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+peer.address+peerPrefix+"/stream", nil)
 			if err != nil {
 				return
 			}
@@ -615,7 +616,7 @@ func (m *Mesh) sync(ctx context.Context, node string) error {
 		return err
 	}
 	c := peer.client()
-	base := "https://" + peer.address + "/peer/v2"
+	base := "https://" + peer.address + peerPrefix
 	compatible, err := m.checkProtocol(ctx, c, base, node, peer.address, peer.key)
 	if err != nil || !compatible {
 		return err

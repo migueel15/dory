@@ -27,8 +27,9 @@ func TestClientCreateThreadAndErrors(t *testing.T) {
 		if r.PathValue("id") != "thread/1" {
 			t.Errorf("thread ID = %q", r.PathValue("id"))
 		}
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusConflict)
-		reply(w, map[string]any{"error": map[string]string{"code": "busy", "message": "thread busy"}})
+		json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "busy", "message": "thread busy"}})
 	})
 	b.API = mux
 	if err := a.addPeer(ctx, b.log.Node(), "api", b.id.PublicKey(), fmt.Sprintf("127.0.0.1:%d", b.port)); err != nil {

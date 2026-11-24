@@ -25,7 +25,7 @@ func (m *Mesh) Client() *Client { return &Client{mesh: m} }
 
 // Call exchanges JSON with the peer's API over its authenticated transport.
 func (c *Client) Call(ctx context.Context, node, method, path string, in, out any) error {
-	if c == nil {
+	if c == nil || c.mesh == nil {
 		return unreachable(nil)
 	}
 	peer, err := c.mesh.peer(ctx, node)
