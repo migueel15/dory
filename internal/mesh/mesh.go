@@ -1,6 +1,7 @@
 package mesh
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -36,7 +37,7 @@ const (
 	DefaultPort = 7710
 	pairTTL     = 5 * time.Minute
 	syncEvery   = 10 * time.Second
-	pageSize    = 500
+	pageSize    = oplog.BatchSize
 )
 
 // Peer is a paired node as the interface shows it.
@@ -177,41 +178,10 @@ func (m *Mesh) Serve(ctx context.Context) error {
 		info["threads"] = threads
 		info["protocol"] = ProtocolVersion
 		info["schema"] = schema.Hash()
+		info["snapshots"] = true
 		reply(w, info)
 	}))
-	mux.HandleFunc("GET "+peerPrefix+"/vector", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
-		v, err := m.log.Vector(r.Context())
-		if err != nil {
-			apperr.WriteHTTP(w, r, err)
-			return
-		}
-		reply(w, v)
-	}))
-	mux.HandleFunc("POST "+peerPrefix+"/ops", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
-		var since oplog.Vector
-		if json.NewDecoder(r.Body).Decode(&since) != nil {
-			apperr.WriteHTTP(w, r, apperr.New(apperr.ForStatus(400), "bad vector"))
-			return
-		}
-		ops, err := m.log.Since(r.Context(), since, pageSize)
-		if err != nil {
-			apperr.WriteHTTP(w, r, err)
-			return
-		}
-		reply(w, ops)
-	}))
-	mux.HandleFunc("POST "+peerPrefix+"/apply", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
-		var ops []oplog.Op
-		if json.NewDecoder(io.LimitReader(r.Body, 64<<20)).Decode(&ops) != nil {
-			apperr.WriteHTTP(w, r, apperr.New(apperr.ForStatus(400), "bad ops"))
-			return
-		}
-		if err := m.log.Apply(r.Context(), ops); err != nil {
-			apperr.WriteHTTP(w, r, err)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	}))
+	m.mountReplication(mux)
 	// stream tells a peer each time this node has something new.
 	mux.HandleFunc("GET "+peerPrefix+"/stream", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
 		flusher, _ := w.(http.Flusher)
@@ -548,6 +518,7 @@ func (m *Mesh) Run(ctx context.Context) {
 		}
 	}
 	go m.discover(ctx)
+	go m.compactHourly(ctx)
 }
 
 // Start follows one peer: it syncs every few seconds, at once after a local
@@ -637,40 +608,10 @@ func (m *Mesh) sync(ctx context.Context, node string) (bool, error) {
 	if err != nil || !compatible {
 		return false, err
 	}
-	for range 1000 {
-		mine, err := m.log.Vector(ctx)
-		if err != nil {
-			return false, err
-		}
-		var ops []oplog.Op
-		if err = postJSON(ctx, c, base+"/ops", mine, &ops); err != nil {
-			return false, err
-		}
-		if len(ops) > 0 {
-			if err = m.log.Apply(ctx, ops); err != nil {
-				return false, err
-			}
-		}
-		if len(ops) < pageSize {
-			break
-		}
+	if err := m.exchange(ctx, c, base, node); err != nil {
+		return false, err
 	}
-	for range 1000 {
-		var theirs oplog.Vector
-		if err = getJSON(ctx, c, base+"/vector", &theirs); err != nil {
-			return false, err
-		}
-		ops, err := m.log.Since(ctx, theirs, pageSize)
-		if err != nil || len(ops) == 0 {
-			return err == nil, err
-		}
-		if err = postJSON(ctx, c, base+"/apply", ops, nil); err != nil {
-			return false, err
-		}
-		if len(ops) < pageSize {
-			return true, nil
-		}
-	}
+	m.compact(ctx)
 	return true, nil
 }
 
@@ -687,7 +628,7 @@ func postJSON(ctx context.Context, c *http.Client, url string, in, out any) erro
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(string(body)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
