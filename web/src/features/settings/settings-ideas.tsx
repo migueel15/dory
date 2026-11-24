@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
-import { useProviders } from "../../components/launch-picker";
+import { useProviders } from "../composer/launch-picker";
 import { ErrorText, Select } from "../../components/ui";
 import { qk } from "../../api/queries/keys";
 

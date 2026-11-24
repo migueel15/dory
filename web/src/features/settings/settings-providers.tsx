@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
 import { api, type Job, type Provider } from "../../api/client";
-import { ProviderIcon, useNodes } from "../../components/launch-picker";
+import { ProviderIcon, useNodes } from "../composer/launch-picker";
 import { ALL_NODES, useNodeDefault, type SectionProps } from "./settings-node";
 import { Button, ErrorText, Input, Select } from "../../components/ui";
 import { qk } from "../../api/queries/keys";

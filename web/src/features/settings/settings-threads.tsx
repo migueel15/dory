@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import type { ModelChoice, NodeSettings, ThreadDefaults } from "../../api/client";
 import { explicitModels, findModel, modelId } from "../../effort";
-import { useProviders } from "../../components/launch-picker";
+import { useProviders } from "../composer/launch-picker";
 import { ErrorText, Select } from "../../components/ui";
 import { ALL_NODES, NodeDiff, SettingRow, useNodeSettings, type SectionProps } from "./settings-node";
 

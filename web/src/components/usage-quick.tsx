@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { api, type UsageWindow } from "../api/client";
 import { expectedRemaining, paceTitle, windowLabel, windowMinutes, windowReset } from "../lib/usage-pace";
-import { ProviderIcon } from "./launch-picker";
+import { ProviderIcon } from "../features/composer/launch-picker";
 import { HoverCard } from "./tooltip";
 import { Arrow } from "./ui";
 import { qk } from "../api/queries/keys";

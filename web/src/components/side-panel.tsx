@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useShortcuts } from "./shortcuts";
-import { formatChord } from "./dictation-shortcut";
+import { formatChord } from "../features/composer/dictation-shortcut";
 import { hasWindowClose } from "../lib/window-close";
 import { ContextMenu } from "./context-menu";
 import { ResizeHandle } from "../pages/thread";

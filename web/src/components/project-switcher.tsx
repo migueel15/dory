@@ -6,7 +6,7 @@ import { api } from "../api/client";
 import { setProject, useProject } from "../project";
 import { Input } from "./ui";
 import { useCommand, useShortcuts } from "./shortcuts";
-import { formatChord } from "./dictation-shortcut";
+import { formatChord } from "../features/composer/dictation-shortcut";
 import { qk } from "../api/queries/keys";
 import { useProjects } from "../api/queries/hooks";
 

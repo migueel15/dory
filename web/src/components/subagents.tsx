@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowBendLeftUp, CaretRight, Robot } from "@phosphor-icons/react";
 import { api, type Message, type Thread } from "../api/client";
 import { Md } from "./ui";
-import { ProviderIcon } from "./launch-picker";
+import { ProviderIcon } from "../features/composer/launch-picker";
 import { qk } from "../api/queries/keys";
 
 // useSubagents lists the children of a thread, archived ones included: they

@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { api } from "../api/client";
-import { Button, ErrorText, Modal, Select, Textarea, uuid } from "./ui";
-import { useProject } from "../project";
+import { api } from "../../api/client";
+import { Button, ErrorText, Modal, Select, Textarea, uuid } from "../../components/ui";
+import { useProject } from "../../project";
 import { DictationMic, DictationPreview, useDictationInProgress, useLocalDictation, useEnterFinishesDictation } from "./local-dictation";
-import { qk } from "../api/queries/keys";
-import { useProjects } from "../api/queries/hooks";
+import { qk } from "../../api/queries/keys";
+import { useProjects } from "../../api/queries/hooks";
 
 // createIdea saves raw text as an inbox task. The server gives it a
 // provisional title and may replace it with one written by the title model.

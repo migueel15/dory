@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "../../components/ui";
-import { chordFromEvent, formatChord } from "../../components/dictation-shortcut";
+import { chordFromEvent, formatChord } from "../composer/dictation-shortcut";
 import { available, chordIn, commands, conflictIn, reserved, type CommandId } from "../../components/shortcuts";
 import { emptyInput, ValueDiff } from "./input-settings";
 import { useNodeSettings, type SectionProps } from "./settings-node";

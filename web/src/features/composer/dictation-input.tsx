@@ -4,8 +4,8 @@ import { createDictationMeter, DictationMic, reserveDictation, useDictationInPro
 import { playDictationSound, prepareDictationSound } from "./dictation-sound";
 import { openDictationMicrophone } from "./dictation-microphone";
 import { wav } from "./audio-wav";
-import { apiError } from "../api/client";
-import { Button, ErrorText, Textarea } from "./ui";
+import { apiError } from "../../api/client";
+import { Button, ErrorText, Textarea } from "../../components/ui";
 
 type DictationState = { id: string; status: string; text: string; error?: string };
 export type DictationTarget = { kind: "capture"; project_id?: string } | { kind: "thread"; thread_id: string };

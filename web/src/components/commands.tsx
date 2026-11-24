@@ -3,10 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { api, type Task } from "../api/client";
 import { useNavigate } from "@tanstack/react-router";
 import { Brain, ChartBar, Command as CommandIcon, FolderSimple, GithubLogo, HardDrives, House, Kanban, Lightbulb, MagnifyingGlass, Robot, type IconProps } from "@phosphor-icons/react";
-import { IdeaModal } from "./capture";
+import { IdeaModal } from "../features/composer/capture";
 import { Input } from "./ui";
 import { commands as shortcutCommands, useCommand, useShortcuts, available, runCommand } from "./shortcuts";
-import { formatChord } from "./dictation-shortcut";
+import { formatChord } from "../features/composer/dictation-shortcut";
 import { qk } from "../api/queries/keys";
 import { useMesh, useNode, useProjects } from "../api/queries/hooks";
 

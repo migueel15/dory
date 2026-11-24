@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, usable, type LaunchChoice, type Model } from "../api/client";
-import { Label, Select } from "./ui";
-import { explicitModels, findModel, lastModel, modelEffort, modelId, rememberModel } from "../effort";
-import { ModelLogo } from "./model-logo";
-import { qk } from "../api/queries/keys";
-import { useNodeProviders, useNodeSettings } from "../api/queries/hooks";
+import { api, usable, type LaunchChoice, type Model } from "../../api/client";
+import { Label, Select } from "../../components/ui";
+import { explicitModels, findModel, lastModel, modelEffort, modelId, rememberModel } from "../../effort";
+import { ModelLogo } from "../../components/model-logo";
+import { qk } from "../../api/queries/keys";
+import { useNodeProviders, useNodeSettings } from "../../api/queries/hooks";
 
 export const ProviderIcon = (props: Parameters<typeof ModelLogo>[0]) => <ModelLogo {...props} />;
 

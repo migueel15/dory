@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowCircleUp, ArrowsClockwise, DeviceMobile, DotsThree, Plus, WifiHigh } from "@phosphor-icons/react";
 import { api, type NodeUpdate, type Provider } from "../../api/client";
 import { EnvIconPicker } from "../../components/env-icon";
-import { ProviderIcon } from "../../components/launch-picker";
+import { ProviderIcon } from "../composer/launch-picker";
 import { useMeshUpdates } from "../../components/mesh-update";
 import { askConfirm } from "../../components/confirm";
 import { Button, ErrorText, Input } from "../../components/ui";

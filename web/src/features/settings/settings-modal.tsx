@@ -15,7 +15,7 @@ import { ThreadsSettings } from "./settings-threads";
 import { SourceControlSettings } from "./settings-source-control";
 import { WorktreesSettings } from "./settings-worktrees";
 import { ALL_NODES, type SectionProps } from "./settings-node";
-import { useNodes } from "../../components/launch-picker";
+import { useNodes } from "../composer/launch-picker";
 import { Select } from "../../components/ui";
 import { commands } from "../../components/shortcuts";
 import { Projects } from "../../pages/projects";

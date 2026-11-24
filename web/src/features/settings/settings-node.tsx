@@ -2,7 +2,7 @@ import { useMemo, type ReactNode } from "react";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { Warning } from "@phosphor-icons/react";
 import { api, type NodeDefaults, type NodeSettings } from "../../api/client";
-import { useNodes } from "../../components/launch-picker";
+import { useNodes } from "../composer/launch-picker";
 import { qk } from "../../api/queries/keys";
 
 // Per-node settings helper.

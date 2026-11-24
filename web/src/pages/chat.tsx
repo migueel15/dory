@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ArrowCounterClockwise, ArrowDown, ArrowRight, Brain, ChatText, GitMerge, GitPullRequest, Lightning, Rocket, Question as QuestionIcon, CaretDown, CaretRight, Check, ClipboardText, Copy, FileText, ListChecks, Stop, TerminalWindow, WarningCircle, Wrench, X } from "@phosphor-icons/react";
 import { api, type Attachment, type Message, type TurnModel } from "../api/client";
 import { copyText, defaultUrlTransform, Md } from "../components/ui";
-import { TokenChip, tokenize, type TokenKind } from "../components/composer-tokens";
+import { TokenChip, tokenize, type TokenKind } from "../features/composer/composer-tokens";
 import { claudeModelName } from "../components/model-label";
 import { splitMessageQuotes } from "../components/message-quotes";
 import { ModelLogo } from "../components/model-logo";

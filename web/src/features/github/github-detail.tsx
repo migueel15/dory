@@ -4,15 +4,15 @@ import { Robot } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { api, type GithubAction, type GithubDetail, type GithubPull, type GithubThread } from "../../api/client";
-import { DictationField } from "../../components/dictation-field";
-import { useDictationInProgress } from "../../components/local-dictation";
+import { DictationField } from "../composer/dictation-field";
+import { useDictationInProgress } from "../composer/local-dictation";
 import { Badge, Button, Card, Input, Select, ErrorText, Md, Arrow, pill, toggleTask, keepAboveKeyboard, Modal } from "../../components/ui";
 import { Avatar, PullStatus, StackBar } from "./github";
 import { Diff, FullscreenHost } from "./github-diff";
 import { DefineIssueDialog } from "../../pages/define-issue";
 import { ResizeHandle, ThreadChat } from "../../pages/thread";
 import { FileRefContext, type FileRef } from "../../components/refs";
-import { useLaunchForm } from "../../components/launch-picker";
+import { useLaunchForm } from "../composer/launch-picker";
 import { GithubMark, Icon, IconButton, Menu, MenuItem, RefContext, RefMd, Tip, UserPicker, icons, useArm, MentionArea } from "./github-ui";
 import { qk } from "../../api/queries/keys";
 

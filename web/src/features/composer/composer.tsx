@@ -1,27 +1,27 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { agentNote } from "../components/subagents";
+import { agentNote } from "../../components/subagents";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUp, CaretDown, Check, ClipboardText, Code, File as FileIcon, FileText, Lightning, ListBullets, MagnifyingGlass, Paperclip, PencilSimple, Quotes, Stop, TerminalWindow, Trash, X } from "@phosphor-icons/react";
-import { api, usable, type Attachment, type ThreadView } from "../api/client";
-import { Button, ErrorText, errMsg, iconButton, uuid } from "../components/ui";
-import { DictationField } from "../components/dictation-field";
-import { DictationMic, DictationPreview, useDictationInProgress, useLocalDictation } from "../components/local-dictation";
-import { claudeModelName } from "../components/model-label";
-import { ProviderIcon } from "../components/launch-picker";
-import { explicitModels, findModel, modelEffort, modelId as concreteModelId, rememberModel } from "../effort";
-import { FILL_COMPOSER, iconBtn, MessageParts } from "./chat";
-import { HoverCard } from "../components/tooltip";
-import { CodeRefCard, codeRefText } from "../components/code-ref";
-import type { DraftQuote } from "../components/quote-selection";
-import { SecretPanel } from "../components/secret-card";
-import { askAnswerText, openAsk, QuestionPanel, useQuestionFlow } from "../components/question-card";
-import { useCommand, useShortcuts } from "../components/shortcuts";
-import { formatChord } from "../components/dictation-shortcut";
-import { autoMessage } from "../lib/auto-message";
-import { useComposerFiles } from "../components/composer-files";
-import { paintTokens, quoteBlock, quoteLabel, tokenRanges, type Token, type Tokens } from "../components/composer-tokens";
-import { qk } from "../api/queries/keys";
-import { useNodeProviders } from "../api/queries/hooks";
+import { api, usable, type Attachment, type ThreadView } from "../../api/client";
+import { Button, ErrorText, errMsg, iconButton, uuid } from "../../components/ui";
+import { DictationField } from "./dictation-field";
+import { DictationMic, DictationPreview, useDictationInProgress, useLocalDictation } from "./local-dictation";
+import { claudeModelName } from "../../components/model-label";
+import { ProviderIcon } from "./launch-picker";
+import { explicitModels, findModel, modelEffort, modelId as concreteModelId, rememberModel } from "../../effort";
+import { FILL_COMPOSER, iconBtn, MessageParts } from "../../pages/chat";
+import { HoverCard } from "../../components/tooltip";
+import { CodeRefCard, codeRefText } from "../../components/code-ref";
+import type { DraftQuote } from "../../components/quote-selection";
+import { SecretPanel } from "../../components/secret-card";
+import { askAnswerText, openAsk, QuestionPanel, useQuestionFlow } from "../../components/question-card";
+import { useCommand, useShortcuts } from "../../components/shortcuts";
+import { formatChord } from "./dictation-shortcut";
+import { autoMessage } from "../../lib/auto-message";
+import { useComposerFiles } from "./composer-files";
+import { paintTokens, quoteBlock, quoteLabel, tokenRanges, type Token, type Tokens } from "./composer-tokens";
+import { qk } from "../../api/queries/keys";
+import { useNodeProviders } from "../../api/queries/hooks";
 
 // The composer of a thread, kept from Dory v1: attachments, @ mentions of
 // files, model, effort and permissions, and send, queue or stop.

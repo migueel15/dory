@@ -8,7 +8,7 @@ import { Check, FunnelSimple, MagnifyingGlass, Plus, PushPin, SidebarSimple } fr
 import { api, repoName, type Thread } from "../api/client";
 import { ErrorText } from "../components/ui";
 import { useProject } from "../project";
-import { ProviderIcon } from "../components/launch-picker";
+import { ProviderIcon } from "../features/composer/launch-picker";
 import { StatusDot } from "./thread";
 import { NewThread } from "./home";
 import { RefChip, useThreadRefs, type GhRef } from "../components/thread-refs";

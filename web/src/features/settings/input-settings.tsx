@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Warning } from "@phosphor-icons/react";
 import { api, type InputSettings } from "../../api/client";
-import { dictationShortcutEvent, dictationShortcutKey } from "../../components/dictation-shortcut";
+import { dictationShortcutEvent, dictationShortcutKey } from "../composer/dictation-shortcut";
 import { qk } from "../../api/queries/keys";
 import { useNodeSettings } from "../../api/queries/hooks";
 

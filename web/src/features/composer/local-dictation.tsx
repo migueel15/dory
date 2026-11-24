@@ -1,14 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CircleNotch, Microphone } from "@phosphor-icons/react";
-import { req } from "../api/client";
+import { req } from "../../api/client";
 import { formatChord, hasDictationPopupOutside, isTextInput, useDictationShortcut, useDictationShortcutSetting } from "./dictation-shortcut";
 import { wav } from "./audio-wav";
 import { playDictationSound, prepareDictationSound } from "./dictation-sound";
 import { openDictationMicrophone } from "./dictation-microphone";
-import { iconButton } from "./ui";
-import { modelEvent, modelKey, useInputSettingsSync } from "../features/settings/input-settings";
-import { qk } from "../api/queries/keys";
+import { iconButton } from "../../components/ui";
+import { modelEvent, modelKey, useInputSettingsSync } from "../settings/input-settings";
+import { qk } from "../../api/queries/keys";
 
 export type SpeechModel = {
   id: string; name: string; bytes: number; streaming: boolean;

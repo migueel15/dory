@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { FileText, Paperclip, X } from "@phosphor-icons/react";
-import type { Attachment } from "../api/client";
-import { errMsg, iconButton, uuid } from "./ui";
+import type { Attachment } from "../../api/client";
+import { errMsg, iconButton, uuid } from "../../components/ui";
 
 export type DraftFile = { key: string; file: File; name: string; mime: string; preview: string; done?: Attachment; error?: string };
 

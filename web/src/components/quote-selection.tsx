@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowBendUpLeft, Microphone, Plus, Quotes, X } from "@phosphor-icons/react";
-import { DictationMic, DictationPreview, useLocalDictation, useSpeechModel, useSpeechModels } from "./local-dictation";
-import { hasDictationPopupOutside, isTextInput, useDictationShortcut } from "./dictation-shortcut";
+import { DictationMic, DictationPreview, useLocalDictation, useSpeechModel, useSpeechModels } from "../features/composer/local-dictation";
+import { hasDictationPopupOutside, isTextInput, useDictationShortcut } from "../features/composer/dictation-shortcut";
 import { ErrorText } from "./ui";
 
 // A quote is a piece of the chat or, with code, lines of a file in the diff.

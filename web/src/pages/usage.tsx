@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { api, usable, type UsageBreakdownRow, type UsageRange, type UsageReport, type UsageRow, type UsageTurnCall, type UsageWindow } from "../api/client";
 import { Card, ErrorText, Select, iconButton } from "../components/ui";
 import { AreaChart, StackedBar, compact, percent, providerColor, usd } from "../components/usage-charts";
-import { ProviderIcon, useNodes } from "../components/launch-picker";
+import { ProviderIcon, useNodes } from "../features/composer/launch-picker";
 import { expectedRemaining, paceTitle, windowLabel, windowMinutes, windowReset } from "../lib/usage-pace";
 import { PaceMark } from "../components/pace-mark";
 import { qk } from "../api/queries/keys";

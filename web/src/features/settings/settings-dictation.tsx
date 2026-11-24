@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, DownloadSimple } from "@phosphor-icons/react";
-import { downloadSpeechModel, pickSpeechModel, speechKey, useSpeechModels } from "../../components/local-dictation";
+import { downloadSpeechModel, pickSpeechModel, speechKey, useSpeechModels } from "../composer/local-dictation";
 import { emptyInput, ValueDiff } from "./input-settings";
 import { useNodeSettings, type SectionProps } from "./settings-node";
 import { Button, ErrorText } from "../../components/ui";
