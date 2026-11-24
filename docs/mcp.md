@@ -4,6 +4,11 @@ Cada nodo sirve un MCP en `http://127.0.0.1:7700/mcp`. Los hilos gestionados por
 
 Los agentes leen todo lo que necesitan del trabajo en curso y escriben lo suyo. La columna del kanban se deriva de los hilos y de la PR; lo único que fijan es el `stage` de una tarea con `save_task`, con las mismas reglas que la interfaz.
 
+## Errores
+Todos los errores de Dory llevan un código estable, un mensaje técnico en inglés y, a veces, parámetros (`internal/apperr`). La API HTTP responde `{"error":{"code","message","params"}}`; un error que no es de dominio es siempre un 500 `internal` con el mensaje genérico `internal error`, y su texto solo va al registro. La web elige el texto en español a partir del código (`web/src/lib/errors.ts`).
+
+Una herramienta que falla devuelve un resultado con `isError` y el texto `<código>: <mensaje>`, seguido de los parámetros en JSON si los hay, por ejemplo `invalid_argument: thread_send needs text`. Los agentes pueden decidir por el código.
+
 ## Sesiones gestionadas
 
 Al enviar un turno, Dory comprueba el catálogo MCP con la credencial de ese hilo y envía por el canal de sistema del arnés las instrucciones sobre las herramientas y la ficha del hilo: hilo, carpeta, rama, proyecto, repositorio y tarea vinculada con su issue y PR. La ficha se rehace en cada turno, así que un cambio de tarea aparece en el siguiente. Con ella el agente no necesita `session_start` para empezar. Si falla la comprobación, el envío devuelve un error con el proveedor y el motivo. El catálogo del nodo refleja sus ajustes, por ejemplo la disponibilidad de las herramientas de dispositivos.
