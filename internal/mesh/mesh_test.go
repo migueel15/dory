@@ -48,7 +48,7 @@ func start(t *testing.T, ctx context.Context, name string) node {
 	}
 	m := New(db, log, id, name, freePort(t))
 	log.OnChange = func(string, string) { m.Changed() }
-	m.Info = func(context.Context) any { return map[string]string{"name": name} }
+	m.Info = func(context.Context) map[string]any { return map[string]any{"name": name} }
 	m.API = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprintf(w, "%s answered %s", name, r.URL.Path) })
 	go m.Serve(ctx)
 	// Wait until the listener is up.

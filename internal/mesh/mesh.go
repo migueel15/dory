@@ -14,6 +14,7 @@ import (
 	"github.com/migueel15/dory/internal/apperr"
 	"io"
 	"log"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -27,6 +28,9 @@ import (
 )
 
 const (
+	// ProtocolVersion is the version of the node-to-node HTTP protocol.
+	ProtocolVersion      = 2
+	incompatibleProtocol = "incompatible_protocol"
 	// DefaultPort is where nodes listen for each other.
 	DefaultPort = 7710
 	pairTTL     = 5 * time.Minute
@@ -38,16 +42,18 @@ const (
 
 // Peer is a paired node as the interface shows it.
 type Peer struct {
-	ID          string          `json:"id"`
-	Name        string          `json:"name"`
-	PublicKey   string          `json:"public_key"`
-	Fingerprint string          `json:"fingerprint"`
-	Address     string          `json:"address"`
-	Connected   bool            `json:"connected"`
-	LastSeen    string          `json:"last_seen"`
-	Info        json.RawMessage `json:"info"`
-	Revoked     bool            `json:"revoked"`
-	Disabled    bool            `json:"disabled"`
+	ID           string          `json:"id"`
+	Name         string          `json:"name"`
+	PublicKey    string          `json:"public_key"`
+	Fingerprint  string          `json:"fingerprint"`
+	Address      string          `json:"address"`
+	Connected    bool            `json:"connected"`
+	LastSeen     string          `json:"last_seen"`
+	Info         json.RawMessage `json:"info"`
+	Revoked      bool            `json:"revoked"`
+	Protocol     int             `json:"protocol"`
+	Incompatible bool            `json:"incompatible"`
+	Disabled     bool            `json:"disabled"`
 }
 
 // Mesh is the peer side of a node.
@@ -58,7 +64,7 @@ type Mesh struct {
 	name string
 	port int
 	// Info describes this node to its peers (OS, version, harnesses).
-	Info func(ctx context.Context) any
+	Info func(ctx context.Context) map[string]any
 	// API serves calls forwarded from peers for threads this node owns.
 	API http.Handler
 	// Web serves the interface and the authenticated API to paired phones.
@@ -111,7 +117,7 @@ func (m *Mesh) Changed() {
 
 // Peers lists the paired nodes with their presence.
 func (m *Mesh) Peers(ctx context.Context) ([]Peer, error) {
-	rows, err := m.db.QueryContext(ctx, `SELECT node_id, name, public_key, address, info, COALESCE(last_seen, ''), revoked_at IS NOT NULL, disabled_at IS NOT NULL FROM peers ORDER BY name`)
+	rows, err := m.db.QueryContext(ctx, `SELECT node_id, name, public_key, address, info, COALESCE(last_seen, ''), revoked_at IS NOT NULL, disabled_at IS NOT NULL, protocol, last_error FROM peers ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -119,14 +125,15 @@ func (m *Mesh) Peers(ctx context.Context) ([]Peer, error) {
 	out := []Peer{}
 	for rows.Next() {
 		var p Peer
-		var info string
-		if err = rows.Scan(&p.ID, &p.Name, &p.PublicKey, &p.Address, &info, &p.LastSeen, &p.Revoked, &p.Disabled); err != nil {
+		var info, lastError string
+		if err = rows.Scan(&p.ID, &p.Name, &p.PublicKey, &p.Address, &info, &p.LastSeen, &p.Revoked, &p.Disabled, &p.Protocol, &lastError); err != nil {
 			return nil, err
 		}
 		p.Info = json.RawMessage(info)
+		p.Incompatible = strings.HasPrefix(lastError, incompatibleProtocol+":")
 		p.Fingerprint = Fingerprint(p.PublicKey)
 		if t, err := time.Parse(time.RFC3339Nano, p.LastSeen); err == nil {
-			p.Connected = !p.Revoked && !p.Disabled && time.Since(t) < offlineAfter
+			p.Connected = !p.Revoked && !p.Disabled && !p.Incompatible && time.Since(t) < offlineAfter
 		}
 		out = append(out, p)
 	}
@@ -139,16 +146,8 @@ func (m *Mesh) member(ctx context.Context, publicKey string) (string, bool) {
 	return id, err == nil
 }
 
-func (m *Mesh) seen(ctx context.Context, node, address string, info json.RawMessage) {
-	q := `UPDATE peers SET last_seen = ?` + map[bool]string{true: `, address = ?`, false: ``}[address != ""] + map[bool]string{true: `, info = ?`, false: ``}[len(info) > 0] + ` WHERE node_id = ?`
-	args := []any{time.Now().UTC().Format(time.RFC3339Nano)}
-	if address != "" {
-		args = append(args, address)
-	}
-	if len(info) > 0 {
-		args = append(args, string(info))
-	}
-	if _, err := m.db.ExecContext(ctx, q, append(args, node)...); err != nil {
+func (m *Mesh) seen(ctx context.Context, node string) {
+	if _, err := m.db.ExecContext(ctx, `UPDATE peers SET last_seen = ? WHERE node_id = ?`, time.Now().UTC().Format(time.RFC3339Nano), node); err != nil {
 		log.Printf("mesh: presence of %s: %v", node, err)
 	}
 }
@@ -158,14 +157,20 @@ func (m *Mesh) seen(ctx context.Context, node, address string, info json.RawMess
 // Serve listens for peers on the mesh port until ctx ends.
 func (m *Mesh) Serve(ctx context.Context) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /peer/v1/hello", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /peer/v2/hello", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, map[string]string{"node_id": m.log.Node(), "name": m.name, "public_key": m.id.PublicKey(), "device_pin": m.id.DevicePin})
 	})
-	mux.HandleFunc("POST /peer/v1/pair", m.acceptPair)
-	mux.HandleFunc("GET /peer/v1/info", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
-		reply(w, m.Info(r.Context()))
+	mux.HandleFunc("POST /peer/v2/pair", m.acceptPair)
+	mux.HandleFunc("GET /peer/v2/info", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
+		info := map[string]any{}
+		if m.Info != nil {
+			maps.Copy(info, m.Info(r.Context()))
+		}
+		info["protocol"] = ProtocolVersion
+		info["schema"] = "" // TODO(task 21): publish the schema hash.
+		reply(w, info)
 	}))
-	mux.HandleFunc("GET /peer/v1/vector", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
+	mux.HandleFunc("GET /peer/v2/vector", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
 		v, err := m.log.Vector(r.Context())
 		if err != nil {
 			apperr.WriteHTTP(w, r, err)
@@ -173,7 +178,7 @@ func (m *Mesh) Serve(ctx context.Context) error {
 		}
 		reply(w, v)
 	}))
-	mux.HandleFunc("POST /peer/v1/ops", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
+	mux.HandleFunc("POST /peer/v2/ops", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
 		var since oplog.Vector
 		if json.NewDecoder(r.Body).Decode(&since) != nil {
 			apperr.WriteHTTP(w, r, apperr.New(apperr.ForStatus(400), "bad vector"))
@@ -186,7 +191,7 @@ func (m *Mesh) Serve(ctx context.Context) error {
 		}
 		reply(w, ops)
 	}))
-	mux.HandleFunc("POST /peer/v1/apply", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
+	mux.HandleFunc("POST /peer/v2/apply", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
 		var ops []oplog.Op
 		if json.NewDecoder(io.LimitReader(r.Body, 64<<20)).Decode(&ops) != nil {
 			apperr.WriteHTTP(w, r, apperr.New(apperr.ForStatus(400), "bad ops"))
@@ -199,7 +204,7 @@ func (m *Mesh) Serve(ctx context.Context) error {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	// stream tells a peer each time this node has something new.
-	mux.HandleFunc("GET /peer/v1/stream", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
+	mux.HandleFunc("GET /peer/v2/stream", m.members(func(w http.ResponseWriter, r *http.Request, _ string) {
 		flusher, _ := w.(http.Flusher)
 		ch := make(chan struct{}, 1)
 		m.mu.Lock()
@@ -224,9 +229,9 @@ func (m *Mesh) Serve(ctx context.Context) error {
 		}
 	}))
 	// proxy runs an API call of a peer's client here, for threads this node owns.
-	mux.HandleFunc("/peer/v1/proxy/", m.members(func(w http.ResponseWriter, r *http.Request, node string) {
+	mux.HandleFunc("/peer/v2/proxy/", m.members(func(w http.ResponseWriter, r *http.Request, node string) {
 		r2 := r.Clone(auth.AsPeer(r.Context(), node))
-		r2.URL.Path = strings.TrimPrefix(r.URL.Path, "/peer/v1/proxy")
+		r2.URL.Path = strings.TrimPrefix(r.URL.Path, "/peer/v2/proxy")
 		r2.RequestURI = ""
 		m.API.ServeHTTP(w, r2)
 	}))
@@ -240,6 +245,7 @@ func (m *Mesh) Serve(ctx context.Context) error {
 		}
 		m.DeviceSession(w, r)
 	})
+	mux.HandleFunc("/peer/", http.NotFound)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if m.Web == nil {
 			http.NotFound(w, r)
@@ -290,7 +296,7 @@ func (m *Mesh) members(h func(http.ResponseWriter, *http.Request, string)) http.
 			apperr.WriteHTTP(w, r, apperr.New(apperr.ForStatus(403), "not paired"))
 			return
 		}
-		m.seen(r.Context(), node, "", nil)
+		m.seen(r.Context(), node)
 		h(w, r, node)
 	}
 }
@@ -383,7 +389,7 @@ func (m *Mesh) acceptPair(w http.ResponseWriter, r *http.Request) {
 
 func (m *Mesh) addPeer(ctx context.Context, node, name, key, address string) error {
 	_, err := m.db.ExecContext(ctx, `INSERT INTO peers(node_id, name, public_key, address, paired_at) VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(node_id) DO UPDATE SET name = excluded.name, public_key = excluded.public_key, address = excluded.address, revoked_at = NULL, disabled_at = NULL`,
+		ON CONFLICT(node_id) DO UPDATE SET name = excluded.name, public_key = excluded.public_key, address = excluded.address, revoked_at = NULL, disabled_at = NULL, protocol = 0, last_error = ''`,
 		node, name, key, address, time.Now().UTC().Format(time.RFC3339Nano))
 	return err
 }
@@ -395,13 +401,13 @@ func (m *Mesh) Pair(ctx context.Context, address, code string) (Peer, error) {
 	}
 	var theirKey string
 	hello := m.client("", &theirKey)
-	resp, err := hello.Get("https://" + address + "/peer/v1/hello")
+	resp, err := hello.Get("https://" + address + "/peer/v2/hello")
 	if err != nil {
 		return Peer{}, fmt.Errorf("no se pudo conectar con %s: %w", address, err)
 	}
 	resp.Body.Close()
 	body, _ := json.Marshal(pairRequest{NodeID: m.log.Node(), Name: m.name, Address: fmt.Sprintf(":%d", m.port), Proof: proof(code, m.id.PublicKey(), theirKey)})
-	resp, err = m.client(theirKey, nil).Post("https://"+address+"/peer/v1/pair", "application/json", strings.NewReader(string(body)))
+	resp, err = m.client(theirKey, nil).Post("https://"+address+"/peer/v2/pair", "application/json", strings.NewReader(string(body)))
 	if err != nil {
 		return Peer{}, err
 	}
@@ -564,7 +570,7 @@ func (m *Mesh) listen(ctx context.Context, node string, wake chan struct{}) {
 		if address != "" {
 			c := m.client(key, nil)
 			c.Timeout = 0
-			req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+address+"/peer/v1/stream", nil)
+			req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+address+"/peer/v2/stream", nil)
 			if resp, err := c.Do(req); err == nil {
 				buf := make([]byte, 512)
 				for {
@@ -597,12 +603,11 @@ func (m *Mesh) sync(ctx context.Context, node string) error {
 		return err
 	}
 	c := m.client(key, nil)
-	base := "https://" + address + "/peer/v1"
-	var info json.RawMessage
-	if err = getJSON(ctx, c, base+"/info", &info); err != nil {
+	base := "https://" + address + "/peer/v2"
+	compatible, err := m.checkProtocol(ctx, c, base, node, address, key)
+	if err != nil || !compatible {
 		return err
 	}
-	m.seen(ctx, node, "", info)
 	for range 1000 {
 		mine, err := m.log.Vector(ctx)
 		if err != nil {
@@ -683,7 +688,7 @@ func (m *Mesh) Forward(w http.ResponseWriter, r *http.Request, node string) bool
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(target)
-			pr.Out.URL.Path = "/peer/v1/proxy" + r.URL.Path
+			pr.Out.URL.Path = "/peer/v2/proxy" + r.URL.Path
 			pr.Out.Header.Del("Cookie")
 			pr.Out.Header.Del("Authorization")
 		},
