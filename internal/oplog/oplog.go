@@ -65,7 +65,9 @@ func (l *Log) Append(ctx context.Context, tx *sql.Tx, entity, id string, fields 
 	if err != nil {
 		return Op{}, err
 	}
-	err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(hlc), '') FROM ops WHERE entity = ? AND entity_id = ?`, entity, id).Scan(&op.Base)
+	err = tx.QueryRowContext(ctx, `SELECT MAX(
+		COALESCE((SELECT MAX(hlc) FROM ops WHERE entity = ? AND entity_id = ?), ''),
+		COALESCE((SELECT hlc FROM row_snapshots WHERE entity = ? AND entity_id = ?), ''))`, entity, id, entity, id).Scan(&op.Base)
 	if err != nil {
 		return Op{}, err
 	}
@@ -73,7 +75,7 @@ func (l *Log) Append(ctx context.Context, tx *sql.Tx, entity, id string, fields 
 		op.Node, op.Seq, op.HLC, op.Entity, op.EntityID, string(op.Fields), op.Base); err != nil {
 		return Op{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE node_state SET hlc = ? WHERE id = 1`, op.HLC); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE node_state SET hlc = ?, op_seq_floor = ? WHERE id = 1`, op.HLC, op.Seq); err != nil {
 		return Op{}, err
 	}
 	return op, nil
@@ -81,7 +83,11 @@ func (l *Log) Append(ctx context.Context, tx *sql.Tx, entity, id string, fields 
 
 // Vector returns what this node holds from every origin.
 func (l *Log) Vector(ctx context.Context) (Vector, error) {
-	rows, err := l.db.QueryContext(ctx, `SELECT node_id, MAX(seq) FROM ops GROUP BY node_id`)
+	rows, err := l.db.QueryContext(ctx, `SELECT node_id, MAX(seq) FROM (
+		SELECT node_id, MAX(seq) AS seq FROM ops GROUP BY node_id
+		UNION ALL
+		SELECT j.key, j.value FROM node_state, json_each(compaction_horizon) j WHERE node_state.id = 1
+	) GROUP BY node_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -101,26 +107,23 @@ func (l *Log) Vector(ctx context.Context) (Vector, error) {
 // Since returns up to limit operations that a node with vector since lacks,
 // including those of third nodes, in clock order.
 func (l *Log) Since(ctx context.Context, since Vector, limit int) ([]Op, error) {
-	raw, err := json.Marshal(since)
+	tx, err := l.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := l.db.QueryContext(ctx, `SELECT node_id, seq, hlc, entity, entity_id, fields, base FROM ops o
+	defer tx.Rollback()
+	horizon, err := readHorizon(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	if !since.Covers(horizon) {
+		return nil, ErrSnapshotRequired
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT node_id, seq, hlc, entity, entity_id, fields, base FROM ops o
 		WHERE seq > COALESCE((SELECT value FROM json_each(?) WHERE key = o.node_id), 0)
-		ORDER BY hlc LIMIT ?`, string(raw), limit)
+		ORDER BY hlc, node_id, seq LIMIT ?`, mustVectorJSON(since), limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	ops := []Op{}
-	for rows.Next() {
-		var op Op
-		var fields string
-		if err = rows.Scan(&op.Node, &op.Seq, &op.HLC, &op.Entity, &op.EntityID, &fields, &op.Base); err != nil {
-			return nil, err
-		}
-		op.Fields = json.RawMessage(fields)
-		ops = append(ops, op)
-	}
-	return ops, rows.Err()
+	return scanOps(rows)
 }
