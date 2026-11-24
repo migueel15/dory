@@ -1,5 +1,5 @@
 import { Circle,CircleNotch,ClockCounterClockwise,GitDiff,Kanban,WarningCircle,XCircle } from "@phosphor-icons/react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate,useParams } from "@tanstack/react-router";
 import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type MouseEvent as ReactMouseEvent,type RefObject } from "react";
 import { type Message } from "../../api/client";
@@ -32,6 +32,8 @@ import { Queue } from "../composer/queue";
 import { type Suggestion } from "../github/diff-parts";
 import { Diff } from "../github/github-diff";
 import { BrowserPanel } from "./browser-panel";
+import { TerminalPanel } from "./terminal-panel";
+import { terminalApi } from "../../lib/terminal/client";
 import { DevicePanel,FloatingWindow } from "./device-panel";
 import { SidePanel,SidePanelToggle,kindOf,useSidePanel,type SidePanelState } from "./side-panel";
 import { ThreadInfo,headerButton } from "./thread-info";
@@ -64,18 +66,55 @@ export function ThreadView() {
     if (!window.doryDesktop?.browser) return;
     return events.browserOpened.on((id) => { if (id === threadId) latest.current.show("browser"); });
   }, [threadId]);
+  // The agent opens or closes a terminal; its tab appears in the panel and shows the name the node gives it.
+  const qc = useQueryClient();
+  const hasTerminal = panel.tabs.some((k) => kindOf(k) === "terminal");
+  const terminals = useQuery({ queryKey: qk.threadTerminals(threadId), queryFn: () => terminalApi.list(threadId), enabled: hasTerminal });
+  useEffect(() => {
+    return events.terminalChanged.on((d) => {
+      if (d.thread !== threadId) return;
+      const p = latest.current;
+      const tab = p.tabs.find((k) => kindOf(k) === "terminal" && p.meta[k]?.terminal === d.terminal);
+      if (d.action === "close") { if (tab) p.close(tab); return; }
+      if (tab) p.focus(tab); else p.show("terminal", { terminal: d.terminal });
+    });
+  }, [threadId]);
+  useEffect(() => {
+    for (const k of panel.tabs) {
+      const name = terminals.data?.find((t) => t.id === panel.meta[k]?.terminal)?.name;
+      if (kindOf(k) === "terminal" && name && panel.meta[k]?.name !== name) panel.setMeta(k, { name });
+    }
+  }, [terminals.data, panel.tabs]); // eslint-disable-line react-hooks/exhaustive-deps
+  const renameTab = (tab: string, name: string) => {
+    const id = panel.meta[tab]?.terminal;
+    if (kindOf(tab) !== "terminal" || !id) return false;
+    terminalApi.rename(threadId, id, name).then(() => qc.invalidateQueries({ queryKey: qk.threadTerminals(threadId) }), () => window.alert("Ya hay una terminal con ese nombre."));
+    return true;
+  };
+  const closeTab = (tab: string) => {
+    const id = panel.meta[tab]?.terminal;
+    if (kindOf(tab) === "terminal" && id) void terminalApi.close(threadId, id).catch(() => {});
+  };
+  // The keyboard follows the mouse: coming back from the panel to the chat returns it to the message box,
+  // unless a menu, a dialog or a text selection is in use.
+  const toComposer = (e: React.PointerEvent<HTMLDivElement>) => {
+    const at = document.activeElement;
+    if (e.buttons !== 0 || !at || !(at === document.body || at.closest('aside[aria-label="Panel lateral"]'))) return;
+    if (document.querySelector('[role="menu"], dialog[open]') || !window.getSelection()?.isCollapsed) return;
+    e.currentTarget.querySelector<HTMLTextAreaElement>('textarea[aria-label="Mensaje"]')?.focus({ preventScroll: true });
+  };
   const deviceView = (k: string, floating = false) => <DevicePanel key={k} node={thread?.node_id ?? "local"} serial={panel.meta[k]?.serial ?? null} floating={floating} onFloat={(v) => panel.setMeta(k, { floating: v })}
     onSerial={(serial, name) => panel.setMeta(k, serial ? { serial, ...(panel.meta[k]?.name ? {} : { name }) } : { serial: undefined })} />;
   return (
     <div className="relative flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
       {/* The panel toggle is pinned to the page corner, so opening the panel never moves it. */}
       <div className={`absolute right-1 top-0 z-30 sm:-top-2 ${hasWindowClose ? "sm:right-8" : "sm:-right-1"}`}><SidePanelToggle panel={panel} /></div>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div onPointerEnter={toComposer} className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Header threadId={threadId} panel={panel} />
         <ThreadChat threadId={threadId} />
       </div>
-      <SidePanel panel={panel} available={[...(local ? ["diff" as const] : []), ...(taskId ? ["plan" as const] : []), "device" as const, ...(window.doryDesktop?.browser ? ["browser" as const] : [])]}
-        render={(k) => (k === "diff" ? <Changes threadId={threadId} messages={thread?.messages} /> : k === "browser" ? <BrowserPanel threadId={threadId} remote={local === false} /> : kindOf(k) === "device" ? (panel.open ? (panel.meta[k]?.floating
+      <SidePanel panel={panel} threadId={threadId} onRename={renameTab} onCloseTab={closeTab} available={[...(local ? ["diff" as const] : []), ...(taskId ? ["plan" as const] : []), "device" as const, "terminal" as const, ...(window.doryDesktop?.browser ? ["browser" as const] : [])]}
+        render={(k) => (k === "diff" ? <Changes threadId={threadId} messages={thread?.messages} /> : k === "browser" ? <BrowserPanel threadId={threadId} remote={local === false} /> : kindOf(k) === "terminal" ? <TerminalPanel threadId={threadId} tab={k} id={panel.meta[k]?.terminal} active={panel.open && panel.active === k} onId={(id) => panel.setMeta(k, { terminal: id })} /> : kindOf(k) === "device" ? (panel.open ? (panel.meta[k]?.floating
           ? <div className="grid h-full place-items-center p-6 text-center text-sm text-slate-500 dark:text-muted"><div className="space-y-2"><p>El dispositivo flota sobre el chat.</p><Button variant="ghost" onClick={() => panel.setMeta(k, { floating: false })}>Abrir en el panel lateral</Button></div></div>
           : deviceView(k)) : null) : taskId && <PlanDoc taskId={taskId} />)} />
       {panel.tabs.filter((k) => kindOf(k) === "device" && panel.meta[k]?.floating).map((k) => <FloatingWindow key={k} id={`${threadId}:${k}`}>{deviceView(k, true)}</FloatingWindow>)}

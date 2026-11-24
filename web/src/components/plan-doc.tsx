@@ -59,7 +59,7 @@ export function PlanDoc({ taskId, showStatus = true, reader = false, onAccepted 
       )}
       <div className="relative flex-1">
         {doc.empty && <p className="pointer-events-none absolute left-5 top-4 text-sm text-slate-400 dark:text-muted">Escribe el plan o pide al agente que lo escriba. Usa «# » para títulos, «- » para listas y «[] » para casillas.</p>}
-        <EditorContent editor={doc.editor} className={`${prose} plan-editor px-5 py-4`} />
+        <EditorContent editor={doc.editor} data-panel-focus className={`${prose} plan-editor px-5 py-4`} />
       </div>
       {reader && (
         <div className="flex items-center gap-3 border-t border-slate-200 px-5 py-3 text-xs text-slate-500 dark:border-border dark:text-muted">

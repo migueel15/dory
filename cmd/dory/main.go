@@ -46,6 +46,7 @@ import (
 	"github.com/migueel15/dory/internal/outbox"
 	"github.com/migueel15/dory/internal/runtime"
 	"github.com/migueel15/dory/internal/skills"
+	"github.com/migueel15/dory/internal/terminal"
 	"github.com/migueel15/dory/internal/update"
 	"github.com/migueel15/dory/internal/version"
 	"github.com/migueel15/dory/internal/workspace"
@@ -233,6 +234,10 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		Changed:      func(id string) { events.Changed("browser", id) },
 		SearchEngine: func() string { return srv.Settings.Get().BrowserSearchEngine }}
 	go srv.Browser.Run(ctx)
+	srv.Terminals = &terminal.Manager{
+		Changed: func(id string) { events.Notify(api.Change{Entity: "terminal", ID: id}) },
+		Cwd:     func(ctx context.Context, id string) string { return srv.TerminalCwd(ctx, id) },
+	}
 	notices.Columns = srv.Tasks.Columns
 	notices.InfoChanged = net.Changed
 	notices.PeerInfo = func(ctx context.Context) []json.RawMessage {
@@ -249,6 +254,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	srv.InfoChanged = net.Changed
 	srv.Updater = &update.Updater{DataDir: cfg.DataDir, Active: rt.Active, Providers: rt.UpdateAll, Restart: func() {
 		pool.CloseAll()
+		srv.Terminals.CloseAll()
 		if srv.Settings.Get().StopServicesOnShutdown {
 			rt.StopAllServices()
 		}
@@ -287,7 +293,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		Store: store, Node: mcp.Node{ID: srv.Node.ID, Name: srv.Node.Name},
 		Threads: srv.Threads, Tasks: srv.Tasks, Plans: srv.Plans, Memories: srv.Memories, Projects: srv.Projects,
 		Session: &app.Session{Node: srv.Node.ID, Tasks: srv.Tasks, Memories: srv.Memories, Projects: srv.Projects},
-		Runtime: rt, Peers: net, PeerClient: srv.PeerClient, Devices: srv.Devices, Browser: srv.Browser,
+		Runtime: rt, Peers: net, PeerClient: srv.PeerClient, Devices: srv.Devices, Browser: srv.Browser, Terminals: srv.Terminals,
 		AgentsUseDevices: func() bool { return srv.Settings.Get().AgentsUseDevices },
 		AgentsUseBrowser: func() bool { return srv.Settings.Get().AgentsUseBrowser },
 		Notify:           func(entity, id string, data any) { events.Notify(api.Change{Entity: entity, ID: id, Data: data}) },
@@ -328,6 +334,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		return err
 	case <-ctx.Done():
 		pool.CloseAll()
+		srv.Terminals.CloseAll()
 		if srv.Settings.Get().StopServicesOnShutdown {
 			rt.StopAllServices()
 		}

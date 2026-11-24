@@ -360,7 +360,7 @@ function Screencast({ tab, frame, send }: { tab: string; frame: Frame | null; se
   };
   if (!frame) return <div className="grid h-full place-items-center text-sm text-slate-500 dark:text-muted">Cargando la página…</div>;
   return (
-    <div tabIndex={0} className="grid h-full place-items-center outline-none" onKeyDown={onKey("keyDown")} onKeyUp={onKey("keyUp")} onContextMenu={(e) => e.preventDefault()}>
+    <div data-panel-focus tabIndex={0} className="grid h-full place-items-center outline-none" onKeyDown={onKey("keyDown")} onKeyUp={onKey("keyUp")} onContextMenu={(e) => e.preventDefault()}>
       <img ref={img} src={frame.src} alt="" draggable={false} className="max-h-full max-w-full select-none object-contain"
         onMouseDown={onMouse("mousePressed")} onMouseUp={onMouse("mouseReleased")} onMouseMove={onMouse("mouseMoved")} onWheel={onWheel} />
     </div>

@@ -24,11 +24,15 @@ export function useEmitter<T>(emitter: Emitter<T>, handler: (payload: T) => void
 
 export type DeviceEvent = { thread: string; action: "open" | "close"; serial: string; floating?: boolean };
 
+export type TerminalEvent = { thread: string; action: "open" | "close"; terminal: string };
+
 // events are the typed actions of the interface: who emits them and who
 // listens is explicit in the imports.
 export const events = {
   /** An agent opened or closed a device of a thread. */
   deviceChanged: createEmitter<DeviceEvent>(),
+  /** An agent opened or closed a terminal of a thread. */
+  terminalChanged: createEmitter<TerminalEvent>(),
   /** An agent asked the desktop app to open the browser of a thread (thread id). */
   browserOpened: createEmitter<string>(),
   /** Ask a thread's message box to take a text. */

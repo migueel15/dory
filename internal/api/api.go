@@ -22,6 +22,7 @@ import (
 	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/runtime"
 	"github.com/migueel15/dory/internal/skills"
+	"github.com/migueel15/dory/internal/terminal"
 	"github.com/migueel15/dory/internal/update"
 	"github.com/migueel15/dory/internal/version"
 )
@@ -76,6 +77,8 @@ type Server struct {
 	Devices *devices.Manager
 	// Browser runs the browsers of the threads of this node; nil disables them.
 	Browser *browser.Manager
+	// Terminals runs the shells of the threads of this node; nil disables them.
+	Terminals *terminal.Manager
 	// MeshPort is the mesh port, which the browser tunnel never reaches.
 	MeshPort int
 	// Skills installs the catalog on this node; nil disables conflict resolution.
@@ -120,6 +123,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	s.mountUpdate(mux)
 	s.mountDevices(mux)
 	s.mountBrowser(mux)
+	s.mountTerminal(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, apperr.New(apperr.NotFound, "route not found"))
 	})

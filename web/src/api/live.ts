@@ -4,7 +4,7 @@ import { noteThreadUpdate } from "./activity";
 import type { ThreadView } from "./types.gen";
 import { qk } from "./queries/keys";
 import { deltaGap, needsRefetch, reduceDelta, reduceEvent, type ThreadEvent } from "./thread-reducer";
-import { events, type DeviceEvent } from "../lib/store";
+import { events, type DeviceEvent, type TerminalEvent } from "../lib/store";
 
 // useVisible tracks whether this tab is on screen. Live streams only stay open
 // while it is: over plain HTTP a browser allows about six connections per host.
@@ -31,6 +31,7 @@ export function queriesFor(entity: string, id: string): unknown[][] {
     case "memory": return [qk.memories()];
     case "thread":
     case "thread_state": return [qk.thread(id), qk.threads(), qk.board(), qk.card()];
+    case "terminal": return [qk.threadTerminals(id)];
     case "notice": return [qk.notices()];
     case "github": return [qk.board(), qk.card(), qk.github(), qk.githubDetail()];
     default: return [];
@@ -93,6 +94,7 @@ export function useLiveUpdates(enabled: boolean) {
       const { entity, id, data } = JSON.parse((e as MessageEvent).data) as { entity: string; id: string; data?: unknown };
       // An agent opened or closed a device: the thread page reacts.
       if (entity === "device") events.deviceChanged.emit({ thread: id, ...(data as object) } as DeviceEvent);
+      if (entity === "terminal" && data) events.terminalChanged.emit({ thread: id, ...(data as object) } as TerminalEvent);
       if (entity === "browser" && (data as { action?: string } | undefined)?.action === "open") {
         events.browserOpened.emit(id);
       }
