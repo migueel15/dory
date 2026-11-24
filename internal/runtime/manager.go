@@ -690,6 +690,7 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 	if _, err := m.db.ExecContext(bg, `DELETE FROM thread_requests WHERE thread_id = ?`, t.ID); err != nil {
 		log.Printf("runtime: drop requests: %v", err)
 	}
+	m.syncBranch(bg, t.ID)
 	m.mu.Lock()
 	delete(m.sessions, t.ID)
 	if m.asked[t.ID] && status == "idle" {
@@ -1055,6 +1056,27 @@ func (m *Manager) WorktreeUse(ctx context.Context, dir, except string) (Worktree
 
 func newRunID() string {
 	return "run-" + strings.ToLower(rand.Text()[:12]) + "-" + fmt.Sprint(time.Now().UnixNano()%1e6)
+}
+
+// syncBranch stores the branch the thread's folder is on when the agent
+// switched it during the turn, so the thread and its task links follow it.
+func (m *Manager) syncBranch(ctx context.Context, id string) {
+	dir, err := m.Dir(ctx, id)
+	if err != nil || dir == "" {
+		return
+	}
+	out, err := gitCmd(ctx, dir, "branch", "--show-current")
+	branch := strings.TrimSpace(string(out))
+	if err != nil || branch == "" {
+		return
+	}
+	t, err := m.store.Threads().Get(ctx, id)
+	if err != nil || t.Branch == branch {
+		return
+	}
+	if _, err := m.store.PatchThread(ctx, id, map[string]any{"branch": branch}); err != nil {
+		log.Printf("runtime: branch of %s: %v", id, err)
+	}
 }
 
 func gitCmd(ctx context.Context, dir string, args ...string) ([]byte, error) {
