@@ -74,4 +74,3 @@ func (a *Tasks) Patch(ctx context.Context, id string, expected *string, fields d
 func invalidTaskStage() error {
 	return data.ErrInvalid.Msgf("stage must be inbox, ready, done or cancelled")
 }
-
