@@ -54,3 +54,17 @@ func TestPollRepoETag(t *testing.T) {
 		t.Fatalf("branch state: %+v", e)
 	}
 }
+
+func TestHasPendingCIAndFingerprint(t *testing.T) {
+	idle := []Pull{{Number: 1, CI: "SUCCESS", CIPassed: 3}}
+	if hasPendingCI(idle) {
+		t.Fatal("expected no pending CI")
+	}
+	running := []Pull{{Number: 1, CI: "PENDING", CIPassed: 2, CIPending: 1}}
+	if !hasPendingCI(running) {
+		t.Fatal("expected pending CI")
+	}
+	if ciFingerprint(idle) == ciFingerprint(running) {
+		t.Fatal("expected different CI fingerprints")
+	}
+}

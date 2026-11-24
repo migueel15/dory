@@ -162,13 +162,19 @@ func (s *Server) mountGitHub(mux *http.ServeMux) {
 				next = "merged"
 			case "close_pull":
 				next = "closed"
+			case "draft":
+				next = "draft"
+			case "ready", "reopen_pull":
+				next = "open"
 			}
 			if next != "" {
 				_ = s.Tasks.RecordPullState(r.Context(), repo(r), n, next)
 				if s.Events != nil {
 					s.Events.Changed("github", "")
 				}
-				s.Tasks.FinishSoon(r.Context())
+				if next == "merged" || next == "closed" {
+					s.Tasks.FinishSoon(r.Context())
+				}
 			}
 		}
 		w.WriteHeader(http.StatusNoContent)

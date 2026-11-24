@@ -120,6 +120,13 @@ func TestRecordPullStateMarksTaskDone(t *testing.T) {
 	if err != nil || cards[0].Column != "ready_to_merge" {
 		t.Fatalf("before merge: cards=%+v err=%v", cards, err)
 	}
+	if err := a.RecordPullState(ctx, "o/r", 7, "draft"); err != nil {
+		t.Fatal(err)
+	}
+	cards, err = a.Board(ctx, data.Filter{})
+	if err != nil || cards[0].Column != "working" || cards[0].PRState != "draft" {
+		t.Fatalf("after draft: cards=%+v err=%v", cards, err)
+	}
 	if err := a.RecordPullState(ctx, "o/r", 7, "merged"); err != nil {
 		t.Fatal(err)
 	}

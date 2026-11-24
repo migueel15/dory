@@ -11,7 +11,9 @@ import (
 const (
 	// watchFast applies while a client shows branches or pull requests.
 	watchFast = 5 * time.Second
-	watchSlow = time.Minute
+	// watchSlow uses conditional ETag requests (304 costs no quota), keeping
+	// external changes within ~10 seconds without burning rate limit.
+	watchSlow = 10 * time.Second
 	// beatTTL is how long a heartbeat keeps the fast pace.
 	beatTTL = 45 * time.Second
 )
@@ -84,7 +86,8 @@ func (c *Client) watchOnce(ctx context.Context, changed func()) time.Duration {
 	}
 	var backoff time.Duration
 	dirty := map[string]string{}
-	for repo, project := range unique(all) {
+	repos := unique(all)
+	for repo, project := range repos {
 		ok, wait, err := c.pollRepo(ctx, repo)
 		backoff = max(backoff, wait)
 		if err != nil {
@@ -98,21 +101,70 @@ func (c *Client) watchOnce(ctx context.Context, changed func()) time.Duration {
 			dirty[repo] = project
 		}
 	}
-	if len(dirty) == 0 {
-		return backoff
-	}
+	notified := len(dirty) > 0
 	for repo, project := range dirty {
 		if data, err := c.fetchRepo(ctx, repo, project); err == nil {
 			c.mu.Lock()
 			c.byRepo[repo] = data
+			c.ciChecked[repo] = time.Now()
 			if c.fetched.IsZero() {
 				c.fetched = time.Now()
 			}
 			c.mu.Unlock()
 		}
 	}
-	changed()
+	// Refresh repos with pending CI checks even when pollRepo returns 304,
+	// because GitHub Actions updates do not bump a pull request's updated_at.
+	for repo, project := range repos {
+		if _, already := dirty[repo]; already {
+			continue
+		}
+		c.mu.Lock()
+		prev := c.byRepo[repo]
+		lastCheck := c.ciChecked[repo]
+		c.mu.Unlock()
+		if !hasPendingCI(prev.pulls) || time.Since(lastCheck) < hotTTL {
+			continue
+		}
+		if data, err := c.fetchRepo(ctx, repo, project); err == nil {
+			c.mu.Lock()
+			c.byRepo[repo] = data
+			c.ciChecked[repo] = time.Now()
+			c.mu.Unlock()
+			if ciFingerprint(prev.pulls) != ciFingerprint(data.pulls) {
+				notified = true
+			}
+		}
+	}
+	// Run one initial sync after the first poll pass so tasks whose PR was
+	// merged or closed while Dory was offline reconcile immediately.
+	c.mu.Lock()
+	firstSync := !c.initialSynced && len(repos) > 0
+	if firstSync {
+		c.initialSynced = true
+	}
+	c.mu.Unlock()
+	if notified || firstSync {
+		changed()
+	}
 	return backoff
+}
+
+func hasPendingCI(pulls []Pull) bool {
+	for _, p := range pulls {
+		if p.CIPending > 0 || p.CI == "PENDING" || p.CI == "EXPECTED" {
+			return true
+		}
+	}
+	return false
+}
+
+func ciFingerprint(pulls []Pull) string {
+	var b string
+	for _, p := range pulls {
+		b += fmt.Sprintf("%d:%s:%d/%d/%d;", p.Number, p.CI, p.CIPassed, p.CIFailed, p.CIPending)
+	}
+	return b
 }
 
 // pollRepo reports whether any listed pull request changed since the last
