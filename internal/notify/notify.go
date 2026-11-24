@@ -116,11 +116,9 @@ func (n *Notifier) Run(ctx context.Context) {
 	}
 }
 
-// Changed is called after every write, local or replicated.
+// Changed is called after a replicated write.
 func (n *Notifier) Changed(entity, id string) {
 	switch entity {
-	case "thread":
-		go n.checkThread(id)
 	case "plan":
 		go n.checkPlan(id)
 	case "notice":
@@ -162,11 +160,12 @@ func (n *Notifier) Github() {
 	}()
 }
 
-func (n *Notifier) checkThread(id string) {
+// ThreadState captures each local transition before the next one can replace it.
+func (n *Notifier) ThreadState(id string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	t, err := n.store.Threads().Get(ctx, id)
-	if err != nil {
+	if err != nil || t.NodeID != n.node || t.LastActivityAt == nil {
 		return
 	}
 	n.mu.Lock()
@@ -174,17 +173,21 @@ func (n *Notifier) checkThread(id string) {
 	n.last[id] = t.Status
 	n.mu.Unlock()
 	// The node that runs the thread raises the event; the others get the notice replicated.
-	if t.NodeID != n.node || prev == t.Status || prev != "working" && t.Status != "waiting" {
+	if prev == t.Status || prev != "working" && t.Status != "waiting" {
 		return
 	}
 	kind := "thread." + t.Status
 	if titles[kind] == "" {
 		return
 	}
-	if kind == "thread.idle" && t.TaskID != nil && n.planPending(ctx, *t.TaskID) {
-		kind = "plan.ready"
-	}
-	n.Emit(ctx, kind, t.ID, t.UpdatedAt, t.Title, "/threads/"+t.ID)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if kind == "thread.idle" && t.TaskID != nil && n.planPending(ctx, *t.TaskID) {
+			kind = "plan.ready"
+		}
+		n.Emit(ctx, kind, t.ID, *t.LastActivityAt, t.Title, "/threads/"+t.ID)
+	}()
 }
 
 // planPending says whether the latest plan of the task waits to be accepted.

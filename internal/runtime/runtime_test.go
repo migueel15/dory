@@ -149,6 +149,10 @@ func TestManagerRunsAndQueues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var before int
+	if err := m.db.QueryRowContext(ctx, "SELECT count(*) FROM ops").Scan(&before); err != nil {
+		t.Fatal(err)
+	}
 	if err = m.Send(ctx, th.ID, "lista"); err != nil {
 		t.Fatal(err)
 	}
@@ -176,8 +180,12 @@ func TestManagerRunsAndQueues(t *testing.T) {
 		}
 	}
 	// Both turns ran; the replay reuses message ids, so each turn adds its user message.
-	if users != 2 || th.ReadAt != nil || th.LastActivityAt == nil {
+	if users != 2 || !th.Unread || th.ReadAt != nil || th.LastActivityAt == nil {
 		t.Fatalf("users=%d thread=%+v", users, th)
+	}
+	var after int
+	if err := m.db.QueryRowContext(ctx, "SELECT count(*) FROM ops").Scan(&after); err != nil || after != before {
+		t.Fatalf("turns changed log size from %d to %d: %v", before, after, err)
 	}
 	var session string
 	m.db.QueryRow(`SELECT session_id FROM thread_runtime WHERE thread_id = ?`, th.ID).Scan(&session)
@@ -209,8 +217,9 @@ func TestRecoverMarksDeadTurns(t *testing.T) {
 	ctx := context.Background()
 	m, store := manager(t, 0)
 	th, _ := m.Create(ctx, NewThread{Provider: "replay"})
-	th.Status = "working"
-	store.Threads().Patch(ctx, th.ID, data.Fields{"status": th.Status})
+	if err := store.SetThreadState(ctx, th.ID, "working", ""); err != nil {
+		t.Fatal(err)
+	}
 	if err := m.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}

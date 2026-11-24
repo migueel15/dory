@@ -152,6 +152,12 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		reconciler.Changed(entity)
 		notices.Changed(entity, id)
 	}
+	net.OnThreadState = func(id string) { events.Changed("thread_state", id) }
+	rt.OnStateChange = func(id string) {
+		net.OnThreadState(id)
+		notices.ThreadState(id)
+		net.ThreadStateChanged()
+	}
 	go reconciler.Run(ctx)
 	go rt.Follow(ctx, rt.Paths(home))
 	gh := github.New(func(ctx context.Context) (map[string]string, error) { return followed(ctx, store) }, github.NewAuth(filepath.Join(cfg.DataDir, "github.token"), ghToken))

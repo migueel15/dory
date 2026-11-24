@@ -67,7 +67,7 @@ func TestSpawnLimitsActiveChildren(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = store.Threads().Patch(ctx, child.ID, map[string]any{"status": "working"}); err != nil {
+		if err = store.SetThreadState(ctx, child.ID, "working", ""); err != nil {
 			t.Fatal(err)
 		}
 	}

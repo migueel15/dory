@@ -1,9 +1,9 @@
 package mcp
 
 import (
-	"github.com/migueel15/dory/internal/apperr"
 	"context"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"slices"
 	"strings"
 
@@ -338,7 +338,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 func threadSummary(ctx context.Context, m *runtime.Manager, t data.Thread) map[string]any {
 	out := map[string]any{"id": t.ID, "title": t.Title, "provider": t.Provider, "model": t.Model, "effort": t.Effort,
 		"status": t.Status, "parent_id": t.ParentID, "task_id": t.TaskID, "project_id": t.ProjectID, "node_id": t.NodeID,
-		"last_activity_at": t.LastActivityAt, "archived": t.ArchivedAt != nil}
+		"last_activity_at": t.LastActivityAt, "unread": t.Unread, "state_stale": t.StateStale, "archived": t.ArchivedAt != nil}
 	if reqs, err := m.Requests(ctx, t.ID); err == nil {
 		out["pending_requests"] = len(reqs)
 	}
