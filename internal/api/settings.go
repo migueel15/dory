@@ -1,20 +1,21 @@
 package api
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"github.com/migueel15/dory/internal/apperr"
+	"log"
+	"maps"
 	"net/http"
-	"os"
 	"path/filepath"
 	"regexp"
-	"sync"
+
+	"github.com/migueel15/dory/internal/apperr"
+	"github.com/migueel15/dory/internal/nodestate"
 )
 
 // Settings are the choices of a node about how finished work is cleaned up.
 // They belong to the node and are not replicated: config.toml gives the
-// defaults and settings.json in the data directory keeps what the user
-// changes from the interface.
+// defaults and SQLite keeps what the user changes from the interface.
 type Settings struct {
 	ArchiveThreadsOnFinish  bool `json:"archive_threads_on_finish"`
 	RemoveWorktreeOnArchive bool `json:"remove_worktree_on_archive"`
@@ -108,18 +109,25 @@ type ThreadDefaults struct {
 
 // SettingsStore reads and saves the Settings of a node.
 type SettingsStore struct {
-	mu   sync.Mutex
-	path string
-	cur  Settings
+	value *nodestate.Value[Settings]
 }
 
-// NewSettingsStore starts from defaults and applies the saved file in dir.
-func NewSettingsStore(dir string, defaults Settings) *SettingsStore {
-	st := &SettingsStore{path: filepath.Join(dir, "settings.json"), cur: defaults}
-	if raw, err := os.ReadFile(st.path); err == nil {
-		_ = json.Unmarshal(raw, &st.cur)
+// NewSettingsStore starts from defaults and applies the saved settings.
+func NewSettingsStore(store *nodestate.Store, defaults Settings) *SettingsStore {
+	value := nodestate.NewValue(store, nodestate.KeySettings, cloneSettings(defaults))
+	if err := value.Load(context.Background()); err != nil {
+		log.Printf("api: load settings: %v", err)
 	}
-	return st
+	return &SettingsStore{value: value}
+}
+
+func cloneSettings(v Settings) Settings {
+	if v.Input != nil {
+		input := *v.Input
+		input.Shortcuts = maps.Clone(input.Shortcuts)
+		v.Input = &input
+	}
+	return v
 }
 
 // Get returns the current settings; without a store it returns the built-in defaults.
@@ -127,25 +135,12 @@ func (st *SettingsStore) Get() Settings {
 	if st == nil {
 		return Settings{RemoveWorktreeOnArchive: true}
 	}
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	return st.cur
+	return cloneSettings(st.value.Get())
 }
 
 // Set saves the settings.
 func (st *SettingsStore) Set(v Settings) error {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	raw, _ := json.Marshal(v)
-	tmp := st.path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, st.path); err != nil {
-		return err
-	}
-	st.cur = v
-	return nil
+	return st.value.Set(context.Background(), cloneSettings(v))
 }
 
 func (s *Server) mountSettings(mux *http.ServeMux) {

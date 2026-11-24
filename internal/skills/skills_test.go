@@ -9,6 +9,7 @@ import (
 
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/localdb"
+	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/oplog"
 )
 
@@ -23,7 +24,7 @@ func setup(t *testing.T) (*Reconciler, string) {
 	t.Cleanup(func() { db.Close() })
 	log, _ := oplog.Open(ctx, db)
 	home := filepath.Join(dir, "home")
-	return &Reconciler{Store: data.New(db, log), Node: log.Node(), Home: home, Manifest: filepath.Join(dir, "manifest.json"),
+	return &Reconciler{Store: data.New(db, log), Node: log.Node(), Home: home, State: nodestate.New(db), DataDir: dir,
 		Installed: func(context.Context) []string { return []string{"claude", "codex"} }}, home
 }
 

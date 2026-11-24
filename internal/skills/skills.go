@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -21,6 +20,7 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/nodestate"
 )
 
 var namePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
@@ -104,8 +104,10 @@ type Reconciler struct {
 	// Config resolves the configuration directory of a harness through its
 	// default account; nil uses ~/.claude and ~/.codex.
 	Config func(driver string) string
-	// Manifest is the file where the reconciler remembers what it wrote.
-	Manifest string
+	// State remembers the files written by this reconciler.
+	State *nodestate.Store
+	// DataDir holds managed Antigravity skills and backups.
+	DataDir string
 	// Installed reports which harnesses this machine has.
 	Installed func(ctx context.Context) []string
 
@@ -118,18 +120,19 @@ type Reconciler struct {
 // manifest maps each file the reconciler wrote to the hash it wrote.
 type manifest map[string]string
 
-func (r *Reconciler) load() manifest {
-	m := manifest{}
-	raw, err := os.ReadFile(r.Manifest)
-	if err == nil {
-		json.Unmarshal(raw, &m)
+func (r *Reconciler) load(ctx context.Context) (manifest, error) {
+	var m manifest
+	if _, err := r.State.Get(ctx, nodestate.KeySkillsManifest, &m); err != nil {
+		return nil, err
 	}
-	return m
+	if m == nil {
+		m = make(manifest)
+	}
+	return m, nil
 }
 
-func (r *Reconciler) save(m manifest) error {
-	raw, _ := json.MarshalIndent(m, "", "  ")
-	return os.WriteFile(r.Manifest, raw, 0o600)
+func (r *Reconciler) save(ctx context.Context, m manifest) error {
+	return r.State.Put(ctx, nodestate.KeySkillsManifest, m)
 }
 
 func hash(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
@@ -189,7 +192,10 @@ func (r *Reconciler) reconcile(ctx context.Context) error {
 	}
 	installed := r.Installed(ctx)
 	dirs := Dirs(r.Home, r.Config)
-	m := r.load()
+	m, err := r.load(ctx)
+	if err != nil {
+		return err
+	}
 	want := map[string]bool{}
 	states := map[string]data.SkillState{}
 	for _, s := range all {
@@ -277,7 +283,7 @@ func (r *Reconciler) reconcile(ctx context.Context) error {
 			delete(m, path)
 		}
 	}
-	if err = r.save(m); err != nil {
+	if err = r.save(ctx, m); err != nil {
 		return err
 	}
 	return r.publish(ctx, states)
@@ -285,7 +291,7 @@ func (r *Reconciler) reconcile(ctx context.Context) error {
 
 // roots are the folders that hold one folder per skill on this node.
 func (r *Reconciler) roots() []string {
-	out := []string{filepath.Join(filepath.Dir(r.Manifest), "antigravity-skills")}
+	out := []string{filepath.Join(r.DataDir, "antigravity-skills")}
 	for _, dir := range Dirs(r.Home, r.Config) {
 		out = append(out, dir)
 	}

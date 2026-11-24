@@ -2,43 +2,21 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
 	"log"
-	"os"
-	"path/filepath"
-	"sort"
+	"slices"
 )
 
 // A provider can be turned off on a node: it then disappears there. It is not
 // listed for new threads, its threads cannot run turns and its usage is not
 // asked for. The setting belongs to the node and is not replicated.
 
-func (m *Manager) disabledFile() string { return filepath.Join(m.dataDir, "providers.json") }
-
-func (m *Manager) loadDisabled() {
-	m.disabled = map[string]bool{}
-	if m.dataDir == "" {
-		return
-	}
-	raw, err := os.ReadFile(m.disabledFile())
-	if err != nil {
-		return
-	}
-	var saved struct {
-		Disabled []string `json:"disabled"`
-	}
-	if json.Unmarshal(raw, &saved) == nil {
-		for _, id := range saved.Disabled {
-			m.disabled[id] = true
-		}
-	}
+type disabledProviders struct {
+	Disabled []string `json:"disabled"`
 }
 
 // Enabled says whether a provider is turned on on this node.
 func (m *Manager) Enabled(id string) bool {
-	m.disabledMu.Lock()
-	defer m.disabledMu.Unlock()
-	return !m.disabled[id]
+	return !slices.Contains(m.disabled.Get().Disabled, id)
 }
 
 // SetEnabled turns a provider on or off on this node and saves the choice.
@@ -46,27 +24,15 @@ func (m *Manager) SetEnabled(ctx context.Context, id string, enabled bool) error
 	if m.provider0(id) == nil {
 		return ErrProvider.Msgf("%s", id)
 	}
-	m.disabledMu.Lock()
-	if enabled {
-		delete(m.disabled, id)
-	} else {
-		m.disabled[id] = true
-	}
-	ids := make([]string, 0, len(m.disabled))
-	for d := range m.disabled {
-		ids = append(ids, d)
-	}
-	m.disabledMu.Unlock()
-	sort.Strings(ids)
-	if m.dataDir != "" {
-		raw, _ := json.Marshal(map[string][]string{"disabled": ids})
-		tmp := m.disabledFile() + ".tmp"
-		if err := os.WriteFile(tmp, raw, 0o600); err != nil {
-			return err
+	if err := m.disabled.Update(ctx, func(saved *disabledProviders) {
+		if enabled {
+			saved.Disabled = slices.DeleteFunc(saved.Disabled, func(d string) bool { return d == id })
+		} else if !slices.Contains(saved.Disabled, id) {
+			saved.Disabled = append(saved.Disabled, id)
+			slices.Sort(saved.Disabled)
 		}
-		if err := os.Rename(tmp, m.disabledFile()); err != nil {
-			return err
-		}
+	}); err != nil {
+		return err
 	}
 	m.invalidate()
 	if enabled {

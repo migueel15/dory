@@ -11,6 +11,7 @@ import (
 
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/localdb"
+	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/oplog"
 )
 
@@ -123,7 +124,7 @@ func manager(t *testing.T, delay time.Duration) (*Manager, *data.Store) {
 	}
 	store := data.New(db, log)
 	file, _ := filepath.Abs(filepath.Join("testdata", "claude.jsonl"))
-	return NewManager(db, store, log.Node(), dir, Replay{File: file, Delay: delay}), store
+	return NewManager(db, store, log.Node(), dir, nodestate.New(db), Replay{File: file, Delay: delay}), store
 }
 
 func wait(t *testing.T, store *data.Store, id, status string) data.Thread {
@@ -302,4 +303,14 @@ func TestClaudeParserBlockPerLine(t *testing.T) {
 			t.Errorf("message %d: %+v", i, m)
 		}
 	}
+}
+
+func testNodeState(t *testing.T) *nodestate.Store {
+	t.Helper()
+	db, err := localdb.Open(context.Background(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return nodestate.New(db)
 }

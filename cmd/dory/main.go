@@ -31,6 +31,7 @@ import (
 	"github.com/migueel15/dory/internal/localdb"
 	"github.com/migueel15/dory/internal/mcp"
 	"github.com/migueel15/dory/internal/mesh"
+	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/notify"
 	"github.com/migueel15/dory/internal/oplog"
 	"github.com/migueel15/dory/internal/runtime"
@@ -103,11 +104,15 @@ func run() error {
 }
 
 func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplog.Log) error {
+	state := nodestate.New(store.DB())
+	if err := importNodeState(ctx, state, cfg.DataDir); err != nil {
+		return err
+	}
 	if err := store.PublishLocations(ctx); err != nil {
 		log.Printf("publish repository locations: %v", err)
 	}
 	providers := []runtime.Provider{runtime.Claude{}, runtime.Codex{}, runtime.OpenCode{}, runtime.Antigravity{}}
-	rt := runtime.NewManager(store.DB(), store, log_.Node(), cfg.DataDir, providers...)
+	rt := runtime.NewManager(store.DB(), store, log_.Node(), cfg.DataDir, state, providers...)
 	agentToken := auth.Secret()
 	rt.MCPURL = "http://" + loopbackAddr(cfg.Listen) + "/mcp"
 	rt.MCPToken = agentToken
@@ -126,7 +131,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	if err != nil {
 		return err
 	}
-	reconciler := &skills.Reconciler{Store: store, Node: log_.Node(), Home: home, Config: rt.ConfigDir, Manifest: filepath.Join(cfg.DataDir, "skills-manifest.json"),
+	reconciler := &skills.Reconciler{Store: store, Node: log_.Node(), Home: home, Config: rt.ConfigDir, State: state, DataDir: cfg.DataDir,
 		Installed: func(ctx context.Context) []string {
 			var ids []string
 			for _, p := range rt.Providers(ctx) {
@@ -151,14 +156,14 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	gh := github.New(func(ctx context.Context) (map[string]string, error) { return followed(ctx, store) }, github.NewAuth(filepath.Join(cfg.DataDir, "github.token"), ghToken))
 	// A pull request change is not a stored write: tell clients directly.
 	srv := &api.Server{
-		Store: store, Runtime: rt, GitHub: gh, Dictation: dictationManager(), Events: events,
+		Store: store, NodeState: state, Runtime: rt, GitHub: gh, Dictation: dictationManager(), Events: events,
 		SpeechModels: dictation.NewLocalModels(ctx, filepath.Join(cfg.DataDir, "dictation-models"), os.Getenv("DORY_NEMO_SPEECH_BIN")),
 		Node: api.Node{ID: log_.Node(), Name: cfg.NodeName, OS: goruntime.GOOS, Version: version.Read().Short,
 			DataDir: cfg.DataDir, Listen: cfg.Listen, Platform: goruntime.GOOS + "/" + goruntime.GOARCH},
 	}
 	srv.Devices = devices.NewManager()
 	srv.Skills = reconciler
-	srv.Settings = api.NewSettingsStore(cfg.DataDir, api.Settings{ArchiveThreadsOnFinish: cfg.Tasks.ArchiveThreadsOnFinish, RemoveWorktreeOnArchive: cfg.Threads.RemoveWorktreeOnArchive, AgentsUseDevices: true, SourceControl: api.SourceControlSettings{AutoPull: true}})
+	srv.Settings = api.NewSettingsStore(state, api.Settings{ArchiveThreadsOnFinish: cfg.Tasks.ArchiveThreadsOnFinish, RemoveWorktreeOnArchive: cfg.Threads.RemoveWorktreeOnArchive, AgentsUseDevices: true, SourceControl: api.SourceControlSettings{AutoPull: true}})
 	go gh.Watch(ctx, func() {
 		events.Changed("github", "")
 		notices.Github()

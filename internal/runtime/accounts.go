@@ -2,14 +2,17 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"github.com/migueel15/dory/internal/apperr"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
+
+	"github.com/migueel15/dory/internal/apperr"
+	"github.com/migueel15/dory/internal/nodestate"
 )
 
 // A harness can be signed in with several accounts on one node, as long as
@@ -69,19 +72,13 @@ func withEnv(cmd *exec.Cmd, env []string) *exec.Cmd {
 	return cmd
 }
 
-func (m *Manager) accountsFile() string { return filepath.Join(m.dataDir, "accounts.json") }
-
 func (m *Manager) loadAccounts() {
-	raw, err := os.ReadFile(m.accountsFile())
-	if m.dataDir == "" || err != nil {
+	m.accounts = nodestate.NewValue[[]Account](m.state, nodestate.KeyAccounts, nil)
+	if err := m.accounts.Load(context.Background()); err != nil {
+		log.Printf("runtime: load accounts: %v", err)
 		return
 	}
-	var saved []Account
-	if json.Unmarshal(raw, &saved) != nil {
-		return
-	}
-	for _, a := range saved {
-		m.accounts = append(m.accounts, a)
+	for _, a := range m.accounts.Get() {
 		if p := buildAccount(a, m.providers[a.Driver]); p != nil {
 			m.providers[a.ID()] = p
 		}
@@ -100,18 +97,6 @@ func buildAccount(a Account, base Provider) Provider {
 		return b
 	}
 	return nil
-}
-
-func (m *Manager) saveAccounts() error {
-	if m.dataDir == "" {
-		return nil
-	}
-	raw, _ := json.MarshalIndent(m.accounts, "", "  ")
-	tmp := m.accountsFile() + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, m.accountsFile())
 }
 
 // provider0 returns a registered provider, turned on or not.
@@ -259,11 +244,11 @@ func (m *Manager) AddAccount(ctx context.Context, driver, name, home string) (Ac
 	if err = os.MkdirAll(home, 0o700); err != nil {
 		return Account{}, err
 	}
-	m.providers[a.ID()] = p
-	m.accounts = append(m.accounts, a)
-	if err = m.saveAccounts(); err != nil {
+	accounts := append(slices.Clone(m.accounts.Get()), a)
+	if err = m.accounts.Set(ctx, accounts); err != nil {
 		return Account{}, err
 	}
+	m.providers[a.ID()] = p
 	m.invalidate()
 	return a, nil
 }
@@ -303,19 +288,17 @@ func (m *Manager) UpdateAccount(ctx context.Context, id, name, home string) erro
 			return err
 		}
 	}
-	m.providers[id] = p
-	found := false
-	for i := range m.accounts {
-		if m.accounts[i].ID() == id {
-			m.accounts[i], found = a, true
-		}
+	accounts := slices.Clone(m.accounts.Get())
+	i := slices.IndexFunc(accounts, func(a Account) bool { return a.ID() == id })
+	if i < 0 {
+		accounts = append(accounts, a)
+	} else {
+		accounts[i] = a
 	}
-	if !found {
-		m.accounts = append(m.accounts, a)
-	}
-	if err = m.saveAccounts(); err != nil {
+	if err = m.accounts.Set(ctx, accounts); err != nil {
 		return err
 	}
+	m.providers[id] = p
 	m.invalidate()
 	return nil
 }
@@ -330,17 +313,11 @@ func (m *Manager) RemoveAccount(id string) error {
 	if m.providers[id] == nil {
 		return ErrProvider.Msgf("%s", id)
 	}
-	delete(m.providers, id)
-	kept := m.accounts[:0]
-	for _, a := range m.accounts {
-		if a.ID() != id {
-			kept = append(kept, a)
-		}
-	}
-	m.accounts = kept
-	if err := m.saveAccounts(); err != nil {
+	accounts := slices.DeleteFunc(slices.Clone(m.accounts.Get()), func(a Account) bool { return a.ID() == id })
+	if err := m.accounts.Set(context.Background(), accounts); err != nil {
 		return err
 	}
+	delete(m.providers, id)
 	m.invalidate()
 	return nil
 }

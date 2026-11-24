@@ -32,9 +32,10 @@ func TestAntigravityQuotaStore(t *testing.T) {
 	}
 	p := fixtureQuotaProvider{windows: append(got, Window{Kind: "expired", ResetsAt: reset.Add(-2 * time.Hour), Utilization: 0.5})}
 	dir := t.TempDir()
-	m := NewManager(nil, nil, "node", dir, p)
+	state := testNodeState(t)
+	m := NewManager(nil, nil, "node", dir, state, p)
 	m.RefreshUsage(t.Context())
-	restarted := NewManager(nil, nil, "node", dir, p)
+	restarted := NewManager(nil, nil, "node", dir, state, p)
 	if got := restarted.Usage()[antigravityID]; !reflect.DeepEqual(got, want) {
 		t.Fatalf("stored and visible windows = %+v, want %+v", got, want)
 	}

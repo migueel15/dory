@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/migueel15/dory/internal/apperr"
 	"log"
 	"os"
 	"path/filepath"
@@ -16,7 +15,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/workspace"
 )
 
@@ -53,13 +54,14 @@ type Queued struct {
 // messages and tells subscribers what changed.
 type Manager struct {
 	db        *sql.DB
+	state     *nodestate.Store
 	store     *data.Store
 	node      string
 	dataDir   string
 	providers map[string]Provider
 	// provMu guards providers and accounts, which change with the accounts of a harness.
 	provMu   sync.RWMutex
-	accounts []Account
+	accounts *nodestate.Value[[]Account]
 	// MCPURL is the local endpoint. MCPToken is the node secret used to derive thread credentials.
 	MCPURL, MCPToken string
 	// WorktreeRoot returns the folder for new worktrees; empty means the data directory.
@@ -71,14 +73,13 @@ type Manager struct {
 	sessions map[string]Session
 	queues   map[string][]Queued
 	subs     map[chan Update]string
-	usage    map[string][]Window
+	usage    *nodestate.Value[map[string][]Window]
 	// waiters hold the ask_user calls waiting for the user, by request id.
 	waiters map[string]chan [][]string
 	// secretWaiters hold the request_secret calls waiting for the user.
 	secretWaiters map[string]secretWaiter
-	// disabled holds the providers turned off on this node, under its own lock.
-	disabledMu sync.Mutex
-	disabled   map[string]bool
+	// disabled holds the providers turned off on this node.
+	disabled *nodestate.Value[disabledProviders]
 	// asked marks threads whose agent asked the user something this turn.
 	asked map[string]bool
 	// steering marks threads whose turn was stopped to run the head of the queue now.
@@ -97,35 +98,24 @@ type Manager struct {
 	detectedAt time.Time
 }
 
-func NewManager(db *sql.DB, store *data.Store, node, dataDir string, providers ...Provider) *Manager {
-	m := &Manager{db: db, store: store, node: node, dataDir: dataDir, providers: map[string]Provider{},
-		running: map[string]context.CancelFunc{}, sessions: map[string]Session{}, queues: map[string][]Queued{}, subs: map[chan Update]string{}, usage: map[string][]Window{}, asked: map[string]bool{}, steering: map[string]bool{}, pending: map[string]ThreadSettings{}}
+func NewManager(db *sql.DB, store *data.Store, node, dataDir string, state *nodestate.Store, providers ...Provider) *Manager {
+	m := &Manager{db: db, state: state, store: store, node: node, dataDir: dataDir, providers: map[string]Provider{},
+		running: map[string]context.CancelFunc{}, sessions: map[string]Session{}, queues: map[string][]Queued{}, subs: map[chan Update]string{}, asked: map[string]bool{}, steering: map[string]bool{}, pending: map[string]ThreadSettings{}}
 	for _, p := range providers {
 		m.providers[p.ID()] = p
 	}
 	m.waiters = map[string]chan [][]string{}
 	m.secretWaiters = map[string]secretWaiter{}
-	m.loadUsage()
-	m.loadDisabled()
+	m.usage = nodestate.NewValue[map[string][]Window](state, nodestate.KeyUsage, nil)
+	m.disabled = nodestate.NewValue(state, nodestate.KeyDisabledProviders, disabledProviders{})
+	if err := m.usage.Load(context.Background()); err != nil {
+		log.Printf("runtime: load usage: %v", err)
+	}
+	if err := m.disabled.Load(context.Background()); err != nil {
+		log.Printf("runtime: load disabled providers: %v", err)
+	}
 	m.loadAccounts()
 	return m
-}
-
-// usageFile keeps the last reported usage so it survives restarts.
-func (m *Manager) usageFile() string { return filepath.Join(m.dataDir, "usage.json") }
-
-func (m *Manager) loadUsage() {
-	if m.dataDir == "" {
-		return
-	}
-	raw, err := os.ReadFile(m.usageFile())
-	if err != nil {
-		return
-	}
-	var saved map[string][]Window
-	if json.Unmarshal(raw, &saved) == nil && saved != nil {
-		m.usage = saved
-	}
 }
 
 // WatchUsage asks every provider for its usage now and then every interval,
@@ -157,10 +147,7 @@ func (m *Manager) RefreshUsage(ctx context.Context) {
 			case err != nil:
 				log.Printf("runtime: %s usage: %v", id, err)
 			case len(windows) > 0:
-				m.mu.Lock()
-				m.usage[id] = windows
-				m.saveUsage()
-				m.mu.Unlock()
+				m.saveUsage(ctx, id, windows)
 			}
 		}()
 	}
@@ -190,18 +177,14 @@ func (m *Manager) providerOrder() []string {
 	return ids
 }
 
-// saveUsage writes the usage map; the caller holds m.mu.
-func (m *Manager) saveUsage() {
-	if m.dataDir == "" {
-		return
-	}
-	raw, _ := json.Marshal(m.usage)
-	tmp := m.usageFile() + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err == nil {
-		err = os.Rename(tmp, m.usageFile())
-		if err != nil {
-			log.Printf("runtime: save usage: %v", err)
+func (m *Manager) saveUsage(ctx context.Context, id string, windows []Window) {
+	if err := m.usage.Update(ctx, func(usage *map[string][]Window) {
+		if *usage == nil {
+			*usage = make(map[string][]Window)
 		}
+		(*usage)[id] = windows
+	}); err != nil {
+		log.Printf("runtime: save usage: %v", err)
 	}
 }
 
@@ -269,11 +252,10 @@ func (m *Manager) invalidate() {
 
 // Usage returns the latest usage windows each provider reported.
 func (m *Manager) Usage() map[string][]Window {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	out := make(map[string][]Window, len(m.usage))
+	usage := m.usage.Get()
+	out := make(map[string][]Window, len(usage))
 	now := time.Now()
-	for k, v := range m.usage {
+	for k, v := range usage {
 		if !m.Enabled(k) {
 			continue
 		}
@@ -654,10 +636,7 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 				}
 			}
 		case e.Usage != nil:
-			m.mu.Lock()
-			m.usage[t.Provider] = e.Usage
-			m.saveUsage()
-			m.mu.Unlock()
+			m.saveUsage(bg, t.Provider, e.Usage)
 		case e.Request != nil:
 			m.request(bg, t.ID, *e.Request)
 		case e.Done:

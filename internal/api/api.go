@@ -18,6 +18,7 @@ import (
 	"github.com/migueel15/dory/internal/devices"
 	"github.com/migueel15/dory/internal/dictation"
 	"github.com/migueel15/dory/internal/github"
+	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/runtime"
 	"github.com/migueel15/dory/internal/skills"
 	"github.com/migueel15/dory/internal/version"
@@ -40,6 +41,7 @@ type Node struct {
 // Server holds what the handlers need.
 type Server struct {
 	Store        *data.Store
+	NodeState    *nodestate.Store
 	Runtime      *runtime.Manager
 	GitHub       *github.Client
 	Dictation    *dictation.Manager
