@@ -8,10 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"maps"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -69,24 +67,16 @@ type Manager struct {
 	// MCPURL is the local endpoint. MCPToken is the node secret used to derive thread credentials.
 	MCPURL, MCPToken string
 
-	mu      sync.Mutex
-	running map[string]context.CancelFunc
-	// sessions holds the open turn of interactive harnesses, by thread.
-	sessions map[string]Session
-	queues   map[string][]Queued
-	subs     map[chan Update]string
-	usage    *nodestate.Value[map[string][]Window]
-	// waiters hold the ask_user calls waiting for the user, by request id.
-	waiters map[string]chan [][]string
-	// secretWaiters hold the request_secret calls waiting for the user.
-	secretWaiters map[string]secretWaiter
-	// asked marks threads whose agent asked the user something this turn.
-	asked map[string]bool
-	// steering marks threads whose turn was stopped to run the head of the queue now.
-	steering map[string]bool
-	// pending holds the settings an agent chose for a running thread; they
-	// apply when its turn ends, before the next one starts.
-	pending map[string]ThreadSettings
+	// mu guards the subscriptions and the cached harness state.
+	mu   sync.Mutex
+	subs map[chan Update]string
+	// runners holds the actor of each thread with work or a queue; nothing
+	// else about a thread's turn lives in the Manager.
+	runnersMu sync.Mutex
+	runners   map[string]*threadRunner
+	// runnerIdle is how long an actor with nothing to do stays alive.
+	runnerIdle time.Duration
+	usage      *nodestate.Value[map[string][]Window]
 	// Outbox carries what this node owes other nodes, such as the outcome of
 	// a subagent turn to its parent; set at start-up.
 	Outbox *outbox.Outbox
@@ -105,9 +95,7 @@ func NewManager(db *sql.DB, store *data.Store, node, dataDir string, state *node
 		pool = procpool.New(nil)
 	}
 	m := &Manager{db: db, state: state, store: store, node: node, dataDir: dataDir, pool: pool, registry: harness.NewRegistry(state, dataDir, pool, providers...),
-		running: map[string]context.CancelFunc{}, sessions: map[string]Session{}, queues: map[string][]Queued{}, subs: map[chan Update]string{}, asked: map[string]bool{}, steering: map[string]bool{}, pending: map[string]ThreadSettings{}}
-	m.waiters = map[string]chan [][]string{}
-	m.secretWaiters = map[string]secretWaiter{}
+		subs: map[chan Update]string{}, runners: map[string]*threadRunner{}, runnerIdle: 10 * time.Minute}
 	m.usage = nodestate.NewValue[map[string][]Window](state, nodestate.KeyUsage, nil)
 	if err := m.usage.Load(context.Background()); err != nil {
 		log.Printf("runtime: load usage: %v", err)
@@ -170,6 +158,7 @@ func (m *Manager) Recover(ctx context.Context) error {
 	if err := m.dropRequests(ctx); err != nil {
 		return err
 	}
+	m.loadQueues(ctx)
 	threads, err := m.store.Threads().List(ctx, data.Filter{Fields: map[string]any{"node_id": m.node, "status": "working"}, Limit: 1000})
 	if err != nil {
 		return err
@@ -289,31 +278,10 @@ func (m *Manager) SendFrom(ctx context.Context, id, sender, text string, files .
 	if strings.TrimSpace(text) == ClearCommand && len(files) == 0 {
 		return m.Clear(ctx, id)
 	}
-	run := newRunID()
-	m.mu.Lock()
-	t, err := m.local(ctx, id)
-	if err != nil {
-		m.mu.Unlock()
+	if _, err := m.local(ctx, id); err != nil {
 		return err
 	}
-	if _, busy := m.running[id]; busy {
-		m.queues[id] = append(m.queues[id], Queued{RunID: run, Text: text, Files: files, Sender: sender})
-		q := append([]Queued(nil), m.queues[id]...)
-		m.mu.Unlock()
-		m.publish(Update{ThreadID: id, Queue: q})
-		return nil
-	}
-	turnCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	m.running[id] = cancel
-	m.mu.Unlock()
-	if err = m.start(turnCtx, t, Queued{RunID: run, Text: text, Files: files, Sender: sender}); err != nil {
-		cancel()
-		m.mu.Lock()
-		delete(m.running, id)
-		m.mu.Unlock()
-		return err
-	}
-	return nil
+	return m.do(id, &command{kind: cmdSend, ctx: ctx, queued: Queued{RunID: newRunID(), Text: text, Files: files, Sender: sender}}).err
 }
 
 // ClearCommand is Dory's own /clear, the same for every harness.
@@ -323,12 +291,16 @@ const ClearCommand = "/clear"
 // one, because every runtime starts fresh without a session. The visible
 // messages stay, after a separator.
 func (m *Manager) Clear(ctx context.Context, id string) error {
+	if _, err := m.local(ctx, id); err != nil {
+		return err
+	}
+	return m.do(id, &command{kind: cmdClear, ctx: ctx}).err
+}
+
+func (m *Manager) clearSession(ctx context.Context, id string) error {
 	t, err := m.local(ctx, id)
 	if err != nil {
 		return err
-	}
-	if m.Running(id) {
-		return ErrBusy
 	}
 	// Keep session_provider so no history is carried over as a handoff.
 	if _, err := m.db.ExecContext(ctx, `UPDATE thread_runtime SET session_id = '', portable_history = 0 WHERE thread_id = ?`, id); err != nil {
@@ -353,23 +325,21 @@ func (m *Manager) Ask(ctx context.Context, id string, questions []Question) ([][
 	msg := Message{ID: newRunID(), ThreadID: id, Role: "question", Title: "Pregunta", Text: strings.Join(text, "\n"), Status: "waiting", CreatedAt: now(),
 		Tool: &ToolCall{Kind: "question", Name: "ask_user", Questions: questions}}
 	m.save(ctx, msg)
-	req := newRunID()
-	answers := make(chan [][]string, 1)
-	m.mu.Lock()
-	m.waiters[req] = answers
-	m.mu.Unlock()
+	w := m.do(id, &command{kind: cmdAsk, ctx: ctx})
+	if w.err != nil {
+		return nil, w.err
+	}
+	req := w.req
 	m.request(ctx, id, Request{ID: req, Kind: "question", MessageID: msg.ID, Questions: questions})
 	select {
-	case a := <-answers:
+	case a := <-w.answers:
 		msg.Tool.Questions = kit.Answered(questions, a)
 		msg.Status = "done"
 		m.save(context.WithoutCancel(ctx), msg)
 		return a, nil
 	case <-ctx.Done():
 		bg := context.WithoutCancel(ctx)
-		m.mu.Lock()
-		delete(m.waiters, req)
-		m.mu.Unlock()
+		m.do(id, &command{kind: cmdForgetAsk, ctx: bg, req: req})
 		m.db.ExecContext(bg, `DELETE FROM thread_requests WHERE id = ?`, req)
 		m.publish(Update{ThreadID: id, Reload: true})
 		return nil, ctx.Err()
@@ -381,49 +351,82 @@ func (m *Manager) Interrupt(ctx context.Context, id string) error {
 	if _, err := m.local(ctx, id); err != nil {
 		return err
 	}
-	m.mu.Lock()
-	cancel := m.running[id]
-	delete(m.queues, id)
-	m.mu.Unlock()
-	if cancel != nil {
-		cancel()
+	return m.do(id, &command{kind: cmdInterrupt, ctx: ctx}).err
+}
+
+// view is what the actor of a thread last published; a thread without actor
+// is idle with an empty queue.
+func (m *Manager) view(id string) runnerView {
+	if r := m.lookup(id); r != nil {
+		return *r.view.Load()
 	}
-	m.publish(Update{ThreadID: id, Queue: []Queued{}})
-	return nil
+	return runnerView{}
 }
 
 // Running reports whether a turn of the thread is in progress here.
-func (m *Manager) Running(id string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	_, ok := m.running[id]
-	return ok
-}
+func (m *Manager) Running(id string) bool { return m.view(id).State.busy() }
 
 // Active counts the turns in progress on this node.
 func (m *Manager) Active() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return len(m.running)
+	m.runnersMu.Lock()
+	defer m.runnersMu.Unlock()
+	n := 0
+	for _, r := range m.runners {
+		if r.view.Load().State.busy() {
+			n++
+		}
+	}
+	return n
 }
 
 // Queue returns the messages waiting in a thread.
-func (m *Manager) Queue(id string) []Queued {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return append([]Queued{}, m.queues[id]...)
+func (m *Manager) Queue(id string) []Queued { return append([]Queued{}, m.view(id).Queue...) }
+
+// loadQueues starts the actor of every thread that kept a queue over a
+// restart. The messages show up but do not run on their own: the user sends
+// them with "steer" or sends something else.
+func (m *Manager) loadQueues(ctx context.Context) {
+	rows, err := m.db.QueryContext(ctx, `SELECT DISTINCT thread_id FROM thread_queue`)
+	if err != nil {
+		log.Printf("runtime: load queues: %v", err)
+		return
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	for _, id := range ids {
+		m.runner(id)
+	}
 }
 
-func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
+// startedTurn is a turn that began: what its recorder needs.
+type startedTurn struct {
+	thread  data.Thread
+	session Session
+	marker  Message
+	change  modelChange
+	usage   *ledger
+	run     string
+	root    string
+	base    string
+}
+
+// start prepares and launches a turn; the actor then records it.
+func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) (startedTurn, error) {
 	run, text, files := q.RunID, q.Text, q.Files
 	p, ok := m.provider(t.Provider)
 	if !ok {
-		return ErrProvider.Msgf("%s", t.Provider)
+		return startedTurn{}, ErrProvider.Msgf("%s", t.Provider)
 	}
 	var session, dir, sessionProvider, lastModel string
 	err := m.db.QueryRowContext(ctx, `SELECT session_id, worktree_path, session_provider, last_turn_model FROM thread_runtime WHERE thread_id = ?`, t.ID).Scan(&session, &dir, &sessionProvider, &lastModel)
 	if err != nil {
-		return err
+		return startedTurn{}, err
 	}
 	prompt := withAttachments(text, files)
 	userPrompt := prompt
@@ -432,13 +435,13 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
 		session = ""
 		history, err := m.Messages(ctx, t.ID)
 		if err != nil {
-			return err
+			return startedTurn{}, err
 		}
 		prompt, transferred = portablePrompt(history, prompt)
 		if transferred {
 			// A provider file contains only its segment of this conversation.
 			if _, err := m.db.ExecContext(ctx, `UPDATE thread_runtime SET portable_history = 1 WHERE thread_id = ?`, t.ID); err != nil {
-				return err
+				return startedTurn{}, err
 			}
 		}
 	}
@@ -447,7 +450,7 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
 		FullAccess: t.RuntimeMode != "approval-required"}
 	historyChars := len(turn.Text) - len(userPrompt)
 	if err := m.prepareMCP(ctx, t, &turn); err != nil {
-		return err
+		return startedTurn{}, err
 	}
 	if sessionProvider != t.Provider {
 		// A previous visit to the destination may have left a live process.
@@ -460,11 +463,8 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
 	workspace.KeepSnapshot(ctx, root, t.ID, run, base)
 	sessionRun, err := p.Start(ctx, turn)
 	if err != nil {
-		return err
+		return startedTurn{}, err
 	}
-	m.mu.Lock()
-	m.sessions[t.ID] = sessionRun
-	m.mu.Unlock()
 	var previous TurnModel
 	_ = json.Unmarshal([]byte(lastModel), &previous)
 	current := TurnModel{Provider: t.Provider, Model: &t.Model}
@@ -484,8 +484,8 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
 	}
 	m.save(ctx, Message{ID: run + ":user", ThreadID: t.ID, RunID: run, Role: "user", Text: text, Detail: attachmentsDetail(files), CreatedAt: startedAt, SenderThreadID: q.Sender})
 	m.setStatus(ctx, t.ID, "working", "")
-	go m.follow(ctx, t, sessionRun.Events(), marker, change, newLedger(userPrompt, len(turn.Text)-len(prompt), historyChars), run, root, base)
-	return nil
+	return startedTurn{thread: t, session: sessionRun, marker: marker, change: change,
+		usage: newLedger(userPrompt, len(turn.Text)-len(prompt), historyChars), run: run, root: root, base: base}, nil
 }
 
 type turnSettings struct {
@@ -506,170 +506,13 @@ func (m *Manager) ReportedSettings(ctx context.Context, t data.Thread) ReportedS
 	return ReportedSettings{}
 }
 
-// follow stores what a turn emits until it ends, then starts the next
-// queued message, if any.
-func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan harness.Event, marker Message, change modelChange, usage *ledger, run, root, base string) {
-	bg := context.WithoutCancel(ctx)
-	status, failure := "idle", ""
-	settings := turnSettings{Provider: t.Provider, Configured: ReportedSettings{Model: t.Model, Effort: t.Effort}}
-	messages := turnMessages{run: run, items: map[string]Message{}}
-	checkpoints := make(map[string]textCheckpoint)
-	flush := func() {
-		for _, id := range slices.Sorted(maps.Keys(checkpoints)) {
-			msg := messages.items[id]
-			msg.ThreadID, msg.Streaming = t.ID, false
-			m.save(bg, msg)
-			delete(checkpoints, id)
-		}
-	}
-	for event := range events {
-		if msg, ok := messages.apply(event); ok {
-			msg.ThreadID = t.ID
-			usage.message(msg)
-			switch event.(type) {
-			case harness.TextDelta:
-				at := time.Now()
-				last, exists := checkpoints[msg.ID]
-				if !exists || last.due(at, len(msg.Text)) {
-					if m.persistMessage(bg, &msg) {
-						checkpoints[msg.ID] = textCheckpoint{at: at, size: len(msg.Text)}
-					}
-				}
-				if _, exists := checkpoints[msg.ID]; !exists {
-					checkpoints[msg.ID] = textCheckpoint{at: at}
-				}
-				m.publish(Update{ThreadID: t.ID, Message: &msg})
-			default:
-				delete(checkpoints, msg.ID)
-				m.save(bg, msg)
-			}
-			continue
-		}
-		switch e := event.(type) {
-		case harness.StepUsage:
-			usage.step(e)
-		case harness.StepsUsage:
-			usage.batch(e.Steps)
-		case harness.SessionBound:
-			if _, err := m.db.ExecContext(bg, `UPDATE thread_runtime SET session_id = ?, session_provider = ? WHERE thread_id = ?`, e.ID, t.Provider, t.ID); err != nil {
-				log.Printf("runtime: save session: %v", err)
-			}
-		case harness.SettingsReported:
-			previous := settings.Reported
-			if e.Model != "" {
-				settings.Reported.Model = e.Model
-				if change.To.ReportedModel != e.Model {
-					change.To.ReportedModel = e.Model
-					m.saveTurnModel(bg, t.ID, change.To)
-					if marker.ID != "" {
-						m.saveModelChange(bg, marker, change)
-					}
-				}
-			}
-			if e.Effort != "" {
-				settings.Reported.Effort = e.Effort
-			}
-			if settings.Reported != previous {
-				raw, _ := json.Marshal(settings)
-				if _, err := m.db.ExecContext(bg, `UPDATE thread_runtime SET reported_settings = ? WHERE thread_id = ?`, string(raw), t.ID); err != nil {
-					log.Printf("runtime: save reported settings: %v", err)
-				} else {
-					m.publish(Update{ThreadID: t.ID, Reload: true})
-				}
-			}
-		case harness.UsageReported:
-			m.saveUsage(bg, t.Provider, e.Windows)
-		case harness.RequestOpened:
-			m.request(bg, t.ID, e.Request)
-		case harness.TurnEnded:
-			flush()
-			switch {
-			case e.Reason == harness.Interrupted || (e.Reason != harness.Completed && ctx.Err() != nil):
-				status, failure = "idle", ""
-				m.save(bg, Message{ID: newRunID(), ThreadID: t.ID, Role: "interrupt", Text: turnInterrupted, CreatedAt: now()})
-			case e.Reason == harness.Failed || e.Reason == harness.NoResponse:
-				status, failure = "error", turnError(e)
-				m.save(bg, Message{ID: newRunID(), ThreadID: t.ID, Role: "system", Text: failure, Status: "failed", CreatedAt: now()})
-			}
-		}
-	}
-
-	flush()
-	if err := usage.save(bg, m.db, t.ID, run, t.Provider, time.Now()); err != nil {
-		log.Printf("runtime: save usage: %v", err)
-	}
-	// The process is gone: nothing can answer its requests any more.
-	if _, err := m.db.ExecContext(bg, `DELETE FROM thread_requests WHERE thread_id = ?`, t.ID); err != nil {
-		log.Printf("runtime: drop requests: %v", err)
-	}
-	if files := workspace.TreeChanges(bg, root, base, workspace.Snapshot(bg, root)); len(files) > 0 {
-		m.save(bg, Message{ID: run + ":changes", ThreadID: t.ID, RunID: run, Role: "changes", Tool: &ToolCall{Kind: "changes", Name: "changes", Files: files}, CreatedAt: now()})
-	}
-	m.syncBranch(bg, t.ID)
-	m.mu.Lock()
-	delete(m.sessions, t.ID)
-	if m.asked[t.ID] && status == "idle" {
-		status = "waiting"
-	}
-	delete(m.asked, t.ID)
-	next := m.queues[t.ID]
-	var q Queued
-	steered := m.steering[t.ID]
-	delete(m.steering, t.ID)
-	if len(next) > 0 && (ctx.Err() == nil || steered) {
-		q, m.queues[t.ID] = next[0], next[1:]
-	}
-	if steered && q.RunID != "" {
-		// The stopped turn's context is gone: the steered one gets its own.
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithCancel(bg)
-		m.running[t.ID] = cancel
-	}
-	if q.RunID == "" {
-		delete(m.running, t.ID)
-	}
-	remaining := append([]Queued{}, m.queues[t.ID]...)
-	var configured error
-	if settings, ok := m.pending[t.ID]; ok {
-		delete(m.pending, t.ID)
-		_, configured = m.configureLocked(bg, t.ID, settings, false)
-	}
-	m.setStatusLocked(bg, t.ID, status, failure)
-	m.mu.Unlock()
-	if configured != nil {
-		m.save(bg, Message{ID: newRunID(), ThreadID: t.ID, Role: "system", Text: "No se pudo cambiar el modelo: " + configured.Error(), Status: "failed", CreatedAt: now()})
-	}
-	if q.RunID == "" && t.ParentID != nil {
-		m.notifyParent(bg, t, status, ctx.Err() != nil)
-	}
-	if q.RunID != "" {
-		m.publish(Update{ThreadID: t.ID, Queue: remaining})
-		fresh, err := m.store.Threads().Get(bg, t.ID)
-		if err == nil {
-			err = m.start(ctx, fresh, q)
-		}
-		if err != nil {
-			m.mu.Lock()
-			delete(m.running, t.ID)
-			m.setStatusLocked(bg, t.ID, "error", err.Error())
-			m.mu.Unlock()
-		}
-	}
-}
-
 func (m *Manager) setStatus(ctx context.Context, id, status, failure string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.setStatusLocked(ctx, id, status, failure)
-}
-
-func (m *Manager) setStatusLocked(ctx context.Context, id, status, failure string) {
 	if err := m.store.SetThreadState(ctx, id, status, failure); err != nil {
 		log.Printf("runtime: status of %s: %v", id, err)
 	} else if m.OnStateChange != nil {
 		m.OnStateChange(id)
 	}
-	m.publishLocked(Update{ThreadID: id, Status: status, Error: failure})
+	m.publish(Update{ThreadID: id, Status: status, Error: failure})
 }
 
 // Message is stored with the thread it belongs to.
@@ -757,10 +600,6 @@ func (m *Manager) Subscribe(id string) (<-chan Update, func()) {
 func (m *Manager) publish(u Update) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.publishLocked(u)
-}
-
-func (m *Manager) publishLocked(u Update) {
 	for ch, id := range m.subs {
 		if id != "" && id != u.ThreadID {
 			continue
@@ -1023,15 +862,13 @@ func (m *Manager) resync(ctx context.Context, thread string, e External) error {
 	if err != nil || len(msgs) == 0 {
 		return err
 	}
-	m.mu.Lock()
 	changed := false
 	defer func() {
-		m.mu.Unlock()
 		if changed {
 			m.publish(Update{ThreadID: thread, Reload: true})
 		}
 	}()
-	if _, busy := m.running[thread]; busy {
+	if m.Running(thread) {
 		return nil
 	}
 	var matches bool

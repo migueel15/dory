@@ -107,14 +107,14 @@ func (m *Manager) RequestSecret(ctx context.Context, thread string, p SecretProm
 	if _, err := m.local(ctx, thread); err != nil {
 		return SecretResult{}, err
 	}
-	req := newRunID()
-	reply := make(chan secretReply, 1)
-	m.mu.Lock()
-	m.secretWaiters[req] = secretWaiter{prompt: p, reply: reply}
-	m.mu.Unlock()
+	w := m.do(thread, &command{kind: cmdAskSecret, ctx: ctx, prompt: p})
+	if w.err != nil {
+		return SecretResult{}, w.err
+	}
+	req, reply := w.req, w.secret
 	raw, _ := json.Marshal(p)
 	if _, err := m.db.ExecContext(ctx, `INSERT INTO thread_requests(id, thread_id, kind, message_id, questions, created_at) VALUES (?, ?, 'secret', '', ?, ?)`, req, thread, string(raw), now()); err != nil {
-		m.forgetSecret(req)
+		m.forgetSecret(thread, req)
 		return SecretResult{}, err
 	}
 	m.setStatus(ctx, thread, "waiting", "")
@@ -129,21 +129,19 @@ func (m *Manager) RequestSecret(ctx context.Context, thread string, p SecretProm
 		}
 		return m.saveReply(p, r.values)
 	case <-timer.C:
-		m.forgetSecret(req)
+		m.forgetSecret(thread, req)
 		m.resolved(bg, thread, req)
 		return SecretResult{Status: "timed_out", Note: "Nobody answered in time. Tell the user and ask again only when they are back."}, nil
 	case <-ctx.Done():
-		m.forgetSecret(req)
+		m.forgetSecret(thread, req)
 		m.db.ExecContext(bg, `DELETE FROM thread_requests WHERE id = ?`, req)
 		m.publish(Update{ThreadID: thread, Reload: true})
 		return SecretResult{Status: "cancelled"}, ctx.Err()
 	}
 }
 
-func (m *Manager) forgetSecret(req string) {
-	m.mu.Lock()
-	delete(m.secretWaiters, req)
-	m.mu.Unlock()
+func (m *Manager) forgetSecret(thread, req string) {
+	m.do(thread, &command{kind: cmdForgetSecret, ctx: context.Background(), req: req})
 }
 
 func (m *Manager) saveReply(p SecretPrompt, values map[string]string) (SecretResult, error) {
@@ -174,26 +172,7 @@ func (m *Manager) AnswerSecret(ctx context.Context, thread, id string, values ma
 	if err := m.db.QueryRowContext(ctx, `SELECT thread_id FROM thread_requests WHERE id = ? AND kind = 'secret'`, id).Scan(&owner); err != nil || owner != thread {
 		return ErrNoRequest
 	}
-	m.mu.Lock()
-	w, ok := m.secretWaiters[id]
-	m.mu.Unlock()
-	if !ok {
-		return ErrNoRequest
-	}
-	if !decline {
-		names := secretNames(w.prompt)
-		if len(values) != len(names) {
-			return ErrSecretFields
-		}
-		for _, n := range names {
-			if _, ok := values[n]; !ok {
-				return ErrSecretFields
-			}
-		}
-	}
-	m.forgetSecret(id)
-	w.reply <- secretReply{values: values, decline: decline}
-	return m.resolved(ctx, thread, id)
+	return m.do(thread, &command{kind: cmdAnswerSecret, ctx: ctx, req: id, values: values, decline: decline}).err
 }
 
 type secretWaiter struct {
