@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/mesh/peerapi"
 )
 
@@ -27,9 +28,7 @@ func TestClientCreateThreadAndErrors(t *testing.T) {
 		if r.PathValue("id") != "thread/1" {
 			t.Errorf("thread ID = %q", r.PathValue("id"))
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "busy", "message": "thread busy"}})
+		apperr.WriteHTTP(w, r, apperr.New(apperr.Busy, "thread busy").With("thread", r.PathValue("id")))
 	})
 	b.API = mux
 	if err := a.addPeer(ctx, b.log.Node(), "api", b.id.PublicKey(), fmt.Sprintf("127.0.0.1:%d", b.port)); err != nil {
@@ -43,11 +42,11 @@ func TestClientCreateThreadAndErrors(t *testing.T) {
 	if err != nil || out.ThreadID != "thread-1" {
 		t.Fatalf("create result = %+v, %v", out, err)
 	}
-	var apiErr *CallError
-	if err := c.InterruptThread(ctx, b.log.Node(), "thread/1"); !errors.As(err, &apiErr) || apiErr.Code != "busy" || apiErr.Error() != "thread busy" {
+	var apiErr *apperr.Error
+	if err := c.InterruptThread(ctx, b.log.Node(), "thread/1"); !errors.As(err, &apiErr) || apiErr.Code != apperr.Busy || apiErr.Message != "thread busy" || apiErr.Params["thread"] != "thread/1" {
 		t.Fatalf("interrupt error = %v", err)
 	}
-	if err := c.InterruptThread(ctx, "missing", "t1"); !errors.As(err, &apiErr) || apiErr.Code != Unreachable {
+	if err := c.InterruptThread(ctx, "missing", "t1"); !errors.Is(err, ErrUnreachable) {
 		t.Fatalf("unreachable error = %v", err)
 	}
 }
