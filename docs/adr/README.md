@@ -36,3 +36,4 @@
 | [ADR-034](adr-034-protocolo-de-malla.md) | Protocolo versionado entre nodos de la malla | accepted |
 | [ADR-035](adr-035-repositorios-tipados.md) | Repositorios tipados para las entidades replicadas | accepted |
 | [ADR-036](adr-036-estado-de-hilos.md) | Estado de hilos fuera del registro replicado | accepted |
+| [ADR-037](adr-037-contrato-de-arneses.md) | Contrato de arneses basado en capacidades | accepted |
