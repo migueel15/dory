@@ -37,7 +37,10 @@ func (r *Reconciler) Conflicts(ctx context.Context, id string) ([]Conflict, erro
 	if err != nil {
 		return nil, err
 	}
-	m := r.load()
+	m, err := r.load(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := []Conflict{}
 	if !r.wanted(s) {
 		return r.orphans(s.Name, m), nil
@@ -62,7 +65,7 @@ func (r *Reconciler) wanted(s data.Skill) bool {
 // orphans lists the folders of a skill that Dory wrote, someone edited, and
 // this node should no longer have.
 func (r *Reconciler) orphans(name string, m manifest) []Conflict {
-	harnessOf := map[string]string{filepath.Join(filepath.Dir(r.Manifest), "antigravity-skills"): "antigravity"}
+	harnessOf := map[string]string{filepath.Join(r.DataDir, "antigravity-skills"): "antigravity"}
 	for h, dir := range Dirs(r.Home, r.Config) {
 		harnessOf[dir] = h
 	}
@@ -159,8 +162,11 @@ func (r *Reconciler) Resolve(ctx context.Context, id, action, harness string) (s
 	}
 	r.run.Lock()
 	defer r.run.Unlock()
-	backup := filepath.Join(filepath.Dir(r.Manifest), "skill-backups", time.Now().UTC().Format("20060102-150405"))
-	m := r.load()
+	backup := filepath.Join(r.DataDir, "skill-backups", time.Now().UTC().Format("20060102-150405"))
+	m, err := r.load(ctx)
+	if err != nil {
+		return "", err
+	}
 	for _, c := range conflicts {
 		if err = moveAside(c.Path, filepath.Join(backup, c.Harness, filepath.Base(c.Path))); err != nil {
 			return "", err
@@ -171,7 +177,7 @@ func (r *Reconciler) Resolve(ctx context.Context, id, action, harness string) (s
 			}
 		}
 	}
-	if err = r.save(m); err != nil {
+	if err = r.save(ctx, m); err != nil {
 		return "", err
 	}
 	return backup, r.reconcile(ctx)

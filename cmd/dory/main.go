@@ -131,7 +131,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	if err != nil {
 		return err
 	}
-	reconciler := &skills.Reconciler{Store: store, Node: log_.Node(), Home: home, Config: rt.ConfigDir, Manifest: filepath.Join(cfg.DataDir, "skills-manifest.json"),
+	reconciler := &skills.Reconciler{Store: store, Node: log_.Node(), Home: home, Config: rt.ConfigDir, State: state, DataDir: cfg.DataDir,
 		Installed: func(ctx context.Context) []string {
 			var ids []string
 			for _, p := range rt.Providers(ctx) {

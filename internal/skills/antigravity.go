@@ -16,7 +16,7 @@ func antigravitySkillDir(home string) string {
 // antigravityTarget links a skill to Dory's managed copy. Windows can fall
 // back to the normal file reconciliation when symlinks are unavailable.
 func (r *Reconciler) antigravityTarget(dir, name string, m manifest, want map[string]bool) (string, error) {
-	target, err := filepath.Abs(filepath.Join(filepath.Dir(r.Manifest), "antigravity-skills", name))
+	target, err := filepath.Abs(filepath.Join(r.DataDir, "antigravity-skills", name))
 	if err != nil {
 		return "", err
 	}
