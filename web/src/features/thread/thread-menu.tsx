@@ -1,10 +1,10 @@
 import { useState, type MouseEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { api, type Thread } from "../api/client";
-import { ContextMenu } from "./context-menu";
-import { askConfirm } from "./confirm";
-import { qk } from "../api/queries/keys";
+import { api, type Thread } from "../../api/client";
+import { ContextMenu } from "../../components/context-menu";
+import { askConfirm } from "../../components/confirm";
+import { qk } from "../../api/queries/keys";
 
 // useThreadMenu opens, on right click, the actions of a thread: pin or unpin
 // and archive. The thread header and the side list share it.

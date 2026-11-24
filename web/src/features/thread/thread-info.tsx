@@ -1,17 +1,17 @@
-import { PaceMark } from "./pace-mark";
+import { PaceMark } from "../../components/pace-mark";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useDiffBase } from "../lib/diff-base";
+import { useDiffBase } from "../../lib/diff-base";
 import { Copy, Database, Folder, GitBranch, GitDiff, GitPullRequest, Globe, Info } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
-import { api, type ThreadService, type ThreadView, type UsageWindow } from "../api/client";
-import { expectedRemaining, windowLabel, windowMinutes, windowReset } from "../lib/usage-pace";
-import { HoverCard } from "./tooltip";
-import { EnvIcon } from "./env-icon";
-import { copyText } from "./ui";
-import { Related, Subagents } from "./subagents";
-import { qk } from "../api/queries/keys";
-import { useCard, useMesh, useNode, useProjects } from "../api/queries/hooks";
+import { api, type ThreadService, type ThreadView, type UsageWindow } from "../../api/client";
+import { expectedRemaining, windowLabel, windowMinutes, windowReset } from "../../lib/usage-pace";
+import { HoverCard } from "../../components/tooltip";
+import { EnvIcon } from "../../components/env-icon";
+import { copyText } from "../../components/ui";
+import { Related, Subagents } from "../../components/subagents";
+import { qk } from "../../api/queries/keys";
+import { useCard, useMesh, useNode, useProjects } from "../../api/queries/hooks";
 
 // diffStat counts added and removed lines of a unified diff.
 function diffStat(diff: string) {

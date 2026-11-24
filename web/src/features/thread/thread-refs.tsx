@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle, CircleDashed, GitMerge, GitPullRequest, RadioButton, XCircle, type Icon } from "@phosphor-icons/react";
-import { api, type Card } from "../api/client";
-import { HoverCard } from "./tooltip";
-import { qk } from "../api/queries/keys";
-import { useBoard } from "../api/queries/hooks";
+import { api, type Card } from "../../api/client";
+import { HoverCard } from "../../components/tooltip";
+import { qk } from "../../api/queries/keys";
+import { useBoard } from "../../api/queries/hooks";
 
 // A pull request or issue tied to a thread through its task, with its state.
 export type GhRef = { kind: "pull" | "issue"; number: number; title: string; state: string; repo?: string };

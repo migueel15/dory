@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, HandPointing, Circle, CircleNotch, Cpu, DeviceMobile, PictureInPicture, Plugs, Power, SidebarSimple, X, Sliders, Square, SpeakerHigh, SpeakerLow, WifiHigh } from "@phosphor-icons/react";
-import { devicesApi, type Device, type DeviceList } from "../api/client";
-import { DeviceStream, Key, keyFor, webCodecsProblem, type StreamStatus } from "../lib/scrcpy";
-import { askConfirm } from "./confirm";
-import { Button, ErrorText, Input, Select, iconButton } from "./ui";
-import { qk } from "../api/queries/keys";
+import { devicesApi, type Device, type DeviceList } from "../../api/client";
+import { DeviceStream, Key, keyFor, webCodecsProblem, type StreamStatus } from "../../lib/scrcpy";
+import { askConfirm } from "../../components/confirm";
+import { Button, ErrorText, Input, Select, iconButton } from "../../components/ui";
+import { qk } from "../../api/queries/keys";
 
 // DevicePanel shows an Android device or emulator of the thread's node live.
 // Only the visible tab streams: it connects on mount and closes on unmount.

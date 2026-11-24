@@ -357,7 +357,7 @@ function Layout() {
 // first paint downloads only what it shows; the rest is fetched when the
 // browser is idle (and on hover, see defaultPreload) to keep navigation instant.
 const pages = {
-  thread: () => import("./pages/thread"),
+  thread: () => import("./features/thread/thread"),
   githubDetail: () => import("./features/github/github-detail"),
   usage: () => import("./pages/usage"),
   projects: () => import("./pages/projects"),

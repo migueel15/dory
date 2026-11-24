@@ -10,7 +10,7 @@ import { Badge, Button, Card, Input, Select, ErrorText, Md, Arrow, pill, toggleT
 import { Avatar, PullStatus, StackBar } from "./github";
 import { Diff, FullscreenHost } from "./github-diff";
 import { DefineIssueDialog } from "../../pages/define-issue";
-import { ResizeHandle, ThreadChat } from "../../pages/thread";
+import { ResizeHandle, ThreadChat } from "../thread/thread";
 import { FileRefContext, type FileRef } from "../../components/refs";
 import { useLaunchForm } from "../composer/launch-picker";
 import { GithubMark, Icon, IconButton, Menu, MenuItem, RefContext, RefMd, Tip, UserPicker, icons, useArm, MentionArea } from "./github-ui";

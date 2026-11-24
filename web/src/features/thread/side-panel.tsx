@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { useShortcuts } from "./shortcuts";
-import { formatChord } from "../features/composer/dictation-shortcut";
-import { hasWindowClose } from "../lib/window-close";
-import { ContextMenu } from "./context-menu";
-import { ResizeHandle } from "../pages/thread";
+import { useShortcuts } from "../../components/shortcuts";
+import { formatChord } from "../composer/dictation-shortcut";
+import { hasWindowClose } from "../../lib/window-close";
+import { ContextMenu } from "../../components/context-menu";
+import { ResizeHandle } from "./thread";
 import { Browser, ClipboardText, DeviceMobile, GitDiff, Plus, SidebarSimple, X } from "@phosphor-icons/react";
 
 // A thread's side panel holds tabs of objects related to the thread: its

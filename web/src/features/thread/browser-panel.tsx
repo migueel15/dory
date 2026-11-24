@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject, type MouseEvent, type WheelEvent } from "react";
 import { ArrowClockwise, ArrowLeft, ArrowRight, Browser, HandPointing, Plus, Robot, X } from "@phosphor-icons/react";
-import { req } from "../api/client";
+import { req } from "../../api/client";
 import { showPanelTab } from "./side-panel";
 
 // The browser of a thread lives on the node of the thread (internal/browser).
