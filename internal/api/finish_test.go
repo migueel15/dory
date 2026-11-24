@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/github"
 	"github.com/migueel15/dory/internal/localdb"
@@ -53,6 +54,7 @@ func newFinishServer(t *testing.T, settings Settings) (*Server, string) {
 	state := nodestate.New(db)
 	s := &Server{Store: store, Node: Node{ID: log.Node()}, Settings: NewSettingsStore(state, settings)}
 	s.Runtime = runtime.NewManager(db, store, log.Node(), dir, state, nil)
+	s.Threads = &app.Threads{Store: store, Runtime: s.Runtime, Settings: s.Settings, Node: s.Node.ID}
 	return s, dir
 }
 
@@ -159,13 +161,13 @@ func TestArchiveRemovesWorktree(t *testing.T) {
 	sharedA, sharedDir := mk("compartido")
 	sharedB := addThread(t, s, task, sharedDir)
 
-	if err := s.archiveThread(ctx, clean); err != nil {
+	if err := s.Threads.Archive(ctx, clean.ID, app.ArchiveOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(cleanDir); !os.IsNotExist(err) {
 		t.Error("el worktree limpio debía borrarse")
 	}
-	if err := s.archiveThread(ctx, dirty); err != nil {
+	if err := s.Threads.Archive(ctx, dirty.ID, app.ArchiveOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(dirtyDir); err != nil || !archived(t, s, dirty.ID) {
@@ -174,7 +176,7 @@ func TestArchiveRemovesWorktree(t *testing.T) {
 	if exists, isDirty, _, err := s.Runtime.WorktreeState(ctx, dirty.ID); err != nil || !exists || !isDirty {
 		t.Errorf("estado: %v %v %v", exists, isDirty, err)
 	}
-	if err := s.archiveThread(ctx, sharedA); err != nil {
+	if err := s.Threads.Archive(ctx, sharedA.ID, app.ArchiveOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(sharedDir); err != nil {

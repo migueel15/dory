@@ -12,7 +12,7 @@ import (
 	"github.com/migueel15/dory/internal/nodestate"
 )
 
-var ErrProvider = apperr.New(apperr.Invalid, "provider not available")
+var ErrProvider = apperr.New(apperr.ProviderUnavailable, "provider not available")
 
 type Registry struct {
 	mu        sync.RWMutex

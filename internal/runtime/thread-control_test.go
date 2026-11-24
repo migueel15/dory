@@ -15,7 +15,7 @@ func TestConfigureRunningThreadAppliesAfterTurn(t *testing.T) {
 	codex := capturedProvider{"codex", make(chan Turn, 1), make(chan chan Event, 1)}
 	m.registry.Register(claude)
 	m.registry.Register(codex)
-	thread, err := m.Create(ctx, NewThread{Provider: claude.id, Model: "opus"})
+	thread, err := registerTestThread(ctx, m, data.Thread{Provider: claude.id, Model: "opus"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestConfigureRunningThreadAppliesAfterTurn(t *testing.T) {
 func TestConfigureIdleThreadAndResolveNames(t *testing.T) {
 	ctx := context.Background()
 	m, _ := manager(t, 0)
-	thread, err := m.Create(ctx, NewThread{Provider: "replay", Model: "grabacion"})
+	thread, err := registerTestThread(ctx, m, data.Thread{Provider: "replay", Model: "grabacion"})
 	if err != nil {
 		t.Fatal(err)
 	}

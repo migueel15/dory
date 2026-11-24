@@ -47,6 +47,11 @@ func (tx *Tx) QueryContext(ctx context.Context, query string, args ...any) (*sql
 	return tx.sql.QueryContext(ctx, query, args...)
 }
 
+// ExecContext writes local state in the same transaction as the log.
+func (tx *Tx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return tx.sql.ExecContext(ctx, query, args...)
+}
+
 // Write records and materializes one operation. A failed write aborts the
 // transaction even if the callback ignores the error.
 func (tx *Tx) Write(entity, id string, fields map[string]any) (Op, error) {

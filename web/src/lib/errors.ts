@@ -24,6 +24,8 @@ const TEXTS: Record<string, Text> = {
   "in_progress": "la idea ya se está guardando",
   "invalid_icon": "icono no válido",
   "repository_not_cloned": "el repositorio no está clonado en este nodo",
+  "provider_unavailable": "el proveedor no está disponible en este nodo",
+  "thread_created_send_failed": (p) => `se creó el hilo ${p.thread_id}, pero no se pudo enviar el primer mensaje`,
   "unknown_worktree": "el worktree no pertenece al repositorio del proyecto",
   "plan_not_accepted": "acepta el plan de la tarea antes de implementarla",
   "payload_too_large:audio": "la grabación supera los 12 MiB",

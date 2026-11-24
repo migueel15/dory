@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/browser"
@@ -44,6 +45,7 @@ type Server struct {
 	Store        *data.Store
 	NodeState    *nodestate.Store
 	Runtime      *runtime.Manager
+	Threads      *app.Threads
 	GitHub       *github.Client
 	Dictation    *dictation.Manager
 	SpeechModels *dictation.LocalModels

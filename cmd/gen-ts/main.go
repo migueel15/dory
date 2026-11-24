@@ -18,6 +18,7 @@ import (
 	"github.com/migueel15/dory/internal/api"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/github"
+	"github.com/migueel15/dory/internal/mesh/peerapi"
 	"github.com/migueel15/dory/internal/runtime"
 	"github.com/migueel15/dory/internal/skills"
 	"github.com/migueel15/dory/internal/update"
@@ -36,7 +37,7 @@ var roots = []any{
 	runtime.Job{}, runtime.Delegation{}, runtime.Defaults{}, runtime.KeptWorktree{}, runtime.TitleModel{},
 	runtime.Entry{}, runtime.Service{}, runtime.UsageReport{}, runtime.UsageBreakdownRow{}, runtime.UsageTurn{},
 	skills.Conflict{}, version.Info{},
-	api.ThreadView{}, api.Card{}, api.Settings{}, api.NodeUpdate{}, api.ExternalView{},
+	api.ThreadView{}, api.Card{}, api.Settings{}, api.NodeUpdate{}, api.ExternalView{}, peerapi.CreateThreadResponse{},
 	github.Pull{}, github.Overview{}, github.Detail{}, github.Closed{}, github.Action{},
 	github.DeviceCode{}, github.DeviceStatus{},
 }

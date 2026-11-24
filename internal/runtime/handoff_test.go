@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/migueel15/dory/internal/data"
 	"strings"
 	"testing"
 
@@ -39,7 +40,7 @@ func TestSwitchProviderKeepsThreadAndHandsOffText(t *testing.T) {
 	m.registry.Register(claude)
 	m.registry.Register(codex)
 
-	thread, err := m.Create(ctx, NewThread{Provider: claude.id, Model: "haiku"})
+	thread, err := registerTestThread(ctx, m, data.Thread{Provider: claude.id, Model: "haiku"})
 	if err != nil {
 		t.Fatal(err)
 	}

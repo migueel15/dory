@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/mesh"
@@ -36,10 +37,10 @@ func TestWriteErrDomainErrorsKeepStatusCodeAndParams(t *testing.T) {
 		{fmt.Errorf("ctx: %w", data.ErrInvalid.Msgf("title is required")), 400, apperr.Invalid},
 		{runtime.ErrBusy, 409, apperr.Busy},
 		{runtime.ErrRemote, 409, apperr.Remote},
-		{runtime.ErrProvider.Msgf("nope"), 400, apperr.Invalid},
+		{runtime.ErrProvider.Msgf("nope"), 400, apperr.ProviderUnavailable},
 		{runtime.ErrDirtyWorktree, 409, apperr.DirtyWorktree},
 		{mesh.ErrUnreachable, 502, apperr.Unreachable},
-		{errNotCloned, 400, apperr.RepositoryNotClone},
+		{app.ErrRepositoryNotCloned, 400, apperr.RepositoryNotClone},
 		{ErrPlanConflict.Msgf("now at revision %d", 4).With("revision", 4), 409, apperr.RevisionConflict},
 	} {
 		status, b, _ := errorResponse(t, c.err)

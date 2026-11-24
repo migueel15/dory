@@ -23,7 +23,7 @@ type Fields map[string]any
 // Create inserts a new row, filling in the schema defaults. A key already
 // present, including an archived row, is a conflict.
 func (r Resource[T]) Create(ctx context.Context, v T) (T, error) {
-	return r.save(ctx, v, false)
+	return r.save(ctx, v, false, nil)
 }
 
 // Upsert creates or updates a row with a natural identity: repositories,
@@ -31,14 +31,14 @@ func (r Resource[T]) Create(ctx context.Context, v T) (T, error) {
 func (r Resource[T]) Upsert(ctx context.Context, v T) (T, error) {
 	switch r.entity {
 	case "repository", "repository_location", "skill_state", "setting", "task_dependency":
-		return r.save(ctx, v, true)
+		return r.save(ctx, v, true, nil)
 	default:
 		var zero T
 		return zero, ErrInvalid.Msgf("%s does not support upsert", r.entity)
 	}
 }
 
-func (r Resource[T]) save(ctx context.Context, v T, upsert bool) (T, error) {
+func (r Resource[T]) save(ctx context.Context, v T, upsert bool, register func(*oplog.Tx, T) error) (T, error) {
 	var out T
 	fields, err := jsonFields(v)
 	if err != nil {
@@ -64,6 +64,9 @@ func (r Resource[T]) save(ctx context.Context, v T, upsert bool) (T, error) {
 			return ErrConflict.Msgf("%s %q", r.entity, id)
 		case err == nil:
 			out, err = r.update(ctx, tx, spec, id, raw, nil, input)
+		}
+		if err == nil && register != nil {
+			err = register(tx, out)
 		}
 		return err
 	})

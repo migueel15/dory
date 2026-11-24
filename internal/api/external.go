@@ -51,7 +51,7 @@ func (s *Server) mountExternal(mux *http.ServeMux) {
 			writeErr(w, r, err)
 			return
 		}
-		t, err := s.Runtime.Adopt(r.Context(), e, s.projectOf(r.Context(), e.Dir))
+		t, err := s.Threads.Adopt(r.Context(), e, s.projectOf(r.Context(), e.Dir))
 		if err != nil {
 			writeErr(w, r, err)
 			return

@@ -55,6 +55,7 @@ type Queued struct {
 // Manager owns the threads of this node: it starts turns, keeps their
 // messages and tells subscribers what changed.
 type Manager struct {
+	adoptMu  sync.Mutex
 	db       *sql.DB
 	state    *nodestate.Store
 	store    *data.Store
@@ -64,8 +65,6 @@ type Manager struct {
 	pool     *procpool.Pool
 	// MCPURL is the local endpoint. MCPToken is the node secret used to derive thread credentials.
 	MCPURL, MCPToken string
-	// WorktreeRoot returns the folder for new worktrees; empty means the data directory.
-	WorktreeRoot func() string
 
 	mu      sync.Mutex
 	running map[string]context.CancelFunc
@@ -254,61 +253,6 @@ func (m *Manager) Usage() map[string][]Window {
 		out[k] = ws
 	}
 	return out
-}
-
-// NewThread describes a thread to create.
-type NewThread struct {
-	ProjectID, TaskID *string
-	// ParentID makes the thread a subagent of another thread; OriginID only
-	// records the thread whose agent created it.
-	ParentID, OriginID  *string
-	Provider, Model     string
-	Effort, RuntimeMode string
-	Title               string
-	// Worktree creates a branch and a worktree of the repository at RepoPath.
-	Worktree           bool
-	RepoPath           string
-	Branch, BaseBranch string
-	// ExistingDir runs the thread in a worktree that already exists; no
-	// branch or worktree is created.
-	ExistingDir string
-}
-
-// Create registers a thread on this node and prepares its working directory.
-func (m *Manager) Create(ctx context.Context, n NewThread) (data.Thread, error) {
-	if _, ok := m.provider(n.Provider); !ok {
-		return data.Thread{}, ErrProvider.Msgf("%s", n.Provider)
-	}
-	t := data.Thread{NodeID: m.node, ProjectID: n.ProjectID, TaskID: n.TaskID, ParentID: n.ParentID, OriginID: n.OriginID, Provider: n.Provider, Model: n.Model,
-		Effort: n.Effort, RuntimeMode: n.RuntimeMode, Title: n.Title, Branch: n.Branch}
-	if n.TaskID != nil {
-		linked := now()
-		t.TaskLinkedAt = &linked
-	}
-	t, err := m.store.Threads().Create(ctx, t)
-	if err != nil {
-		return t, err
-	}
-	dir := n.RepoPath
-	if n.ExistingDir != "" {
-		dir = n.ExistingDir
-	} else if n.Worktree {
-		if n.RepoPath == "" || n.Branch == "" {
-			return t, data.ErrInvalid.Msgf("worktree needs a repository path and a branch")
-		}
-		dir = m.newWorktreeDir(t.ID)
-		if err := workspace.AddWorktree(ctx, n.RepoPath, dir, n.Branch, n.BaseBranch); err != nil {
-			return t, err
-		}
-	}
-	if dir == "" {
-		dir = filepath.Join(m.dataDir, "scratch", t.ID)
-		if err = os.MkdirAll(dir, 0o755); err != nil {
-			return t, err
-		}
-	}
-	_, err = m.db.ExecContext(ctx, `INSERT INTO thread_runtime(thread_id, worktree_path, base_branch, session_provider) VALUES (?, ?, ?, ?)`, t.ID, dir, n.BaseBranch, t.Provider)
-	return t, err
 }
 
 // Dir returns the working directory of a thread of this node.
@@ -837,18 +781,6 @@ func (m *Manager) worktreeDir(ctx context.Context, id string) (string, error) {
 	return "", nil
 }
 
-// newWorktreeDir is where the worktree of a new thread goes.
-func (m *Manager) newWorktreeDir(id string) string {
-	root := ""
-	if m.WorktreeRoot != nil {
-		root = m.WorktreeRoot()
-	}
-	if root == "" {
-		root = filepath.Join(m.dataDir, "worktrees")
-	}
-	return filepath.Join(root, id)
-}
-
 // Dirty says whether dir has changes that are not committed.
 func Dirty(ctx context.Context, dir string) (bool, error) { return workspace.Dirty(ctx, dir) }
 
@@ -986,34 +918,6 @@ func (m *Manager) Adopted(ctx context.Context) (map[string]string, error) {
 		out[session] = thread
 	}
 	return out, rows.Err()
-}
-
-// Adopt turns a harness session into a Dory thread: its history is copied
-// and the next message resumes the same session in its folder.
-func (m *Manager) Adopt(ctx context.Context, e External, projectID *string) (data.Thread, error) {
-	if adopted, err := m.Adopted(ctx); err == nil && adopted[e.ID] != "" {
-		return m.store.Threads().Get(ctx, adopted[e.ID])
-	}
-	if _, ok := m.provider(e.Provider); !ok {
-		return data.Thread{}, ErrProvider.Msgf("%s", e.Provider)
-	}
-	msgs, err := m.ReadExternal(ctx, e)
-	if err != nil {
-		return data.Thread{}, err
-	}
-	t, err := m.store.Threads().Create(ctx, data.Thread{NodeID: m.node, ProjectID: projectID, Provider: e.Provider, Title: e.Title, Branch: e.Branch})
-	if err != nil {
-		return t, err
-	}
-	if _, err = m.db.ExecContext(ctx, `INSERT INTO thread_runtime(thread_id, session_id, worktree_path, session_provider) VALUES (?, ?, ?, ?)`, t.ID, e.ID, e.Dir, e.Provider); err != nil {
-		return t, err
-	}
-	for _, msg := range msgs {
-		msg.ThreadID = t.ID
-		msg.ID = t.ID + ":" + msg.ID
-		m.save(ctx, msg)
-	}
-	return t, nil
 }
 
 // Follow keeps the threads of this node in step with the session files of

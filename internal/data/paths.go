@@ -9,6 +9,15 @@ import (
 	"time"
 )
 
+// ProjectRepository returns the first repository of a project, or an empty id.
+func (s *Store) ProjectRepository(ctx context.Context, projectID string) (string, error) {
+	repos, err := s.Repositories().List(ctx, Filter{Fields: Fields{"project_id": projectID}, Limit: 1})
+	if err != nil || len(repos) == 0 {
+		return "", err
+	}
+	return repos[0].ID, nil
+}
+
 // RepositoryPath returns where this node keeps a repository cloned. The path
 // is local: it never replicates.
 func (s *Store) RepositoryPath(ctx context.Context, repositoryID string) (string, error) {

@@ -46,6 +46,9 @@ var statuses = map[Code]int{
 	ModelMissing:       http.StatusConflict,
 	NoChromium:         http.StatusServiceUnavailable,
 	UserControl:        http.StatusConflict,
+
+	ProviderUnavailable:     http.StatusBadRequest,
+	ThreadCreatedSendFailed: http.StatusConflict,
 }
 
 // HTTPStatus is the response status of a code; unknown codes are 500.

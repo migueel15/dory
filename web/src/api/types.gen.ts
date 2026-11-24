@@ -32,6 +32,11 @@ export type Card = {
 
 export type Column = "inbox" | "ready" | "working" | "needs_you" | "in_review" | "ready_to_merge" | "done" | "cancelled";
 
+export type CreateThreadResponse = {
+  "thread_id": string;
+  "thread"?: Thread | null;
+};
+
 export type Delegation = {
   "task_id": string;
   "parent_thread_id": string;

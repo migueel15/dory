@@ -47,7 +47,7 @@ export function ThreadsSettings({ node }: SectionProps) {
     <section aria-labelledby="threads-title" className="space-y-4">
       <h2 id="threads-title" className="text-lg font-semibold">Hilos</h2>
       {modelPicker("default_model", "Modelo por defecto", "Lo que usan los hilos nuevos de este nodo. Sin definir, se usa el último modelo elegido.")}
-      {modelPicker("fallback_model", "Modelo de respaldo", "Se usa si el modelo por defecto no está disponible: el proveedor no está instalado o con sesión, o falla al arrancar el hilo.")}
+      {modelPicker("fallback_model", "Modelo de respaldo", "Se usa si el proveedor seleccionado está desactivado o no está instalado en este nodo.")}
       <div className="flex items-start gap-3 text-sm">
         <span className="min-w-0 flex-1"><strong className="block font-medium">Workspace por defecto</strong><span className="text-slate-600 dark:text-muted">Dónde empiezan los hilos nuevos de un proyecto. Puedes cambiarlo al crear cada hilo.</span></span>
         <div className="w-56 shrink-0"><Select disabled={disabled} value={threads.default_workspace || "checkout"} onChange={(v) => settings.setPath(["threads", "default_workspace"], v)} options={WORKSPACES} /></div>

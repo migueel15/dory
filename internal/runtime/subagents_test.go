@@ -19,23 +19,23 @@ func TestSpawnRunsChildAndWakesParent(t *testing.T) {
 	codex := capturedProvider{"codex", make(chan Turn, 1), make(chan chan Event, 1)}
 	m.registry.Register(claude)
 	m.registry.Register(codex)
-	parent, err := m.Create(ctx, NewThread{Provider: claude.id, Model: "opus", RuntimeMode: "approval-required"})
+	parent, err := registerTestThread(ctx, m, data.Thread{Provider: claude.id, Model: "opus", RuntimeMode: "approval-required"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	child, err := m.Spawn(ctx, parent.ID, Subagent{Prompt: "Revisa el login\ncon detalle", Provider: "codex", Model: "gpt-6.2-sol"})
+	child, err := registerTestThread(ctx, m, data.Thread{ParentID: &parent.ID, Provider: codex.id, Title: "Revisa el login"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := m.RecordDelegation(ctx, parent.ID, child.ID, m.node, child.Title); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Send(ctx, child.ID, "Revisa el login\ncon detalle"); err != nil {
+		t.Fatal(err)
+	}
 	turn := <-codex.turns
-	if child.ParentID == nil || *child.ParentID != parent.ID || child.Title != "Revisa el login" || child.RuntimeMode != "approval-required" || turn.Model != "gpt-6.2-sol" {
-		t.Fatalf("child %+v turn %+v", child, turn)
-	}
-	if parentDir, _ := m.Dir(ctx, parent.ID); turn.Dir != parentDir {
-		t.Fatalf("child dir %q, parent %q", turn.Dir, parentDir)
-	}
-	if _, err = m.Spawn(ctx, child.ID, Subagent{Prompt: "nieto"}); !errors.Is(err, data.ErrInvalid) {
+	if err = m.CanSpawn(ctx, child); !errors.Is(err, data.ErrInvalid) {
 		t.Fatalf("grandchild accepted: %v", err)
 	}
 
@@ -62,9 +62,9 @@ func TestSpawnRunsChildAndWakesParent(t *testing.T) {
 func TestSpawnLimitsActiveChildren(t *testing.T) {
 	ctx := context.Background()
 	m, store := manager(t, 0)
-	parent, _ := m.Create(ctx, NewThread{Provider: "replay", Model: "grabacion"})
+	parent, _ := registerTestThread(ctx, m, data.Thread{Provider: "replay", Model: "grabacion"})
 	for range MaxActiveChildren {
-		child, err := m.Create(ctx, NewThread{Provider: "replay", ParentID: &parent.ID})
+		child, err := registerTestThread(ctx, m, data.Thread{Provider: "replay", ParentID: &parent.ID})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -72,7 +72,7 @@ func TestSpawnLimitsActiveChildren(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := m.Spawn(ctx, parent.ID, Subagent{Prompt: "uno más"}); !errors.Is(err, data.ErrInvalid) {
+	if err := m.CanSpawn(ctx, parent); !errors.Is(err, data.ErrInvalid) {
 		t.Fatalf("limit not enforced: %v", err)
 	}
 }
@@ -88,7 +88,7 @@ func TestChildOnAnotherNodeNotifiesItsParentThroughThePeer(t *testing.T) {
 	}
 	sender := &outboxSender{offline: true}
 	m.Outbox = outbox.New(m.db, sender)
-	child, err := m.Create(ctx, NewThread{Provider: codex.id, ParentID: &parent.ID, Title: "Prueba el binario"})
+	child, err := registerTestThread(ctx, m, data.Thread{Provider: codex.id, ParentID: &parent.ID, Title: "Prueba el binario"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestCompleteIsIdempotentByDeliveryID(t *testing.T) {
 	m, store := manager(t, 0)
 	claude := capturedProvider{"claude", make(chan Turn, 4), make(chan chan Event, 4)}
 	m.registry.Register(claude)
-	parent, err := m.Create(ctx, NewThread{Provider: claude.id, Model: "opus"})
+	parent, err := registerTestThread(ctx, m, data.Thread{Provider: claude.id, Model: "opus"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,8 +193,8 @@ func TestDelegationRecordsOutcomeAndFollowUps(t *testing.T) {
 	m, store := manager(t, 0)
 	claude := capturedProvider{"claude", make(chan Turn, 2), make(chan chan Event, 2)}
 	m.registry.Register(claude)
-	parent, _ := m.Create(ctx, NewThread{Provider: claude.id})
-	child, _ := m.Create(ctx, NewThread{Provider: "replay", ParentID: &parent.ID, Title: "Hijo"})
+	parent, _ := registerTestThread(ctx, m, data.Thread{Provider: claude.id})
+	child, _ := registerTestThread(ctx, m, data.Thread{Provider: "replay", ParentID: &parent.ID, Title: "Hijo"})
 	d, err := m.RecordDelegation(ctx, parent.ID, child.ID, m.node, "Hijo")
 	if err != nil || d.Status != "running" {
 		t.Fatalf("record %+v %v", d, err)

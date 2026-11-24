@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/nodestate"
 )
@@ -100,11 +101,21 @@ type ModelChoice struct {
 // ThreadDefaults are what a new thread gets when the request does not say.
 type ThreadDefaults struct {
 	// DefaultModel is used for new threads; FallbackModel replaces it when the
-	// default cannot start (provider missing, not logged in, error at start).
+	// selected provider is unavailable.
 	DefaultModel  ModelChoice `json:"default_model"`
 	FallbackModel ModelChoice `json:"fallback_model"`
 	// DefaultWorkspace is "checkout" (current branch, the default) or "worktree".
 	DefaultWorkspace string `json:"default_workspace"`
+}
+
+// ThreadSettings supplies the application layer with the node's current defaults.
+func (st *SettingsStore) ThreadSettings() app.ThreadSettings {
+	s := st.Get()
+	return app.ThreadSettings{
+		DefaultModel: app.ModelChoice(s.Threads.DefaultModel), FallbackModel: app.ModelChoice(s.Threads.FallbackModel),
+		DefaultWorkspace: s.Threads.DefaultWorkspace, WorktreeRoot: s.Worktrees.Location, BranchNaming: s.Worktrees.BranchNaming,
+		AutoPull: s.SourceControl.AutoPull, RemoveWorktreeOnArchive: s.RemoveWorktreeOnArchive,
+	}
 }
 
 // SettingsStore reads and saves the Settings of a node.

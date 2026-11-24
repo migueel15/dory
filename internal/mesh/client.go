@@ -90,6 +90,14 @@ func (c *Client) CreateThread(ctx context.Context, node string, in peerapi.Creat
 	return out, err
 }
 
+func (c *Client) ArchiveThread(ctx context.Context, node, thread string, keepWorktree bool) error {
+	in := struct {
+		Action       string `json:"action"`
+		KeepWorktree bool   `json:"keep_worktree,omitempty"`
+	}{Action: "archive", KeepWorktree: keepWorktree}
+	return c.Call(ctx, node, http.MethodPost, "/api/threads/"+url.PathEscape(thread)+"/actions", in, nil)
+}
+
 func (c *Client) SendMessage(ctx context.Context, node, thread string, in peerapi.SendMessageRequest) error {
 	return c.Call(ctx, node, http.MethodPost, "/api/threads/"+url.PathEscape(thread)+"/messages", in, nil)
 }

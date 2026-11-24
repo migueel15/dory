@@ -4,16 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync"
 
+	"github.com/migueel15/dory/internal/app"
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/github"
+	"github.com/migueel15/dory/internal/mesh/peerapi"
 	"github.com/migueel15/dory/internal/notify"
-	"github.com/migueel15/dory/internal/runtime"
 )
 
 // Card is a task as the kanban shows it: its column is derived from its
@@ -314,28 +314,6 @@ func column(c Card) string {
 	return "inbox"
 }
 
-var slugPattern = regexp.MustCompile(`[^a-z0-9]+`)
-
-// branchName follows the user's convention: type/issue-short-description.
-func branchName(t data.Task) string {
-	words := strings.Fields(slugPattern.ReplaceAllString(strings.ToLower(asciiFold(t.Title)), " "))
-	if len(words) > 6 {
-		words = words[:6]
-	}
-	slug := strings.Join(words, "-")
-	if slug == "" {
-		slug = "tarea"
-	}
-	if t.IssueNumber != nil {
-		return fmt.Sprintf("feat/%d-%s", *t.IssueNumber, slug)
-	}
-	return fmt.Sprintf("feat/%s-%s", t.ID[:8], slug)
-}
-
-func asciiFold(s string) string {
-	return strings.NewReplacer("á", "a", "é", "e", "í", "i", "ó", "o", "ú", "u", "ü", "u", "ñ", "n").Replace(s)
-}
-
 // launch starts an implementation thread for a task on this node, in its own
 // worktree and branch.
 func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
@@ -363,7 +341,6 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, apperr.New(apperr.PlanNotAccepted, "accept the task plan before implementing it"))
 		return
 	}
-	var repoPath string
 	fields := data.Fields{}
 	if t.RepositoryID == nil && t.ProjectID != nil {
 		repos, _ := s.Store.Repositories().List(ctx, data.Filter{Fields: map[string]any{"project_id": *t.ProjectID}})
@@ -372,19 +349,16 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 			fields["repository_id"] = repos[0].ID
 		}
 	}
-	if t.RepositoryID != nil {
-		repoPath, err = s.Store.RepositoryPath(ctx, *t.RepositoryID)
-		if err != nil && !errors.Is(err, data.ErrNotFound) {
-			writeErr(w, r, err)
-			return
-		}
+	if t.RepositoryID == nil {
+		writeErr(w, r, apperr.New(apperr.NoRepository, "the task needs a repository"))
+		return
 	}
-	if repoPath == "" {
-		writeErr(w, r, apperr.New(apperr.NoRepository, "this node has no local path for the task's repository"))
+	if _, _, err := app.RepositoryCheckout(ctx, s.Store, t.ProjectID, *t.RepositoryID); err != nil {
+		writeErr(w, r, err)
 		return
 	}
 	if t.Branch == "" {
-		t.Branch = branchName(t)
+		t.Branch = app.TaskBranch(t)
 		fields["branch"] = t.Branch
 	}
 	if body.BaseBranch == "" {
@@ -395,17 +369,16 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, err)
 		return
 	}
-	th, err := s.Runtime.Create(ctx, runtime.NewThread{ProjectID: t.ProjectID, TaskID: &t.ID, Provider: body.Provider, Model: body.Model,
-		Effort: body.Effort, RuntimeMode: body.RuntimeMode, Title: t.Title, Worktree: true, RepoPath: repoPath, Branch: t.Branch, BaseBranch: body.BaseBranch})
-	if err != nil {
-		writeErr(w, r, err)
-		return
-	}
 	prompt := body.Text
 	if prompt == "" {
 		prompt = s.taskPrompt(ctx, t)
 	}
-	if err = s.Runtime.Send(ctx, th.ID, prompt); err != nil {
+	worktree := true
+	th, err := s.Threads.Create(ctx, app.CreateThread{CreateThreadRequest: peerapi.CreateThreadRequest{
+		ProjectID: t.ProjectID, RepositoryID: *t.RepositoryID, TaskID: &t.ID, Provider: body.Provider, Model: body.Model,
+		Effort: body.Effort, RuntimeMode: body.RuntimeMode, Title: t.Title, Text: prompt, Worktree: &worktree, Branch: t.Branch, BaseBranch: body.BaseBranch,
+	}})
+	if err != nil {
 		writeErr(w, r, err)
 		return
 	}

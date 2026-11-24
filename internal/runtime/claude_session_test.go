@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/harness"
 )
 
@@ -127,7 +128,7 @@ func TestManagerWaitsForAnswer(t *testing.T) {
 	ctx := context.Background()
 	m, store := manager(t, 0)
 	m.registry.Register(asker{})
-	th, _ := m.Create(ctx, NewThread{Provider: "asker"})
+	th, _ := registerTestThread(ctx, m, data.Thread{Provider: "asker"})
 	if err := m.Send(ctx, th.ID, "pregunta"); err != nil {
 		t.Fatal(err)
 	}

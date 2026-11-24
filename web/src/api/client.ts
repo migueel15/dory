@@ -1,6 +1,6 @@
 // Client of the Dory v2 node API.
 import type {
-  Attachment, Card, Column, Dependency, Entry, External, ExternalView, GithubAction as GithubActionFields, GithubClosed,
+  Attachment, Card, Column, CreateThreadResponse, Dependency, Entry, External, ExternalView, GithubAction as GithubActionFields, GithubClosed,
   GithubDetail, GithubDeviceCode, GithubDeviceState, GithubOverview, Hit, Job, KeptWorktree,
   Memory, Message, NodeDefaults, NodeSettings, NodeUpdate, Plan, Project, Provider, Repository,
   RepositoryLocation, Skill, SkillConflict, SkillState, Task, Thread, ThreadService, ThreadView,
@@ -162,7 +162,7 @@ export const api = {
   thread: (id: string) => req<ThreadView>("GET", `/threads/${id}`),
   projectWorktrees: (node: string, project: string) => req<{ path: string; branch: string; threads: number; working: number }[]>("GET", `/nodes/${node || "local"}/projects/${project}/worktrees`),
   projectBranches: (node: string, project: string) => req<{ current: string; branches: string[] }>("GET", `/nodes/${node || "local"}/projects/${project}/branches`),
-  createThread: ({ node, ...body }: NewThread) => req<{ thread_id: string }>("POST", `/nodes/${node || "local"}/threads`, body),
+  createThread: ({ node, ...body }: NewThread) => req<CreateThreadResponse>("POST", `/nodes/${node || "local"}/threads`, body),
   send: (id: string, text: string, files: string[] = []) => req<void>("POST", `/threads/${id}/messages`, { text, files }),
   upload: async (id: string, file: File) => {
     const form = new FormData();

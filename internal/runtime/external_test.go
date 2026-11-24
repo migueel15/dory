@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/migueel15/dory/internal/data"
 )
 
 func TestExternalMessagesKeepDoryContext(t *testing.T) {
@@ -105,7 +107,7 @@ func TestFollowPicksUpTerminalTurns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	th, err := m.Adopt(ctx, e, nil)
+	th, err := m.RegisterExternal(ctx, data.Thread{ID: data.NewThreadID(), NodeID: m.node, Provider: e.Provider, Title: e.Title, Branch: e.Branch}, e)
 	if err != nil {
 		t.Fatal(err)
 	}

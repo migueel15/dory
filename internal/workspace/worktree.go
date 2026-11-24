@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/migueel15/dory/internal/apperr"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/migueel15/dory/internal/apperr"
 )
 
 // ErrDirtyWorktree says a worktree holds changes that are not committed.
@@ -38,11 +39,18 @@ func BranchExists(ctx context.Context, repo, name string) bool {
 // AddWorktree creates a worktree of repo at dir on branch. A branch that does
 // not exist is created, from base when it is given.
 func AddWorktree(ctx context.Context, repo, dir, branch, base string) error {
+	_, err := addWorktree(ctx, repo, dir, branch, base)
+	return err
+}
+
+// addWorktree reports whether git created the branch, so callers can undo it.
+func addWorktree(ctx context.Context, repo, dir, branch, base string) (bool, error) {
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
-		return err
+		return false, err
 	}
 	args := []string{"worktree", "add"}
-	if BranchExists(ctx, repo, branch) {
+	created := !BranchExists(ctx, repo, branch)
+	if !created {
 		args = append(args, dir, branch)
 	} else {
 		args = append(args, "-b", branch, dir)
@@ -51,9 +59,9 @@ func AddWorktree(ctx context.Context, repo, dir, branch, base string) error {
 		}
 	}
 	if out, err := Run(ctx, repo, args...); err != nil {
-		return fmt.Errorf("git worktree: %s", strings.TrimSpace(string(out)))
+		return false, fmt.Errorf("git worktree: %s", strings.TrimSpace(string(out)))
 	}
-	return nil
+	return created, nil
 }
 
 // RemoveWorktree deletes the worktree at dir. Unless force is set, one with

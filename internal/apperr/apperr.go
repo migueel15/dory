@@ -58,6 +58,11 @@ const (
 	UserControl        Code = "user_control"
 )
 
+const (
+	ProviderUnavailable     Code = "provider_unavailable"
+	ThreadCreatedSendFailed Code = "thread_created_send_failed"
+)
+
 // Error is a domain error. Message is technical and in English; Params carry
 // the values a client needs to build its own text. Err is the cause, kept for
 // logs and errors.Is, and never sent to a client.
