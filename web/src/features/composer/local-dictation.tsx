@@ -106,7 +106,7 @@ export function createDictationMeter(meter: RefObject<HTMLSpanElement | null>) {
 }
 
 export function useLocalDictation(text: string, setText: (text: string) => void, area: RefObject<HTMLTextAreaElement | null>,
-  options?: { panelShortcut?: boolean; onEnter?: (draft: string) => void }) {
+  options?: { panelShortcut?: boolean; onEnter?: (steer: boolean) => void }) {
   const catalog = useSpeechModels();
   const model = useSpeechModel(catalog.data);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -356,7 +356,7 @@ export function useLocalDictation(text: string, setText: (text: string) => void,
       const target = e.target instanceof Element ? e.target : null;
       if (target && (target === area.current || isTextInput(target) || hasDictationPopupOutside())) return;
       e.preventDefault();
-      if (!e.repeat) finishAndSubmit((draft) => onEnter.current?.(draft));
+      if (!e.repeat) onEnter.current?.(e.ctrlKey || e.metaKey);
     };
     window.addEventListener("keydown", handle, true);
     return () => window.removeEventListener("keydown", handle, true);

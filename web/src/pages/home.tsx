@@ -36,7 +36,7 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
   const files = attach.files;
   const box = useRef<HTMLTextAreaElement>(null);
   useCommand("plan", () => { if (!box.current?.getClientRects().length) return false; setPlan((value) => !value); });
-  const dictation = useLocalDictation(text, setText, box, { panelShortcut: true, onEnter: (draft) => latestSendDraft.current(draft) });
+  const dictation = useLocalDictation(text, setText, box, { panelShortcut: true, onEnter: () => latestSubmit.current() });
   const showingDictation = !!dictation.preview;
   const projects = useProjects();
   const form = useLaunchForm({ section: "home" , project });
@@ -82,6 +82,8 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
     if (dictation.active) dictation.finishAndSubmit((draft) => latestSendDraft.current(draft));
     else sendDraft(text);
   };
+  const latestSubmit = useRef(submit);
+  useLayoutEffect(() => { latestSubmit.current = submit; });
   const models = form.providers.flatMap((provider) =>
     provider.models.map((model) => ({
       value: JSON.stringify([provider.id, modelId(model)]),
@@ -120,9 +122,7 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
             if (dictation.active || window.matchMedia("(min-width: 640px)").matches) {
               e.preventDefault();
               if (e.repeat) return;
-              if (dictation.active) {
-                dictation.finishAndSubmit((draft) => latestSendDraft.current(draft));
-              } else submit();
+              submit();
             }
           }}
           className={showingDictation ? "sr-only" : `${composerArea} min-h-16`} />

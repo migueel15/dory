@@ -43,7 +43,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   const providers = useNodeProviders(t.node_id, { staleTime: 60_000 });
   const [text, setText] = useState("");
   useEmitter(events.fillComposer, (d) => { if (d.threadId === t.id) { setText(d.text); area.current?.focus(); } });
-  const dictation = useLocalDictation(text, setText, area, { panelShortcut: true, onEnter: (draft) => latestSendDraft.current(draft) });
+  const dictation = useLocalDictation(text, setText, area, { panelShortcut: true, onEnter: (steer) => latestSubmit.current(steer) });
   const showingDictation = !!dictation.preview;
   const dictating = useDictationInProgress();
   // Each file uploads as soon as it is added; the message carries the results.
@@ -210,11 +210,15 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   };
   const latestSendDraft = useRef(sendDraft);
   useLayoutEffect(() => { latestSendDraft.current = sendDraft; });
+  // submit is the one way out of the box: dictating, it finishes the dictation
+  // first and then sends what it left, queued or steering alike.
   const submit = (steer = false) => {
-    if (dictation.active) { dictation.finishAndSubmit((draft) => latestSendDraft.current(draft)); return; }
+    if (dictation.active) { dictation.finishAndSubmit((draft) => latestSendDraft.current(draft, steer)); return; }
     if (asking) { answerDraft(text); return; }
     if (canSend) sendDraft(text, steer);
   };
+  const latestSubmit = useRef(submit);
+  useLayoutEffect(() => { latestSubmit.current = submit; });
   if (!t.local) return null;
   const busy = t.running;
   return (
@@ -264,7 +268,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
               if (dictation.active) {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  if (!e.repeat) dictation.finishAndSubmit((draft) => latestSendDraft.current(draft));
+                  if (!e.repeat) submit(e.ctrlKey || e.metaKey);
                 }
                 return;
               }
