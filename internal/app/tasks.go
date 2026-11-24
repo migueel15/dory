@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/domain/board"
@@ -24,6 +25,8 @@ type Tasks struct {
 	}
 
 	pullCursor int // owned by the GitHub watcher
+	finishing  sync.Mutex
+	finishSoon debounce
 }
 
 // Card is the wire representation of a task with its derived board state.

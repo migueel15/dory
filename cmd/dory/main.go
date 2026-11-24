@@ -18,6 +18,7 @@ import (
 
 	goruntime "runtime"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -162,17 +163,26 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	if err != nil {
 		return err
 	}
+	// A task or thread that changes may finish a task: its threads are
+	// archived once the changes settle. Set when the tasks service exists.
+	var finishSoon atomic.Pointer[func()]
 	log_.OnChange = func(entity, id string) {
 		events.Changed(entity, id)
 		net.Changed()
 		reconciler.Changed(entity)
 		notices.Changed(entity, id)
+		if f := finishSoon.Load(); f != nil && (entity == "task" || entity == "thread") {
+			(*f)()
+		}
 	}
 	net.OnThreadState = func(id string) { events.Changed("thread_state", id) }
 	rt.OnStateChange = func(id string) {
 		net.OnThreadState(id)
 		notices.ThreadState(id)
 		net.ThreadStateChanged()
+		if f := finishSoon.Load(); f != nil {
+			(*f)()
+		}
 	}
 	go reconciler.Run(ctx)
 	go rt.Follow(ctx, rt.Paths(home))
@@ -198,6 +208,8 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	srv.Projects = &app.Projects{Store: store}
 	srv.Ideas = &app.Ideas{Store: store, Titles: rt}
 	srv.Tasks = &app.Tasks{Store: store, Threads: srv.Threads, Plans: srv.Plans, Node: log_.Node(), ArchiveOnFinish: func() bool { return srv.Settings.Get().ArchiveThreadsOnFinish }}
+	finish := func() { srv.Tasks.FinishSoon(ctx) }
+	finishSoon.Store(&finish)
 	go gh.Watch(ctx, func() {
 		changed, err := srv.Tasks.RefreshPulls(ctx, gh)
 		if err != nil {
