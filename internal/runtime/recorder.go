@@ -38,16 +38,21 @@ func (m *Manager) record(ctx context.Context, turn startedTurn, opened func(harn
 			delete(checkpoints, id)
 		}
 	}
+	m.emit(bg, ThreadEvent{ThreadID: t.ID, RunID: run, Type: EventTurnStarted, Payload: json.RawMessage(`{}`)})
 	for event := range events {
 		if msg, ok := messages.apply(event); ok {
 			msg.ThreadID = t.ID
 			usage.message(msg)
-			switch event.(type) {
+			switch e := event.(type) {
 			case harness.TextDelta:
 				at := time.Now()
 				last, exists := checkpoints[msg.ID]
 				if !exists || last.due(at, len(msg.Text)) {
-					if m.persistMessage(bg, &msg) {
+					typ := ""
+					if !exists {
+						typ = EventItemStarted
+					}
+					if m.persist(bg, &msg, typ, "") {
 						checkpoints[msg.ID] = textCheckpoint{at: at, size: len(msg.Text)}
 					}
 				}
@@ -55,6 +60,7 @@ func (m *Manager) record(ctx context.Context, turn startedTurn, opened func(harn
 					checkpoints[msg.ID] = textCheckpoint{at: at}
 				}
 				m.publish(Update{ThreadID: t.ID, Message: &msg})
+				m.live(ThreadEvent{ThreadID: t.ID, RunID: msg.RunID, Type: EventDelta, ItemID: msg.ID, Payload: deltaPayload(msg, e.Delta, e.Replace)})
 			default:
 				delete(checkpoints, msg.ID)
 				m.save(bg, msg)
@@ -69,6 +75,8 @@ func (m *Manager) record(ctx context.Context, turn startedTurn, opened func(harn
 		case harness.SessionBound:
 			if _, err := m.db.ExecContext(bg, `UPDATE thread_runtime SET session_id = ?, session_provider = ? WHERE thread_id = ?`, e.ID, t.Provider, t.ID); err != nil {
 				log.Printf("runtime: save session: %v", err)
+			} else {
+				m.emitJSON(bg, t.ID, EventSessionBound, map[string]string{"provider": t.Provider, "session_id": e.ID})
 			}
 		case harness.SettingsReported:
 			previous := settings.Reported
@@ -90,7 +98,7 @@ func (m *Manager) record(ctx context.Context, turn startedTurn, opened func(harn
 				if _, err := m.db.ExecContext(bg, `UPDATE thread_runtime SET reported_settings = ? WHERE thread_id = ?`, string(raw), t.ID); err != nil {
 					log.Printf("runtime: save reported settings: %v", err)
 				} else {
-					m.publish(Update{ThreadID: t.ID, Reload: true})
+					m.emitJSON(bg, t.ID, EventSettings, settings)
 				}
 			}
 		case harness.UsageReported:
@@ -100,6 +108,7 @@ func (m *Manager) record(ctx context.Context, turn startedTurn, opened func(harn
 			opened(e.Request)
 		case harness.TurnEnded:
 			flush()
+			m.emitJSON(bg, t.ID, EventTurnEnded, map[string]any{"run_id": run, "reason": e.Reason})
 			switch {
 			case e.Reason == harness.Interrupted || (e.Reason != harness.Completed && ctx.Err() != nil):
 				status, failure = "idle", ""

@@ -31,17 +31,14 @@ var (
 	ErrBusy     = apperr.New(apperr.Busy, "wait for the running turn to end before switching provider")
 )
 
-// Update is pushed to subscribers when a thread changes: a message upsert, a
-// new status or a new queue.
+// Update is a hint pushed to the global stream when a thread changes: a
+// message or a new status. It is lossy; the record of events of each thread
+// (ThreadEvent) is what a thread's own stream is built on.
 type Update struct {
-	ThreadID      string     `json:"thread_id"`
-	Message       *Message   `json:"message,omitempty"`
-	Status        string     `json:"status,omitempty"`
-	Error         string     `json:"error,omitempty"`
-	Queue         []Queued   `json:"queue,omitempty"`
-	LastTurnModel *TurnModel `json:"last_turn_model,omitempty"`
-	// Reload asks clients to fetch the whole conversation again.
-	Reload bool `json:"reload,omitempty"`
+	ThreadID string   `json:"thread_id"`
+	Message  *Message `json:"message,omitempty"`
+	Status   string   `json:"status,omitempty"`
+	Error    string   `json:"error,omitempty"`
 }
 
 // Queued is a message waiting for the running turn to end.
@@ -68,8 +65,11 @@ type Manager struct {
 	MCPURL, MCPToken string
 
 	// mu guards the subscriptions and the cached harness state.
-	mu   sync.Mutex
-	subs map[chan Update]string
+	mu     sync.Mutex
+	subs   map[chan Update]string
+	evSubs map[*eventSub]struct{}
+	// evMu orders the recording and the live sending of events.
+	evMu sync.Mutex
 	// runners holds the actor of each thread with work or a queue; nothing
 	// else about a thread's turn lives in the Manager.
 	runnersMu sync.Mutex
@@ -95,7 +95,7 @@ func NewManager(db *sql.DB, store *data.Store, node, dataDir string, state *node
 		pool = procpool.New(nil)
 	}
 	m := &Manager{db: db, state: state, store: store, node: node, dataDir: dataDir, pool: pool, registry: harness.NewRegistry(state, dataDir, pool, providers...),
-		subs: map[chan Update]string{}, runners: map[string]*threadRunner{}, runnerIdle: 10 * time.Minute}
+		subs: map[chan Update]string{}, evSubs: map[*eventSub]struct{}{}, runners: map[string]*threadRunner{}, runnerIdle: 10 * time.Minute}
 	m.usage = nodestate.NewValue[map[string][]Window](state, nodestate.KeyUsage, nil)
 	if err := m.usage.Load(context.Background()); err != nil {
 		log.Printf("runtime: load usage: %v", err)
@@ -341,7 +341,7 @@ func (m *Manager) Ask(ctx context.Context, id string, questions []Question) ([][
 		bg := context.WithoutCancel(ctx)
 		m.do(id, &command{kind: cmdForgetAsk, ctx: bg, req: req})
 		m.db.ExecContext(bg, `DELETE FROM thread_requests WHERE id = ?`, req)
-		m.publish(Update{ThreadID: id, Reload: true})
+		m.emitJSON(bg, id, EventRequestResolved, map[string]string{"id": req, "kind": "question"})
 		return nil, ctx.Err()
 	}
 }
@@ -478,12 +478,12 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) (startedTu
 		current.ReportedModel = previous.ReportedModel
 	}
 	change := modelChange{From: previous, To: current, Handoff: transferred}
+	m.setStatus(ctx, t.ID, "working", "")
 	m.saveTurnModel(ctx, t.ID, current)
 	if marker.ID != "" {
 		m.saveModelChange(ctx, marker, change)
 	}
 	m.save(ctx, Message{ID: run + ":user", ThreadID: t.ID, RunID: run, Role: "user", Text: text, Detail: attachmentsDetail(files), CreatedAt: startedAt, SenderThreadID: q.Sender})
-	m.setStatus(ctx, t.ID, "working", "")
 	return startedTurn{thread: t, session: sessionRun, marker: marker, change: change,
 		usage: newLedger(userPrompt, len(turn.Text)-len(prompt), historyChars), run: run, root: root, base: base}, nil
 }
@@ -513,16 +513,26 @@ func (m *Manager) setStatus(ctx context.Context, id, status, failure string) {
 		m.OnStateChange(id)
 	}
 	m.publish(Update{ThreadID: id, Status: status, Error: failure})
+	m.emitJSON(ctx, id, EventStateChanged, map[string]string{"status": status, "error": failure})
 }
 
 // Message is stored with the thread it belongs to.
 func (m *Manager) save(ctx context.Context, msg Message) {
-	if m.persistMessage(ctx, &msg) {
+	if m.persist(ctx, &msg, "", "") {
 		m.publish(Update{ThreadID: msg.ThreadID, Message: &msg})
 	}
 }
 
+// persistMessage stores the projection of a message and, unless the text is
+// still being written, the event that records it.
 func (m *Manager) persistMessage(ctx context.Context, msg *Message) bool {
+	return m.persist(ctx, msg, "", "")
+}
+
+// persist upserts a message in the read model. Together with it, in the same
+// transaction, goes its event: typ, or the one the message calls for. A text
+// that is still streaming records none until it is first seen or finished.
+func (m *Manager) persist(ctx context.Context, msg *Message, typ, harnessID string) bool {
 	streaming := 0
 	if msg.Streaming {
 		streaming = 1
@@ -532,15 +542,45 @@ func (m *Manager) persistMessage(ctx context.Context, msg *Message) bool {
 	if msg.CreatedAt == "" {
 		msg.CreatedAt = at
 	}
-	_, err := m.db.ExecContext(ctx, `INSERT INTO thread_messages(id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, updated_at, tool, sender_thread_id)
+	if typ == "" && !msg.Streaming {
+		typ = messageEventType(*msg)
+	}
+	const upsert = `INSERT INTO thread_messages(id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, updated_at, tool, sender_thread_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET text = excluded.text, title = excluded.title, detail = excluded.detail,
-			status = excluded.status, streaming = excluded.streaming, updated_at = excluded.updated_at, tool = excluded.tool`,
-		msg.ID, msg.ThreadID, msg.RunID, msg.Role, msg.Text, msg.Title, msg.Detail, msg.Status, streaming, msg.CreatedAt, at, toolJSON(msg.Tool), msg.SenderThreadID)
+			status = excluded.status, streaming = excluded.streaming, updated_at = excluded.updated_at, tool = excluded.tool`
+	args := []any{msg.ID, msg.ThreadID, msg.RunID, msg.Role, msg.Text, msg.Title, msg.Detail, msg.Status, streaming, msg.CreatedAt, at, toolJSON(msg.Tool), msg.SenderThreadID}
+	if typ == "" {
+		if _, err := m.db.ExecContext(ctx, upsert, args...); err != nil {
+			log.Printf("runtime: save message: %v", err)
+			return false
+		}
+		return true
+	}
+	payload, _ := json.Marshal(struct {
+		Message
+		HarnessID string `json:"harness_id,omitempty"`
+	}{*msg, harnessID})
+	m.evMu.Lock()
+	defer m.evMu.Unlock()
+	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		log.Printf("runtime: save message: %v", err)
 		return false
 	}
+	defer tx.Rollback()
+	var e ThreadEvent
+	if _, err = tx.ExecContext(ctx, upsert, args...); err == nil {
+		e, err = appendEvent(ctx, tx, ThreadEvent{ThreadID: msg.ThreadID, RunID: msg.RunID, Type: typ, ItemID: msg.ID, Payload: payload})
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
+		log.Printf("runtime: save message: %v", err)
+		return false
+	}
+	m.sendEvent(e)
 	return true
 }
 
@@ -796,8 +836,8 @@ func (m *Manager) Adopted(ctx context.Context) (map[string]string, error) {
 }
 
 // Follow keeps the threads of this node in step with the session files of
-// their harness: what is written from the harness's own terminal shows up in
-// Dory, and after each turn the history is the one the harness saved.
+// their harness: what is written from the harness's own terminal is added to
+// Dory as new events.
 func (m *Manager) Follow(ctx context.Context, p Paths) {
 	seen := map[string]time.Time{}
 	tick := time.NewTicker(2 * time.Second)
@@ -849,27 +889,19 @@ func (m *Manager) Follow(ctx context.Context, p Paths) {
 					continue
 				}
 			}
-			if err := m.resync(ctx, l.thread, External{Provider: l.provider, ID: l.session, Path: path}); err != nil {
+			if err := m.importExternal(ctx, l.thread, External{Provider: l.provider, ID: l.session, Path: path}); err != nil {
 				log.Printf("runtime: sync %s: %v", l.thread, err)
 			}
 		}
 	}
 }
 
-// resync replaces the conversation of a thread with the one in its file.
-func (m *Manager) resync(ctx context.Context, thread string, e External) error {
+// importExternal adds to a thread what its harness file holds and the thread
+// does not: only new items, as events; nothing is ever removed or rewritten.
+func (m *Manager) importExternal(ctx context.Context, thread string, e External) error {
 	msgs, err := m.ReadExternal(ctx, e)
-	if err != nil || len(msgs) == 0 {
+	if err != nil || len(msgs) == 0 || m.Running(thread) {
 		return err
-	}
-	changed := false
-	defer func() {
-		if changed {
-			m.publish(Update{ThreadID: thread, Reload: true})
-		}
-	}()
-	if m.Running(thread) {
-		return nil
 	}
 	var matches bool
 	if err := m.db.QueryRowContext(ctx, `SELECT EXISTS(
@@ -878,61 +910,29 @@ func (m *Manager) resync(ctx context.Context, thread string, e External) error {
 	)`, thread, e.ID, e.Provider, e.Provider).Scan(&matches); err != nil || !matches {
 		return err
 	}
-	saved, err := m.Messages(ctx, thread)
-	if err != nil {
+	// Items older than the last message are already there under the ids of
+	// the live turns; only what came after is new.
+	var last sql.NullString
+	if err := m.db.QueryRowContext(ctx, `SELECT MAX(created_at) FROM thread_messages WHERE thread_id = ?`, thread).Scan(&last); err != nil {
 		return err
 	}
-	// The file holds only the session after the last /clear: what came
-	// before it stays as saved.
-	kept := 0
-	for i, msg := range saved {
-		if msg.Role == "clear" {
-			kept = i + 1
-		}
-	}
-	var markers []Message
-	for _, msg := range saved[kept:] {
-		if msg.Role == "model-change" {
-			markers = append(markers, msg)
-		}
-	}
-	msgs = mergeModelChanges(msgs, markers)
-	tx, err := m.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if kept > 0 {
-		_, err = tx.ExecContext(ctx, `DELETE FROM thread_messages WHERE thread_id = ? AND seq > (SELECT seq FROM thread_messages WHERE id = ?)`, thread, saved[kept-1].ID)
-	} else {
-		_, err = tx.ExecContext(ctx, `DELETE FROM thread_messages WHERE thread_id = ?`, thread)
-	}
-	if err != nil {
-		return err
-	}
-	at := now()
 	for _, msg := range msgs {
-		if msg.CreatedAt == "" {
-			msg.CreatedAt = at
+		if msg.CreatedAt != "" && msg.CreatedAt <= last.String {
+			continue
 		}
-		id := msg.ID
-		if msg.Role != "model-change" {
-			id = thread + ":" + id
-		}
-		if msg.Role == "user" {
-			msg.Text = strings.TrimPrefix(msg.Text, legacyDoryInstructions+"\n\n")
-		}
-		m.restoreAttachments(thread, &msg)
-		if _, err = tx.ExecContext(ctx, `INSERT INTO thread_messages(id, thread_id, run_id, role, text, title, detail, status, streaming, created_at, updated_at, tool)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
-			id, thread, msg.RunID, msg.Role, msg.Text, msg.Title, msg.Detail, msg.Status, msg.CreatedAt, at, toolJSON(msg.Tool)); err != nil {
+		harnessID := msg.ID
+		msg.ID = thread + ":" + harnessID
+		var known bool
+		if err := m.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM thread_messages WHERE id IN (?, ?))`, msg.ID, harnessID).Scan(&known); err != nil {
 			return err
 		}
+		if known {
+			continue
+		}
+		msg.ThreadID, msg.Streaming = thread, false
+		m.restoreAttachments(thread, &msg)
+		m.persist(ctx, &msg, EventItemCompleted, harnessID)
 	}
-	if err = tx.Commit(); err != nil {
-		return err
-	}
-	changed = true
 	return nil
 }
 

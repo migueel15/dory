@@ -22,6 +22,8 @@ type threadRunner struct {
 	id   string
 	cmds chan *command
 	done chan struct{}
+	// queued is whether the last recorded queue had messages.
+	queued bool
 
 	// view is the last state the actor published, for readers that must not
 	// wait for the actor (Running, Queue, Pending, Active).
@@ -324,7 +326,11 @@ func (r *threadRunner) persist() {
 	if err := r.m.saveQueue(r.id, r.queue); err != nil {
 		log.Printf("runtime: save queue of %s: %v", r.id, err)
 	}
-	r.m.publish(Update{ThreadID: r.id, Queue: slices.Clone(r.queue)})
+	if len(r.queue) == 0 && !r.queued {
+		return
+	}
+	r.queued = len(r.queue) > 0
+	r.m.emitJSON(context.Background(), r.id, EventQueueChanged, map[string]any{"queue": slices.Clone(r.queue)})
 }
 
 func (m *Manager) loadQueue(id string) []Queued {
@@ -621,7 +627,7 @@ func (r *threadRunner) configureBusy(c *command) result {
 		merged := mergeSettings(derefSettings(r.pending), c.settings)
 		r.pending = &merged
 		r.publishView()
-		r.m.publish(Update{ThreadID: r.id, Reload: true})
+		r.m.emitJSON(c.ctx, r.id, EventSettings, map[string]bool{"pending": true})
 		t, _ := r.m.local(c.ctx, r.id)
 		return result{thread: t, applied: AppliedAfterTurn}
 	}

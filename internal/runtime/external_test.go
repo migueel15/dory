@@ -113,7 +113,7 @@ func TestFollowPicksUpTerminalTurns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	updates, stop := m.Subscribe(th.ID)
+	updates, _, stop := m.SubscribeEvents(th.ID)
 	defer stop()
 	go m.Follow(ctx, Paths{Home: home})
 	time.Sleep(2500 * time.Millisecond) // first pass records the file
@@ -124,12 +124,15 @@ func TestFollowPicksUpTerminalTurns(t *testing.T) {
 		select {
 		case <-ctx.Done():
 			t.Fatal("terminal turn never reached Dory")
-		case u := <-updates:
-			if !u.Reload {
+		case e := <-updates:
+			if e.Type != EventItemCompleted {
 				continue
 			}
 			msgs, _ := m.Messages(ctx, th.ID)
 			if len(msgs) == 2 && msgs[1].Text == "Desde la terminal" {
+				if got := m.EventSeq(ctx, th.ID); got < 2 {
+					t.Fatalf("seq = %d", got)
+				}
 				return
 			}
 		}

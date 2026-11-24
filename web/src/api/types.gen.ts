@@ -647,6 +647,7 @@ export type ThreadView = {
   "created_at": string;
   "updated_at": string;
   "archived_at": string | null;
+  "seq": number;
   "last_turn_model"?: TurnModel | null;
   "reported_settings": ReportedSettings;
   "messages": Message[];
