@@ -5,6 +5,7 @@ import "@xterm/xterm/css/xterm.css";
 import { Button } from "../../components/ui";
 import { markSeen, markUnseen } from "../../lib/terminal/activity";
 import { TerminalClient, terminalApi, type TerminalStatus } from "../../lib/terminal/client";
+import { fontSize } from "../../lib/fonts";
 import { terminalFont, terminalTheme } from "../../lib/terminal/theme";
 import { events } from "../../lib/store";
 
@@ -24,7 +25,7 @@ export function TerminalPanel({ threadId, tab, id, active, onId }: { threadId: s
   useEffect(() => {
     const el = host.current!;
     const term = new Terminal({
-      cursorBlink: true, scrollback: 5000, fontSize: 13, fontFamily: terminalFont(), theme: terminalTheme(),
+      cursorBlink: true, scrollback: 5000, fontSize: fontSize("terminal"), fontFamily: terminalFont(), theme: terminalTheme(),
       allowProposedApi: false, macOptionIsMeta: true, rightClickSelectsWord: true,
     });
     const fit = new FitAddon();
@@ -54,7 +55,7 @@ export function TerminalPanel({ threadId, tab, id, active, onId }: { threadId: s
       return true;
     });
 
-    const offFonts = events.fontsChanged.on(() => { term.options.fontFamily = terminalFont(); refit(); });
+    const offFonts = events.fontsChanged.on(() => { term.options.fontFamily = terminalFont(); term.options.fontSize = fontSize("terminal"); refit(); });
     let raf = 0;
     const observer = new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(refit); });
     observer.observe(el);

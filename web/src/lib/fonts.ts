@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { applyScale } from "../scale";
 import { events } from "./store";
 import { storage, storageKeys } from "./storage";
 
@@ -31,6 +32,25 @@ export function applyUiFont() {
   const root = document.documentElement.style;
   root.setProperty("--font-sans", stack);
   root.setProperty("--font-reading", stack);
+}
+
+export const DEFAULT_SIZE = { ui: 16, terminal: 13 } as const;
+export const SIZE_RANGE = { ui: [12, 24], terminal: [8, 32] } as const;
+const sizeKey = (k: Kind) => (k === "ui" ? storageKeys.uiFontSize : storageKeys.terminalFontSize);
+
+// fontSize is the size in px chosen for the interface or the terminal, or the default.
+export function fontSize(k: Kind): number {
+  const n = Number(storage.get(sizeKey(k)));
+  const [min, max] = SIZE_RANGE[k];
+  return n >= min && n <= max ? n : DEFAULT_SIZE[k];
+}
+
+export function chooseSize(k: Kind, size: number) {
+  const [min, max] = SIZE_RANGE[k];
+  const n = Math.round(Math.min(max, Math.max(min, size)));
+  if (n === DEFAULT_SIZE[k]) storage.remove(sizeKey(k)); else storage.set(sizeKey(k), String(n));
+  if (k === "ui") applyScale();
+  events.fontsChanged.emit();
 }
 
 export function chooseFont(k: Kind, family: string) {

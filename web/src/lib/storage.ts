@@ -14,6 +14,8 @@ export const storageKeys = {
   githubTab: "github-tab",
   uiFont: "dory.ui-font",
   terminalFont: "dory.terminal-font",
+  uiFontSize: "dory.ui-font-size",
+  terminalFontSize: "dory.terminal-font-size",
   panelWidth: "dory.thread-panel-width",
   deviceQuality: "dory.device-quality",
   planFollow: "dory.plan-follow",

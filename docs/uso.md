@@ -116,7 +116,7 @@ En **Ajustes → Navegador** eliges, por nodo, si los agentes pueden usar el nav
 
 En **Ajustes → Apariencia**, la escala de la interfaz va del 75% al 200%. También cambia con Ctrl + y Ctrl − (Cmd en macOS) y vuelve al 100% con Ctrl 0. Se guarda en cada navegador o app de escritorio.
 
-En la misma sección eliges la **fuente de la interfaz** y la **fuente de la terminal** entre las instaladas en ese equipo (la de la terminal, solo de ancho fijo). La elegida va la primera de una pila que conserva las predeterminadas detrás: si falta o no tiene un símbolo, se usa la siguiente (interfaz: Adwaita Sans, Inter, la del sistema; terminal: Nerd Fonts, luego la monoespaciada del sistema) y al final la genérica. Para ver los iconos de la terminal conviene una Nerd Font. Se guarda en cada navegador o app de escritorio.
+En la misma sección eliges la **fuente de la interfaz** y la **fuente de la terminal** entre las instaladas en ese equipo (la de la terminal, solo de ancho fijo). La elegida va la primera de una pila que conserva las predeterminadas detrás: si falta o no tiene un símbolo, se usa la siguiente (interfaz: Adwaita Sans, Inter, la del sistema; terminal: Nerd Fonts, luego la monoespaciada del sistema) y al final la genérica. Para ver los iconos de la terminal conviene una Nerd Font. Se guarda en cada navegador o app de escritorio. A la derecha de cada selector está su tamaño en px (interfaz 16, terminal 13 por defecto), con un botón para restablecerlo; el de la interfaz se combina con la escala.
 
 ## Atajos
 
