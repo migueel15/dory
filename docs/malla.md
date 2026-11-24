@@ -29,6 +29,7 @@ Al crear un hilo, el selector **Nodo** muestra este nodo y los nodos emparejados
 ## Qué se replica
 
 - **Se replica:** proyectos, repositorios, tareas, dependencias, planes, memorias, skills y su estado por nodo, la bandeja de avisos y sus ajustes, y la organización de los hilos (título, fijado, leído, tarea).
+- **Se anuncia en la malla:** el nodo dueño publica el estado de los hilos sin archivar y su última actividad. Si pierde la conexión, los demás conservan la última copia y la interfaz muestra «Sin conexión».
 - **Se queda en cada nodo:** la ruta local de cada repositorio, las cuentas y tokens, las credenciales de los agentes, la conversación y el worktree de cada hilo, y las suscripciones a avisos.
 
 Un cambio llega al otro nodo en menos de 2 s si están conectados. Sin conexión, los cambios esperan y convergen al reconectar:

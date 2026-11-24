@@ -35,3 +35,4 @@
 | [ADR-033](adr-033-estado-local-en-sqlite.md) | Estado local en SQLite | accepted |
 | [ADR-034](adr-034-protocolo-de-malla.md) | Protocolo versionado entre nodos de la malla | accepted |
 | [ADR-035](adr-035-repositorios-tipados.md) | Repositorios tipados para las entidades replicadas | accepted |
+| [ADR-036](adr-036-estado-de-hilos.md) | Estado de hilos fuera del registro replicado | accepted |

@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/migueel15/dory/internal/data"
 )
 
 // checkProtocol records the protocol before exchanging any operations.
@@ -23,7 +25,8 @@ func (m *Mesh) checkProtocol(ctx context.Context, c *http.Client, base, node, ad
 	defer resp.Body.Close()
 	var info json.RawMessage
 	var metadata struct {
-		Protocol int `json:"protocol"`
+		Protocol int             `json:"protocol"`
+		Threads  json.RawMessage `json:"threads"`
 	}
 	switch {
 	case resp.StatusCode == http.StatusNotFound,
@@ -49,11 +52,38 @@ func (m *Mesh) checkProtocol(ctx context.Context, c *http.Client, base, node, ad
 		_, err := m.db.ExecContext(ctx, `UPDATE peers SET protocol = ?, last_error = ?`+currentPeer, metadata.Protocol, message, node, address, key)
 		return false, err
 	}
-	result, err := m.db.ExecContext(ctx, `UPDATE peers SET protocol = ?, last_error = '', last_seen = ?, info = ?`+currentPeer,
-		metadata.Protocol, time.Now().UTC().Format(time.RFC3339Nano), string(info), node, address, key)
+	var states []data.ThreadState
+	if len(metadata.Threads) > 0 {
+		if err := json.Unmarshal(metadata.Threads, &states); err != nil {
+			return false, err
+		}
+	}
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	at := time.Now().UTC().Format(time.RFC3339Nano)
+	result, err := tx.ExecContext(ctx, `UPDATE peers SET protocol = ?, last_error = '', last_seen = ?, info = json_remove(?, '$.threads')`+currentPeer,
+		metadata.Protocol, at, string(info), node, address, key)
 	if err != nil {
 		return false, err
 	}
 	n, err := result.RowsAffected()
-	return n != 0, err
+	if err != nil || n == 0 {
+		return false, err
+	}
+	changed, err := m.cacheThreadStates(ctx, tx, node, at, states)
+	if err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	if m.OnThreadState != nil {
+		for _, id := range changed {
+			m.OnThreadState(id)
+		}
+	}
+	return true, nil
 }

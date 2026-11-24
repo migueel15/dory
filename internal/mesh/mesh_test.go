@@ -149,3 +149,55 @@ func TestPairSyncAndForward(t *testing.T) {
 		t.Fatal("revoked node still syncs")
 	}
 }
+
+func TestMeshSharesThreadState(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a, b := start(t, ctx, "owner"), start(t, ctx, "observer")
+	thread, err := a.store.Threads().Create(ctx, data.Thread{NodeID: a.m.log.Node(), Provider: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archived, err := a.store.Threads().Create(ctx, data.Thread{NodeID: a.m.log.Node(), Provider: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.store.Threads().Archive(ctx, archived.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.store.SetThreadState(ctx, thread.ID, "working", ""); err != nil {
+		t.Fatal(err)
+	}
+	own, err := b.store.Threads().Create(ctx, data.Thread{NodeID: b.m.log.Node(), Provider: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _ := a.m.PairCode()
+	if _, err := b.m.Pair(ctx, fmt.Sprintf("127.0.0.1:%d", a.m.port), code); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "owner state on observer", func() bool {
+		got, err := b.store.Threads().Get(ctx, thread.ID)
+		return err == nil && got.Status == "working" && !got.StateStale && got.Unread
+	})
+	if err := a.store.SetThreadState(ctx, thread.ID, "error", "provider failed"); err != nil {
+		t.Fatal(err)
+	}
+	a.m.ThreadStateChanged()
+	eventually(t, "changed owner state on observer", func() bool {
+		var status, failure string
+		err := b.m.db.QueryRowContext(ctx, `SELECT status, error FROM thread_state WHERE thread_id = ?`, thread.ID).Scan(&status, &failure)
+		return err == nil && status == "error" && failure == "provider failed"
+	})
+	var count int
+	if err := b.m.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM thread_state WHERE thread_id IN (?, ?)`, archived.ID, own.ID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("cached archived or local state: %d, %v", count, err)
+	}
+	if err := b.m.SetEnabled(ctx, a.m.log.Node(), false); err != nil {
+		t.Fatal(err)
+	}
+	got, err := b.store.Threads().Get(ctx, thread.ID)
+	if err != nil || !got.StateStale || got.Status != "error" {
+		t.Fatalf("offline state = %+v: %v", got, err)
+	}
+}

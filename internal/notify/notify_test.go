@@ -124,3 +124,30 @@ func TestSettingsMode(t *testing.T) {
 		t.Fatalf("a silenced kind must not create notices: %+v", list)
 	}
 }
+
+func TestThreadStateNoticesUseActivity(t *testing.T) {
+	ctx := context.Background()
+	n, store := open(t)
+	thread, err := store.Threads().Create(ctx, data.Thread{NodeID: n.node, Provider: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []string{"working", "idle", "working", "idle"} {
+		if err := store.SetThreadState(ctx, thread.ID, status, ""); err != nil {
+			t.Fatal(err)
+		}
+		n.ThreadState(thread.ID)
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		list, err := store.Notices().List(ctx, data.Filter{Fields: map[string]any{"kind": "thread.idle"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(list) == 2 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("each finished turn must produce its own notice")
+}

@@ -188,3 +188,22 @@ func TestArchiveRemovesWorktree(t *testing.T) {
 		t.Error("la eliminación explícita debía borrar el worktree con cambios")
 	}
 }
+
+func TestCardsUseThreadState(t *testing.T) {
+	ctx := context.Background()
+	s, _ := newFinishServer(t, Settings{})
+	task, err := s.Store.Tasks().Create(ctx, data.Task{Title: "Estado del hilo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread := addThread(t, s, task, "")
+	for status, want := range map[string]string{"working": "working", "waiting": "needs_you", "error": "needs_you"} {
+		if err := s.Store.SetThreadState(ctx, thread.ID, status, ""); err != nil {
+			t.Fatal(err)
+		}
+		cards, err := s.Cards(ctx, []data.Task{task})
+		if err != nil || len(cards) != 1 || cards[0].Column != want || cards[0].Threads[0].Status != status {
+			t.Fatalf("%s: cards = %+v: %v", status, cards, err)
+		}
+	}
+}

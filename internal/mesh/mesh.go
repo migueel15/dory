@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/migueel15/dory/internal/apperr"
 	"io"
 	"log"
 	"maps"
@@ -21,7 +20,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/auth"
+	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/oplog"
 	"github.com/migueel15/dory/internal/schema"
 )
@@ -35,9 +36,7 @@ const (
 	DefaultPort = 7710
 	pairTTL     = 5 * time.Minute
 	syncEvery   = 10 * time.Second
-	// offlineAfter: a peer not heard from for this long shows as disconnected.
-	offlineAfter = 30 * time.Second
-	pageSize     = 500
+	pageSize    = 500
 )
 
 // Peer is a paired node as the interface shows it.
@@ -65,6 +64,8 @@ type Mesh struct {
 	port int
 	// Info describes this node to its peers (OS, version, harnesses).
 	Info func(ctx context.Context) map[string]any
+	// OnThreadState is called when an owner publishes a changed thread state.
+	OnThreadState func(threadID string)
 	// API serves calls forwarded from peers for threads this node owns.
 	API http.Handler
 	// Web serves the interface and the authenticated API to paired phones.
@@ -85,6 +86,7 @@ type Mesh struct {
 	stop       map[string]context.CancelFunc
 	found      map[string]Found
 	streams    map[chan struct{}]struct{}
+	threadWake *time.Timer
 	transports map[string]peerTransport
 }
 
@@ -121,7 +123,7 @@ func (m *Mesh) Changed() {
 
 // Peers lists the paired nodes with their presence.
 func (m *Mesh) Peers(ctx context.Context) ([]Peer, error) {
-	rows, err := m.db.QueryContext(ctx, `SELECT node_id, name, public_key, address, info, COALESCE(last_seen, ''), revoked_at IS NOT NULL, disabled_at IS NOT NULL, protocol, last_error FROM peers ORDER BY name`)
+	rows, err := m.db.QueryContext(ctx, `SELECT node_id, name, public_key, address, info, COALESCE(last_seen, ''), revoked_at IS NOT NULL, disabled_at IS NOT NULL, protocol, last_error, COALESCE((`+data.PeerConnectedSQL+`), 0) FROM peers ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -130,15 +132,12 @@ func (m *Mesh) Peers(ctx context.Context) ([]Peer, error) {
 	for rows.Next() {
 		var p Peer
 		var info, lastError string
-		if err = rows.Scan(&p.ID, &p.Name, &p.PublicKey, &p.Address, &info, &p.LastSeen, &p.Revoked, &p.Disabled, &p.Protocol, &lastError); err != nil {
+		if err = rows.Scan(&p.ID, &p.Name, &p.PublicKey, &p.Address, &info, &p.LastSeen, &p.Revoked, &p.Disabled, &p.Protocol, &lastError, &p.Connected); err != nil {
 			return nil, err
 		}
 		p.Info = json.RawMessage(info)
 		p.Incompatible = strings.HasPrefix(lastError, incompatibleProtocol+":")
 		p.Fingerprint = Fingerprint(p.PublicKey)
-		if t, err := time.Parse(time.RFC3339Nano, p.LastSeen); err == nil {
-			p.Connected = !p.Revoked && !p.Disabled && !p.Incompatible && time.Since(t) < offlineAfter
-		}
 		out = append(out, p)
 	}
 	return out, rows.Err()
@@ -170,6 +169,12 @@ func (m *Mesh) Serve(ctx context.Context) error {
 		if m.Info != nil {
 			maps.Copy(info, m.Info(r.Context()))
 		}
+		threads, err := m.ownedThreadStates(r.Context())
+		if err != nil {
+			apperr.WriteHTTP(w, r, err)
+			return
+		}
+		info["threads"] = threads
 		info["protocol"] = ProtocolVersion
 		info["schema"] = schema.Hash()
 		reply(w, info)

@@ -4,16 +4,19 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"github.com/migueel15/dory/internal/apperr"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/migueel15/dory/internal/apperr"
+	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/htmlrender"
+	"github.com/migueel15/dory/internal/mesh"
 	"github.com/migueel15/dory/internal/mesh/peerapi"
 	"github.com/migueel15/dory/internal/runtime"
 	"github.com/migueel15/dory/internal/workspace"
@@ -482,6 +485,17 @@ func (s *Server) ThreadAction(ctx context.Context, id, action, title, until, tas
 	if err != nil {
 		return t, err
 	}
+	if action == "read" {
+		// The remote view may already show activity that has not reached this cache.
+		if t.NodeID != s.Node.ID && !t.StateStale && !strings.HasPrefix(auth.Actor(ctx), "peer:") && s.PeerClient != nil {
+			err := s.PeerClient.Call(ctx, t.NodeID, http.MethodPost, "/api/threads/"+url.PathEscape(id)+"/actions",
+				map[string]string{"action": action}, &t)
+			if !errors.Is(err, mesh.ErrUnreachable) {
+				return t, err
+			}
+		}
+		return s.Store.MarkThreadRead(ctx, id)
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	fields := make(map[string]any)
 	switch action {
@@ -494,8 +508,6 @@ func (s *Server) ThreadAction(ctx context.Context, id, action, title, until, tas
 		fields["pinned_at"] = now
 	case "unpin":
 		fields["pinned_at"] = nil
-	case "read":
-		fields["read_at"] = now
 	case "unread":
 		fields["read_at"] = nil
 	case "settle":

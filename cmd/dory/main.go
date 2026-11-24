@@ -152,6 +152,12 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		reconciler.Changed(entity)
 		notices.Changed(entity, id)
 	}
+	net.OnThreadState = func(id string) { events.Changed("thread_state", id) }
+	rt.OnStateChange = func(id string) {
+		net.OnThreadState(id)
+		notices.ThreadState(id)
+		net.ThreadStateChanged()
+	}
 	go reconciler.Run(ctx)
 	go rt.Follow(ctx, rt.Paths(home))
 	gh := github.New(func(ctx context.Context) (map[string]string, error) { return followed(ctx, store) }, github.NewAuth(filepath.Join(cfg.DataDir, "github.token"), ghToken))
@@ -174,7 +180,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	srv.Remote = net
 	srv.PeerClient = net.Client()
 	// What this node owes other nodes waits here until they are connected.
-	out := outbox.New(store.DB(), srv.PeerClient)
+	out := outbox.New(store.LocalDB(), srv.PeerClient)
 	rt.Outbox = out
 	net.Connected = func(node string) { out.KickNode(ctx, node) }
 	go out.Run(ctx)

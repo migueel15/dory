@@ -91,6 +91,8 @@ type Manager struct {
 	// Outbox carries what this node owes other nodes, such as the outcome of
 	// a subagent turn to its parent; set at start-up.
 	Outbox *outbox.Outbox
+	// OnStateChange runs after a local thread state change is stored.
+	OnStateChange func(threadID string)
 	// detected caches what Providers found.
 	detected []Status
 	// catalogs keeps the last model list each harness reported, so a slow or
@@ -202,10 +204,11 @@ func (m *Manager) Recover(ctx context.Context) error {
 		return err
 	}
 	for _, t := range threads {
-		if _, err = m.store.Threads().Patch(ctx, t.ID, data.Fields{"status": "error"}); err != nil {
+		const failure = "El nodo se reinició mientras el agente trabajaba; el turno se interrumpió."
+		if err := m.store.SetThreadState(ctx, t.ID, "error", failure); err != nil {
 			return err
 		}
-		m.save(ctx, Message{ID: newRunID(), ThreadID: t.ID, Role: "system", Text: "El nodo se reinició mientras el agente trabajaba; el turno se interrumpió.", CreatedAt: now()})
+		m.save(ctx, Message{ID: newRunID(), ThreadID: t.ID, Role: "system", Text: failure, CreatedAt: now()})
 	}
 	return nil
 }
@@ -720,13 +723,10 @@ func (m *Manager) setStatus(ctx context.Context, id, status, failure string) {
 }
 
 func (m *Manager) setStatusLocked(ctx context.Context, id, status, failure string) {
-	fields := map[string]any{"status": status, "last_activity_at": now()}
-	if status != "working" {
-		// A finished turn is unread until the user opens the thread.
-		fields["read_at"] = nil
-	}
-	if _, err := m.store.Threads().Patch(ctx, id, fields); err != nil {
+	if err := m.store.SetThreadState(ctx, id, status, failure); err != nil {
 		log.Printf("runtime: status of %s: %v", id, err)
+	} else if m.OnStateChange != nil {
+		m.OnStateChange(id)
 	}
 	m.publishLocked(Update{ThreadID: id, Status: status, Error: failure})
 }
@@ -970,10 +970,11 @@ type WorktreeUse struct {
 
 func (m *Manager) WorktreeUse(ctx context.Context, dir, except string) (WorktreeUse, error) {
 	var u WorktreeUse
-	err := m.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(t.status = 'working'), 0),
+	err := m.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(s.status = 'working'), 0),
 		COALESCE((SELECT r2.base_branch FROM thread_runtime r2 JOIN threads t2 ON t2.id = r2.thread_id
 			WHERE r2.worktree_path = ? AND r2.base_branch != '' ORDER BY t2.created_at DESC LIMIT 1), '')
 		FROM thread_runtime r JOIN threads t ON t.id = r.thread_id
+		LEFT JOIN thread_state s ON s.thread_id = t.id AND s.node_id = t.node_id
 		WHERE r.worktree_path = ? AND t.archived_at IS NULL AND t.id != ?`, dir, dir, except).Scan(&u.Threads, &u.Working, &u.BaseBranch)
 	return u, err
 }

@@ -143,7 +143,7 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
   const projects = useQuery({ queryKey: ["projects"], queryFn: () => api.projects.list() });
   const projectName = t?.project_id ? projects.data?.find((p) => p.id === t.project_id)?.name : undefined;
   // Opening a thread marks it as read.
-  useEffect(() => { if (t && !t.read_at && t.status !== "working") act.mutate({ action: "read" }); }, [t?.id, t?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (t?.unread && t.status !== "working") act.mutate({ action: "read" }); }, [t?.id, t?.status, t?.unread, t?.last_activity_at]); // eslint-disable-line react-hooks/exhaustive-deps
   const fold = useThreadsFold();
   // Like the details card, each thread remembers whether its task card was left open.
   const taskKey = `dory-thread-task:${threadId}`;

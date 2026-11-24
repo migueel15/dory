@@ -586,6 +586,8 @@ export type Thread = {
   "title": string;
   "branch": string;
   "status": ThreadStatus;
+  "state_stale"?: boolean;
+  "unread": boolean;
   "pinned_at": string | null;
   "read_at": string | null;
   "last_activity_at": string | null;
@@ -627,6 +629,8 @@ export type ThreadView = {
   "title": string;
   "branch": string;
   "status": ThreadStatus;
+  "state_stale"?: boolean;
+  "unread": boolean;
   "pinned_at": string | null;
   "read_at": string | null;
   "last_activity_at": string | null;

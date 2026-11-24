@@ -24,6 +24,7 @@ const keys: Record<string, string[]> = {
   plan: ["plans", "board", "card"],
   memory: ["memories"],
   thread: ["threads", "board", "card", "thread"],
+  thread_state: ["threads", "board", "card", "thread"],
   notice: ["notices"],
   github: ["board", "card", "github", "github-detail"],
   browser: ["browser"],
