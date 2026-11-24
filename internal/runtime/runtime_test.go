@@ -3,6 +3,7 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"github.com/migueel15/dory/internal/workspace"
 	"os"
 	"path/filepath"
 	"testing"
@@ -222,7 +223,7 @@ func TestWorktreePerThread(t *testing.T) {
 	m, _ := manager(t, 0)
 	repo := t.TempDir()
 	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "base"}} {
-		if out, err := gitCmd(ctx, repo, args...); err != nil {
+		if out, err := workspace.Run(ctx, repo, args...); err != nil {
 			t.Fatalf("%s %v", out, err)
 		}
 	}
@@ -232,12 +233,12 @@ func TestWorktreePerThread(t *testing.T) {
 	}
 	dir, _ := m.Dir(ctx, th.ID)
 	os.WriteFile(filepath.Join(dir, "nuevo.txt"), []byte("hola\n"), 0o644)
-	gitCmd(ctx, dir, "add", "nuevo.txt")
+	workspace.Run(ctx, dir, "add", "nuevo.txt")
 	diff, err := m.Diff(ctx, th.ID)
 	if err != nil || !bytes.Contains([]byte(diff), []byte("+hola")) {
 		t.Fatalf("diff %q %v", diff, err)
 	}
-	if out, _ := gitCmd(ctx, dir, "branch", "--show-current"); string(bytes.TrimSpace(out)) != "feat/1-prueba" {
+	if out, _ := workspace.Run(ctx, dir, "branch", "--show-current"); string(bytes.TrimSpace(out)) != "feat/1-prueba" {
 		t.Fatalf("branch %q", out)
 	}
 }

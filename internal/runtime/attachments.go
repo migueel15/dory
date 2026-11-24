@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/migueel15/dory/internal/cmdexec"
+	"github.com/migueel15/dory/internal/workspace"
 )
 
 const attachmentFooter = "Ficheros adjuntos (léelos desde su ruta):"
@@ -151,13 +151,13 @@ func attachmentsDetail(files []Attachment) string {
 // Files lists up to limit files of a folder whose path contains q, from git
 // when it is a repository.
 func Files(ctx context.Context, dir, q string, limit int) []string {
-	out, err := cmdexec.CommandContext(ctx, "git", "-C", dir, "ls-files", "--cached", "--others", "--exclude-standard").Output()
+	all, err := workspace.Files(ctx, dir)
 	if err != nil {
 		return []string{}
 	}
 	q = strings.ToLower(q)
 	list := []string{}
-	for _, f := range strings.Split(string(out), "\n") {
+	for _, f := range all {
 		if f != "" && strings.Contains(strings.ToLower(f), q) {
 			list = append(list, f)
 			if len(list) == limit {

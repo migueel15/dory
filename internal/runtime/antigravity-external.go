@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"github.com/migueel15/dory/internal/workspace"
 	"os"
 	"path/filepath"
 	"sort"
@@ -70,8 +71,8 @@ func (m *Manager) FindExternal(ctx context.Context, p Paths, provider, id string
 	}
 	for _, session := range m.ListExternal(ctx, p) {
 		if session.Provider == provider && session.ID == id {
-			if out, err := gitCmd(ctx, session.Dir, "branch", "--show-current"); err == nil {
-				session.Branch = strings.TrimSpace(string(out))
+			if branch, err := workspace.CurrentBranch(ctx, session.Dir); err == nil {
+				session.Branch = branch
 			}
 			return session, nil
 		}

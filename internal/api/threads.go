@@ -14,6 +14,7 @@ import (
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/htmlrender"
 	"github.com/migueel15/dory/internal/runtime"
+	"github.com/migueel15/dory/internal/workspace"
 )
 
 // ThreadView is a thread with its conversation, as the chat shows it.
@@ -424,9 +425,9 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.WorktreePath != "" {
 		// Only a worktree git knows for the project's repository is accepted.
-		var found *Worktree
+		var found *workspace.Worktree
 		if path != "" {
-			for _, wt := range worktrees(ctx, path) {
+			for _, wt := range workspace.Worktrees(ctx, path) {
 				if wt.Path == body.WorktreePath {
 					found = &wt
 					break
@@ -438,13 +439,13 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		body.Worktree, body.Branch = false, found.Branch
-		body.BaseBranch = defaultBranch(ctx, path)
+		body.BaseBranch = workspace.DefaultBranch(ctx, path)
 		if u, err := s.Runtime.WorktreeUse(ctx, found.Path, ""); err == nil && u.BaseBranch != "" {
 			body.BaseBranch = u.BaseBranch
 		}
 	} else if !body.Worktree && body.Branch != "" && path != "" {
 		// The current checkout runs on the branch the user picked.
-		if err := switchBranch(ctx, path, body.Branch); err != nil {
+		if err := workspace.SwitchBranch(ctx, path, body.Branch); err != nil {
 			writeError(w, http.StatusConflict, "branch_switch_failed", err.Error())
 			return
 		}
@@ -458,7 +459,7 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Worktree && body.Branch == "" {
 		// A new worktree gets its own branch; the agent may rename it later.
-		if name := s.worktreeBranch(ctx, body.Title, body.Text); name != "" && !branchExists(ctx, path, name) {
+		if name := s.worktreeBranch(ctx, body.Title, body.Text); name != "" && !workspace.BranchExists(ctx, path, name) {
 			body.Branch = name
 		} else {
 			body.Branch = "dory/" + strings.ToLower(rand.Text()[:8])
@@ -479,7 +480,7 @@ func (s *Server) createThread(w http.ResponseWriter, r *http.Request) {
 	if body.Branch != "" && s.Settings.Get().SourceControl.AutoPull {
 		// Start the thread on the latest commits of its branch.
 		if dir, derr := s.Runtime.Dir(ctx, t.ID); derr == nil {
-			if perr := pullBranch(ctx, dir, body.Branch); perr != nil {
+			if perr := workspace.Pull(ctx, dir, body.Branch); perr != nil {
 				log.Printf("api: auto-pull %s: %v", body.Branch, perr)
 			}
 		}

@@ -3,6 +3,7 @@ package runtime
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/migueel15/dory/internal/workspace"
 	"regexp"
 	"strings"
 )
@@ -37,13 +38,7 @@ type ToolCall struct {
 
 // FileEdit is one file an edit touches; Diff holds unified-diff body lines
 // ("+", "-" or " " first) when the harness reports the content.
-type FileEdit struct {
-	Path    string `json:"path"`
-	Change  string `json:"change,omitempty"` // add, update or delete
-	Added   int    `json:"added"`
-	Removed int    `json:"removed"`
-	Diff    string `json:"diff,omitempty"`
-}
+type FileEdit = workspace.FileEdit
 
 // Todo is one step of the agent's task list; Status is pending, in_progress or completed.
 type Todo struct {
