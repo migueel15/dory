@@ -13,7 +13,8 @@ type Frame = { tab: string; src: string; w: number; h: number };
 
 const desktop = () => window.doryDesktop?.browser;
 // A tab that has not gone anywhere yet.
-const isBlank = (t: BrowserTab) => t.url === "about:blank";
+const BLANK = "about:blank";
+const isBlank = (t: BrowserTab) => t.url === BLANK;
 const wsURL = (path: string) => `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/api${path}`;
 
 // openInThreadBrowser opens url in a new tab of the thread's browser and
@@ -86,6 +87,7 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
   const activeRef = useRef(active);
   activeRef.current = active;
   const send = (m: Record<string, unknown>) => { if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify(m)); };
+  const newTab = () => send({ t: "open", url: BLANK, new: true });
   const size = () => { const r = view.current?.getBoundingClientRect(); return { width: Math.round(r?.width ?? 0), height: Math.round(r?.height ?? 0), scale: window.devicePixelRatio || 1 }; };
   // Native views of tabs left behind stay parked with their page, so coming
   // back to a tab keeps its scroll and state; they close with their tab.
@@ -252,7 +254,7 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
   const urlInput = useRef<HTMLInputElement>(null);
   const shortcut = (key: string) => {
     const tab = activeRef.current;
-    if (key === "t") send({ t: "open", url: "about:blank", new: true });
+    if (key === "t") newTab();
     else if (key === "w") { if (tab) send({ t: "close", tab: tab.id }); }
     else if (key === "l") { void desktop()?.focusUI?.(); setTimeout(() => urlInput.current?.focus(), 0); }
     else return false;
@@ -280,7 +282,7 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
             <button type="button" onClick={() => send({ t: "close", tab: t.id })} aria-label="Cerrar la pestaña" className="mr-1 grid size-4 place-items-center opacity-60 outline-none focus-visible:outline-none hover:opacity-100"><X weight="regular" className="size-3" /></button>
           </div>
         ))}
-        <button type="button" onClick={() => send({ t: "open", url: "about:blank", new: true })} title="Nueva pestaña" aria-label="Nueva pestaña"
+        <button type="button" onClick={newTab} title="Nueva pestaña" aria-label="Nueva pestaña"
           className="grid size-6 shrink-0 place-items-center text-slate-500 outline-none focus-visible:outline-none hover:text-slate-900 dark:text-muted dark:hover:text-white"><Plus weight="regular" className="size-3.5" /></button>
       </div>
       {active && <AddressBar tab={active} userControl={state.user_control} send={send} input={urlInput} />}
@@ -290,7 +292,7 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
           <div className="grid h-full place-items-center p-6 text-center text-sm text-slate-500 dark:text-muted">
             <div className="space-y-2">
               <p>{connected ? "Este hilo no tiene pestañas abiertas." : "Conectando con el navegador del hilo…"}</p>
-              {connected && <button type="button" onClick={() => send({ t: "open", url: "about:blank", new: true })} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 hover:bg-slate-50 dark:border-border dark:hover:bg-raised"><Plus weight="regular" className="size-3.5" />Nueva pestaña</button>}
+              {connected && <button type="button" onClick={newTab} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 hover:bg-slate-50 dark:border-border dark:hover:bg-raised"><Plus weight="regular" className="size-3.5" />Nueva pestaña</button>}
             </div>
           </div>
         ) : attached === active.id ? (
