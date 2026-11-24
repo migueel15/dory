@@ -1,4 +1,4 @@
-package api
+package app
 
 import (
 	"html"
@@ -12,10 +12,10 @@ import (
 // what it is about and only the user's own words, with the context folded.
 // The web reads the same format in web/src/lib/auto-message.ts.
 
-// autoMessage builds such a message: kind names it, attrs say what it is
+// AutoMessage builds such a message: kind names it, attrs say what it is
 // about (task, repo, pr, path…), context goes to the agent and user is what
 // the user wrote, if anything.
-func autoMessage(kind string, attrs map[string]string, context, user string) string {
+func AutoMessage(kind string, attrs map[string]string, context, user string) string {
 	keys := make([]string, 0, len(attrs))
 	for k, v := range attrs {
 		if v != "" {

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"os"
@@ -10,14 +9,10 @@ import (
 	"github.com/migueel15/dory/internal/workspace"
 )
 
-func (s *Server) projectCheckout(ctx context.Context, projectID string) (repositoryID, path string, err error) {
-	return app.RepositoryCheckout(ctx, s.Store, &projectID, "")
-}
-
 // mountBranches lists the local branches of a project's checkout on any node.
 func (s *Server) mountBranches(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/nodes/{node}/projects/{id}/branches", s.onNode(func(w http.ResponseWriter, r *http.Request) {
-		_, path, err := s.projectCheckout(r.Context(), r.PathValue("id"))
+		_, path, err := s.Projects.Checkout(r.Context(), r.PathValue("id"))
 		if err != nil {
 			writeErr(w, r, err)
 			return
@@ -36,7 +31,7 @@ func (s *Server) mountNewThreadCommands(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/nodes/{node}/commands", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		var dir string
 		if id := r.URL.Query().Get("project"); id != "" {
-			_, path, err := s.projectCheckout(r.Context(), id)
+			_, path, err := s.Projects.Checkout(r.Context(), id)
 			if err != nil && !errors.Is(err, app.ErrRepositoryNotCloned) {
 				writeErr(w, r, err)
 				return
@@ -55,7 +50,7 @@ func (s *Server) mountNewThreadCommands(mux *http.ServeMux) {
 // mountWorktrees lists the worktrees of a project's checkout on any node.
 func (s *Server) mountWorktrees(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/nodes/{node}/projects/{id}/worktrees", s.onNode(func(w http.ResponseWriter, r *http.Request) {
-		_, path, err := s.projectCheckout(r.Context(), r.PathValue("id"))
+		_, path, err := s.Projects.Checkout(r.Context(), r.PathValue("id"))
 		if err != nil {
 			writeErr(w, r, err)
 			return

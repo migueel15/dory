@@ -15,6 +15,7 @@ import (
 type Tasks struct {
 	Store           *data.Store
 	Threads         *Threads
+	Plans           *Plans
 	Node            string
 	ArchiveOnFinish func() bool
 	GitHub          interface {

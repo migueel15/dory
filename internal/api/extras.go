@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"github.com/migueel15/dory/internal/apperr"
 	"io"
 	"net/http"
@@ -14,7 +13,6 @@ import (
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/dictation"
 	"github.com/migueel15/dory/internal/github"
-	"github.com/migueel15/dory/internal/oplog"
 )
 
 func (s *Server) mountRepositoryPaths(mux *http.ServeMux) {
@@ -49,7 +47,7 @@ func (s *Server) mountRepositoryPaths(mux *http.ServeMux) {
 		if !decode(w, r, &body) {
 			return
 		}
-		repo, err := s.projectFromRepository(r.Context(), body.Name, body.Slug, body.Description, body.RemoteURL, body.DefaultBranch)
+		repo, err := s.Projects.FromRepository(r.Context(), body.Name, body.Slug, body.Description, body.RemoteURL, body.DefaultBranch)
 		if err != nil {
 			writeErr(w, r, err)
 			return
@@ -69,33 +67,6 @@ func (s *Server) mountRepositoryPaths(mux *http.ServeMux) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
-}
-
-func (s *Server) projectFromRepository(ctx context.Context, name, slug, description, remote, branch string) (data.Repository, error) {
-	remote = strings.TrimSpace(remote)
-	if remote == "" {
-		return data.Repository{}, data.ErrInvalid.Msgf("remote_url required")
-	}
-	if repo, err := s.Store.Repositories().Get(ctx, oplog.RepositoryID(remote)); err == nil {
-		if _, err = s.Store.Projects().Get(ctx, repo.ProjectID); err == nil {
-			return repo, nil
-		}
-	}
-	projectID := oplog.ProjectID(remote)
-	p, err := s.Store.Projects().Get(ctx, projectID)
-	if errors.Is(err, data.ErrNotFound) {
-		p, err = s.Store.Projects().Create(ctx, data.Project{ID: projectID, Name: name, Slug: slug, Description: description})
-		if errors.Is(err, data.ErrConflict) {
-			p, err = s.Store.Projects().Get(ctx, projectID)
-		}
-	}
-	if err != nil {
-		return data.Repository{}, err
-	}
-	if branch == "" {
-		branch = "main"
-	}
-	return s.Store.Repositories().Upsert(ctx, data.Repository{ProjectID: p.ID, RemoteURL: remote, DefaultBranch: branch})
 }
 
 // githubFailure keeps the domain errors of the github package and turns any
@@ -219,31 +190,13 @@ func (s *Server) mountGitHub(mux *http.ServeMux) {
 		if !decode(w, r, &body) {
 			return
 		}
-		t, err := s.issueTask(r.Context(), repo(r), n, body.Title, body.Description)
+		t, err := s.Projects.IssueTask(r.Context(), repo(r), n, body.Title, body.Description)
 		if err != nil {
 			writeErr(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, t)
 	})
-}
-
-// issueTask creates a task linked to an issue of a registered repository.
-func (s *Server) issueTask(ctx context.Context, repo string, number int, title, description string) (data.Task, error) {
-	repos, err := s.Store.Repositories().List(ctx, data.Filter{Limit: 1000})
-	if err != nil {
-		return data.Task{}, err
-	}
-	for _, rp := range repos {
-		if name, ok := github.ParseRemote(rp.RemoteURL); ok && strings.EqualFold(name, repo) {
-			n := int64(number)
-			if title == "" {
-				title = "Issue #" + strconv.Itoa(number)
-			}
-			return s.Store.Tasks().Create(ctx, data.Task{ProjectID: &rp.ProjectID, RepositoryID: &rp.ID, IssueNumber: &n, Title: title, Description: description})
-		}
-	}
-	return data.Task{}, data.ErrNotFound.Msgf("repository not registered: %s", repo)
 }
 
 const maxChunkBytes = 2 << 20

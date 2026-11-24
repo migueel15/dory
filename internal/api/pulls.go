@@ -165,7 +165,7 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 			if body.Path != "" {
 				kind = "pr-question"
 			}
-			text = autoMessage(kind, attrs, context, body.Question)
+			text = app.AutoMessage(kind, attrs, context, body.Question)
 		}
 		if t == nil {
 			project, repository := s.reviewRepository(ctx, repo)

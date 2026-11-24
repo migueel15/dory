@@ -12,7 +12,7 @@ import (
 func TestTaskResourceWrites(t *testing.T) {
 	s, task := newPlanServer(t)
 	mux := http.NewServeMux()
-	mountResource(mux, "tasks", s.Store.Tasks(), resourceWrites[data.Task]{s.CreateTask, s.PatchTask})
+	mountResource(mux, "tasks", s.Store.Tasks(), resourceWrites[data.Task]{s.Tasks.Create, s.Tasks.Patch})
 	req := func(method, path, body, match string, want int) {
 		t.Helper()
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
