@@ -138,3 +138,63 @@ func TestFollowPicksUpTerminalTurns(t *testing.T) {
 		}
 	}
 }
+
+// A live turn stores its items under its own ids and its text under the time
+// of the first fragment; the harness file has them under its ids and the time
+// the block ended. Following the file after the turn must not add them again.
+func TestImportAfterLiveTurnAddsNoDuplicates(t *testing.T) {
+	files := map[string]string{
+		"claude": `{"type":"user","uuid":"u1","sessionId":"s1","timestamp":"2026-11-16T00:00:00.500Z","message":{"content":"Hola"}}
+{"type":"assistant","uuid":"a1","sessionId":"s1","timestamp":"2026-11-16T00:00:05Z","message":{"id":"msg_1","content":[{"type":"text","text":"Respuesta final"}]}}
+`,
+		"codex": `{"timestamp":"2026-11-16T00:00:00.500Z","type":"response_item","payload":{"type":"message","id":"m1","role":"user","content":[{"type":"input_text","text":"Hola"}]}}
+{"timestamp":"2026-11-16T00:00:05Z","type":"response_item","payload":{"type":"message","id":"m2","role":"assistant","content":[{"type":"output_text","text":"Respuesta final"}]}}
+`,
+	}
+	later := map[string]string{
+		"claude": `{"type":"user","uuid":"u2","sessionId":"s1","timestamp":"2099-01-01T00:00:00Z","message":{"content":"Desde la terminal"}}` + "\n",
+		"codex":  `{"timestamp":"2099-01-01T00:00:00Z","type":"response_item","payload":{"type":"message","id":"m3","role":"user","content":[{"type":"input_text","text":"Desde la terminal"}]}}` + "\n",
+	}
+	for provider, content := range files {
+		t.Run(provider, func(t *testing.T) {
+			ctx := context.Background()
+			m, _ := manager(t, 0)
+			m.registry.Register(claude.Claude{})
+			m.registry.Register(codex.Codex{})
+			path := filepath.Join(t.TempDir(), "s1.jsonl")
+			if err := os.WriteFile(path, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			e := External{Provider: provider, ID: "s1", Path: path}
+			th, err := m.RegisterExternal(ctx, data.Thread{ID: data.NewThreadID(), NodeID: m.node, Provider: provider}, e)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, _ := m.Messages(ctx, th.ID)
+			// The live turn: its own ids, the text under its first fragment.
+			m.save(ctx, Message{ID: "run1:user", ThreadID: th.ID, RunID: "run1", Role: "user", Text: "Hola", CreatedAt: "2026-11-16T00:00:00Z"})
+			m.save(ctx, Message{ID: "msg_live:0", ThreadID: th.ID, RunID: "run1", Role: "assistant", Text: "Respuesta final", CreatedAt: "2026-11-16T00:00:01Z"})
+			m.emitJSON(ctx, th.ID, EventTurnEnded, map[string]any{"run_id": "run1", "reason": "completed"})
+			if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := m.importExternal(ctx, th.ID, e); err != nil {
+				t.Fatal(err)
+			}
+			if msgs, _ := m.Messages(ctx, th.ID); len(msgs) != len(before)+2 {
+				t.Fatalf("messages after the live turn = %d, want %d: %+v", len(msgs), len(before)+2, msgs)
+			}
+			// What the terminal adds after the turn still comes in.
+			f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+			f.WriteString(later[provider])
+			f.Close()
+			if err := m.importExternal(ctx, th.ID, e); err != nil {
+				t.Fatal(err)
+			}
+			msgs, _ := m.Messages(ctx, th.ID)
+			if len(msgs) != len(before)+3 || msgs[len(msgs)-1].Text != "Desde la terminal" {
+				t.Fatalf("messages after the terminal turn = %+v", msgs)
+			}
+		})
+	}
+}
