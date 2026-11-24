@@ -61,7 +61,7 @@ func (l *Log) Append(ctx context.Context, tx *sql.Tx, entity, id string, fields 
 		return Op{}, err
 	}
 	op := Op{Node: l.node, HLC: l.clock.Now().String(), Entity: entity, EntityID: id, Fields: raw}
-	err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq), 0) + 1 FROM ops WHERE node_id = ?`, l.node).Scan(&op.Seq)
+	err = tx.QueryRowContext(ctx, `SELECT MAX(op_seq_floor, COALESCE((SELECT MAX(seq) FROM ops WHERE node_id = node_state.node_id), 0)) + 1 FROM node_state WHERE id = 1`).Scan(&op.Seq)
 	if err != nil {
 		return Op{}, err
 	}

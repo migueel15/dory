@@ -174,28 +174,42 @@ func queryRows(ctx context.Context, q querier, entity string, f Filter) ([]json.
 		f.Limit = 100
 	}
 	all := append(append([]string{}, spec.Key...), spec.ColumnNames()...)
+	from := spec.Table + " AS row"
+	columns := make(map[string]string, len(all)+3)
+	for _, col := range all {
+		columns[col] = "row." + col
+	}
+	if entity == "thread" {
+		from += ` LEFT JOIN thread_state AS state ON state.thread_id = row.id AND state.node_id = row.node_id
+			LEFT JOIN peers ON peers.node_id = row.node_id`
+		columns["status"] = "COALESCE(state.status, 'idle')"
+		columns["last_activity_at"] = "state.last_activity_at"
+		columns["state_stale"] = `json(CASE WHEN row.node_id = (SELECT node_id FROM node_state WHERE id = 1)
+			OR (` + PeerConnectedSQL + `) THEN 'false' ELSE 'true' END)`
+		all = append(all, "status", "last_activity_at", "state_stale")
+	}
 	pairs := make([]string, 0, len(all))
 	for _, col := range all {
-		value := col
+		value := columns[col]
 		if spec.IsJSON(col) {
-			value = "json(" + col + ")"
+			value = "json(" + value + ")"
 		}
 		pairs = append(pairs, fmt.Sprintf("'%s', %s", col, value))
 	}
 	where := []string{"1 = 1"}
 	args := []any{}
 	if !f.IncludeArchived {
-		where = append(where, "archived_at IS NULL")
+		where = append(where, "row.archived_at IS NULL")
 	}
 	for col, v := range f.Fields {
-		if !slices.Contains(all, col) {
+		if columns[col] == "" || col == "state_stale" {
 			return nil, ErrInvalid.Msgf("unknown field %q", col)
 		}
-		where = append(where, col+" = ?")
+		where = append(where, columns[col]+" = ?")
 		args = append(args, v)
 	}
-	query := fmt.Sprintf("SELECT json_object(%s) FROM %s WHERE %s ORDER BY created_at, %s LIMIT ? OFFSET ?",
-		strings.Join(pairs, ", "), spec.Table, strings.Join(where, " AND "), strings.Join(spec.Key, ", "))
+	query := fmt.Sprintf("SELECT json_object(%s) FROM %s WHERE %s ORDER BY row.created_at, row.%s LIMIT ? OFFSET ?",
+		strings.Join(pairs, ", "), from, strings.Join(where, " AND "), strings.Join(spec.Key, ", row."))
 	rows, err := q.QueryContext(ctx, query, append(args, f.Limit, f.Offset)...)
 	if err != nil {
 		return nil, err
@@ -215,6 +229,9 @@ func queryRows(ctx context.Context, q querier, entity string, f Filter) ([]json.
 func decode[T any](raw []byte) (T, error) {
 	var v T
 	err := json.Unmarshal(raw, &v)
+	if t, ok := any(&v).(*Thread); ok {
+		t.Unread = threadUnread(t.LastActivityAt, t.ReadAt)
+	}
 	return v, err
 }
 
