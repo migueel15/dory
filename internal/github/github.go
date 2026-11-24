@@ -62,6 +62,10 @@ type Client struct {
 
 	// watched keeps the pull list ETag and fingerprint of each repository.
 	watched map[string]watchEntry
+	// ciChecked tracks when each repo with pending CI was last refreshed.
+	ciChecked map[string]time.Time
+	// initialSynced records whether the watcher has run its first startup sync.
+	initialSynced bool
 	// beat is when a client last showed a view with branches or pulls.
 	beat time.Time
 	kick chan struct{}
@@ -69,7 +73,7 @@ type Client struct {
 
 // New follows the repositories that repos returns, as remote URL -> project id.
 func New(repos func(context.Context) (map[string]string, error), auth *Auth) *Client {
-	c := &Client{Auth: auth, Base: apiBase, HTTP: &http.Client{Timeout: 15 * time.Second}, listRepos: repos, byRepo: map[string]repoData{}, rules: map[string]ruleEntry{}, watched: map[string]watchEntry{}, kick: make(chan struct{}, 1)}
+	c := &Client{Auth: auth, Base: apiBase, HTTP: &http.Client{Timeout: 15 * time.Second}, listRepos: repos, byRepo: map[string]repoData{}, rules: map[string]ruleEntry{}, watched: map[string]watchEntry{}, ciChecked: map[string]time.Time{}, kick: make(chan struct{}, 1)}
 	if auth != nil {
 		auth.OnChange = c.reset
 	}
@@ -79,7 +83,7 @@ func New(repos func(context.Context) (map[string]string, error), auth *Auth) *Cl
 // reset drops what the previous account saw.
 func (c *Client) reset() {
 	c.mu.Lock()
-	c.byRepo, c.rules, c.fetched, c.viewer, c.watched = map[string]repoData{}, map[string]ruleEntry{}, time.Time{}, "", map[string]watchEntry{}
+	c.byRepo, c.rules, c.fetched, c.viewer, c.watched, c.ciChecked, c.initialSynced = map[string]repoData{}, map[string]ruleEntry{}, time.Time{}, "", map[string]watchEntry{}, map[string]time.Time{}, false
 	c.mu.Unlock()
 }
 
