@@ -26,6 +26,7 @@ import { BrowserPanel } from "../components/browser-panel";
 import { DevicePanel, FloatingWindow } from "../components/device-panel";
 import { kindOf, SidePanel, SidePanelToggle, useSidePanel, type SidePanelState } from "../components/side-panel";
 import { qk } from "../api/queries/keys";
+import { usePlan, useProjects, useNodeProviders, useThreadView } from "../api/queries/hooks";
 
 // ThreadView is a whole thread page: header, chat and, on demand, its changes
 // and the plan of its task.
@@ -85,7 +86,7 @@ export function ThreadView() {
 // taskId is undefined while the thread loads, so opening a thread is not taken
 // for linking a task to it: the panel then stays as the user left it.
 function useOpenPlanOnAgentEdit(taskId: string | null | undefined, panel: SidePanelState) {
-  const plan = useQuery({ queryKey: qk.planDoc(taskId), queryFn: () => api.plan(taskId!), enabled: !!taskId });
+  const plan = usePlan(taskId, { enabled: !!taskId });
   const seen = useRef<number | undefined>(undefined);
   const previousTask = useRef(taskId);
   const newlyLinked = useRef(false);
@@ -102,7 +103,7 @@ function useOpenPlanOnAgentEdit(taskId: string | null | undefined, panel: SidePa
 
 function useThread(threadId?: string) {
   useThreadLive(threadId);
-  return useQuery({ queryKey: qk.thread(threadId), queryFn: () => api.thread(threadId!), enabled: !!threadId, staleTime: 5_000 });
+  return useThreadView(threadId, { staleTime: 5_000 });
 }
 
 // TaskCard opens the thread's task as a side card in the place of the details
@@ -141,7 +142,7 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
     },
   });
   const menu = useThreadMenu(t);
-  const projects = useQuery({ queryKey: qk.projects(), queryFn: () => api.projects.list() });
+  const projects = useProjects();
   const projectName = t?.project_id ? projects.data?.find((p) => p.id === t.project_id)?.name : undefined;
   // Opening a thread marks it as read.
   useEffect(() => { if (t?.unread && t.status !== "working") act.mutate({ action: "read" }); }, [t?.id, t?.status, t?.unread, t?.last_activity_at]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -313,7 +314,7 @@ export function ExternalView() {
   const { node, provider, id } = useParams({ strict: false }) as { node: string; provider: string; id: string };
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const providers = useQuery({ queryKey: qk.providers(node), queryFn: () => api.nodeProviders(node) });
+  const providers = useNodeProviders(node);
   const providerName = providers.data?.find((p) => p.id === provider)?.name ?? provider;
   const view = useQuery({ queryKey: qk.external(node, provider, id), queryFn: () => api.externalSession(node, provider, id) });
   const adopt = useMutation({

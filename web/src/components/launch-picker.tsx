@@ -5,6 +5,7 @@ import { Label, Select } from "./ui";
 import { explicitModels, findModel, lastModel, modelEffort, modelId, rememberModel } from "../effort";
 import { ModelLogo } from "./model-logo";
 import { qk } from "../api/queries/keys";
+import { useNodeProviders, useNodeSettings } from "../api/queries/hooks";
 
 export const ProviderIcon = (props: Parameters<typeof ModelLogo>[0]) => <ModelLogo {...props} />;
 
@@ -16,7 +17,7 @@ const stored = (section: string): Partial<LaunchChoice> => {
 // useProviders lists the harnesses installed on a node, this one by default.
 export function useProviders(node = "local") {
   const local = useQuery({ queryKey: qk.node(), queryFn: api.node, staleTime: 60_000, select: (n) => n.providers.filter(usable), enabled: node === "local" });
-  const remote = useQuery({ queryKey: qk.providers(node), queryFn: () => api.nodeProviders(node), staleTime: 60_000, select: (ps) => ps.filter(usable), enabled: node !== "local" });
+  const remote = useNodeProviders(node, { staleTime: 60_000, select: (ps) => ps.filter(usable), enabled: node !== "local" });
   return node === "local" ? local : remote;
 }
 
@@ -49,7 +50,7 @@ export function useLaunchForm({ section, project, borderless }: { section: strin
   const node = nodes.some((n) => n.value === picked) ? picked : nodes[0]?.value ?? "local";
   const providers = useProviders(node);
   const [draft, setDraft] = useState<Partial<LaunchChoice>>({});
-  const defaults = useQuery({ queryKey: qk.nodeSettings(node), queryFn: () => api.nodeSettings(node), staleTime: 60_000 }).data?.threads;
+  const defaults = useNodeSettings(node, { staleTime: 60_000 }).data?.threads;
   const last = lastModel() ?? stored(section);
   const list = (providers.data ?? []).map((p) => ({ ...p, models: explicitModels(p.models) })).filter((p) => p.models.length > 0);
   // Precedence: what the user picked in this form, the node's default model,

@@ -6,6 +6,7 @@ import { Button, ErrorText, Modal, Select, Textarea, uuid } from "./ui";
 import { useProject } from "../project";
 import { DictationMic, DictationPreview, useDictationInProgress, useLocalDictation, useEnterFinishesDictation } from "./local-dictation";
 import { qk } from "../api/queries/keys";
+import { useProjects } from "../api/queries/hooks";
 
 // createIdea saves raw text as an inbox task. The server gives it a
 // provisional title and may replace it with one written by the title model.
@@ -30,7 +31,7 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
   const dictating = useDictationInProgress();
   const showingDictation = !!dictation.preview;
   const picker = useRef<HTMLButtonElement>(null);
-  const projects = useQuery({ queryKey: qk.projects(), queryFn: () => api.projects.list() });
+  const projects = useProjects();
   const save = useMutation({
     mutationFn: ({ id, raw }: { id: string; raw: string; define: boolean }) => createIdea(id, raw, project),
     onSuccess: (item, { define }) => {

@@ -4,6 +4,7 @@ import { CheckCircle, CircleDashed, GitMerge, GitPullRequest, RadioButton, XCirc
 import { api, type Card } from "../api/client";
 import { HoverCard } from "./tooltip";
 import { qk } from "../api/queries/keys";
+import { useBoard } from "../api/queries/hooks";
 
 // A pull request or issue tied to a thread through its task, with its state.
 export type GhRef = { kind: "pull" | "issue"; number: number; title: string; state: string; repo?: string };
@@ -23,7 +24,7 @@ const look = (r: GhRef) => LOOK[`${r.kind}:${r.state}`] ?? { icon: CircleDashed,
 // useThreadRefs maps each task to its pull request and issue, with the state
 // from the board and titles from the open GitHub items (closed ones may lack it).
 export function useThreadRefs() {
-  const board = useQuery({ queryKey: qk.board(""), queryFn: () => api.board(), refetchInterval: 30_000 });
+  const board = useBoard("", { refetchInterval: 30_000 });
   const gh = useQuery({ queryKey: qk.github(), queryFn: () => api.github(), staleTime: 60_000, retry: false });
   const byTask = new Map<string, GhRef[]>();
   for (const c of board.data?.cards ?? []) {

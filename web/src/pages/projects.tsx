@@ -9,6 +9,7 @@ import { Arrow, Button, Card, ErrorText, Input, Label, Modal, PageHeader, pill }
 import { setProject } from "../project";
 import { askConfirm } from "../components/confirm";
 import { qk } from "../api/queries/keys";
+import { useMesh, useNode, useProjects, useRepositories, useRepositoryLocations } from "../api/queries/hooks";
 
 const slugify = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -17,9 +18,9 @@ const slugify = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300
 function NewProject({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const dictating = useDictationInProgress();
-  const node = useQuery({ queryKey: qk.node(), queryFn: api.node });
-  const mesh = useQuery({ queryKey: qk.mesh(), queryFn: api.mesh });
-  const repos = useQuery({ queryKey: qk.repositories(), queryFn: () => api.repositories.list() });
+  const node = useNode();
+  const mesh = useMesh();
+  const repos = useRepositories();
   const [env, setEnv] = useState<{ id: string; name: string }>();
   const [dir, setDir] = useState("");
   const [hidden, setHidden] = useState(false);
@@ -112,17 +113,17 @@ function NewProject({ onClose }: { onClose: () => void }) {
 
 // useEnvironments names, by repository id, the environments that keep it and where.
 function useEnvironments() {
-  const node = useQuery({ queryKey: qk.node(), queryFn: api.node });
-  const mesh = useQuery({ queryKey: qk.mesh(), queryFn: api.mesh });
-  const locations = useQuery({ queryKey: qk.repositoryLocations(), queryFn: api.repositoryLocations });
+  const node = useNode();
+  const mesh = useMesh();
+  const locations = useRepositoryLocations();
   const name = (id: string) => id === node.data?.node.id ? node.data.node.name : mesh.data?.peers.find((p) => p.id === id)?.name ?? id.slice(0, 8);
   return (repoId: string) => (locations.data ?? []).filter((l) => l.repository_id === repoId).map((l) => ({ node: l.node_id, name: name(l.node_id), path: l.path }));
 }
 
 // Projects lists the projects and creates new ones.
 export function Projects() {
-  const projects = useQuery({ queryKey: qk.projects(), queryFn: () => api.projects.list() });
-  const repos = useQuery({ queryKey: qk.repositories(), queryFn: () => api.repositories.list() });
+  const projects = useProjects();
+  const repos = useRepositories();
   const envs = useEnvironments();
   const [adding, setAdding] = useState(false);
   return (

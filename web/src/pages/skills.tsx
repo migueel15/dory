@@ -7,6 +7,7 @@ import { api, type Skill, type SkillConflict, type SkillState } from "../api/cli
 import { Button, Card, ErrorText, Input, Label, Modal, PageHeader, StatusPill, type Tone } from "../components/ui";
 import { askConfirm } from "../components/confirm";
 import { qk } from "../api/queries/keys";
+import { useMesh, useNode } from "../api/queries/hooks";
 
 const STATE: Record<SkillState["status"], [string, Tone]> = {
   synced: ["sincronizada", "green"], pending: ["pendiente", "amber"], error: ["error", "red"], conflict: ["conflicto", "red"], removed: ["no instalada", "slate"],
@@ -17,8 +18,8 @@ const STATE: Record<SkillState["status"], [string, Tone]> = {
 export function Skills() {
   const skills = useQuery({ queryKey: qk.skills(), queryFn: api.skills });
   const states = useQuery({ queryKey: qk.skillStates(), queryFn: api.skillStates, refetchInterval: 10_000 });
-  const mesh = useQuery({ queryKey: qk.mesh(), queryFn: api.mesh });
-  const node = useQuery({ queryKey: qk.node(), queryFn: api.node });
+  const mesh = useMesh();
+  const node = useNode();
   const harnesses = (node.data?.providers ?? [])
     .filter((p) => p.id === (p.driver ?? p.id) && p.capabilities.includes("skills"))
     .map((p) => [p.id, p.driver_name || p.name] as const);

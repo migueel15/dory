@@ -12,6 +12,7 @@ import { api, ApiError, type Plan } from "../api/client";
 import { merge3 } from "../lib/merge3";
 import { Button, ErrorText, prose } from "./ui";
 import { qk } from "../api/queries/keys";
+import { usePlan } from "../api/queries/hooks";
 
 // PlanDoc shows the plan of a task: one Markdown document that the user and
 // the agents edit. It is edited in place already rendered (headings, lists and
@@ -22,7 +23,7 @@ import { qk } from "../api/queries/keys";
 // and "Aceptar plan" sits after the text, so it is read before accepting.
 export function PlanDoc({ taskId, showStatus = true, reader = false, onAccepted }: { taskId: string; showStatus?: boolean; reader?: boolean; onAccepted?: () => void }) {
   const qc = useQueryClient();
-  const plan = useQuery({ queryKey: qk.planDoc(taskId), queryFn: () => api.plan(taskId) });
+  const plan = usePlan(taskId);
   const p = plan.data;
   // Following the agent is a choice kept in this browser; on by default.
   const [following, setFollowing] = useState(() => { try { return localStorage.getItem("dory.plan-follow") !== "0"; } catch { return true; } });

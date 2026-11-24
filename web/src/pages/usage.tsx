@@ -8,6 +8,7 @@ import { ProviderIcon, useNodes } from "../components/launch-picker";
 import { expectedRemaining, paceTitle, windowLabel, windowMinutes, windowReset } from "../lib/usage-pace";
 import { PaceMark } from "../components/pace-mark";
 import { qk } from "../api/queries/keys";
+import { useNode } from "../api/queries/hooks";
 
 
 const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(" ");
@@ -35,7 +36,7 @@ export function Limit({ w }: { w: UsageWindow }) {
 // Limits shows the remaining allowance of each provider (requirement 4.7).
 // The harness reports it while a turn runs, so it updates as the agents work.
 function Limits({ only }: { only: string }) {
-  const node = useQuery({ queryKey: qk.node(), queryFn: api.node, refetchInterval: 30_000 });
+  const node = useNode({ refetchInterval: 30_000 });
   const usage = node.data?.usage ?? {};
   return (
     <div className="space-y-3">

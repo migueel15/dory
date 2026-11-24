@@ -20,6 +20,7 @@ import { TaskQuickMenu, type QuickLaunch } from "../components/task-quick-menu";
 import { githubRoute } from "../components/refs";
 import { planMessage } from "../lib/auto-message";
 import { qk } from "../api/queries/keys";
+import { useBoard, useCard, useMesh, useNode, usePlan, useRepositories } from "../api/queries/hooks";
 
 // Fixed meaning of each state color (requirement RF-48).
 const TONE = {
@@ -303,8 +304,8 @@ function Reviewers({ pull }: { pull: Pull }) {
 
 // ThreadEnv draws the environment a thread runs in, which may be a peer of this node.
 function ThreadEnv({ nodeId, className }: { nodeId: string; className: string }) {
-  const node = useQuery({ queryKey: qk.node(), queryFn: api.node, staleTime: 60_000 });
-  const mesh = useQuery({ queryKey: qk.mesh(), queryFn: api.mesh, staleTime: 60_000 });
+  const node = useNode({ staleTime: 60_000 });
+  const mesh = useMesh({ staleTime: 60_000 });
   const self = node.data?.node;
   const peer = mesh.data?.peers.find((p) => p.id === nodeId);
   const env = self && nodeId === self.id ? self : peer?.info.node;
@@ -416,12 +417,12 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
   const qc = useQueryClient();
   const dictating = useDictationInProgress();
   const navigate = useNavigate();
-  const card = useQuery({ queryKey: qk.card(id), queryFn: () => api.card(id) });
+  const card = useCard(id);
   const plans = useQuery({ queryKey: qk.plans(id), queryFn: () => api.plans(id) });
-  const planDoc = useQuery({ queryKey: qk.planDoc(id), queryFn: () => api.plan(id) });
+  const planDoc = usePlan(id);
   const deps = useQuery({ queryKey: qk.dependencies(id), queryFn: () => api.dependencies(id) });
-  const board = useQuery({ queryKey: qk.board(""), queryFn: () => api.board() });
-  const repos = useQuery({ queryKey: qk.repositories(), queryFn: () => api.repositories.list() });
+  const board = useBoard();
+  const repos = useRepositories();
   const [draft, setDraft] = useState<{ title: string; description: string; issue: string; pr: string; repo: string }>();
   const planSection = useRef<HTMLDetailsElement>(null);
   const launchPopoverId = useId();

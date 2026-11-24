@@ -8,6 +8,7 @@ import { Button, ErrorText, Input, Label, Modal } from "../components/ui";
 import { useLaunchForm } from "../components/launch-picker";
 import { autoMessage } from "../lib/auto-message";
 import { qk } from "../api/queries/keys";
+import { useRepositories } from "../api/queries/hooks";
 
 // DefineIssueDialog turns an issue into tasks, by hand or with an agent that
 // splits it with the MCP, or asks an agent to resolve a pull request's
@@ -15,7 +16,7 @@ import { qk } from "../api/queries/keys";
 export function DefineIssueDialog({ resolve = false, repo, number, onClose }: { resolve?: boolean; repo: string; number: number; onClose: () => void }) {
   const navigate = useNavigate();
   const dictating = useDictationInProgress();
-  const repos = useQuery({ queryKey: qk.repositories(), queryFn: () => api.repositories.list() });
+  const repos = useRepositories();
   const registered = repos.data?.find((r) => repoName(r.remote_url).toLowerCase() === repo.toLowerCase());
   const form = useLaunchForm({ section: resolve ? "resolve" : "define-issue" });
   const [title, setTitle] = useState("");

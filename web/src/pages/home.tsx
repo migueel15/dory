@@ -14,6 +14,7 @@ import { formatChord } from "../components/dictation-shortcut";
 import { useComposerFiles } from "../components/composer-files";
 import { planMessage } from "../lib/auto-message";
 import { qk } from "../api/queries/keys";
+import { useProjects } from "../api/queries/hooks";
 
 
 // NewThread is the chat box of the start screen (requirement 13.2): the
@@ -34,7 +35,7 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
   useCommand("plan", () => { if (!box.current?.getClientRects().length) return false; setPlan((value) => !value); });
   const dictation = useLocalDictation(text, setText, box, { panelShortcut: true, onEnter: (draft) => latestSendDraft.current(draft) });
   const showingDictation = !!dictation.preview;
-  const projects = useQuery({ queryKey: qk.projects(), queryFn: () => api.projects.list() });
+  const projects = useProjects();
   const form = useLaunchForm({ section: "home" , project });
   const [pickedMode, setMode] = useState<"checkout" | "worktree" | "existing">();
   const mode = pickedMode ?? form.defaultWorkspace;

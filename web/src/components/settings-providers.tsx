@@ -5,6 +5,7 @@ import { ProviderIcon, useNodes } from "./launch-picker";
 import { ALL_NODES, useNodeDefault, type SectionProps } from "./settings-node";
 import { Button, ErrorText, Input, Select } from "./ui";
 import { qk } from "../api/queries/keys";
+import { useNodeProviders } from "../api/queries/hooks";
 
 // Providers are unique per node: they need a login there. With "all" this
 // shows what every node has and asks to pick one to manage.
@@ -43,7 +44,7 @@ function ProvidersOverview({ onPick }: { onPick: (node: string) => void }) {
 function NodeProviders({ node, onBack }: { node: string; onBack?: () => void }) {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string>();
-  const list = useQuery({ queryKey: qk.providers(node), queryFn: () => api.nodeProviders(node) });
+  const list = useNodeProviders(node);
   const toggle = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => api.setProviderEnabled(node, id, enabled),
     onSuccess: () => {

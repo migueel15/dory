@@ -21,6 +21,7 @@ import { autoMessage } from "../lib/auto-message";
 import { useComposerFiles } from "../components/composer-files";
 import { paintTokens, quoteBlock, quoteLabel, tokenRanges, type Token, type Tokens } from "../components/composer-tokens";
 import { qk } from "../api/queries/keys";
+import { useNodeProviders } from "../api/queries/hooks";
 
 // The composer of a thread, kept from Dory v1: attachments, @ mentions of
 // files, model, effort and permissions, and send, queue or stop.
@@ -279,7 +280,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   const qc = useQueryClient();
   const getShortcut = useShortcuts();
   const key = qk.thread(t.id);
-  const providers = useQuery({ queryKey: qk.providers(t.node_id), queryFn: () => api.nodeProviders(t.node_id), staleTime: 60_000 });
+  const providers = useNodeProviders(t.node_id, { staleTime: 60_000 });
   const [text, setText] = useState("");
   useEffect(() => {
     const on = (e: Event) => { const d = (e as CustomEvent<{ threadId: string; text: string }>).detail; if (d.threadId === t.id) { setText(d.text); area.current?.focus(); } };

@@ -8,6 +8,7 @@ import { Input } from "./ui";
 import { commands as shortcutCommands, useCommand, useShortcuts, available, runCommand } from "./shortcuts";
 import { formatChord } from "./dictation-shortcut";
 import { qk } from "../api/queries/keys";
+import { useMesh, useNode, useProjects } from "../api/queries/hooks";
 
 type Command = { id: string; group: string; label: string; icon: ComponentType<IconProps>; hint?: string; run: () => void };
 
@@ -79,9 +80,9 @@ function Palette({ commands, go, onClose }: { commands: Command[]; go: (path: st
   const active = !!debounced && debounced === query.trim();
   const tasks = useQuery({ queryKey: qk.paletteTasks(debounced), queryFn: ({ signal }) => api.searchTasks(debounced, signal), enabled: active, retry: false });
   const github = useQuery({ queryKey: qk.paletteGithub(debounced), queryFn: ({ signal }) => api.searchGithub(debounced, signal), enabled: active, retry: false });
-  const projects = useQuery({ queryKey: qk.projects(), queryFn: () => api.projects.list(), enabled: !!query.trim(), retry: false });
-  const node = useQuery({ queryKey: qk.node(), queryFn: api.node, enabled: !!query.trim(), retry: false });
-  const mesh = useQuery({ queryKey: qk.mesh(), queryFn: api.mesh, enabled: !!query.trim(), retry: false });
+  const projects = useProjects({ enabled: !!query.trim(), retry: false });
+  const node = useNode({ enabled: !!query.trim(), retry: false });
+  const mesh = useMesh({ enabled: !!query.trim(), retry: false });
   const get = useShortcuts();
   const dictation: Command[] = previousFocus.current?.matches("textarea, input, [contenteditable=true]") ? [{
     id: "dictation", group: "Acciones", label: "Dictado", icon: CommandIcon, hint: formatChord(get("dictation")), run: () => {

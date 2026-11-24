@@ -9,6 +9,7 @@ import { askConfirm } from "./confirm";
 import { Button, ErrorText, Input } from "./ui";
 import type { SectionProps } from "./settings-node";
 import { qk } from "../api/queries/keys";
+import { useMesh, useNode, usePairedDevices, useNodeProviders } from "../api/queries/hooks";
 
 type Row = { id: string; name: string; icon?: string; os?: string; version?: string; local: boolean; state: "on" | "off" | "disabled"; seen?: string; incompatible?: boolean };
 
@@ -17,8 +18,8 @@ type Row = { id: string; name: string; icon?: string; os?: string; version?: str
 // add a new one. It is global, so it ignores the node selector.
 export function ConnectionsSettings(_: SectionProps) {
   const qc = useQueryClient();
-  const node = useQuery({ queryKey: qk.node(), queryFn: api.node, refetchInterval: 15_000 });
-  const mesh = useQuery({ queryKey: qk.mesh(), queryFn: api.mesh, refetchInterval: 5_000 });
+  const node = useNode({ refetchInterval: 15_000 });
+  const mesh = useMesh({ refetchInterval: 5_000 });
   const updates = useMeshUpdates();
   const recheck = useMutation({ mutationFn: () => api.meshUpdates(true), onSuccess: (d) => qc.setQueryData(["mesh-update"], d) });
   const all = useMutation({ mutationFn: () => api.updateMesh({ providers: true, force: false }), onSuccess: (d) => qc.setQueryData(["mesh-update"], d) });
@@ -62,7 +63,7 @@ const STATE = {
 function NodeCard({ row: r, update }: { row: Row; update?: NodeUpdate }) {
   const qc = useQueryClient();
   const [menu, setMenu] = useState(false);
-  const providers = useQuery({ queryKey: qk.providers(r.local ? "local" : r.id), queryFn: () => api.nodeProviders(r.local ? "local" : r.id), enabled: r.state === "on", staleTime: 60_000 });
+  const providers = useNodeProviders(r.local ? "local" : r.id, { enabled: r.state === "on", staleTime: 60_000 });
   const st = update?.status;
   const core = !!st?.available;
   const provUpdates = st?.providers.filter((p) => p.available) ?? [];
@@ -210,7 +211,7 @@ function AddConnection({ discovered }: { discovered: { id: string; name: string;
 // Phones lists the paired mobile apps.
 function Phones() {
   const qc = useQueryClient();
-  const devices = useQuery({ queryKey: qk.devices(), queryFn: api.devices, refetchInterval: 15_000 });
+  const devices = usePairedDevices({ refetchInterval: 15_000 });
   const revoke = useMutation({ mutationFn: api.revokeDevice, onSuccess: () => qc.invalidateQueries({ queryKey: qk.devices() }) });
   if (!devices.data?.length) return null;
   return (
