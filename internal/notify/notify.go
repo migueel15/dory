@@ -22,16 +22,17 @@ import (
 	webpush "github.com/SherClockHolmes/webpush-go"
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/i18n"
 )
 
 // Event kinds that produce a notice, with their text.
 var titles = map[string]string{
-	"thread.idle":         "El agente terminó",
-	"thread.error":        "El agente falló",
-	"thread.waiting":      "Un agente te necesita",
-	"plan.ready":          "Plan listo para revisar",
-	"plan.accepted":       "Tarea lista para implementar",
-	"task.ready_to_merge": "Tarea lista para mergear",
+	"thread.idle":         i18n.Text("push.thread.idle"),
+	"thread.error":        i18n.Text("push.thread.error"),
+	"thread.waiting":      i18n.Text("push.thread.waiting"),
+	"plan.ready":          i18n.Text("push.plan.ready"),
+	"plan.accepted":       i18n.Text("push.plan.accepted"),
+	"task.ready_to_merge": i18n.Text("push.task.ready_to_merge"),
 }
 
 // kinds lists the events in the order the settings show them.

@@ -527,7 +527,7 @@ func (r *threadRunner) turnEnded(c *command) result {
 	r.setState(stateIdle)
 	m.setStatus(bg, r.id, out.status, out.failure)
 	if configured != nil {
-		m.save(bg, Message{ID: newRunID(), ThreadID: r.id, Role: "system", Text: "No se pudo cambiar el modelo: " + configured.Error(), Status: "failed", CreatedAt: now()})
+		m.save(bg, Message{ID: newRunID(), ThreadID: r.id, Role: "system", Code: "model.change_failed", Params: map[string]any{"error": configured.Error()}, Status: "failed", CreatedAt: now()})
 	}
 	if next == nil && t.ParentID != nil {
 		m.notifyParent(bg, t, out.status, out.interrupted)

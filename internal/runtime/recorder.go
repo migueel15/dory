@@ -112,10 +112,10 @@ func (m *Manager) record(ctx context.Context, turn startedTurn, opened func(harn
 			switch {
 			case e.Reason == harness.Interrupted || (e.Reason != harness.Completed && ctx.Err() != nil):
 				status, failure = "idle", ""
-				m.save(bg, Message{ID: newRunID(), ThreadID: t.ID, Role: "interrupt", Text: turnInterrupted, CreatedAt: now()})
+				m.save(bg, Message{ID: newRunID(), ThreadID: t.ID, Role: "interrupt", Code: "turn.interrupted", CreatedAt: now()})
 			case e.Reason == harness.Failed || e.Reason == harness.NoResponse:
 				status, failure = "error", turnError(e)
-				m.save(bg, Message{ID: newRunID(), ThreadID: t.ID, Role: "system", Text: failure, Status: "failed", CreatedAt: now()})
+				m.save(bg, Message{ID: newRunID(), ThreadID: t.ID, Role: "system", Code: turnFailureCode(e), Text: turnFailureText(e), Status: "failed", CreatedAt: now()})
 			}
 		}
 	}

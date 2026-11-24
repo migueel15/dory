@@ -63,6 +63,16 @@ const (
 	ThreadCreatedSendFailed Code = "thread_created_send_failed"
 )
 
+// Specific lists the codes of the block above and the next one: the web has a
+// text for each (checked by its tests, which read the list from types.gen.ts).
+var Specific = []Code{
+	Upstream, TooManyRequests, PayloadTooLarge, NodeOffline, RepositoryNotClone, UnknownWorktree,
+	BranchSwitchFailed, DirtyWorktree, SharedProcessGroup, NoRequest, JobInputClosed, InvalidCode,
+	InvalidAccount, InvalidIcon, InvalidRange, PlanNotAccepted, PlanConflict, NoRepository, NoThread,
+	InProgress, ConfirmRequired, DeviceError, NoADB, UpdateRefused, ModelMissing, NoChromium, UserControl,
+	ProviderUnavailable, ThreadCreatedSendFailed, Busy, RevisionConflict,
+}
+
 // Error is a domain error. Message is technical and in English; Params carry
 // the values a client needs to build its own text. Err is the cause, kept for
 // logs and errors.Is, and never sent to a client.

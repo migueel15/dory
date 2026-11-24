@@ -144,7 +144,7 @@ func TestManagerInterrupt(t *testing.T) {
 	}
 	wait(t, store, th.ID, "idle")
 	msgs, _ := m.Messages(ctx, th.ID)
-	if last := msgs[len(msgs)-1]; last.Role != "interrupt" {
+	if last := msgs[len(msgs)-1]; last.Role != "interrupt" || last.Code != "turn.interrupted" {
 		t.Fatalf("last message %+v", last)
 	}
 }
@@ -161,6 +161,23 @@ func TestRecoverMarksDeadTurns(t *testing.T) {
 	}
 	if got, _ := store.Threads().Get(ctx, th.ID); got.Status != "error" {
 		t.Fatalf("status %s", got.Status)
+	}
+	msgs, _ := m.Messages(ctx, th.ID)
+	if last := msgs[len(msgs)-1]; last.Role != "system" || last.Code != "node.restarted" || last.Text != "" {
+		t.Fatalf("message %+v", last)
+	}
+}
+
+func TestClearMessageHasCode(t *testing.T) {
+	ctx := context.Background()
+	m, _ := manager(t, 0)
+	th, _ := registerTestThread(ctx, m, data.Thread{Provider: "replay"})
+	if err := m.Clear(ctx, th.ID); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ := m.Messages(ctx, th.ID)
+	if last := msgs[len(msgs)-1]; last.Role != "clear" || last.Code != "context.cleared" {
+		t.Fatalf("message %+v", last)
 	}
 }
 

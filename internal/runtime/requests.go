@@ -91,7 +91,7 @@ func (m *Manager) dropRequests(ctx context.Context) error {
 			continue
 		}
 		m.setStatus(ctx, id, "error", "")
-		m.save(ctx, Message{ID: newRunID(), ThreadID: id, Role: "system", Text: "El nodo se reinició mientras el agente esperaba una respuesta; el turno se interrumpió.", CreatedAt: now()})
+		m.save(ctx, Message{ID: newRunID(), ThreadID: id, Role: "system", Code: "node.restarted_waiting", CreatedAt: now()})
 	}
 	_, err = m.db.ExecContext(ctx, `DELETE FROM thread_requests`)
 	return err
