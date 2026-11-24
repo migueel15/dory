@@ -6,18 +6,19 @@ import { dictationShortcutKey } from "../composer/dictation-shortcut";
 import { qk } from "../../api/queries/keys";
 import { useNodeSettings } from "../../api/queries/hooks";
 import { events, type Emitter } from "../../lib/store";
+import { storage, storageKeys } from "../../lib/storage";
 
 // Shortcuts and the dictation model live in the settings of each node
 // (NodeSettings.input). The running app is a client of the node that serves it
 // ("local"), so it follows that node's values. The browser keeps a copy of them
 // in localStorage so that key handlers can read them synchronously; the copy is
 // refreshed every time the settings of the local node load or change.
-export const shortcutsKey = "dory.shortcuts";
-export const modelKey = "dory.dictation-model";
+export const shortcutsKey = storageKeys.shortcuts;
+export const modelKey = storageKeys.dictationModel;
 
 export const emptyInput: InputSettings = { shortcuts: {}, dictation: { model: "" } };
 
-const read = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
+const read = (key: string) => { try { return storage.get(key); } catch { return null; } };
 
 // fromBrowser is what this browser had chosen before the choices moved to the
 // node, or undefined when it never customised anything.
@@ -32,7 +33,7 @@ function fromBrowser(): InputSettings | undefined {
 
 function mirror(key: string, value: string | null, event: Emitter<void>) {
   if (read(key) === value) return;
-  try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch { return; }
+  try { if (value === null) storage.remove(key); else storage.set(key, value); } catch { return; }
   event.emit();
 }
 

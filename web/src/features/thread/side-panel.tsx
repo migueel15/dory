@@ -6,6 +6,7 @@ import { ContextMenu } from "../../components/context-menu";
 import { ResizeHandle } from "./thread";
 import { Browser, ClipboardText, DeviceMobile, GitDiff, Plus, SidebarSimple, X } from "@phosphor-icons/react";
 import { events } from "../../lib/store";
+import { storage, storageKeys } from "../../lib/storage";
 
 // A thread's side panel holds tabs of objects related to the thread: its
 // changes and the plan of its task; new kinds join TAB_KINDS.
@@ -25,30 +26,30 @@ const empty: State = { open: false, tabs: [], active: null, meta: {} };
 export const kindOf = (key: string) => key.split(":")[0] as TabKind;
 const MULTIPLE: TabKind[] = ["device"];
 const read = (key: string): State => {
-  try { const v = JSON.parse(localStorage.getItem(key) ?? "null"); return v && Array.isArray(v.tabs) ? { ...empty, ...v, tabs: v.tabs.filter((k: string) => kindOf(k) in TAB_KINDS) } : empty; } catch { return empty; }
+  try { const v = JSON.parse(storage.get(key) ?? "null"); return v && Array.isArray(v.tabs) ? { ...empty, ...v, tabs: v.tabs.filter((k: string) => kindOf(k) in TAB_KINDS) } : empty; } catch { return empty; }
 };
 
 // showPanelTab opens the side panel of a thread on a tab from anywhere in the
 // interface, whether or not the thread is on screen.
 export function showPanelTab(threadId: string, kind: TabKind) {
-  const key = `dory-thread-panel:${threadId}`;
+  const key = storageKeys.threadPanel(threadId);
   const s = read(key);
   const next: State = { ...s, open: true, tabs: s.tabs.includes(kind) ? s.tabs : [...s.tabs, kind], active: kind };
-  try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* per-viewer only */ }
+  try { storage.set(key, JSON.stringify(next)); } catch { /* per-viewer only */ }
   events.panelChanged.emit(key);
 }
 
 // useSidePanel keeps, per thread and in this browser, whether the panel is
 // open, which tabs it has and which one is in front.
 export function useSidePanel(threadId: string) {
-  const key = `dory-thread-panel:${threadId}`;
+  const key = storageKeys.threadPanel(threadId);
   const [s, setS] = useState(() => read(key));
   useEffect(() => setS(read(key)), [key]);
   useEffect(() => {
     return events.panelChanged.on((k) => { if (k === key) setS(read(key)); });
   }, [key]);
   // Updates apply to the latest state, so several in one event do not overwrite each other.
-  const update = (f: (s: State) => State) => setS((prev) => { const next = f(prev); try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* per-viewer only */ } return next; });
+  const update = (f: (s: State) => State) => setS((prev) => { const next = f(prev); try { storage.set(key, JSON.stringify(next)); } catch { /* per-viewer only */ } return next; });
   return {
     ...s,
     toggle: () => update((s) => ({ ...s, open: !s.open })),
@@ -88,8 +89,8 @@ export function SidePanel({ panel, render, available }: { panel: SidePanelState;
   // The content mounts on first open and then stays, so closing slides it out.
   const [opened, setOpened] = useState(panel.open);
   useEffect(() => { if (panel.open) setOpened(true); }, [panel.open]);
-  const [width, setWidth] = useState(() => { try { return Number(localStorage.getItem("dory.thread-panel-width")) || 560; } catch { return 560; } });
-  const resize = (w: number) => { setWidth(w); try { localStorage.setItem("dory.thread-panel-width", String(w)); } catch { /* per-viewer only */ } };
+  const [width, setWidth] = useState(() => { try { return Number(storage.get(storageKeys.panelWidth)) || 560; } catch { return 560; } });
+  const resize = (w: number) => { setWidth(w); try { storage.set(storageKeys.panelWidth, String(w)); } catch { /* per-viewer only */ } };
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   // Every kind is listed; the ones this thread cannot open (no changes, no task) show dimmed.
   const kinds = Object.keys(TAB_KINDS) as TabKind[];

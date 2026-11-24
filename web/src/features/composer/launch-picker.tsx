@@ -6,12 +6,12 @@ import { explicitModels, findModel, lastModel, modelEffort, modelId, rememberMod
 import { ModelLogo } from "../../components/model-logo";
 import { qk } from "../../api/queries/keys";
 import { useNodeProviders, useNodeSettings } from "../../api/queries/hooks";
+import { storage, storageKeys } from "../../lib/storage";
 
 export const ProviderIcon = (props: Parameters<typeof ModelLogo>[0]) => <ModelLogo {...props} />;
 
-const KEY = "dory.launch";
 const stored = (section: string): Partial<LaunchChoice> => {
-  try { return JSON.parse(localStorage.getItem(`${KEY}.${section}`) ?? "{}"); } catch { return {}; }
+  try { return JSON.parse(storage.get(storageKeys.launch(section)) ?? "{}"); } catch { return {}; }
 };
 
 // useProviders lists the harnesses installed on a node, this one by default.
@@ -99,6 +99,6 @@ export function useLaunchForm({ section, project, borderless }: { section: strin
   );
   return {
     fields, value, nodes, defaultWorkspace: defaults?.default_workspace === "worktree" ? "worktree" as const : "checkout" as const, setNode, selectModel, providers: list, ready: !!model, error: providers.error,
-    remember: () => { try { localStorage.setItem(`${KEY}.${section}`, JSON.stringify({ ...stored(section), runtime_mode: value.runtime_mode })); } catch { /* per browser only */ } },
+    remember: () => { try { storage.set(storageKeys.launch(section), JSON.stringify({ ...stored(section), runtime_mode: value.runtime_mode })); } catch { /* per browser only */ } },
   };
 }

@@ -25,6 +25,7 @@ import { applyScale, listenZoomKeys } from "./scale";
 import "./index.css";
 import { qk } from "./api/queries/keys";
 import { events } from "./lib/store";
+import { storage, storageKeys } from "./lib/storage";
 
 applyTheme();
 applyScale();
@@ -177,10 +178,10 @@ function Layout() {
   }, []);
   const drawer = useRef<HTMLDialogElement>(null);
   // The desktop sidebar folds to icons; the choice is remembered in this browser.
-  const [folded, setFolded] = useState(() => { try { return localStorage.getItem("dory.sidebar-folded") === "1"; } catch { return false; } });
+  const [folded, setFolded] = useState(() => { try { return storage.get(storageKeys.sidebarFolded) === "1"; } catch { return false; } });
   const fold = (v: boolean) => {
     setFolded(v);
-    try { localStorage.setItem("dory.sidebar-folded", v ? "1" : "0"); } catch { /* per-browser only */ }
+    try { storage.set(storageKeys.sidebarFolded, v ? "1" : "0"); } catch { /* per-browser only */ }
   };
 
   useCommand("sidebar", () => fold(!folded));

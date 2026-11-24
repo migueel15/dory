@@ -10,6 +10,7 @@ import { iconButton } from "../../components/ui";
 import { modelKey, useInputSettingsSync } from "../settings/input-settings";
 import { qk } from "../../api/queries/keys";
 import { events } from "../../lib/store";
+import { storage } from "../../lib/storage";
 
 export type SpeechModel = {
   id: string; name: string; bytes: number; streaming: boolean;
@@ -46,7 +47,7 @@ export function pickSpeechModel(catalog: SpeechCatalog | undefined, id: string |
 export function useSpeechModel(catalog?: SpeechCatalog) {
   useInputSettingsSync();
   const id = useSyncExternalStore(subscribe, () => {
-    try { return localStorage.getItem(preferenceKey); } catch { return null; }
+    try { return storage.get(preferenceKey); } catch { return null; }
   });
   return pickSpeechModel(catalog, id);
 }

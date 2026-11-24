@@ -6,6 +6,7 @@ import { DeviceStream, Key, keyFor, webCodecsProblem, type StreamStatus } from "
 import { askConfirm } from "../../components/confirm";
 import { Button, ErrorText, Input, Select, iconButton } from "../../components/ui";
 import { qk } from "../../api/queries/keys";
+import { storage, storageKeys } from "../../lib/storage";
 
 // DevicePanel shows an Android device or emulator of the thread's node live.
 // Only the visible tab streams: it connects on mount and closes on unmount.
@@ -132,14 +133,14 @@ const QUALITY = {
   native: { label: "Nativa", maxSize: 4096, bitrate: 20_000_000 },
 } as const;
 type Quality = keyof typeof QUALITY;
-const readQuality = (): Quality => { try { const q = localStorage.getItem("dory.device-quality"); return q && q in QUALITY ? (q as Quality) : "high"; } catch { return "high"; } };
+const readQuality = (): Quality => { try { const q = storage.get(storageKeys.deviceQuality); return q && q in QUALITY ? (q as Quality) : "high"; } catch { return "high"; } };
 
 const statusText: Record<StreamStatus, string> = { connecting: "Conectando…", live: "En directo", closed: "Desconectado, reintentando…", error: "Error" };
 
 function Live({ node, device, onBack, floating, onFloat }: { node: string; device: Device; onBack: () => void; floating: boolean; onFloat?: (v: boolean) => void }) {
   const [tools, setTools] = useState(false);
   const [quality, setQuality] = useState<Quality>(readQuality);
-  const pickQuality = (q: Quality) => { setQuality(q); try { localStorage.setItem("dory.device-quality", q); } catch { /* per-browser only */ } };
+  const pickQuality = (q: Quality) => { setQuality(q); try { storage.set(storageKeys.deviceQuality, q); } catch { /* per-browser only */ } };
   const canvas = useRef<HTMLCanvasElement>(null);
   const stream = useRef<DeviceStream | null>(null);
   const [status, setStatus] = useState<StreamStatus>("connecting");
@@ -290,8 +291,8 @@ function Tools({ node, device, onClose }: { node: string; device: Device; onClos
 // FloatingWindow holds a device above the chat: drag it by its bar and
 // resize it by the corner.
 export function FloatingWindow({ id, children }: { id: string; children: React.ReactNode }) {
-  const storeKey = `dory.device-float:${id}`;
-  const [pos, setPos] = useState<{ x: number; y: number }>(() => { try { return JSON.parse(localStorage.getItem(storeKey) ?? "") ; } catch { return { x: Math.max(16, window.innerWidth - 400), y: 80 }; } });
+  const storeKey = storageKeys.deviceFloat(id);
+  const [pos, setPos] = useState<{ x: number; y: number }>(() => { try { return JSON.parse(storage.get(storeKey) ?? "") ; } catch { return { x: Math.max(16, window.innerWidth - 400), y: 80 }; } });
   const drag = useRef<{ dx: number; dy: number } | null>(null);
   const clamp = (x: number, y: number) => ({ x: Math.max(0, Math.min(window.innerWidth - 80, x)), y: Math.max(0, Math.min(window.innerHeight - 40, y)) });
   return (
@@ -300,7 +301,7 @@ export function FloatingWindow({ id, children }: { id: string; children: React.R
       <div className="h-3 shrink-0 cursor-move touch-none bg-slate-100 dark:bg-raised" title="Mover"
         onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); drag.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y }; }}
         onPointerMove={(e) => { if (drag.current) setPos(clamp(e.clientX - drag.current.dx, e.clientY - drag.current.dy)); }}
-        onPointerUp={() => { drag.current = null; try { localStorage.setItem(storeKey, JSON.stringify(pos)); } catch { /* per-browser only */ } }} />
+        onPointerUp={() => { drag.current = null; try { storage.set(storeKey, JSON.stringify(pos)); } catch { /* per-browser only */ } }} />
       <div className="min-h-0 flex-1">{children}</div>
     </div>
   );

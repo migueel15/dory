@@ -17,6 +17,7 @@ import { EnvIcon } from "../components/env-icon";
 import { qk } from "../api/queries/keys";
 import { useMesh, useNode, useRepositories } from "../api/queries/hooks";
 import { events, useEmitter } from "../lib/store";
+import { storage, storageKeys } from "../lib/storage";
 
 // Filters of the single inbox of threads (requirement RF-19).
 const FILTERS = { active: "Activos", needs: "Te necesitan", working: "Trabajando", archived: "Archivados", external: "En los agentes" } as const;
@@ -35,16 +36,16 @@ export function Threads() {
   const [query, setQuery] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   // On desktop the thread list folds away while a thread is open; remembered in this browser.
-  const [listFolded, setListFolded] = useState(() => { try { return localStorage.getItem("dory.threads-folded") === "1"; } catch { return false; } });
-  const foldList = (v: boolean) => { setListFolded(v); try { localStorage.setItem("dory.threads-folded", v ? "1" : "0"); } catch { /* per-browser only */ } };
+  const [listFolded, setListFolded] = useState(() => { try { return storage.get(storageKeys.threadsFolded) === "1"; } catch { return false; } });
+  const foldList = (v: boolean) => { setListFolded(v); try { storage.set(storageKeys.threadsFolded, v ? "1" : "0"); } catch { /* per-browser only */ } };
   const searchInput = useRef<HTMLInputElement>(null);
   useEmitter(events.focusThreadSearch, () => { foldList(false); requestAnimationFrame(() => searchInput.current?.focus()); });
   const folded = listFolded && !!threadId;
   useCommand("thread-list", () => foldList(!listFolded), !!threadId);
   // The list width is dragged from its right edge and kept per browser.
-  const [listWidth, setListWidth] = useState(() => { try { return clampList(Number(localStorage.getItem("dory.threads-width")) || LIST_W); } catch { return LIST_W; } });
+  const [listWidth, setListWidth] = useState(() => { try { return clampList(Number(storage.get(storageKeys.threadsWidth)) || LIST_W); } catch { return LIST_W; } });
   const [dragging, setDragging] = useState(false);
-  const saveWidth = (w: number) => { setListWidth(w); try { localStorage.setItem("dory.threads-width", String(w)); } catch { /* per-browser only */ } };
+  const saveWidth = (w: number) => { setListWidth(w); try { storage.set(storageKeys.threadsWidth, String(w)); } catch { /* per-browser only */ } };
   const startDrag = (e: ReactPointerEvent) => {
     e.preventDefault();
     const x0 = e.clientX, w0 = listWidth;

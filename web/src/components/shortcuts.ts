@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react"
 import { chordFromEvent, openShortcutPopups, readDictationShortcut, type Chord } from "../features/composer/dictation-shortcut";
 import { shortcutsKey, useInputSettingsSync } from "../features/settings/input-settings";
 import { events } from "../lib/store";
+import { storage } from "../lib/storage";
 
 const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const chord = (code: string, shift = false): Chord => ({ code: `Key${code}`, ctrl: !mac, meta: mac, alt: false, shift });
@@ -20,8 +21,8 @@ export const commands = [
   { id: "dictation", label: "Dictado", default: { code: "KeyD", ctrl: true, meta: false, alt: false, shift: false } },
 ] as const;
 export type CommandId = typeof commands[number]["id"];
-const storage = shortcutsKey;
-const read = () => { try { return localStorage.getItem(storage) ?? "{}"; } catch { return "{}"; } };
+const shortcutsStorageKey = shortcutsKey;
+const read = () => { try { return storage.get(shortcutsStorageKey) ?? "{}"; } catch { return "{}"; } };
 function preferences(): Partial<Record<CommandId, Chord>> {
   try { const value = JSON.parse(read()); return value && typeof value === "object" && !Array.isArray(value) ? value : {}; } catch { return {}; }
 }

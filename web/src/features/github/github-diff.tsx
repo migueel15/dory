@@ -13,6 +13,7 @@ import type { FileRef } from "../../components/refs";
 import { useArm } from "./github-ui";
 import { highlight, languageOf, loadLanguage } from "../../highlight";
 import { qk } from "../../api/queries/keys";
+import { storage, storageKeys } from "../../lib/storage";
 
 type Side = "LEFT" | "RIGHT";
 type Line = { text: string; kind: "add" | "del" | "ctx" | "hunk"; old?: number; new?: number };
@@ -326,10 +327,10 @@ export const Diff = memo(function Diff({ repo = "", pr = 0, text, onSuggest, ste
   // The last chosen layout is remembered in this browser for every diff.
   // In a side panel (fill) the file explorer starts closed to leave room for the diff.
   const [panelOpen, setPanelOpen] = useState(!fill);
-  const [split, setSplitState] = useState(() => { try { return localStorage.getItem("dory.diff-view") === "split"; } catch { return false; } });
+  const [split, setSplitState] = useState(() => { try { return storage.get(storageKeys.diffView) === "split"; } catch { return false; } });
   const setSplit = (f: (v: boolean) => boolean) => setSplitState((v) => {
     const next = f(v);
-    try { localStorage.setItem("dory.diff-view", next ? "split" : "unified"); } catch { /* storage unavailable */ }
+    try { storage.set(storageKeys.diffView, next ? "split" : "unified"); } catch { /* storage unavailable */ }
     return next;
   });
   const [loaded, setLoaded] = useState(0); // bumps when a language finishes loading

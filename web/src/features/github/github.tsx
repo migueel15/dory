@@ -12,6 +12,7 @@ import { useProject } from "../../project";
 import { GithubLogin } from "./github-login";
 import { buildStacks, groupByStack, pullKey } from "../../stack";
 import { qk } from "../../api/queries/keys";
+import { storage, storageKeys } from "../../lib/storage";
 
 const ok = "text-green-700 dark:text-green-400";
 const bad = "text-red-600 dark:text-red-400";
@@ -201,7 +202,7 @@ const quick: Record<Tab, Quick[]> = {
   ],
 };
 
-const savedTab = (): Tab => { try { return localStorage.getItem("github-tab") === "issues" ? "issues" : "pulls"; } catch { return "pulls"; } };
+const savedTab = (): Tab => { try { return storage.get(storageKeys.githubTab) === "issues" ? "issues" : "pulls"; } catch { return "pulls"; } };
 
 const Skeleton = () => (
   <Card className="animate-pulse space-y-2.5">
@@ -240,7 +241,7 @@ export function Github() {
     try { qc.setQueryData(["github"], await api.github(true)); } finally { setAsking(false); }
     qc.invalidateQueries({ queryKey: qk.githubDetail() });
   };
-  const setTab = (t: Tab) => { setTabState(t); setFilter(""); setMilestone(""); try { localStorage.setItem("github-tab", t); } catch { /* storage unavailable */ } };
+  const setTab = (t: Tab) => { setTabState(t); setFilter(""); setMilestone(""); try { storage.set(storageKeys.githubTab, t); } catch { /* storage unavailable */ } };
   const project = useProject();
   const me = data.data?.viewer ?? "";
   // Closed items are read from GitHub only when asked for, one page per repository at a time.

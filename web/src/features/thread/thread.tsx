@@ -28,6 +28,7 @@ import { kindOf, SidePanel, SidePanelToggle, useSidePanel, type SidePanelState }
 import { qk } from "../../api/queries/keys";
 import { usePlan, useProjects, useNodeProviders, useThreadView } from "../../api/queries/hooks";
 import { events } from "../../lib/store";
+import { storage, storageKeys } from "../../lib/storage";
 
 // ThreadView is a whole thread page: header, chat and, on demand, its changes
 // and the plan of its task.
@@ -142,11 +143,11 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
   useEffect(() => { if (t?.unread && t.status !== "working") act.mutate({ action: "read" }); }, [t?.id, t?.status, t?.unread, t?.last_activity_at]); // eslint-disable-line react-hooks/exhaustive-deps
   const fold = useThreadsFold();
   // Like the details card, each thread remembers whether its task card was left open.
-  const taskKey = `dory-thread-task:${threadId}`;
-  const readTask = () => { try { return localStorage.getItem(taskKey) === "1"; } catch { return false; } };
+  const taskKey = storageKeys.threadTask(threadId);
+  const readTask = () => { try { return storage.get(taskKey) === "1"; } catch { return false; } };
   const [taskOpen, setTaskOpenState] = useState(readTask);
   useEffect(() => setTaskOpenState(readTask()), [taskKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  const setTaskOpen = useCallback((v: boolean) => { setTaskOpenState(v); try { if (v) localStorage.setItem(taskKey, "1"); else localStorage.removeItem(taskKey); } catch { /* per-viewer only */ } }, [taskKey]);
+  const setTaskOpen = useCallback((v: boolean) => { setTaskOpenState(v); try { if (v) storage.set(taskKey, "1"); else storage.remove(taskKey); } catch { /* per-viewer only */ } }, [taskKey]);
   if (!t) return <div className="h-12 shrink-0" />;
   return (
     <div className={`relative z-20 flex shrink-0 flex-wrap items-center gap-2 pb-2 pl-1 pr-11 transition-[padding,margin] ${fold ? (fold.folded ? "sm:pl-10" : "sm:pl-2") : ""} duration-300 ease-out motion-reduce:transition-none sm:-mt-2 ${hasWindowClose ? "sm:pr-20" : ""} ${panel.open ? "lg:!pr-1" : ""} ${panel.open ? "lg:mr-0 sm:-mr-2" : "sm:-mr-2"}`}>

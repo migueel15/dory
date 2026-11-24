@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { events } from "./lib/store";
+import { storage, storageKeys } from "./lib/storage";
 
 export type Theme = "light" | "dark" | "system";
-const KEY = "theme";
+const KEY = storageKeys.theme;
 const media = window.matchMedia("(prefers-color-scheme: dark)");
 
 export const storedTheme = (): Theme => {
-  const t = localStorage.getItem(KEY);
+  const t = storage.get(KEY);
   return t === "light" || t === "dark" ? t : "system";
 };
 
@@ -18,8 +19,8 @@ export function applyTheme(t: Theme = storedTheme()) {
 
 // setTheme saves the choice of this browser and tells every useTheme.
 export function setTheme(t: Theme) {
-  if (t === "system") localStorage.removeItem(KEY);
-  else localStorage.setItem(KEY, t);
+  if (t === "system") storage.remove(KEY);
+  else storage.set(KEY, t);
   applyTheme(t);
   events.themeChanged.emit();
 }

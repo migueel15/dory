@@ -1,23 +1,24 @@
 import { useEffect, useState } from "react";
 import { events } from "./lib/store";
+import { storage, storageKeys } from "./lib/storage";
 
 // Interface scale, stored per browser and applied as the root font size, so
 // every rem-based size grows or shrinks while the layout still fills the
 // window (CSS zoom would break vh, dvh and window measurements).
-const KEY = "ui-scale";
+const KEY = storageKeys.uiScale;
 export const MIN_SCALE = 0.5;
 export const MAX_SCALE = 2;
 const clamp = (s: number) => Math.round(Math.min(MAX_SCALE, Math.max(MIN_SCALE, s)) * 100) / 100;
 
 const stored = () => {
-  const s = Number(localStorage.getItem(KEY));
+  const s = Number(storage.get(KEY));
   return s >= MIN_SCALE && s <= MAX_SCALE ? s : 1;
 };
 
 export function setScale(s: number) {
   s = clamp(s);
-  if (s === 1) localStorage.removeItem(KEY);
-  else localStorage.setItem(KEY, String(s));
+  if (s === 1) storage.remove(KEY);
+  else storage.set(KEY, String(s));
   applyScale(s);
   events.scaleChanged.emit();
 }

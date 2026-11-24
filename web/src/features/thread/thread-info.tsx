@@ -12,6 +12,7 @@ import { copyText } from "../../components/ui";
 import { Related, Subagents } from "../chat/subagents";
 import { qk } from "../../api/queries/keys";
 import { useCard, useMesh, useNode, useProjects } from "../../api/queries/hooks";
+import { storage, storageKeys } from "../../lib/storage";
 
 // diffStat counts added and removed lines of a unified diff.
 function diffStat(diff: string) {
@@ -24,7 +25,7 @@ function diffStat(diff: string) {
   return { add, del };
 }
 
-const readOpen = (key: string) => { try { return localStorage.getItem(key) === "1"; } catch { return false; } };
+const readOpen = (key: string) => { try { return storage.get(key) === "1"; } catch { return false; } };
 
 const row = "flex items-center gap-2.5 px-4 py-2 text-sm";
 
@@ -41,7 +42,7 @@ export const headerButton = (active: boolean) => `grid size-8 place-items-center
 // and onOpen tells the header that this card is opening instead.
 export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false, hidden = false, onOpen }: { t: ThreadView; diff: boolean; toggleDiff: () => void; popup?: boolean; hidden?: boolean; onOpen?: () => void }) {
   // Each thread remembers whether its panel was left open, in this browser.
-  const key = `dory-thread-info:${t.id}`;
+  const key = storageKeys.threadInfo(t.id);
   const [open, setOpenState] = useState(() => readOpen(key));
   useEffect(() => setOpenState(readOpen(key)), [key]);
   const [pop, setPop] = useState(false);
@@ -73,7 +74,7 @@ export function ThreadInfo({ t, diff: showingDiff, toggleDiff, popup = false, hi
     if (hidden) { onOpen?.(); return popup ? setPop(true) : setOpen(true); }
     return popup ? setPop(!pop) : setOpen(!open);
   };
-  const setOpen = (v: boolean) => { setOpenState(v); try { if (v) localStorage.setItem(key, "1"); else localStorage.removeItem(key); } catch { /* per-viewer only */ } };
+  const setOpen = (v: boolean) => { setOpenState(v); try { if (v) storage.set(key, "1"); else storage.remove(key); } catch { /* per-viewer only */ } };
   const panel = useRef<HTMLDivElement>(null);
   const [hover, setHoverNow] = useState<{ el: HTMLElement; w: UsageWindow } | null>(null);
   // The card waits for the pointer to rest on a row, so passing over does not flash it.

@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { events } from "../../lib/store";
+import { storage, storageKeys } from "../../lib/storage";
 
 export type Chord = { code: string; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean };
 const defaultChord: Chord = { code: "KeyD", ctrl: true, alt: false, shift: false, meta: false };
-export const dictationShortcutKey = "dory.dictation-shortcut";
+export const dictationShortcutKey = storageKeys.dictationShortcut;
 const key = dictationShortcutKey;
 const validCode = /^(Key[A-Z]|Digit[0-9])$/;
 const priorities = ["active", "selection", "editor", "panel"] as const;
@@ -12,7 +13,7 @@ type Target = (event: KeyboardEvent, context: Context) => boolean;
 const targets = new Set<Target>();
 
 function readSetting() {
-  try { return localStorage.getItem(key) ?? ""; } catch { return ""; }
+  try { return storage.get(key) ?? ""; } catch { return ""; }
 }
 
 function readChord(raw: string): Chord {
