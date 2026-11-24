@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Desktop, Moon, Sun } from "@phosphor-icons/react";
 import { MAX_SCALE, MIN_SCALE, setScale, useScale } from "../../scale";
 import { Select } from "../../components/ui";
-import { DEFAULT_TERMINAL_FONT, DEFAULT_UI_FONT, chosenFont, chooseFont, chooseSize, fontSize, DEFAULT_SIZE, SIZE_RANGE, useInstalledFonts } from "../../lib/fonts";
+import { DEFAULT_TERMINAL_FONT, DEFAULT_UI_FONT, chosenFont, chooseFont, defaultFontName, chooseSize, fontSize, DEFAULT_SIZE, SIZE_RANGE, useInstalledFonts } from "../../lib/fonts";
 import { useTheme, type Theme } from "../../theme";
 
 const THEMES: { value: Theme; label: string; icon: typeof Sun }[] = [
@@ -65,23 +65,27 @@ export function AppearanceSettings() {
 // that is missing or lacks a glyph falls back instead of breaking the text.
 function FontPicker({ id, label, kind, fonts, fallback }: { id: string; label: string; kind: "ui" | "terminal"; fonts: string[] | null; fallback: string }) {
   const [, bump] = useState(0);
-  const value = chosenFont(kind);
+  // The picker always shows the family in use: the chosen one or, with no choice, the one the defaults draw with.
+  const [fallbackName] = useState(() => defaultFontName(kind));
+  const chosen = chosenFont(kind);
+  const value = chosen || fallbackName;
   const size = fontSize(kind);
-  const options = [{ value: "", label: "Predeterminada" }, ...(value && !fonts?.includes(value) ? [{ value, label: `${value} (no instalada)` }] : []), ...(fonts ?? []).map((f) => ({ value: f, label: f }))];
+  const names = [...new Set([value, ...(fonts ?? [])])].sort((a, b) => a.localeCompare(b));
+  const options = names.map((f) => ({ value: f, label: f === chosen && !fonts?.includes(f) ? `${f} (no instalada)` : f }));
   return (
     <div className="max-w-md space-y-2">
       <span id={id} className="block text-sm font-medium">{label}</span>
       <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1"><Select value={value} options={options} placeholder={fonts ? "Predeterminada" : "Buscando fuentes…"} onChange={(v) => { chooseFont(kind, v); bump((n) => n + 1); }} /></div>
-        <input type="number" aria-label={`Tamaño de ${label.toLowerCase()}`} title={`Tamaño en px (predeterminado ${DEFAULT_SIZE[kind]})`} min={SIZE_RANGE[kind][0]} max={SIZE_RANGE[kind][1]} step={1} value={size} placeholder={String(DEFAULT_SIZE[kind])}
+        <div className="min-w-0 flex-1"><Select value={value} options={options} placeholder={value} onChange={(v) => { chooseFont(kind, v === fallbackName ? "" : v); bump((n) => n + 1); }} /></div>
+        <input type="number" aria-label={`Tamaño de ${label.toLowerCase()}`} title="Tamaño en px" min={SIZE_RANGE[kind][0]} max={SIZE_RANGE[kind][1]} step={1} value={size} placeholder={String(DEFAULT_SIZE[kind])}
           onChange={(e) => { if (e.target.value !== "") { chooseSize(kind, Number(e.target.value)); bump((n) => n + 1); } }}
           className="w-16 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-border-strong dark:bg-surface" />
         <span className="text-xs text-slate-500 dark:text-muted">px</span>
         <button type="button" disabled={size === DEFAULT_SIZE[kind]} onClick={() => { chooseSize(kind, DEFAULT_SIZE[kind]); bump((n) => n + 1); }} className="text-xs text-slate-500 hover:text-slate-900 disabled:invisible dark:text-muted dark:hover:text-white">Restablecer</button>
       </div>
       <p className="text-xs text-slate-500 dark:text-muted">
-        {fonts && fonts.length === 0 ? "No se han podido listar las fuentes de este equipo; se usa la predeterminada. " : ""}
-        Solo se ofrecen las fuentes instaladas en este equipo{kind === "terminal" ? " de ancho fijo. Para ver los iconos de la terminal elige una Nerd Font" : ""}. Si falta, se usa la predeterminada: {fallback.replace(/"/g, "").split(",").slice(0, 3).join(", ")}… Se guarda en este navegador.
+        {fonts && fonts.length === 0 ? "No se han podido listar las fuentes de este equipo; se usa la de siempre. " : ""}
+        Solo se ofrecen las fuentes instaladas en este equipo{kind === "terminal" ? " de ancho fijo. Para ver los iconos de la terminal elige una Nerd Font" : ""}. Si falta o no tiene un símbolo, se usa la siguiente: {fallback.replace(/"/g, "").split(",").slice(0, 3).join(", ")}… Se guarda en este navegador.
       </p>
     </div>
   );

@@ -83,6 +83,18 @@ function monoCheck() {
   };
 }
 
+// defaultFontName is the family the default stack really draws with on this device.
+export function defaultFontName(k: Kind): string {
+  const has = detector();
+  const stack = k === "ui" ? DEFAULT_UI_FONT : DEFAULT_TERMINAL_FONT;
+  for (const raw of stack.split(",")) {
+    const family = raw.trim().replace(/^"|"$/g, "");
+    if (/^(system-ui|ui-sans-serif|ui-monospace|sans-serif|monospace|serif)$/.test(family)) continue;
+    if (has(family)) return family;
+  }
+  return k === "ui" ? "Sans-serif" : "Monospace";
+}
+
 type LocalFont = { family: string };
 let cache: Promise<string[] | null> | null = null;
 const listAll = () => cache ??= (async () => {
