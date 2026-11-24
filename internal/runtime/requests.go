@@ -54,27 +54,7 @@ func (m *Manager) Answer(ctx context.Context, thread, id string, answers [][]str
 	if _, err := m.local(ctx, thread); err != nil {
 		return err
 	}
-	m.mu.Lock()
-	s := m.sessions[thread]
-	waiter, asked := m.waiters[id]
-	delete(m.waiters, id)
-	m.mu.Unlock()
-	if asked {
-		// An ask_user call: its tool call returns the answers.
-		waiter <- answers
-		return m.resolved(ctx, thread, id)
-	}
-	var exists bool
-	if err := m.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM thread_requests WHERE id = ? AND thread_id = ? AND kind <> 'secret')`, id, thread).Scan(&exists); err != nil {
-		return err
-	}
-	if s == nil || !exists {
-		return ErrNoRequest
-	}
-	if err := s.Respond(id, answers); err != nil {
-		return err
-	}
-	return m.resolved(ctx, thread, id)
+	return m.do(thread, &command{kind: cmdAnswer, ctx: ctx, req: id, answers: answers}).err
 }
 
 // resolved forgets an answered request; the turn goes on.

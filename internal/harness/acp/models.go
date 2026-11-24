@@ -106,7 +106,7 @@ func (s *session) configure(ctx context.Context, info sessionInfo) error {
 		}
 		actual = requested
 	}
-	s.emit(harness.LegacyEvent{Settings: &harness.ReportedSettings{Model: model, Effort: actual}})
+	s.emit(harness.SettingsReported{Model: model, Effort: actual})
 	return nil
 }
 

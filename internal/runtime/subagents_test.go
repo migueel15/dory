@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/migueel15/dory/internal/harness"
 	"strings"
 	"testing"
 	"time"
@@ -40,8 +41,8 @@ func TestSpawnRunsChildAndWakesParent(t *testing.T) {
 	}
 
 	events := <-codex.ends
-	events <- Event{Message: &Message{ID: turn.RunID + ":a", Role: "assistant", Text: "Login correcto \uE200cite\uE202turn0search0\uE201"}}
-	events <- Event{Done: true}
+	events <- harness.TextDone{ItemID: turn.RunID + ":a", Kind: harness.Assistant, Text: "Login correcto \uE200cite\uE202turn0search0\uE201"}
+	events <- harness.TurnEnded{Reason: harness.Completed}
 	close(events)
 
 	wake := <-claude.turns
@@ -97,8 +98,8 @@ func TestChildOnAnotherNodeNotifiesItsParentThroughThePeer(t *testing.T) {
 	}
 	turn := <-codex.turns
 	events := <-codex.ends
-	events <- Event{Message: &Message{ID: turn.RunID + ":a", Role: "assistant", Text: "Funciona"}}
-	events <- Event{Done: true}
+	events <- harness.TextDone{ItemID: turn.RunID + ":a", Kind: harness.Assistant, Text: "Funciona"}
+	events <- harness.TurnEnded{Reason: harness.Completed}
 	close(events)
 	// The parent's node is not connected: the outcome waits in the outbox.
 	var queued []outbox.Delivery

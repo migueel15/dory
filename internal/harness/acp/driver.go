@@ -227,13 +227,13 @@ func (d *driver) Start(ctx context.Context, t harness.Turn) (harness.Session, er
 			}
 			lv.Close()
 		}
-		done := event{Done: true}
+		done := harness.TurnEnded{Reason: harness.Completed}
 		if err != nil {
-			done.Err = err.Error()
+			done = harness.TurnEnded{Reason: harness.Failed, Error: err.Error()}
 		}
 		s.events <- done
 	}()
-	return harness.Adapt(s.Events(), s.Answer), nil
+	return s, nil
 }
 
 // liveProc is the ACP process of a thread with its session, kept between turns.
@@ -319,7 +319,7 @@ func (d *driver) run(s *session) error {
 		lv.mu.Unlock()
 	}
 	s.id = id
-	s.emit(event{Session: s.id})
+	s.emit(harness.SessionBound{ID: s.id})
 	if err := s.configure(setup, session); err != nil {
 		return err
 	}
@@ -352,7 +352,7 @@ func (d *driver) run(s *session) error {
 	s.finishChunk()
 	if d.p.TurnUsage != nil {
 		if steps := d.p.TurnUsage(s.id, started, time.Now()); len(steps) > 0 {
-			s.events <- event{Steps: steps}
+			s.events <- harness.StepsUsage{Steps: steps}
 		}
 	}
 	return err

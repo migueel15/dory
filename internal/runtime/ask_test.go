@@ -21,15 +21,15 @@ func (asker) Start(ctx context.Context, t Turn) (Session, error) {
 	s := &askSession{events: make(chan Event, 8), answers: make(chan [][]string, 1)}
 	go func() {
 		defer close(s.events)
-		s.events <- Event{Request: &Request{ID: "req-1", Kind: "question", Questions: []Question{{Question: "¿Color?"}}}}
+		s.events <- harness.RequestOpened{Request: Request{ID: "req-1", Kind: "question", Questions: []Question{{Question: "¿Color?"}}}}
 		select {
 		case a := <-s.answers:
-			s.events <- Event{Message: &Message{ID: "m1", RunID: t.RunID, Role: "assistant", Text: a[0][0]}}
-			s.events <- Event{Done: true}
+			s.events <- harness.TextDone{ItemID: "m1", Kind: harness.Assistant, Text: a[0][0], Meta: harness.ItemMeta{RunID: t.RunID}}
+			s.events <- harness.TurnEnded{Reason: harness.Completed}
 		case <-ctx.Done():
 		}
 	}()
-	return harness.Adapt(s.Events(), s.Answer), nil
+	return adapt(s.Events(), s.Answer), nil
 }
 
 type askSession struct {

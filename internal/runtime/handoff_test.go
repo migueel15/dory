@@ -29,7 +29,7 @@ func (p capturedProvider) Start(_ context.Context, turn Turn) (Session, error) {
 	events := make(chan Event, 3)
 	p.turns <- turn
 	p.ends <- events
-	return harness.Adapt(events, rejectResponse), nil
+	return adapt(events, rejectResponse), nil
 }
 
 func TestSwitchProviderKeepsThreadAndHandsOffText(t *testing.T) {
@@ -53,9 +53,9 @@ func TestSwitchProviderKeepsThreadAndHandsOffText(t *testing.T) {
 	}
 	finish := func(turn Turn, events chan Event, session, answer string) {
 		t.Helper()
-		events <- Event{Session: session}
-		events <- Event{Message: &Message{ID: turn.RunID + ":assistant", Role: "assistant", Text: answer}}
-		events <- Event{Done: true}
+		events <- harness.SessionBound{ID: session}
+		events <- harness.TextDone{ItemID: turn.RunID + ":assistant", Kind: harness.Assistant, Text: answer}
+		events <- harness.TurnEnded{Reason: harness.Completed}
 		close(events)
 		wait(t, store, thread.ID, "idle")
 	}
@@ -65,7 +65,7 @@ func TestSwitchProviderKeepsThreadAndHandsOffText(t *testing.T) {
 	if _, err := m.Configure(ctx, thread.ID, selection); !errors.Is(err, ErrBusy) {
 		t.Fatalf("switch during a turn: %v", err)
 	}
-	events <- Event{Settings: &ReportedSettings{Model: "claude-haiku-5-5"}}
+	events <- harness.SettingsReported{Model: "claude-haiku-5-5"}
 	finish(first, events, "claude-session", "Usaremos azul")
 
 	updated, err := m.Configure(ctx, thread.ID, selection)

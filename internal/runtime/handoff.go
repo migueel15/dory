@@ -19,14 +19,16 @@ type ThreadSettings struct {
 // Configure changes the selection for the next turn. A provider switch must
 // wait for the running turn and its queue, which belong to the old harness.
 func (m *Manager) Configure(ctx context.Context, id string, settings ThreadSettings) (data.Thread, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.configureLocked(ctx, id, settings, true)
+	if _, err := m.local(ctx, id); err != nil {
+		return data.Thread{}, err
+	}
+	r := m.do(id, &command{kind: cmdConfigure, ctx: ctx, settings: settings})
+	return r.thread, r.err
 }
 
-// configureLocked applies settings with m.mu held. idle refuses a provider
-// switch while a turn runs; between turns the caller already knows it is safe.
-func (m *Manager) configureLocked(ctx context.Context, id string, settings ThreadSettings, idle bool) (data.Thread, error) {
+// applySettings stores the settings of a thread. busy refuses a provider
+// switch while a turn runs.
+func (m *Manager) applySettings(ctx context.Context, id string, settings ThreadSettings, busy bool) (data.Thread, error) {
 	t, err := m.local(ctx, id)
 	if err != nil {
 		return t, err
@@ -37,7 +39,7 @@ func (m *Manager) configureLocked(ctx context.Context, id string, settings Threa
 		if _, ok := m.provider(target); !ok {
 			return t, ErrProvider.Msgf("%s", target)
 		}
-		if _, busy := m.running[id]; busy && idle {
+		if busy {
 			return t, ErrBusy
 		}
 		if settings.Model == nil || strings.TrimSpace(*settings.Model) == "" {

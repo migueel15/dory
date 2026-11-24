@@ -24,27 +24,12 @@ func (m *Manager) ConfigureThread(ctx context.Context, id string, settings Threa
 	if err = m.ResolveSettings(ctx, t, &settings); err != nil {
 		return t, "", err
 	}
-	m.mu.Lock()
-	if _, busy := m.running[id]; busy {
-		m.pending[id] = mergeSettings(m.pending[id], settings)
-		m.mu.Unlock()
-		m.publish(Update{ThreadID: id, Reload: true})
-		return t, AppliedAfterTurn, nil
-	}
-	t, err = m.configureLocked(ctx, id, settings, true)
-	m.mu.Unlock()
-	return t, AppliedNow, err
+	r := m.do(id, &command{kind: cmdConfigure, ctx: ctx, settings: settings, deferred: true})
+	return r.thread, r.applied, r.err
 }
 
 // Pending returns the settings waiting for the running turn of a thread to end.
-func (m *Manager) Pending(id string) *ThreadSettings {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if s, ok := m.pending[id]; ok {
-		return &s
-	}
-	return nil
-}
+func (m *Manager) Pending(id string) *ThreadSettings { return m.view(id).Pending }
 
 // ResolveSettings checks a selection against the harnesses of this node and
 // turns a model or effort name into the slug the harness expects.

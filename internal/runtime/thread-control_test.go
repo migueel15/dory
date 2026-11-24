@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"github.com/migueel15/dory/internal/harness"
 	"testing"
 
 	"github.com/migueel15/dory/internal/data"
@@ -36,7 +37,7 @@ func TestConfigureRunningThreadAppliesAfterTurn(t *testing.T) {
 	if err = m.Send(ctx, thread.ID, "ejecuta"); err != nil {
 		t.Fatal(err)
 	}
-	events <- Event{Done: true}
+	events <- harness.TurnEnded{Reason: harness.Completed}
 	close(events)
 
 	next := <-codex.turns
