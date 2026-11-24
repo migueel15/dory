@@ -70,6 +70,12 @@ func (s *Server) streamThread(w http.ResponseWriter, r *http.Request, t data.Thr
 		raw, _ := json.Marshal(map[string]int{"seq": last})
 		fmt.Fprintf(w, "event: snapshot\ndata: %s\n\n", raw)
 	}
+	// The texts being written, whole: fragments sent before this connection
+	// are not replayed. A fragment the channel still holds and these already
+	// include is skipped by the client from its end.
+	for _, e := range s.Runtime.Writing(t.ID) {
+		send(e)
+	}
 	flusher.Flush()
 	ping := time.NewTicker(25 * time.Second)
 	defer ping.Stop()

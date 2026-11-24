@@ -60,8 +60,9 @@ func (m *Manager) record(ctx context.Context, turn startedTurn, opened func(harn
 					checkpoints[msg.ID] = textCheckpoint{at: at}
 				}
 				m.publish(Update{ThreadID: t.ID, Message: &msg})
-				m.live(ThreadEvent{ThreadID: t.ID, RunID: msg.RunID, Type: EventDelta, ItemID: msg.ID, Payload: deltaPayload(msg, e.Delta, e.Replace)})
+				m.liveText(msg, e.Delta, e.Replace)
 			default:
+				m.doneWriting(t.ID, msg.ID)
 				delete(checkpoints, msg.ID)
 				m.save(bg, msg)
 			}
@@ -121,6 +122,7 @@ func (m *Manager) record(ctx context.Context, turn startedTurn, opened func(harn
 	}
 
 	flush()
+	m.doneWriting(t.ID, "")
 	if err := usage.save(bg, m.db, t.ID, run, t.Provider, time.Now()); err != nil {
 		log.Printf("runtime: save usage: %v", err)
 	}

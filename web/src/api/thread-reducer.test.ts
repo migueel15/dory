@@ -1,7 +1,7 @@
 // @ts-nocheck -- runs with node:test; the project has no @types/node
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { needsRefetch, reduceDelta, reduceEvent, reduceThread, type ThreadEvent } from "./thread-reducer.js";
+import { deltaGap, needsRefetch, reduceDelta, reduceEvent, reduceThread, type ThreadEvent } from "./thread-reducer.js";
 import type { ThreadView } from "./types.gen.js";
 
 const view = (over: Partial<ThreadView> = {}) =>
@@ -59,4 +59,24 @@ test("which events refetch the view", () => {
   assert.equal(needsRefetch(ev("settings.reported", {})), true);
   assert.equal(needsRefetch(ev("settings.reported", { last_turn_model: {} })), false);
   assert.equal(needsRefetch(ev("item.started", { id: "m" })), false);
+});
+
+test("a fragment the view holds is skipped, one after a gap is left out", () => {
+  let v = reduceDelta(view(), ev("delta", { id: "m1", role: "assistant", text: "ho", end: 2 }));
+  v = reduceDelta(v, ev("delta", { id: "m1", text: "la", end: 4 }));
+  // Sent again after reconnecting: already there.
+  const same = reduceDelta(v, ev("delta", { id: "m1", text: "la", end: 4 }));
+  assert.equal(same.messages[0].text, "hola");
+  // A fragment that overlaps the end of the view replaces the overlap.
+  assert.equal(reduceDelta(v, ev("delta", { id: "m1", text: "a!", end: 5 })).messages[0].text, "hola!");
+  // Text between the view and the fragment is missing.
+  const gap = ev("delta", { id: "m1", text: "!", end: 9 });
+  assert.equal(deltaGap(v, gap), true);
+  assert.equal(reduceDelta(v, gap), v);
+  // The whole text, sent on reconnecting, closes the gap.
+  const whole = ev("delta", { id: "m1", text: "hola que!", replace: true, end: 9 });
+  assert.equal(deltaGap(v, whole), false);
+  assert.equal(reduceDelta(v, whole).messages[0].text, "hola que!");
+  // An older server sends no end: fragments just append.
+  assert.equal(deltaGap(v, ev("delta", { id: "m1", text: "x" })), false);
 });

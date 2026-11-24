@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { noteThreadUpdate } from "./activity";
 import type { ThreadView } from "./types.gen";
 import { qk } from "./queries/keys";
-import { needsRefetch, reduceDelta, reduceEvent, type ThreadEvent } from "./thread-reducer";
+import { deltaGap, needsRefetch, reduceDelta, reduceEvent, type ThreadEvent } from "./thread-reducer";
 import { events, type DeviceEvent } from "../lib/store";
 
 // useVisible tracks whether this tab is on screen. Live streams only stay open
@@ -120,37 +120,58 @@ export function useThreadLive(threadId: string | undefined) {
   useEffect(() => {
     if (!threadId || !visible) return;
     const key = qk.thread(threadId);
-    const source = new EventSource(`/api/threads/${encodeURIComponent(threadId)}/stream`, { withCredentials: true });
+    const url = `/api/threads/${encodeURIComponent(threadId)}/stream`;
+    let source: EventSource;
     let refetch: ReturnType<typeof setTimeout> | undefined;
     const later = () => {
       clearTimeout(refetch);
       refetch = setTimeout(() => qc.invalidateQueries({ queryKey: key }), 150);
     };
-    // Without a past (first connection) the server says where the record is;
-    // a view older than that is fetched again.
-    source.addEventListener("snapshot", (e) => {
-      const { seq } = JSON.parse((e as MessageEvent).data) as { seq: number };
+    // A fragment after a gap: reconnecting from the view's seq brings what
+    // was missed and the texts being written, whole.
+    let reconnecting = false;
+    const reconnect = () => {
+      if (reconnecting) return;
+      reconnecting = true;
+      source.close();
       const v = qc.getQueryData<ThreadView>(key);
-      if (!v || v.seq < seq) later();
-    });
-    source.addEventListener("thread", (e) => {
-      const ev = JSON.parse((e as MessageEvent).data) as ThreadEvent;
-      let again = false;
-      qc.setQueryData<ThreadView>(key, (v) => {
-        if (!v) { again = true; return v; }
-        if (ev.seq && ev.seq <= v.seq) return v;
-        if (ev.seq && ev.seq <= v.seq) return v;
-        again = needsRefetch(ev);
-        return reduceEvent(v, ev);
+      connect(v ? `${url}?after=${v.seq}` : url);
+    };
+    const connect = (at: string) => {
+      source = new EventSource(at, { withCredentials: true });
+      source.addEventListener("open", () => { reconnecting = false; });
+      // Without a past (first connection) the server says where the record
+      // is; a view older than that is fetched again.
+      source.addEventListener("snapshot", (e) => {
+        const { seq } = JSON.parse((e as MessageEvent).data) as { seq: number };
+        const v = qc.getQueryData<ThreadView>(key);
+        if (!v || v.seq < seq) later();
       });
-      if (again) later();
-      // A fetch started before the turn ended may still answer running.
-      if (ev.type === "turn.ended") later();
-    });
-    source.addEventListener("delta", (e) => {
-      const ev = JSON.parse((e as MessageEvent).data) as ThreadEvent;
-      qc.setQueryData<ThreadView>(key, (v) => (v ? reduceDelta(v, ev) : v));
-    });
+      source.addEventListener("thread", (e) => {
+        const ev = JSON.parse((e as MessageEvent).data) as ThreadEvent;
+        let again = false;
+        qc.setQueryData<ThreadView>(key, (v) => {
+          if (!v) { again = true; return v; }
+          if (ev.seq && ev.seq <= v.seq) return v;
+          again = needsRefetch(ev);
+          return reduceEvent(v, ev);
+        });
+        if (again) later();
+        // A fetch started before the turn ended may still answer running.
+        if (ev.type === "turn.ended") later();
+      });
+      source.addEventListener("delta", (e) => {
+        const ev = JSON.parse((e as MessageEvent).data) as ThreadEvent;
+        let gap = false;
+        qc.setQueryData<ThreadView>(key, (v) => {
+          if (!v) return v;
+          gap = deltaGap(v, ev);
+          return reduceDelta(v, ev);
+        });
+        if (gap) reconnect();
+      });
+    };
+    connect(url);
     return () => { clearTimeout(refetch); source.close(); };
   }, [threadId, visible, qc]);
 }

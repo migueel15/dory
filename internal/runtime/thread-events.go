@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log"
+	"maps"
+	"slices"
 )
 
 // ThreadEvent is one entry of the record of a thread. Durable events carry a
@@ -95,13 +97,6 @@ func (m *Manager) emitJSON(ctx context.Context, thread, typ string, payload any)
 	m.emit(ctx, ThreadEvent{ThreadID: thread, Type: typ, Payload: raw})
 }
 
-// live sends an event that is not recorded: the fragments of a text.
-func (m *Manager) live(e ThreadEvent) {
-	m.evMu.Lock()
-	defer m.evMu.Unlock()
-	m.sendEvent(e)
-}
-
 // eventSub is a live subscription. When it cannot keep up its channel is
 // closed instead of dropping events; the client resumes from the record.
 type eventSub struct {
@@ -177,10 +172,62 @@ func (m *Manager) EventSeq(ctx context.Context, thread string) int {
 }
 
 // deltaPayload is what a live fragment carries: enough to start the item on
-// a client that has not seen it, and the new text.
+// a client that has not seen it, the new text and end, the length of the
+// whole text after it in UTF-16 units (as JavaScript counts), so a client
+// tells a fragment it already has from one after a gap.
 func deltaPayload(msg Message, delta string, replace bool) json.RawMessage {
-	raw, _ := json.Marshal(map[string]any{"id": msg.ID, "role": msg.Role, "run_id": msg.RunID, "created_at": msg.CreatedAt, "text": delta, "replace": replace})
+	raw, _ := json.Marshal(map[string]any{"id": msg.ID, "role": msg.Role, "run_id": msg.RunID, "created_at": msg.CreatedAt, "text": delta, "replace": replace, "end": utf16Len(msg.Text)})
 	return raw
+}
+
+func utf16Len(s string) int {
+	n := 0
+	for _, r := range s {
+		if r >= 0x10000 {
+			n += 2
+		} else {
+			n++
+		}
+	}
+	return n
+}
+
+// liveText remembers the text being written and sends its new fragment.
+func (m *Manager) liveText(msg Message, delta string, replace bool) {
+	m.evMu.Lock()
+	defer m.evMu.Unlock()
+	if m.writing == nil {
+		m.writing = map[string]map[string]Message{}
+	}
+	if m.writing[msg.ThreadID] == nil {
+		m.writing[msg.ThreadID] = map[string]Message{}
+	}
+	m.writing[msg.ThreadID][msg.ID] = msg
+	m.sendEvent(ThreadEvent{ThreadID: msg.ThreadID, RunID: msg.RunID, Type: EventDelta, ItemID: msg.ID, Payload: deltaPayload(msg, delta, replace)})
+}
+
+// doneWriting forgets a finished text, or every text of the thread with id "".
+func (m *Manager) doneWriting(thread, id string) {
+	m.evMu.Lock()
+	defer m.evMu.Unlock()
+	if id == "" {
+		delete(m.writing, thread)
+	} else {
+		delete(m.writing[thread], id)
+	}
+}
+
+// Writing returns the texts of a thread being written, each as a fragment
+// that replaces the whole text: what a client that connects has missed.
+func (m *Manager) Writing(thread string) []ThreadEvent {
+	m.evMu.Lock()
+	defer m.evMu.Unlock()
+	var out []ThreadEvent
+	for _, id := range slices.Sorted(maps.Keys(m.writing[thread])) {
+		msg := m.writing[thread][id]
+		out = append(out, ThreadEvent{ThreadID: thread, RunID: msg.RunID, Type: EventDelta, ItemID: msg.ID, Payload: deltaPayload(msg, msg.Text, true)})
+	}
+	return out
 }
 
 // Save stores a message and records its event; for tools outside the runtime.

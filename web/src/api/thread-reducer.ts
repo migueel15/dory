@@ -50,18 +50,44 @@ export function reduceEvent(v: ThreadView, e: ThreadEvent): ThreadView {
   return next;
 }
 
+type DeltaPayload = { id: string; role: string; run_id?: string; created_at?: string; text: string; replace?: boolean; end?: number };
+
+// deltaStart is where the fragment's text begins in the whole text, from end
+// (its length after the fragment); undefined for an older server.
+function deltaStart(p: DeltaPayload): number | undefined {
+  if (p.replace) return 0;
+  return p.end === undefined ? undefined : p.end - p.text.length;
+}
+
 // reduceDelta appends a fragment to the item being written, creating it when
-// the client has not seen it yet. Fragments carry no seq: they never move it.
+// the client has not seen it yet. Fragments carry no seq: they never move it,
+// but end says how long the whole text is after them. A fragment the view
+// already holds (sent again on reconnecting) is skipped, and one after a gap
+// is left out: the hook reconnects and gets the whole text (see deltaGap).
 export function reduceDelta(v: ThreadView, e: ThreadEvent): ThreadView {
-  const p = (e.payload ?? {}) as { id: string; role: string; run_id?: string; created_at?: string; text: string; replace?: boolean };
+  const p = (e.payload ?? {}) as DeltaPayload;
+  if (deltaGap(v, e)) return v;
+  const start = deltaStart(p);
   const i = v.messages.findIndex((m) => m.id === p.id);
   if (i < 0) {
     const msg = { id: p.id, thread_id: v.id, run_id: p.run_id, role: p.role, text: p.text, streaming: true, created_at: p.created_at ?? "" } as Message;
     return { ...v, messages: [...v.messages, msg] };
   }
   const cur = v.messages[i];
-  const text = p.replace ? p.text : cur.text + p.text;
+  if (start !== undefined && !p.replace && cur.text.length >= p.end!) return v;
+  const text = p.replace ? p.text : start === undefined ? cur.text + p.text : cur.text.slice(0, start) + p.text;
   return { ...v, messages: v.messages.map((m, j) => (j === i ? { ...cur, text, streaming: true } : m)) };
+}
+
+// deltaGap says that text before this fragment is missing from the view: the
+// stream lost fragments, or a fetch brought the text the node last stored,
+// which lags behind the live one.
+export function deltaGap(v: ThreadView, e: ThreadEvent): boolean {
+  const p = (e.payload ?? {}) as DeltaPayload;
+  const start = deltaStart(p);
+  if (start === undefined || start === 0) return false;
+  const cur = v.messages.find((m) => m.id === p.id);
+  return (cur?.text.length ?? 0) < start;
 }
 
 // reduceThread is the entry point: durable events and deltas, by event type.

@@ -126,3 +126,34 @@ func TestMigrationBackfillsEventsForExistingMessages(t *testing.T) {
 		t.Fatal("no event for the existing message")
 	}
 }
+
+// A client that connects while a text is being written gets it whole, and
+// every fragment says where the text ends, counted as JavaScript does.
+func TestWritingGivesTheWholeTextToNewClients(t *testing.T) {
+	m, _ := manager(t, 0)
+	events, _, stop := m.SubscribeEvents("t1")
+	defer stop()
+	msg := Message{ID: "i1", ThreadID: "t1", Role: "assistant", Text: "Hola 👋"}
+	m.liveText(msg, "👋", false)
+	var p struct {
+		Text    string `json:"text"`
+		Replace bool   `json:"replace"`
+		End     int    `json:"end"`
+	}
+	json.Unmarshal((<-events).Payload, &p)
+	if p.Text != "👋" || p.Replace || p.End != 7 {
+		t.Fatalf("fragment = %+v", p)
+	}
+	w := m.Writing("t1")
+	if len(w) != 1 {
+		t.Fatalf("writing = %+v", w)
+	}
+	json.Unmarshal(w[0].Payload, &p)
+	if p.Text != "Hola 👋" || !p.Replace || p.End != 7 {
+		t.Fatalf("whole text = %+v", p)
+	}
+	m.doneWriting("t1", "i1")
+	if w := m.Writing("t1"); len(w) != 0 {
+		t.Fatalf("writing after done = %+v", w)
+	}
+}

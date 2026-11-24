@@ -71,6 +71,9 @@ type Manager struct {
 	evSubs map[*eventSub]struct{}
 	// evMu orders the recording and the live sending of events.
 	evMu sync.Mutex
+	// writing holds, by thread and item, the texts being written: a client
+	// that connects gets them whole. Guarded by evMu.
+	writing map[string]map[string]Message
 	// runners holds the actor of each thread with work or a queue; nothing
 	// else about a thread's turn lives in the Manager.
 	runnersMu sync.Mutex
