@@ -13,6 +13,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/migueel15/dory/internal/harness/kit"
 )
 
 type params map[string]any
@@ -49,15 +51,15 @@ type conn struct {
 // open starts the agent of a profile. args are the ones after the binary.
 func open(ctx context.Context, name, bin string, args, env []string, dir string, threadID string) (*conn, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	cmd := agentCommand(ctx, threadID, bin, args...)
+	cmd := kit.ProviderCommand(ctx, threadID, bin, args...)
 	cmd.Dir = dir
 	if len(env) > 0 || threadID != "" {
-		cmd.Env = threadEnv(append(os.Environ(), env...), threadID)
+		cmd.Env = kit.ThreadEnv(append(os.Environ(), env...), threadID)
 	}
 	interruptible(cmd)
 	cmd.WaitDelay = 3 * time.Second
 	var stderr strings.Builder
-	cmd.Stderr = &limited{w: &stderr, n: 8 << 10}
+	cmd.Stderr = kit.LimitWriter(&stderr, 8<<10)
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		cancel()
@@ -74,7 +76,7 @@ func open(ctx context.Context, name, bin string, args, env []string, dir string,
 	}
 	c := newConn(ctx, cancel, name, in, out, func() error {
 		err := cmd.Wait()
-		if msg := short(stderr.String(), 500); err != nil && msg != "" {
+		if msg := kit.Short(stderr.String(), 500); err != nil && msg != "" {
 			return fmt.Errorf("%s: %s", name, msg)
 		}
 		return err
