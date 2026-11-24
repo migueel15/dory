@@ -11,7 +11,7 @@ El registro de operaciones crecía sin límite. Un nodo nuevo tenía que recibir
 ## Decision
 
 - Cada nodo anota el vector que obtuvo en su último intercambio con cada par emparejado (`peer_vectors`).
-- `Compact` convierte en instantáneas por fila (`row_snapshots`: columnas más recientes e historial de fusión) los prefijos estables en transacciones acotadas. Un prefijo es estable si todos los pares activos que sincronizaron en los últimos 30 días lo han recibido.
+- `Compact` convierte en instantáneas por fila (`row_snapshots`: columnas más recientes e historial de fusión) los prefijos estables en transacciones acotadas. Un prefijo es estable si todos los pares activos que sincronizaron en los últimos 30 días lo han recibido. Un par activo sin ningún acuse cuenta con vector vacío hasta su primer acuse. Un nodo sin pares registrados puede compactar.
 - La compactación se detiene antes de la primera operación de una entidad desconocida por el esquema local, para no hacer que un receptor pierda esa operación.
 - Un par que pide un prefijo ya compactado recibe `ErrSnapshotRequired` y arranca desde las instantáneas.
 

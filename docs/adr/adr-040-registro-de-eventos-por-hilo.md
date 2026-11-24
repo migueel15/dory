@@ -19,5 +19,5 @@ La conversación de cada hilo se reescribía con `UPSERT`. El stream descartaba 
 ## Consequences
 
 - El registro no se purga con el rebobinado: es el historial.
-- Un fragmento que llega justo después de que la web vuelva a consultar el hilo puede dejar el texto incompleto hasta el siguiente `item.completed`. Es una limitación conocida.
+- Cada delta indica la longitud acumulada del texto en unidades UTF-16. Si la web detecta un hueco, vuelve a consultar el hilo y reconecta. Al conectar, recibe el texto completo de los elementos en curso y descarta los fragmentos ya aplicados.
 - El registro es local al nodo y no se replica (véase ADR-036).
