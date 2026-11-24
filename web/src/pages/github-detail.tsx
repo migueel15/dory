@@ -3,7 +3,7 @@ import { useGithubWatch } from "../api/live";
 import { Robot } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { api, type GithubDetail, type GithubPull, type GithubThread } from "../api/client";
+import { api, type GithubAction, type GithubDetail, type GithubPull, type GithubThread } from "../api/client";
 import { DictationField } from "../components/dictation-field";
 import { useDictationInProgress } from "../components/local-dictation";
 import { Badge, Button, Card, Input, Select, ErrorText, Md, Arrow, pill, toggleTask, keepAboveKeyboard, Modal } from "../components/ui";
@@ -466,7 +466,6 @@ export function GithubView() {
   );
 }
 
-type GithubAction = { type: string; title?: string; body?: string; method?: string; thread_id?: string; user_ids?: string[]; comment_id?: string; milestone_id?: string };
 
 // State changes show at once and are applied to the cached detail before GitHub answers.
 const logins = (d: GithubDetail, ids: string[] = []) => d.candidates.filter((u) => ids.includes(u.id));

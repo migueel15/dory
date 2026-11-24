@@ -1,102 +1,37 @@
-// Client of the Dory v2 node API. Types mirror internal/data and internal/api.
-import type { GithubAction, GithubClosed, GithubDetail, GithubOverview } from "./github-types";
-export type * from "./github-types";
+// Client of the Dory v2 node API.
+import type {
+  Attachment, Card, Column, Dependency, Entry, External, ExternalView, GithubAction as GithubActionFields, GithubClosed,
+  GithubDetail, GithubDeviceCode, GithubDeviceState, GithubOverview, Hit, Job, KeptWorktree,
+  Memory, Message, NodeDefaults, NodeSettings, NodeUpdate, Plan, Project, Provider, Repository,
+  RepositoryLocation, Skill, SkillConflict, SkillState, Task, Thread, ThreadService, ThreadView,
+  TitleModel, UpdateStatus, UsageBreakdownRow, UsageReport, UsageTurn, UsageWindow, Version,
+} from "./types.gen";
+export type {
+  Attachment, Card, Column, Dependency, Entry, External, ExternalView, FileEdit, GithubClosed,
+  GithubDetail, GithubDeviceCode, GithubDeviceState, GithubEvent, GithubIssue, GithubLink,
+  GithubMilestone, GithubOverview, GithubPull, GithubRef, GithubSubIssue, GithubThread,
+  GithubThreadComment, GithubUser, Hit, InputChord, InputSettings, Job, KeptWorktree, Memory,
+  Message, Model, ModelChoice, NodeDefaults, NodeSettings, NodeUpdate, PendingRequest, Plan,
+  Project, Provider, ProviderVersion, Pull, Question, Queued, Repository, RepositoryLocation,
+  Role, SecretField, SecretPrompt, Skill, SkillConflict, SkillState, Stage, Task, Thread,
+  ThreadDefaults, ThreadService, ThreadStatus, ThreadView, TitleModel, Todo, ToolCall, ToolKind,
+  TurnModel, UpdateStatus, UsageBreakdownRow, UsageCost, UsageReport, UsageRow, UsageTokens,
+  UsageTurn, UsageTurnCall, UsageWindow, Version,
+} from "./types.gen";
 
-export type UpdateStatus = { channel: string; current: string; latest?: string; available: boolean; desktop: boolean; active_turns: number; state: "idle" | "updating" | "failed"; error?: string; providers: ProviderVersion[] };
-export type ProviderVersion = { id: string; name: string; current: string; latest?: string; available: boolean };
-export type NodeUpdate = { node: string; name: string; status?: UpdateStatus; error?: string };
-export type Project = { id: string; slug: string; name: string; description: string; created_at: string; updated_at: string; archived_at: string | null };
-export type RepositoryLocation = { repository_id: string; node_id: string; path: string };
-export type Repository = { id: string; project_id: string; remote_url: string; default_branch: string; created_at: string; updated_at: string; archived_at: string | null };
-export type Stage = "inbox" | "ready" | "done" | "cancelled";
-export type NodeSettings = { archive_threads_on_finish: boolean; remove_worktree_on_archive: boolean; stop_services_on_shutdown: boolean; agents_use_devices: boolean; browser_tunnel_disabled?: boolean; input?: InputSettings; source_control?: { auto_pull: boolean }; worktrees?: { location: string; branch_naming: string; remove_on_merge: boolean }; threads?: ThreadDefaults };
-export type InputChord = { code: string; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean };
-// InputSettings are the shortcuts and the dictation model of a node; absent until saved.
-export type InputSettings = { shortcuts: Record<string, InputChord>; dictation: { model: string } };
-export type ModelChoice = { provider: string; model: string; effort: string };
-export type ThreadDefaults = { default_model: ModelChoice; fallback_model: ModelChoice; default_workspace: "checkout" | "worktree" | "" };
-// NodeDefaults are the folders a node uses when a setting is empty.
-export type NodeDefaults = { worktrees: string; accounts: string; claude_home: string; codex_home: string; home: string };
-export type ThreadService = { pid: number; address: string; port: number; command: string; kind: string };
-export type KeptWorktree = { thread_id: string; path: string; dirty: boolean };
-export type Task = {
-  id: string; project_id: string | null; repository_id: string | null; title: string; description: string; stage: Stage;
-  branch: string; issue_number: number | null; pr_number: number | null; position: string;
-  created_at: string; updated_at: string; archived_at: string | null;
-};
+export type GithubAction = Pick<GithubActionFields, "type"> & Partial<GithubActionFields>;
 export type TaskInput = Partial<Task> & { title?: string };
-export type Plan = { id: string; task_id: string; version: number; sections: Record<string, string>; open_questions: string[]; body_md: string; revision: number; author: "agent" | "user"; accepted_at: string | null; created_at: string; updated_at: string };
-export type Dependency = { task_id: string; depends_on_id: string; created_at: string };
-export type Memory = { id: string; scope: "global" | "project" | "node"; scope_id: string; kind: "decision" | "lesson" | "context"; title: string; content: string; labels: string[]; created_at: string; updated_at: string; archived_at: string | null };
 export type MemoryInput = Partial<Memory> & { content: string };
-export type ThreadStatus = "idle" | "working" | "waiting" | "error";
-export type Thread = {
-  id: string; node_id: string; project_id: string | null; task_id: string | null; parent_id: string | null; origin_id?: string | null;
-  provider: string; model: string; effort: string; runtime_mode: "full-access" | "approval-required";
-  title: string; branch: string; status: ThreadStatus;
-  // task_linked_at is when the thread was linked to its task; older threads do not have it, so created_at stands in.
-  task_linked_at?: string | null;
-  pinned_at: string | null; read_at: string | null; last_activity_at: string | null; snoozed_until: string | null; settled_at: string | null;
-  created_at: string; updated_at: string; archived_at: string | null;
-};
-export type Role = "user" | "assistant" | "reasoning" | "tool" | "plan" | "question" | "system" | "interrupt" | "clear" | "model-change" | "changes";
-// ToolCall is a tool call in Dory's own terms (runtime.ToolCall): every harness
-// maps its tools onto these kinds, and the chat draws one card per kind.
-export type ToolKind = "edit" | "command" | "todo" | "plan" | "read" | "search" | "web" | "agent" | "mcp" | "question" | "other";
-export type FileEdit = { path: string; change?: "add" | "update" | "delete" | string; added: number; removed: number; diff?: string };
-export type Todo = { text: string; status: "pending" | "in_progress" | "completed" | string; active?: string };
-export type Question = { id?: string; question: string; header?: string; options?: { label: string; description?: string }[]; multi_select?: boolean; answer?: string[] };
-// PendingRequest is something the agent waits for in the middle of its turn.
-export type SecretField = { name: string; label: string; placeholder?: string; secret?: boolean };
-// A secret request carries only its form; the values never come back.
-export type SecretPrompt = { label: string; reason: string; url?: string; placeholder?: string; fields?: SecretField[] };
-export type PendingRequest = { id: string; kind: "question" | "permission" | "secret"; message_id?: string; questions: Question[]; secret?: SecretPrompt; created_at: string };
-export type ToolCall = {
-  kind: ToolKind; name: string; files?: FileEdit[]; command?: string; exit_code?: number; todos?: Todo[];
-  path?: string; lines?: string; pattern?: string; url?: string; query?: string; agent?: string; summary?: string; steps?: number;
-  server?: string; tool?: string; input?: string; questions?: Question[];
-};
-export type Message = { id: string; thread_id?: string; run_id?: string; role: Role; text: string; title?: string; detail?: string; status?: string; streaming: boolean; created_at: string; tool?: ToolCall; sender_thread_id?: string };
-// Entry is a slash command or skill of a harness; insert is how it is invoked.
-export type Entry = { name: string; description: string; insert: string };
-export type Attachment = { id: string; name: string; mime: string; path: string };
-export type Queued = { run_id: string; text: string; files?: Attachment[] };
-export type TurnModel = { provider: string; model: string | null; reported_model?: string };
-export type ThreadView = Thread & { last_turn_model?: TurnModel; reported_settings?: { model?: string; effort?: string }; messages: Message[]; queue: Queued[]; requests?: PendingRequest[]; running: boolean; worktree: string; local: boolean };
-export type Column = "inbox" | "ready" | "working" | "needs_you" | "in_review" | "ready_to_merge" | "done" | "cancelled";
-export type Pull = { repo: string; number: number; title: string; url: string; draft: boolean; ci: string; review_decision: string; review_requests: string[]; approved_by?: string[]; changes_by?: string[]; ci_passed?: number; ci_failed?: number; ci_pending?: number; mergeable: string; merge_state: string; head_ref: string };
-export type Card = Task & { column: Column; repo?: string; threads: Thread[]; pull?: Pull; pr_state?: "open" | "draft" | "merged" | "closed"; blockers: string[]; has_plan: boolean };
-export type Model = { slug: string; name: string; efforts?: string[]; resolved_model?: string };
-export type TitleModel = { provider: string; model: string };
-export type Provider = { id: string; driver?: string; home?: string; name: string; installed: boolean; enabled?: boolean; version: string; models: Model[]; capabilities: string[]; logged_in?: boolean; account?: string };
-// External is a conversation started in a harness, outside Dory.
 // usable says whether a provider can run threads: installed and not turned off.
 export const usable = (p: Provider) => p.installed && p.enabled !== false;
-export type External = { provider: string; id: string; title: string; dir: string; branch?: string; updated_at: string; project_id: string | null; thread_id?: string };
-export type Job = { id: string; provider: string; kind: "login" | "update" | "install"; output: string; done: boolean; accepts_code?: boolean; error?: string };
-export type Skill = { id: string; name: string; description: string; body_md: string; files: Record<string, string>; version: number; targets: { nodes: string[] | null; harnesses: string[] | null }; source: "" | "system"; system_version: number; forked_from: string | null; disabled_at: string | null; created_at: string; updated_at: string; archived_at: string | null };
-export type SkillConflict = { harness: string; path: string; kind: "link" | "foreign" | "edited"; skill_md: string; orphan?: boolean };
-export type SkillState = { skill_id: string; node_id: string; status: "synced" | "pending" | "error" | "conflict" | "removed"; version: number; message: string; updated_at: string };
-export type UsageWindow = { kind: string; utilization: number; resets_at: string; label?: string; window_minutes?: number };
 export type NodeInfo = { id: string; name: string; os: string; version: string; data_dir: string; listen: string; platform: string; icon?: string };
 export type Peer = { id: string; name: string; address: string; fingerprint: string; connected: boolean; last_seen: string; revoked: boolean; disabled?: boolean; info: { node?: NodeInfo; providers?: Provider[] } };
 export type Mesh = { node_id: string; fingerprint: string; port: number; peers: Peer[]; discovered: { id: string; name: string; address: string }[] };
-export type UsageTokens = { input: number; output: number; cache_write: number; cache_read: number };
-export type UsageCost = UsageTokens & { cache_saving: number };
-export type UsageRow = { bucket: string; provider: string; model: string; sessions: number; tokens: UsageTokens; cost: UsageCost; priced: boolean };
 export type UsageRange = "24h" | "7d" | "30d" | "90d";
-export type UsageBreakdownRow = UsageTokens & { thread: string; title: string; provider: string; category: string; label: string; cost: number; priced_tokens: number };
-export type UsageTurnCall = UsageTokens & { ordinal: number; model: string; reasoning: number; subagent: boolean };
-export type UsageTurn = { id: string; provider: string; created_at: string; preview: string; calls: UsageTurnCall[] };
-export type UsageReport = { from: string; bucket: "hour" | "day"; rows: UsageRow[]; sessions: Record<string, number> };
 export type NodeStatus = { node: NodeInfo; providers: Provider[]; usage: Record<string, UsageWindow[]>; peers?: Peer[] };
-export type Hit = { entity: "task" | "memory"; id: string; title: string; rank: number; record: Task | Memory };
 export type User = { id: string; username: string };
-export type Version = { revision: string; short: string; time: string; modified: boolean };
 
 export type GithubAuth = { source: "env" | "ui" | "gh" | "none"; login: string };
-export type GithubDeviceCode = { user_code: string; verification_uri: string; expires_in: number };
-export type GithubDeviceState = { state: "pending" | "done" | "expired" | "denied" | "failed"; error?: string };
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -155,7 +90,7 @@ export const api = {
   folders: (node: string, path = "", hidden = false) => req<{ path: string; parent: string; home: string; folders: { name: string; path: string; git: boolean }[] }>("GET", `/nodes/${node}/folders?${new URLSearchParams({ path, ...(hidden && { hidden: "true" }) })}`),
   checkout: (node: string, path: string) => req<{ path: string; name: string; git: boolean; remote: string; default_branch: string }>("GET", `/nodes/${node}/checkout?path=${encodeURIComponent(path)}`),
   setNodeRepositoryPath: (node: string, id: string, path: string) => req<void>("PUT", `/nodes/${node}/repositories/${id}/path`, { path }),
-  externalSessions: (node: string) => req<External[]>("GET", `/nodes/${node}/external`),
+  externalSessions: (node: string) => req<ExternalView[]>("GET", `/nodes/${node}/external`),
   externalSession: (node: string, provider: string, id: string) => req<{ session: External; messages: Message[] }>("GET", `/nodes/${node}/external/${provider}/${id}`),
   adoptSession: (node: string, provider: string, id: string) => req<{ thread_id: string }>("POST", `/nodes/${node}/external/${provider}/${id}/adopt`),
   nodeProviders: (node: string) => req<Provider[]>("GET", `/nodes/${node}/providers`),

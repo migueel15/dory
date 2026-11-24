@@ -40,7 +40,7 @@ import { useNodes } from "./launch-picker";
 // - NodeDiff is the icon alone, for rows that SettingRow does not fit.
 // A difference is a notice, never a conflict: nothing is blocked or merged.
 //
-// To add a field, add it to NodeSettings (api/client.ts) and render a SettingRow.
+// To add a field, add it to api.Settings in Go, regenerate the types and render a SettingRow.
 
 export type SectionProps = { node: string };
 export const ALL_NODES = "all";
