@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowRight, Brain, ChatText, GitMerge, GitPullRequest, Lightning, Rocket, Question as QuestionIcon, CaretDown, CaretRight, Check, ClipboardText, Copy, FileText, ListChecks, Stop, TerminalWindow, WarningCircle, Wrench, X } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, ArrowDown, ArrowRight, Brain, ChatText, GitMerge, GitPullRequest, Lightning, Rocket, Question as QuestionIcon, CaretDown, CaretRight, Check, ClipboardText, Copy, FileText, ListChecks, Stop, TerminalWindow, WarningCircle, Wrench, X } from "@phosphor-icons/react";
 import { api, type Attachment, type Message, type TurnModel } from "../api/client";
 import { copyText, defaultUrlTransform, Md } from "../components/ui";
 import { TokenChip, tokenize, type TokenKind } from "../components/composer-tokens";
@@ -99,7 +99,7 @@ export function Entry({ m, threadId = "", fresh = false, openQuestion = false }:
         <div data-message className={`group flex flex-col items-end ${fresh ? "msg-in" : ""}`}>
           {threadId && <SentFiles threadId={threadId} detail={m.detail} />}
           {m.text && <UserMessageBody text={m.text} />}
-          <MessageMeta m={m} />
+          <MessageMeta m={m} threadId={threadId} />
         </div>
       );
     case "assistant":
@@ -344,9 +344,26 @@ function Dots() {
   );
 }
 
+// FILL_COMPOSER asks a thread's message box to take a text: { threadId, text }.
+export const FILL_COMPOSER = "dory-fill-composer";
+
 // MessageMeta shows, on hover, when a message was sent and a button to copy it.
-export function MessageMeta({ m }: { m: Message }) {
+export function MessageMeta({ m, threadId = "" }: { m: Message; threadId?: string }) {
   const [copied, setCopied] = useState(false);
+  const [reverting, setReverting] = useState(false);
+  // Going back to a user message restores the files of that turn, removes it
+  // and what came after from the conversation and puts its text back in the box.
+  const revert = async () => {
+    if (!confirm("¿Volver a antes de este mensaje? Los ficheros vuelven a como estaban, y este mensaje y los siguientes desaparecen de la conversación.")) return;
+    setReverting(true);
+    try {
+      const r = await api.revert(threadId, m.id);
+      window.dispatchEvent(new CustomEvent(FILL_COMPOSER, { detail: { threadId, text: r.text } }));
+      if (!r.files_restored) alert("La conversación ha vuelto atrás, pero este turno no tenía foto de los ficheros: no se han restaurado.");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally { setReverting(false); }
+  };
   const at = m.created_at ? new Date(m.created_at) : undefined;
   const valid = at && !Number.isNaN(at.getTime());
   const copy = async () => {
@@ -358,6 +375,11 @@ export function MessageMeta({ m }: { m: Message }) {
       <button type="button" onClick={copy} title={copied ? "Copiado" : "Copiar mensaje"} aria-label="Copiar mensaje" className={iconBtn}>
         {copied ? <Check weight="regular" className="size-3.5" /> : <Copy className="size-3.5" />}
       </button>
+      {threadId && m.role === "user" && (
+        <button type="button" onClick={revert} disabled={reverting} title="Volver a antes de este mensaje" aria-label="Volver a antes de este mensaje" className={iconBtn}>
+          <ArrowCounterClockwise className="size-3.5" />
+        </button>
+      )}
     </div>
   );
 }

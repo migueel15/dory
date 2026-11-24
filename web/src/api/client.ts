@@ -237,6 +237,7 @@ export const api = {
   answerSecret: (id: string, request: string, body: { values: Record<string, string> } | { decline: true }) => req<void>("POST", `/threads/${id}/secrets/${encodeURIComponent(request)}`, body),
   answer: (id: string, request: string, answers: string[][], files: string[][] = []) => req<void>("POST", `/threads/${id}/requests/${encodeURIComponent(request)}`, { answers, files }),
   interrupt: (id: string) => req<void>("POST", `/threads/${id}/interrupt`),
+  revert: (id: string, messageId: string) => req<{ text: string; files_restored: boolean }>("POST", `/threads/${id}/revert`, { message_id: messageId }),
   threadDiff: (id: string, base = "") => req<{ diff: string; branch: string; base?: string; branches?: string[] }>("GET", `/threads/${id}/diff${base ? `?base=${encodeURIComponent(base)}` : ""}`),
   threadServices: (id: string) => req<ThreadService[]>("GET", `/threads/${id}/services`),
   stopThreadService: (id: string, pid: number) => req<void>("POST", `/threads/${id}/processes/${pid}/stop`),
