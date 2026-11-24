@@ -90,3 +90,26 @@ func (s *Store) AddDependency(ctx context.Context, taskID, dependsOnID string) (
 func (s *Store) RemoveDependency(ctx context.Context, taskID, dependsOnID string) error {
 	return s.Dependencies().Archive(ctx, taskID+"/"+dependsOnID)
 }
+
+// BoardDependencies returns every active dependency with the fields needed
+// to resolve its blocker, including blockers outside the board's filter.
+func (s *Store) BoardDependencies(ctx context.Context) (map[string][]Task, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT d.task_id, t.id, t.stage, t.repository_id, t.branch, t.pr_number
+		FROM task_dependencies d JOIN tasks t ON t.id = d.depends_on_id
+		WHERE d.archived_at IS NULL AND t.archived_at IS NULL
+		ORDER BY d.created_at, d.task_id, d.depends_on_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	byTask := map[string][]Task{}
+	for rows.Next() {
+		var id string
+		var t Task
+		if err := rows.Scan(&id, &t.ID, &t.Stage, &t.RepositoryID, &t.Branch, &t.PRNumber); err != nil {
+			return nil, err
+		}
+		byTask[id] = append(byTask[id], t)
+	}
+	return byTask, rows.Err()
+}

@@ -100,7 +100,11 @@ func (r Resource[T]) row(ctx context.Context, q querier, id string, archived boo
 }
 
 func (r Resource[T]) List(ctx context.Context, f Filter) ([]T, error) {
-	rows, err := queryRows(ctx, r.s.db, r.entity, f)
+	return r.list(ctx, r.s.db, f, false)
+}
+
+func (r Resource[T]) list(ctx context.Context, q querier, f Filter, lookahead bool) ([]T, error) {
+	rows, err := queryRowsLimit(ctx, q, r.entity, f, lookahead)
 	if err != nil {
 		return nil, err
 	}
@@ -163,6 +167,10 @@ type querier interface {
 
 // queryRows returns matching rows as JSON objects.
 func queryRows(ctx context.Context, q querier, entity string, f Filter) ([]json.RawMessage, error) {
+	return queryRowsLimit(ctx, q, entity, f, false)
+}
+
+func queryRowsLimit(ctx context.Context, q querier, entity string, f Filter, lookahead bool) ([]json.RawMessage, error) {
 	spec, ok := schema.Lookup(entity)
 	if !ok {
 		return nil, ErrInvalid
@@ -172,6 +180,9 @@ func queryRows(ctx context.Context, q querier, entity string, f Filter) ([]json.
 	}
 	if f.Limit == 0 {
 		f.Limit = 100
+	}
+	if lookahead {
+		f.Limit++
 	}
 	all := append(append([]string{}, spec.Key...), spec.ColumnNames()...)
 	from := spec.Table + " AS row"
@@ -270,3 +281,38 @@ func newID() string {
 
 // LocalDB is for a package’s own local tables. All replicated writes go through data/oplog.
 func (s *Store) LocalDB() *sql.DB { return s.db }
+
+// ListAll reads every matching row from the requested offset in bounded pages.
+// The read transaction keeps the ordering stable across pages.
+func (r Resource[T]) ListAll(ctx context.Context, f Filter) ([]T, error) {
+	tx, err := r.s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	f.Limit = 1000
+	out := []T{}
+	for {
+		page, err := r.list(ctx, tx, f, false)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, page...)
+		if len(page) < f.Limit {
+			return out, tx.Commit()
+		}
+		f.Offset += len(page)
+	}
+}
+
+// ListPage returns the requested page and the next offset, or zero at the end.
+func (r Resource[T]) ListPage(ctx context.Context, f Filter) ([]T, int, error) {
+	if f.Limit == 0 {
+		f.Limit = 100
+	}
+	rows, err := r.list(ctx, r.s.db, f, true)
+	if err != nil || len(rows) <= f.Limit {
+		return rows, 0, err
+	}
+	return rows[:f.Limit], f.Offset + f.Limit, nil
+}
