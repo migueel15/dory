@@ -8,8 +8,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
+	stdsync "sync"
 	"time"
 
 	"github.com/migueel15/dory/internal/hlc"
@@ -114,8 +116,11 @@ func (l *Log) Write(ctx context.Context, entity, id string, fields map[string]an
 	return op, err
 }
 
+var reportedUnknownEntities stdsync.Map
+
 // Apply stores operations received from another node and updates the rows
-// they touch. Operations already known are skipped, so applying twice is safe.
+// they touch. Operations for future entities are kept for replication and
+// migration without materializing a row. Applying twice is safe.
 func (l *Log) Apply(ctx context.Context, ops []Op) error {
 	tx, err := l.begin(ctx)
 	if err != nil {
@@ -125,9 +130,6 @@ func (l *Log) Apply(ctx context.Context, ops []Op) error {
 	touched := map[[2]string]bool{}
 	var latest hlc.Timestamp
 	for _, op := range ops {
-		if _, ok := schema.Lookup(op.Entity); !ok {
-			return fmt.Errorf("oplog: unknown entity %q", op.Entity)
-		}
 		ts, err := hlc.Parse(op.HLC)
 		if err != nil {
 			return err
@@ -146,6 +148,9 @@ func (l *Log) Apply(ctx context.Context, ops []Op) error {
 		}
 	}
 	for key := range touched {
+		if _, known := schema.Lookup(key[0]); !known {
+			continue
+		}
 		if err = materialize(ctx, tx, key[0], key[1]); err != nil {
 			return err
 		}
@@ -159,8 +164,13 @@ func (l *Log) Apply(ctx context.Context, ops []Op) error {
 	if err = tx.Commit(); err != nil {
 		return err
 	}
-	if l.OnChange != nil {
-		for key := range touched {
+	for key := range touched {
+		if _, known := schema.Lookup(key[0]); !known {
+			if _, reported := reportedUnknownEntities.LoadOrStore(key[0], struct{}{}); !reported {
+				log.Printf("oplog: preserved operations for unknown entity %q", key[0])
+			}
+		}
+		if l.OnChange != nil {
 			l.OnChange(key[0], key[1])
 		}
 	}
