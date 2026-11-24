@@ -1,8 +1,8 @@
 package mcp
 
 import (
+	"github.com/migueel15/dory/internal/apperr"
 	"context"
-	"errors"
 
 	"github.com/migueel15/dory/internal/api"
 )
@@ -21,10 +21,10 @@ func addBrowser(srv *sdkServer, s *api.Server) {
 	thread := func(ctx context.Context) (string, error) {
 		id, _ := ctx.Value(threadKey{}).(string)
 		if id == "" {
-			return "", errors.New("el navegador solo funciona dentro de un hilo de Dory")
+			return "", apperr.New(apperr.Invalid, "the browser only works inside a Dory thread")
 		}
 		if s.Browser == nil {
-			return "", errors.New("este nodo no tiene navegador")
+			return "", apperr.New(apperr.Unavailable, "this node has no browser")
 		}
 		return id, nil
 	}

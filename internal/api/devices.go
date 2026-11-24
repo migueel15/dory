@@ -125,7 +125,7 @@ func (s *Server) listDevices(w http.ResponseWriter, r *http.Request) {
 func (s *Server) streamDevice(w http.ResponseWriter, r *http.Request) {
 	serial, _ := url.PathUnescape(r.PathValue("serial"))
 	if serial == "" || !sameSite(r) {
-		writeErr(w, r, apperr.New(apperr.Forbidden, "origin not allowed"))
+		writeErr(w, r, apperr.New(apperr.Forbidden, "origin not allowed").With("reason", "origin"))
 		return
 	}
 	if s.Devices.Tools.ADB == "" {

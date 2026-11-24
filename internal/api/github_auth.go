@@ -25,7 +25,7 @@ func (s *Server) mountGitHubAuth(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/github/auth/device", func(w http.ResponseWriter, r *http.Request) {
 		code, err := gh.Auth.StartDevice(r.Context())
 		if err != nil {
-			writeErr(w, r, apperr.New(apperr.Upstream, "could not reach GitHub to start the login"))
+			writeErr(w, r, apperr.Wrap(apperr.Upstream, err, "could not reach GitHub to start the login").With("reason", "github_login"))
 			return
 		}
 		writeJSON(w, http.StatusOK, code)

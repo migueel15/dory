@@ -1,8 +1,8 @@
 package mcp
 
 import (
+	"github.com/migueel15/dory/internal/apperr"
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -33,7 +33,7 @@ func target(ctx context.Context, id string) (string, error) {
 		return id, nil
 	}
 	if id = caller(ctx); id == "" {
-		return "", errors.New("thread_id is required outside a Dory thread")
+		return "", apperr.New(apperr.Invalid, "thread_id is required outside a Dory thread")
 	}
 	return id, nil
 }
@@ -155,7 +155,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		settings := runtime.ThreadSettings{Provider: in.Provider, Model: in.Model, Effort: in.Effort}
 		if in.Provider == nil && in.Model == nil && in.Effort == nil {
 			if in.ContinueWith != "" {
-				return nil, errors.New("continue_with needs a provider, model or effort to change; use thread_send to message another thread")
+				return nil, apperr.New(apperr.Invalid, "continue_with needs a provider, model or effort to change; use thread_send to message another thread")
 			}
 			t, err := s.Store.Threads().Get(ctx, id)
 			if err != nil {
@@ -190,10 +190,10 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 	}) (any, error) {
 		from := caller(ctx)
 		if in.ThreadID == "" || in.ThreadID == from {
-			return nil, errors.New("thread_send needs another thread; to continue this one use thread_configure with continue_with")
+			return nil, apperr.New(apperr.Invalid, "thread_send needs another thread; to continue this one use thread_configure with continue_with")
 		}
 		if strings.TrimSpace(in.Text) == "" {
-			return nil, errors.New("thread_send needs text")
+			return nil, apperr.New(apperr.Invalid, "thread_send needs text")
 		}
 		text := in.Text
 		if from != "" {
@@ -235,10 +235,10 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 	add(srv, "subagent_spawn", "Launch a subagent (\"lanza un subagente…\", \"delega…\"): a hidden child thread whose result comes back here. Same folder, project, environment and model by default. Not for a new chat: use thread_create.", func(ctx context.Context, in newThreadInput) (any, error) {
 		id := caller(ctx)
 		if id == "" {
-			return nil, errors.New("subagent_spawn only works inside a Dory thread")
+			return nil, apperr.New(apperr.Invalid, "subagent_spawn only works inside a Dory thread")
 		}
 		if strings.TrimSpace(in.Prompt) == "" {
-			return nil, errors.New("subagent_spawn needs a prompt")
+			return nil, apperr.New(apperr.Invalid, "subagent_spawn needs a prompt")
 		}
 		parent, err := s.Store.Threads().Get(ctx, id)
 		if err != nil {
@@ -292,7 +292,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		id := caller(ctx)
 		if in.TaskID == "" {
 			if id == "" {
-				return nil, errors.New("subagent_status needs task_id outside a Dory thread")
+				return nil, apperr.New(apperr.Invalid, "subagent_status needs task_id outside a Dory thread")
 			}
 			return m.Delegations(ctx, id)
 		}
@@ -326,7 +326,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 		ThreadID string `json:"thread_id"`
 	}) (any, error) {
 		if in.ThreadID == "" {
-			return nil, errors.New("thread_stop needs thread_id")
+			return nil, apperr.New(apperr.Invalid, "thread_stop needs thread_id")
 		}
 		if err := m.Interrupt(ctx, in.ThreadID); err != nil {
 			return nil, err
@@ -370,13 +370,13 @@ func findEnvironment(ctx context.Context, s *api.Server, name string) (string, e
 		for _, p := range list {
 			if !p.Revoked && (p.ID == name || strings.EqualFold(p.Name, name)) {
 				if !p.Connected {
-					return "", fmt.Errorf("the environment %s is not connected", p.Name)
+					return "", apperr.Newf(apperr.NodeOffline, "the environment %s is not connected", p.Name)
 				}
 				return p.ID, nil
 			}
 		}
 	}
-	return "", fmt.Errorf("unknown environment %q; use list_environments", name)
+	return "", apperr.Newf(apperr.NotFound, "unknown environment %q; use list_environments", name)
 }
 
 // findProjectByName resolves a project id, slug or name.
@@ -390,7 +390,7 @@ func findProjectByName(ctx context.Context, store *data.Store, name string) (dat
 			return p, nil
 		}
 	}
-	return data.Project{}, fmt.Errorf("unknown project %q; use list_projects", name)
+	return data.Project{}, apperr.Newf(apperr.NotFound, "unknown project %q; use list_projects", name)
 }
 
 type newThreadInput struct {
@@ -429,12 +429,12 @@ func createThread(ctx context.Context, s *api.Server, base data.Thread, in newTh
 	}
 	if in.Provider != "" && !strings.EqualFold(in.Provider, n.Provider) {
 		if in.Model == "" {
-			return nil, fmt.Errorf("choose a model for provider %s; use list_models", in.Provider)
+			return nil, apperr.Newf(apperr.Invalid, "choose a model for provider %s; use list_models", in.Provider)
 		}
 		n.Provider, n.Model, n.Effort = strings.ToLower(in.Provider), "", ""
 	}
 	if n.Provider == "" {
-		return nil, errors.New("a provider is needed outside a Dory thread; use list_models")
+		return nil, apperr.New(apperr.Invalid, "a provider is needed outside a Dory thread; use list_models")
 	}
 	if in.Model != "" {
 		n.Model = in.Model

@@ -46,7 +46,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/threads/{id}/processes/{pid}/stop", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		pid, err := strconv.Atoi(r.PathValue("pid"))
 		if err != nil || pid < 2 {
-			writeErr(w, r, apperr.New(apperr.Invalid, "invalid PID"))
+			writeErr(w, r, apperr.New(apperr.Invalid, "invalid PID").With("reason", "pid_invalid"))
 			return
 		}
 		if err := runtime.StopService(t.ID, pid); err != nil {

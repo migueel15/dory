@@ -17,7 +17,7 @@ import (
 func (s *Server) mountBrowser(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/threads/{id}/browser", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		if s.Browser == nil {
-			writeErr(w, r, apperr.New(apperr.Unavailable, "this node has no browser"))
+			writeErr(w, r, apperr.New(apperr.Unavailable, "this node has no browser").With("reason", "no_browser"))
 			return
 		}
 		st, err := s.Browser.State(r.Context(), t.ID)
@@ -35,7 +35,7 @@ func (s *Server) mountBrowser(mux *http.ServeMux) {
 			return
 		}
 		if s.Browser == nil {
-			writeErr(w, r, apperr.New(apperr.Unavailable, "this node has no browser"))
+			writeErr(w, r, apperr.New(apperr.Unavailable, "this node has no browser").With("reason", "no_browser"))
 			return
 		}
 		tab, err := s.Browser.Add(r.Context(), t.ID, body.URL)
@@ -47,7 +47,7 @@ func (s *Server) mountBrowser(mux *http.ServeMux) {
 	}))
 	mux.HandleFunc("GET /api/threads/{id}/browser/ws", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		if s.Browser == nil {
-			writeErr(w, r, apperr.New(apperr.Unavailable, "this node has no browser"))
+			writeErr(w, r, apperr.New(apperr.Unavailable, "this node has no browser").With("reason", "no_browser"))
 			return
 		}
 		// The auth middleware already refuses cross-origin sessions; behind

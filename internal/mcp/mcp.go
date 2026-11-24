@@ -6,10 +6,10 @@
 package mcp
 
 import (
+	"github.com/migueel15/dory/internal/apperr"
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -66,6 +66,12 @@ func receipt(raw []byte) []byte {
 	return out
 }
 
+// toolError is the result of a failed tool: the agent reads "<code>: <message>"
+// and any parameters, whatever the layer the error comes from.
+func toolError(err error) *sdk.CallToolResult {
+	return &sdk.CallToolResult{IsError: true, Content: []sdk.Content{&sdk.TextContent{Text: apperr.Format(err)}}}
+}
+
 func add[I any](server *sdk.Server, name, description string, fn func(context.Context, I) (any, error)) {
 	sdk.AddTool(server, &sdk.Tool{Name: name, Description: description}, func(ctx context.Context, _ *sdk.CallToolRequest, in I) (*sdk.CallToolResult, any, error) {
 		scope := "write"
@@ -75,11 +81,11 @@ func add[I any](server *sdk.Server, name, description string, fn func(context.Co
 			}
 		}
 		if !auth.Allowed(ctx, scope) {
-			return nil, nil, fmt.Errorf("permiso %q requerido", scope)
+			return toolError(apperr.Newf(apperr.Forbidden, "the %s scope is required", scope)), nil, nil
 		}
 		value, err := fn(ctx, in)
 		if err != nil {
-			return nil, nil, err
+			return toolError(err), nil, nil
 		}
 		if p, ok := value.(previewResult); ok {
 			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.ImageContent{Data: p.png, MIMEType: "image/png"}, &sdk.TextContent{Text: p.info}}}, nil, nil
@@ -284,7 +290,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 	}) (any, error) {
 		id, _ := ctx.Value(threadKey{}).(string)
 		if id == "" {
-			return nil, errors.New("ensure_thread_task only works inside a Dory thread")
+			return nil, apperr.New(apperr.Invalid, "ensure_thread_task only works inside a Dory thread")
 		}
 		if in.TaskID != "" {
 			if _, err := store.LinkThread(ctx, id, in.TaskID, false); err != nil {
@@ -344,7 +350,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 			if cur, err := s.PlanDocument(ctx, in.TaskID); err != nil {
 				return nil, err
 			} else if cur.Revision > 0 {
-				return nil, errors.New("the plan already exists: change parts of it with plan_edit, or pass the revision from plan_read to rewrite it")
+				return nil, apperr.New(apperr.Conflict, "the plan already exists: change parts of it with plan_edit, or pass the revision from plan_read to rewrite it")
 			}
 		}
 		return s.WritePlan(ctx, in.TaskID, in.BodyMD, revision(in.Revision), "agent")
@@ -369,14 +375,14 @@ func build(s *api.Server, devices bool) *sdk.Server {
 	add(srv, "ask_user", "Ask the user questions with options and wait for the answers in the chat. Use it when a decision is the user's.", func(ctx context.Context, in askInput) (any, error) {
 		id, _ := ctx.Value(threadKey{}).(string)
 		if id == "" {
-			return nil, errors.New("ask_user only works inside a Dory thread")
+			return nil, apperr.New(apperr.Invalid, "ask_user only works inside a Dory thread")
 		}
 		qs := in.Questions
 		if in.Question != "" {
 			qs = append([]runtime.Question{{Question: in.Question}}, qs...)
 		}
 		if len(qs) == 0 {
-			return nil, errors.New("ask_user needs a question")
+			return nil, apperr.New(apperr.Invalid, "ask_user needs a question")
 		}
 		answers, err := s.Runtime.Ask(ctx, id, qs)
 		if err != nil {
@@ -396,7 +402,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 	add(srv, "request_secret", secretHelp, func(ctx context.Context, in secretInput) (any, error) {
 		id, _ := ctx.Value(threadKey{}).(string)
 		if id == "" {
-			return nil, errors.New("request_secret only works inside a Dory thread")
+			return nil, apperr.New(apperr.Invalid, "request_secret only works inside a Dory thread")
 		}
 		if in.Value != "" {
 			return s.Runtime.SaveSecret(in.Value)
@@ -414,7 +420,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 
 	add(srv, "html_preview", "Check an HTML page before render_html: returns a PNG at the given width, content_height and console output. "+htmlrender.Guide, func(ctx context.Context, in htmlPreviewInput) (any, error) {
 		if s.Browser == nil {
-			return nil, errors.New("this node has no browser to preview with")
+			return nil, apperr.New(apperr.Unavailable, "this node has no browser to preview with")
 		}
 		page, err := htmlrender.Read(in.HTML, in.Path)
 		if err != nil {
@@ -435,7 +441,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 	add(srv, "render_html", "Show a finished HTML page (chart, diagram, table, mockup) inline in this thread, above your final reply, in a sandboxed frame. Do not announce or restate the page. Check it first with html_preview. "+htmlrender.Guide, func(ctx context.Context, in htmlInput) (any, error) {
 		id, _ := ctx.Value(threadKey{}).(string)
 		if id == "" {
-			return nil, errors.New("render_html only works inside a Dory thread")
+			return nil, apperr.New(apperr.Invalid, "render_html only works inside a Dory thread")
 		}
 		page, err := htmlrender.Read(in.HTML, in.Path)
 		if err != nil {
@@ -443,10 +449,10 @@ func build(s *api.Server, devices bool) *sdk.Server {
 		}
 		title := strings.TrimSpace(in.Title)
 		if title == "" || len(title) > htmlrender.MaxTitle {
-			return nil, fmt.Errorf("title must have 1 to %d characters", htmlrender.MaxTitle)
+			return nil, apperr.Newf(apperr.Invalid, "title must have 1 to %d characters", htmlrender.MaxTitle)
 		}
 		if in.Height < htmlrender.MinHeight || in.Height > htmlrender.MaxHeight {
-			return nil, fmt.Errorf("height must be between %d and %d", htmlrender.MinHeight, htmlrender.MaxHeight)
+			return nil, apperr.Newf(apperr.Invalid, "height must be between %d and %d", htmlrender.MinHeight, htmlrender.MaxHeight)
 		}
 		a, err := s.Runtime.SaveAttachment(id, "page.html", "text/html", strings.NewReader(page))
 		if err != nil {
@@ -460,7 +466,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 	}) (any, error) {
 		id, _ := ctx.Value(threadKey{}).(string)
 		if id == "" {
-			return nil, errors.New("start_service only works inside a Dory thread")
+			return nil, apperr.New(apperr.Invalid, "start_service only works inside a Dory thread")
 		}
 		pid, log, err := s.Runtime.StartService(ctx, id, in.Command)
 		if err != nil {
@@ -471,7 +477,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 	add(srv, "list_services", "List this thread's processes listening on a port.", func(ctx context.Context, _ struct{}) (any, error) {
 		id, _ := ctx.Value(threadKey{}).(string)
 		if id == "" {
-			return nil, errors.New("list_services only works inside a Dory thread")
+			return nil, apperr.New(apperr.Invalid, "list_services only works inside a Dory thread")
 		}
 		return runtime.ThreadServices(id), nil
 	})
@@ -480,7 +486,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 	}) (any, error) {
 		id, _ := ctx.Value(threadKey{}).(string)
 		if id == "" {
-			return nil, errors.New("stop_service only works inside a Dory thread")
+			return nil, apperr.New(apperr.Invalid, "stop_service only works inside a Dory thread")
 		}
 		if err := runtime.StopService(id, in.PID); err != nil {
 			return nil, err
@@ -839,13 +845,13 @@ func threadProjectScope(ctx context.Context, store *data.Store) (string, string)
 // threadID returns the given thread or the one of this conversation.
 func threadID(ctx context.Context, id string) (string, error) {
 	if thread := auth.AgentThread(ctx); thread != "" && id != "" && id != thread {
-		return "", errors.New("la credencial MCP está vinculada a otro hilo")
+		return "", apperr.New(apperr.Forbidden, "the MCP credential is bound to another thread")
 	}
 	if id == "" {
 		id, _ = ctx.Value(threadKey{}).(string)
 	}
 	if id == "" {
-		return "", errors.New("thread_id is required outside a Dory thread")
+		return "", apperr.New(apperr.Invalid, "thread_id is required outside a Dory thread")
 	}
 	return id, nil
 }
