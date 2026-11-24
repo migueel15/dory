@@ -208,6 +208,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	srv.Projects = &app.Projects{Store: store}
 	srv.Ideas = &app.Ideas{Store: store, Titles: rt}
 	srv.Tasks = &app.Tasks{Store: store, Threads: srv.Threads, Plans: srv.Plans, Node: log_.Node(), ArchiveOnFinish: func() bool { return srv.Settings.Get().ArchiveThreadsOnFinish }}
+	srv.PullReviews = &app.PullReviews{Store: store, Threads: srv.Threads}
 	finish := func() { srv.Tasks.FinishSoon(ctx) }
 	finishSoon.Store(&finish)
 	go gh.Watch(ctx, func() {
@@ -221,7 +222,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 			srv.Tasks.Finish(ctx)
 		}
 	})
-	srv.StartWorktreeMaintenance(ctx)
+	srv.Tasks.StartWorktreeMaintenance(ctx)
 	// What this node owes other nodes waits here until they are connected.
 	out := outbox.New(store.LocalDB(), srv.PeerClient)
 	rt.Outbox = out

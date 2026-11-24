@@ -50,6 +50,7 @@ type ThreadRuntime interface {
 	CloseThread(string)
 	DropSnapshots(context.Context, string)
 	Remove(context.Context, string, bool) error
+	Running(string) bool
 }
 
 type Workspace interface {
@@ -71,6 +72,7 @@ type ThreadSettings struct {
 	DefaultModel, FallbackModel                  ModelChoice
 	DefaultWorkspace, WorktreeRoot, BranchNaming string
 	AutoPull, RemoveWorktreeOnArchive            bool
+	RemoveWorktreeOnMerge                        bool
 }
 
 type ModelChoice struct{ Provider, Model, Effort string }

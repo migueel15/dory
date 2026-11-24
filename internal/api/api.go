@@ -47,6 +47,7 @@ type Server struct {
 	Runtime      *runtime.Manager
 	Threads      *app.Threads
 	Tasks        *app.Tasks
+	PullReviews  *app.PullReviews
 	Plans        *app.Plans
 	Memories     *app.Memories
 	Projects     *app.Projects
