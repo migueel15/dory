@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/migueel15/dory/internal/cmdexec"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/runtime"
+	"github.com/migueel15/dory/internal/workspace"
 )
 
 const (
@@ -38,11 +38,6 @@ func (s *Server) StartWorktreeMaintenance(ctx context.Context) {
 	}()
 }
 
-func gitOut(ctx context.Context, dir string, args ...string) (string, error) {
-	out, err := cmdexec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).CombinedOutput()
-	return strings.TrimSpace(string(out)), err
-}
-
 // AutoPull fast-forwards the branch of every active thread of this node that
 // runs in a checkout without uncommitted changes, when the node is set to.
 func (s *Server) AutoPull(ctx context.Context) {
@@ -60,36 +55,11 @@ func (s *Server) AutoPull(ctx context.Context) {
 		}
 		if dir, err := s.Runtime.Dir(ctx, t.ID); err == nil && dir != "" && !seen[dir] {
 			seen[dir] = true
-			if err := pullBranch(ctx, dir, t.Branch); err != nil {
+			if err := workspace.Pull(ctx, dir, t.Branch); err != nil {
 				log.Printf("api: auto-pull %s: %v", t.Branch, err)
 			}
 		}
 	}
-}
-
-// pullBranch fast-forwards branch in dir from its upstream. It does nothing
-// when dir is on another branch, has uncommitted changes or has no upstream.
-func pullBranch(ctx context.Context, dir, branch string) error {
-	ctx, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
-	if cur, err := gitOut(ctx, dir, "rev-parse", "--abbrev-ref", "HEAD"); err != nil || cur != branch {
-		return nil
-	}
-	if _, err := gitOut(ctx, dir, "rev-parse", "--abbrev-ref", "@{u}"); err != nil {
-		return nil
-	}
-	if dirty, err := runtime.Dirty(ctx, dir); err != nil || dirty {
-		return err
-	}
-	if out, err := gitOut(ctx, dir, "fetch", "--quiet"); err != nil {
-		return errors.New(out)
-	}
-	// Dirty again after the fetch would make the merge refuse; --ff-only never
-	// creates a merge commit.
-	if out, err := gitOut(ctx, dir, "merge", "--ff-only", "--quiet", "@{u}"); err != nil {
-		return errors.New(out)
-	}
-	return nil
 }
 
 // RemoveMergedWorktrees deletes the clean worktrees of the threads of a task
@@ -125,7 +95,7 @@ func (s *Server) RemoveMergedWorktrees(ctx context.Context) {
 			continue
 		}
 		for _, th := range byTask[c.ID] {
-			if err := s.Runtime.Remove(ctx, th.ID, false); err != nil && !errors.Is(err, runtime.ErrDirtyWorktree) && !errors.Is(err, runtime.ErrNotFound) {
+			if err := s.Runtime.Remove(ctx, th.ID, false); err != nil && !errors.Is(err, workspace.ErrDirtyWorktree) && !errors.Is(err, runtime.ErrNotFound) {
 				log.Printf("api: remove merged worktree of %s: %v", th.ID, err)
 			}
 		}
@@ -177,17 +147,8 @@ func cleanBranch(answer string) string {
 	if b == "" || len(b) > 100 {
 		return ""
 	}
-	if err := cmdexec.CommandContext(context.Background(), "git", "check-ref-format", "--branch", b).Run(); err != nil {
+	if !workspace.ValidBranchName(b) {
 		return ""
 	}
 	return b
-}
-
-// branchExists says whether repo already has a local branch called name.
-func branchExists(ctx context.Context, repo, name string) bool {
-	if repo == "" {
-		return false
-	}
-	_, err := gitOut(ctx, repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+name)
-	return err == nil
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/github"
 	"github.com/migueel15/dory/internal/runtime"
+	"github.com/migueel15/dory/internal/workspace"
 )
 
 var stages = map[string]bool{"inbox": true, "ready": true, "done": true, "cancelled": true}
@@ -121,7 +122,7 @@ func (s *Server) archiveThread(ctx context.Context, t data.Thread) error {
 		s.Runtime.DropSnapshots(ctx, t.ID)
 		if s.Settings.Get().RemoveWorktreeOnArchive {
 			err := s.Runtime.Remove(ctx, t.ID, false)
-			if err != nil && !errors.Is(err, runtime.ErrDirtyWorktree) && !errors.Is(err, runtime.ErrNotFound) {
+			if err != nil && !errors.Is(err, workspace.ErrDirtyWorktree) && !errors.Is(err, runtime.ErrNotFound) {
 				return err
 			}
 		}

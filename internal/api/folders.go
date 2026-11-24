@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/migueel15/dory/internal/cmdexec"
+	"github.com/migueel15/dory/internal/workspace"
 )
 
 // Folder is a directory of a node, as the project picker lists it.
@@ -91,11 +91,11 @@ func (s *Server) mountFolders(mux *http.ServeMux) {
 func inspect(ctx context.Context, dir string) Checkout {
 	c := Checkout{Path: dir, Name: filepath.Base(dir)}
 	git := func(args ...string) string {
-		out, err := cmdexec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).Output()
+		out, err := workspace.Output(ctx, dir, args...)
 		if err != nil {
 			return ""
 		}
-		return strings.TrimSpace(string(out))
+		return out
 	}
 	if git("rev-parse", "--is-inside-work-tree") != "true" {
 		return c
