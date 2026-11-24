@@ -2,12 +2,32 @@ package runtime
 
 import (
 	"math"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/migueel15/dory/internal/harness/claude"
+	"github.com/migueel15/dory/internal/harness/codex"
 )
 
 func TestUsageHistory(t *testing.T) {
-	events := append(readClaudeUsage("testdata/usage/claude.jsonl"), readCodexUsage("testdata/usage/codex.jsonl")...)
+	home := t.TempDir()
+	for src, dst := range map[string]string{
+		"testdata/usage/claude.jsonl": filepath.Join(home, ".claude", "projects", "p", "claude.jsonl"),
+		"testdata/usage/codex.jsonl":  filepath.Join(home, ".codex", "sessions", "codex.jsonl"),
+	} {
+		raw, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		os.MkdirAll(filepath.Dir(dst), 0o755)
+		if err = os.WriteFile(dst, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	paths := Paths{Home: home}
+	events := append(claude.Claude{}.UsageHistory(paths, time.Time{}), codex.Codex{}.UsageHistory(paths, time.Time{})...)
 	r := aggregateUsage(events, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), false, time.UTC)
 	if len(r.Rows) != 3 {
 		t.Fatalf("rows = %+v", r.Rows)

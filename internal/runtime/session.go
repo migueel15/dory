@@ -10,16 +10,4 @@ var ErrNoRequest = harness.ErrNoRequest
 
 type Session = harness.Session
 
-type legacySession interface {
-	Events() <-chan Event
-	Answer(string, [][]string) error
-}
-
-func legacyStart(s legacySession, err error) (Session, error) {
-	if err != nil {
-		return nil, err
-	}
-	return adaptAntigravity(s.Events(), s.Answer), nil
-}
-
 type Request = harness.Request

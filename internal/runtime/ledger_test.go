@@ -61,25 +61,3 @@ func TestUsageLedgerStoresCountersAndPreservesTotals(t *testing.T) {
 		}
 	}
 }
-
-func TestClaudeLedgerUsesFinalOutputOnce(t *testing.T) {
-	p := claudeParser{run: "run", texts: map[string]*Message{}, tools: map[string]*Message{}}
-	var steps []StepUsage
-	for _, line := range []string{
-		`{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg","model":"test","usage":{"input_tokens":20,"cache_read_input_tokens":80,"output_tokens":1}}}}`,
-		`{"type":"assistant","message":{"id":"msg","model":"test","usage":{"input_tokens":20,"cache_read_input_tokens":80,"output_tokens":1}}}`,
-		`{"type":"stream_event","event":{"type":"message_delta","usage":{"output_tokens":10}}}`,
-		`{"type":"assistant","message":{"id":"msg","model":"test","usage":{"input_tokens":20,"cache_read_input_tokens":80,"output_tokens":1}}}`,
-		`{"type":"result","subtype":"success"}`,
-	} {
-		p.parse([]byte(line), func(e Event) {
-			if e.Step != nil {
-				steps = append(steps, *e.Step)
-			}
-		})
-	}
-	want := StepUsage{Model: "test", Input: 20, CacheRead: 80, Output: 10}
-	if len(steps) != 1 || steps[0] != want {
-		t.Fatalf("steps = %+v, want %+v", steps, want)
-	}
-}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/claude"
 )
 
 // Replay is a test provider: it plays back a recorded Claude Code stream-json
@@ -33,29 +34,34 @@ func (r Replay) Start(ctx context.Context, t Turn) (Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	events := make(chan Event, 64)
-	p := &claudeParser{run: t.RunID, texts: map[string]*Message{}, tools: map[string]*Message{}}
+	events := make(chan harness.Event, 64)
+	parse := claude.LineParser(t.RunID)
 	go func() {
 		defer close(events)
 		done := false
-		emit := func(e Event) {
-			done = done || e.Done
+		emit := func(e harness.Event) {
+			_, end := e.(harness.TurnEnded)
+			done = done || end
 			events <- e
 		}
 		for _, line := range bytes.Split(raw, []byte("\n")) {
 			select {
 			case <-ctx.Done():
-				events <- Event{Done: true, Err: "interrumpido"}
+				events <- harness.TurnEnded{Reason: harness.Interrupted}
 				return
 			case <-time.After(r.Delay):
 			}
-			p.parse(line, emit)
+			parse(line, emit)
 		}
 		if !done {
-			events <- Event{Done: true}
+			events <- harness.TurnEnded{Reason: harness.Completed}
 		}
 	}()
-	return harness.Adapt(events, rejectResponse), nil
+	return replaySession{events}, nil
 }
 
-func rejectResponse(string, [][]string) error { return ErrNoRequest }
+type replaySession struct{ events <-chan harness.Event }
+
+func (s replaySession) Events() <-chan harness.Event   { return s.events }
+func (replaySession) Respond(string, [][]string) error { return ErrNoRequest }
+func rejectResponse(string, [][]string) error          { return ErrNoRequest }
