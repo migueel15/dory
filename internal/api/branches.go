@@ -3,12 +3,11 @@ package api
 import (
 	"context"
 	"errors"
-	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"os"
 
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
-	"github.com/migueel15/dory/internal/runtime"
 	"github.com/migueel15/dory/internal/workspace"
 )
 
@@ -66,7 +65,7 @@ func (s *Server) mountNewThreadCommands(mux *http.ServeMux) {
 		if dir == "" {
 			dir = home // only the user's configuration, never the server's folder
 		}
-		commands, skills := runtime.Commands(s.Runtime.Paths(home), dir, r.URL.Query().Get("provider"))
+		commands, skills := s.Runtime.Commands(s.Runtime.Paths(home), dir, r.URL.Query().Get("provider"))
 		writeJSON(w, http.StatusOK, map[string]any{"commands": commands, "skills": skills})
 	}))
 }

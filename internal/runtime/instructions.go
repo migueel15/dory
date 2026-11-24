@@ -46,7 +46,7 @@ var instructionSections = []instructionSection{
 // buildInstructions returns the Dory guidance for a session whose MCP catalog
 // offers tools. Claude Code defers MCP tools behind ToolSearch, so its copy
 // says how to load them.
-func buildInstructions(provider, model string, tools []string) string {
+func buildInstructions(provider, model string, tools []string, deferredTools bool) string {
 	have := make(map[string]bool, len(tools))
 	for _, name := range tools {
 		have[name] = true
@@ -59,7 +59,7 @@ func buildInstructions(provider, model string, tools []string) string {
 		head += ", as " + strings.Join(strings.Fields(model), " ")
 	}
 	head += `. The MCP server "dory" lets you manage this thread, its tasks and the user's other threads. When a Dory tool covers what you need, use it instead of your own equivalent: the user follows Dory's tools in its interface.`
-	if driverOf(provider) == "claude" {
+	if deferredTools {
 		head += " Dory tools are deferred: load them with ToolSearch (select:mcp__dory__<name>) before you call them."
 	} else {
 		head += " If a Dory tool seems missing, look it up in your MCP catalog before you assume it is absent."

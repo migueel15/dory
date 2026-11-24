@@ -13,6 +13,7 @@ import (
 
 // A service started like StartService (sh wrapper, own session, marked) stops.
 func TestStopServiceWithWrapperShell(t *testing.T) {
+	m, _ := manager(t, 0)
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 missing")
 	}
@@ -27,7 +28,7 @@ func TestStopServiceWithWrapperShell(t *testing.T) {
 	var pid int
 	for i := 0; i < 50 && pid == 0; i++ {
 		time.Sleep(100 * time.Millisecond)
-		for _, s := range ThreadServices(thread) {
+		for _, s := range m.ThreadServices(thread) {
 			pid = s.PID
 		}
 	}
@@ -35,12 +36,12 @@ func TestStopServiceWithWrapperShell(t *testing.T) {
 		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		t.Fatal("service not listed")
 	}
-	if err := StopService(thread, pid); err != nil {
+	if err := m.StopService(thread, pid); err != nil {
 		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		t.Fatal(err)
 	}
 	time.Sleep(200 * time.Millisecond)
-	if len(ThreadServices(thread)) != 0 {
+	if len(m.ThreadServices(thread)) != 0 {
 		t.Fatal("still listed")
 	}
 	if c, err := net.Dial("tcp", "127.0.0.1:18765"); err == nil {

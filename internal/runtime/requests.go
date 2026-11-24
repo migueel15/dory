@@ -71,7 +71,7 @@ func (m *Manager) Answer(ctx context.Context, thread, id string, answers [][]str
 	if s == nil || !exists {
 		return ErrNoRequest
 	}
-	if err := s.Answer(id, answers); err != nil {
+	if err := s.Respond(id, answers); err != nil {
 		return err
 	}
 	return m.resolved(ctx, thread, id)

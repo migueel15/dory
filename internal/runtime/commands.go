@@ -7,48 +7,22 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/migueel15/dory/internal/harness"
 )
 
-// Entry is a slash command or a skill a harness offers in a folder.
-type Entry struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	// Insert is what the composer writes: how the harness invokes it.
-	Insert string `json:"insert"`
+type Entry = harness.Entry
+
+// Commands lists the slash commands and skills available in dir.
+func (m *Manager) Commands(p Paths, dir, provider string) (commands, skills []Entry) {
+	if d, ok := m.registry.Get(provider); ok && d.Commands != nil {
+		commands, skills = d.Commands.Commands(p, dir)
+	}
+	return composerCommands(commands, skills)
 }
 
-// Commands lists the slash commands and skills of a provider for a thread
-// working in dir, from the user's and the project's configuration.
-func Commands(p Paths, dir, provider string) (commands, skills []Entry) {
-	home := p.Home
-	switch driverOf(provider) {
-	case "claude":
-		for _, root := range []string{filepath.Join(p.Dir("claude"), "commands"), filepath.Join(dir, ".claude", "commands")} {
-			commands = append(commands, markdownEntries(root, "/")...)
-		}
-		for _, root := range []string{filepath.Join(p.Dir("claude"), "skills"), filepath.Join(dir, ".claude", "skills")} {
-			// Claude Code runs a skill as a slash command.
-			skills = append(skills, skillEntries(root, "/")...)
-		}
-	case "codex":
-		commands = markdownEntries(filepath.Join(p.Dir("codex"), "prompts"), "/prompts:")
-		for _, root := range []string{filepath.Join(p.Dir("codex"), "skills"), filepath.Join(home, ".agents", "skills"), filepath.Join(dir, ".codex", "skills"), filepath.Join(dir, ".agents", "skills")} {
-			skills = append(skills, skillEntries(root, "$")...)
-		}
-	case antigravityID:
-		for _, root := range []string{filepath.Join(home, ".gemini", "config", "skills"), filepath.Join(home, ".gemini", "antigravity-cli", "skills"), filepath.Join(dir, ".gemini", "skills"), filepath.Join(dir, ".agents", "skills")} {
-			skills = append(skills, skillEntries(root, "/")...)
-		}
-	case "opencode":
-		for _, root := range []string{filepath.Join(home, ".config", "opencode", "command"), filepath.Join(dir, ".opencode", "command")} {
-			commands = append(commands, markdownEntries(root, "/")...)
-		}
-		for _, root := range []string{filepath.Join(home, ".config", "opencode", "skills"), filepath.Join(p.Dir("claude"), "skills"), filepath.Join(dir, ".opencode", "skills")} {
-			skills = append(skills, skillEntries(root, "$")...)
-		}
-	}
+func composerCommands(commands, skills []Entry) ([]Entry, []Entry) {
 	// Dory runs /clear itself for every harness, so the harness's own is hidden.
-	commands = append(builtins[provider], commands...)
 	commands = append([]Entry{{Name: "clear", Description: "Empieza una sesión nueva del agente; los mensajes siguen visibles", Insert: ClearCommand}}, commands...)
 	var kept []Entry
 	names := map[string]bool{}
@@ -63,19 +37,6 @@ func Commands(p Paths, dir, provider string) (commands, skills []Entry) {
 		kept = append(kept, c)
 	}
 	return unique(kept), unique(skills)
-}
-
-// builtins are the harness commands that work in a headless session.
-var builtins = map[string][]Entry{
-	"claude": {
-		{Name: "compact", Description: "Resume la conversación para liberar contexto", Insert: "/compact"},
-		{Name: "context", Description: "Muestra el uso de la ventana de contexto", Insert: "/context"},
-		{Name: "cost", Description: "Muestra el coste de la sesión", Insert: "/cost"},
-		{Name: "init", Description: "Crea CLAUDE.md con la documentación del repositorio", Insert: "/init"},
-		{Name: "review", Description: "Revisa un pull request", Insert: "/review"},
-		{Name: "security-review", Description: "Revisión de seguridad de los cambios pendientes", Insert: "/security-review"},
-		{Name: "pr-comments", Description: "Trae los comentarios de un pull request", Insert: "/pr-comments"},
-	},
 }
 
 // markdownEntries reads commands kept as one markdown file each; folders
@@ -168,5 +129,17 @@ func unique(list []Entry) []Entry {
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+func (m *Manager) SkillDirs(home string) map[string]harness.SkillLocation {
+	out := map[string]harness.SkillLocation{}
+	p := m.Paths(home)
+	for _, d := range m.registry.All() {
+		info := d.Info()
+		if info.ID == info.Driver && d.Commands != nil {
+			out[info.Driver] = d.Commands.SkillDir(p)
+		}
+	}
 	return out
 }

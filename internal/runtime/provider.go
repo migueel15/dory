@@ -13,84 +13,18 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/cmdexec"
+	"github.com/migueel15/dory/internal/harness"
 )
 
-// Message is one entry of a conversation as the interface shows it. Role is
-// user, assistant, reasoning, tool, plan or system. An adapter sends the same
-// ID again to update a message while it streams.
-type Message struct {
-	ID        string `json:"id"`
-	ThreadID  string `json:"thread_id,omitempty"`
-	RunID     string `json:"run_id,omitempty"`
-	Role      string `json:"role"`
-	Text      string `json:"text"`
-	Title     string `json:"title,omitempty"`
-	Detail    string `json:"detail,omitempty"`
-	Status    string `json:"status,omitempty"`
-	Streaming bool   `json:"streaming"`
-	CreatedAt string `json:"created_at"`
-	// SenderThreadID is the thread whose agent sent this user message.
-	SenderThreadID string `json:"sender_thread_id,omitempty"`
-	// Tool is set on tool, plan and question messages: the call in Dory's terms.
-	Tool *ToolCall `json:"tool,omitempty"`
-	// ResultChars is the size of a tool's whole result, before Text clips it.
-	// Only the usage ledger reads it.
-	InputChars  int `json:"-"`
-	ResultChars int `json:"-"`
-}
+type Message = harness.Message
 
-// Window is how much of one usage window of a provider is used, 0 to 1.
-type Window struct {
-	Kind        string    `json:"kind"`
-	Label       string    `json:"label,omitempty"`
-	Minutes     int       `json:"window_minutes,omitempty"`
-	Utilization float64   `json:"utilization"`
-	ResetsAt    time.Time `json:"resets_at"`
-}
+type Window = harness.Window
 
-// ReportedSettings contains the settings the harness reports for a turn.
-type ReportedSettings struct {
-	Model  string `json:"model,omitempty"`
-	Effort string `json:"effort,omitempty"`
-}
+type ReportedSettings = harness.ReportedSettings
 
-// Event is what an adapter reports while a turn runs. Exactly one of its
-// fields is set.
-type Event struct {
-	Message  *Message
-	Settings *ReportedSettings
-	// Session is the harness id of the conversation, used to resume it.
-	Session string
-	Usage   []Window
-	// Step is the usage of one model call of the turn.
-	Step  *StepUsage
-	Steps []StepUsage
-	// Request pauses the turn until the user answers it.
-	Request *Request
-	// Done ends the turn; Err is set when it failed.
-	Done bool
-	Err  string
-}
+type Event = harness.LegacyEvent
 
-// Turn is one message of the user and everything the agent does after it.
-type Turn struct {
-	ThreadID    string
-	RunID       string
-	Dir         string
-	Text        string
-	Model       string
-	Effort      string
-	Session     string
-	Attachments []Attachment
-	// FullAccess skips the harness approval prompts.
-	FullAccess bool
-	// MCPURL and MCPToken point the agent at the Dory MCP of this node.
-	MCPURL, MCPToken string
-	// Instructions is session guidance for the model's system prompt. It is
-	// never part of Text; see promptWithInstructions for harnesses without a
-	// system channel.
-	Instructions string
-}
+type Turn = harness.Turn
 
 // promptWithInstructions is the fallback for a harness that cannot take
 // session instructions: they precede only the first prompt of a new session,
@@ -129,44 +63,11 @@ func providerCommand(ctx context.Context, threadID, bin string, args ...string) 
 	return cmdexec.CommandContext(ctx, bin, args...)
 }
 
-// Model is one model a provider offers, with its reasoning effort levels.
-type Model struct {
-	Slug          string   `json:"slug"`
-	Name          string   `json:"name"`
-	Efforts       []string `json:"efforts,omitempty"`
-	ResolvedModel string   `json:"resolved_model,omitempty"`
-}
+type Model = harness.Model
 
-// Status says whether a harness is installed on this machine.
-type Status struct {
-	ID string `json:"id"`
-	// Driver is the harness: the ID without its account.
-	Driver string `json:"driver,omitempty"`
-	Name   string `json:"name"`
-	// Home is the configuration directory of the account, when it has its own.
-	Home      string `json:"home,omitempty"`
-	Installed bool   `json:"installed"`
-	// Enabled is false when the provider is turned off on this node.
-	Enabled bool    `json:"enabled"`
-	Version string  `json:"version"`
-	Models  []Model `json:"models"`
-	// Catalog says Models came from the harness itself, not the built-in fallback.
-	Catalog bool `json:"-"`
-	// Capabilities lists what the interface may offer for this provider.
-	Capabilities []string `json:"capabilities"`
-	LoggedIn     bool     `json:"logged_in"`
-	Account      string   `json:"account,omitempty"`
-}
+type Status = harness.Status
 
-// Provider is the adapter of one harness. It runs turns as a Runner or, when
-// the harness can wait for the user mid-turn, as an Interactive.
-type Provider interface {
-	ID() string
-	Detect(ctx context.Context) Status
-	// Usage asks the harness for its usage windows without running a turn.
-	// A harness that does not report usage returns ErrNoUsage.
-	Usage(ctx context.Context) ([]Window, error)
-}
+type Provider = harness.Driver
 
 // detect runs "<bin> --version" and reports its first line.
 func detect(ctx context.Context, bin string) (string, bool) {

@@ -10,17 +10,10 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/cmdexec"
+	"github.com/migueel15/dory/internal/harness"
 )
 
-// FileEdit is one file a turn changed; Diff holds unified-diff body lines
-// ("+", "-" or " " first).
-type FileEdit struct {
-	Path    string `json:"path"`
-	Change  string `json:"change,omitempty"` // add, update or delete
-	Added   int    `json:"added"`
-	Removed int    `json:"removed"`
-	Diff    string `json:"diff,omitempty"`
-}
+type FileEdit = harness.FileEdit
 
 // clip keeps at most n runes of s.
 func clip(s string, n int) string {

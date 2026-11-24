@@ -49,7 +49,11 @@ func (r *Reconciler) Conflicts(ctx context.Context, id string) ([]Conflict, erro
 		if len(s.Targets.Harnesses) > 0 && !slices.Contains(s.Targets.Harnesses, harness) {
 			continue
 		}
-		dir := filepath.Join(Dirs(r.Home, r.Config)[harness], s.Name)
+		loc, ok := r.locations()[harness]
+		if !ok {
+			continue
+		}
+		dir := filepath.Join(loc.Dir, s.Name)
 		if c, ok := r.conflict(harness, dir, s, m); ok {
 			out = append(out, c)
 		}
@@ -65,9 +69,12 @@ func (r *Reconciler) wanted(s data.Skill) bool {
 // orphans lists the folders of a skill that Dory wrote, someone edited, and
 // this node should no longer have.
 func (r *Reconciler) orphans(name string, m manifest) []Conflict {
-	harnessOf := map[string]string{filepath.Join(r.DataDir, "antigravity-skills"): "antigravity"}
-	for h, dir := range Dirs(r.Home, r.Config) {
-		harnessOf[dir] = h
+	harnessOf := map[string]string{}
+	for h, loc := range r.locations() {
+		harnessOf[loc.Dir] = h
+		if loc.ManagedSubdir != "" {
+			harnessOf[filepath.Join(r.DataDir, loc.ManagedSubdir)] = h
+		}
 	}
 	seen := map[string]bool{}
 	out := []Conflict{}

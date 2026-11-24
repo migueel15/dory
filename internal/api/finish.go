@@ -159,7 +159,7 @@ func (s *Server) FinishTasks(ctx context.Context) {
 func (s *Server) archiveThread(ctx context.Context, t data.Thread) error {
 	if t.NodeID == s.Node.ID {
 		_ = s.Runtime.Interrupt(ctx, t.ID)
-		runtime.CloseLive(t.ID)
+		s.Runtime.CloseLive(t.ID)
 		runtime.StopThreadServices(t.ID)
 		s.Runtime.DropSnapshots(ctx, t.ID)
 		if s.Settings.Get().RemoveWorktreeOnArchive {

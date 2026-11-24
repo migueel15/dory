@@ -5,6 +5,7 @@ package runtime
 import (
 	"context"
 	"errors"
+
 	"github.com/migueel15/dory/internal/apperr"
 )
 
@@ -18,11 +19,11 @@ type Service struct {
 	Kind    string `json:"kind"`
 }
 
-func ThreadServices(string) []Service    { return []Service{} }
-func StopService(string, int) error      { return ErrNotFound }
-func StopThreadServices(string)          {}
-func (m *Manager) StopAllServices()      {}
-func (m *Manager) StopArchivedServices() {}
+func (m *Manager) ThreadServices(string) []Service { return []Service{} }
+func (m *Manager) StopService(string, int) error   { return ErrNotFound }
+func StopThreadServices(string)                    {}
+func (m *Manager) StopAllServices()                {}
+func (m *Manager) StopArchivedServices()           {}
 
 func (m *Manager) StartService(context.Context, string, string) (int, string, error) {
 	return 0, "", errors.New("los servicios solo están disponibles en Linux")

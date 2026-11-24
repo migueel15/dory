@@ -12,11 +12,18 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/procpool"
+	"github.com/migueel15/dory/internal/update"
 )
 
 const antigravityID = "antigravity"
 
-type Antigravity struct{ Bin string }
+type Antigravity struct {
+	Bin  string
+	pool *procpool.Pool
+}
 
 func (Antigravity) ID() string { return antigravityID }
 
@@ -48,8 +55,7 @@ func (a Antigravity) bin() string {
 func (a Antigravity) Detect(ctx context.Context) Status {
 	version, installed := detect(ctx, a.bin())
 	s := Status{ID: a.ID(), Name: "Antigravity", Installed: installed, Version: version,
-		Models:       []Model{{Slug: "antigravity-default", Name: "Predeterminado de Antigravity"}},
-		Capabilities: []string{"usage"}}
+		Models: []Model{{Slug: "antigravity-default", Name: "Predeterminado de Antigravity"}}}
 	if !installed {
 		return s
 	}
@@ -106,10 +112,14 @@ func (Antigravity) InstallCommand() []string {
 // session stay open for the next turn (see live.go), which only sends a
 // prompt, so what the agent left running survives the turn.
 func (a Antigravity) Start(ctx context.Context, t Turn) (Session, error) {
+	return legacyStart(a.startLegacy(ctx, t))
+}
+
+func (a Antigravity) startLegacy(ctx context.Context, t Turn) (legacySession, error) {
 	key := strings.Join([]string{t.Dir, fmt.Sprint(t.FullAccess), t.MCPURL}, "\x00")
-	lv, _ := liveGet(t.ThreadID, "antigravity").(*acpLive)
+	lv, _ := a.pool.Get(t.ThreadID, a.ID()).(*acpLive)
 	if lv != nil && (lv.key != key || lv.Busy() || lv.conn.exited()) {
-		liveDrop(t.ThreadID, "antigravity", lv)
+		a.pool.Drop(t.ThreadID, a.ID(), lv)
 		go lv.Close()
 		lv = nil
 	}
@@ -120,7 +130,7 @@ func (a Antigravity) Start(ctx context.Context, t Turn) (Session, error) {
 		}
 		lv = &acpLive{key: key, conn: c, idle: time.Now()}
 		if t.ThreadID != "" {
-			liveSet(t.ThreadID, "antigravity", lv)
+			a.pool.Set(t.ThreadID, a.ID(), lv)
 		}
 	}
 	lv.mu.Lock()
@@ -135,7 +145,7 @@ func (a Antigravity) Start(ctx context.Context, t Turn) (Session, error) {
 		lv.busy, lv.idle = false, time.Now()
 		lv.mu.Unlock()
 		if t.ThreadID == "" || lv.conn.exited() {
-			liveDrop(t.ThreadID, "antigravity", lv)
+			a.pool.Drop(t.ThreadID, a.ID(), lv)
 			lv.Close()
 		}
 		done := Event{Done: true}
@@ -278,4 +288,28 @@ func antigravityMCP(info acpInitialize, t Turn) ([]acpParams, error) {
 	}
 	return append(servers, acpParams{"name": "dory", "command": self, "args": []string{"mcp-stdio", t.MCPURL},
 		"env": []acpParams{{"name": "DORY_MCP_TOKEN", "value": t.MCPToken}}}), nil
+}
+
+func (a Antigravity) Info() harness.Info {
+	return harness.Info{ID: a.ID(), Driver: a.ID(), Name: "Antigravity", Order: 3,
+		Capabilities: harness.Capabilities{Resume: true, MidTurnRequests: true, UsageReport: true, UsageSnapshot: true, LoginCode: true, SystemPrompt: true}}
+}
+
+func (Antigravity) ProcessNames() []string { return []string{"agy"} }
+
+func (a Antigravity) WithPool(p *procpool.Pool) harness.Driver { a.pool = p; return a }
+
+func (Antigravity) LatestVersion(ctx context.Context) string {
+	return update.ManifestLatest(ctx, "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/")
+}
+func (a Antigravity) Commands(p Paths, dir string) (commands, skills []Entry) {
+	home := p.Home
+	for _, root := range []string{a.SkillDir(p).Dir, filepath.Join(home, ".gemini", "antigravity-cli", "skills"), filepath.Join(dir, ".gemini", "skills"), filepath.Join(dir, ".agents", "skills")} {
+		skills = append(skills, skillEntries(root, "/")...)
+	}
+	return
+}
+
+func (Antigravity) SkillDir(p Paths) harness.SkillLocation {
+	return harness.SkillLocation{Dir: filepath.Join(p.Home, ".gemini", "config", "skills"), ManagedSubdir: "antigravity-skills"}
 }

@@ -18,6 +18,7 @@ type Installed struct {
 	ID      string
 	Name    string
 	Version string
+	Latest  func(context.Context) string
 }
 
 // ProviderVersion is a harness of this node and the release npm offers.
@@ -27,13 +28,6 @@ type ProviderVersion struct {
 	Current   string `json:"current"`
 	Latest    string `json:"latest,omitempty"`
 	Available bool   `json:"available"`
-}
-
-// packages are the npm packages the harnesses publish their releases in.
-var packages = map[string]string{
-	"claude":   "@anthropic-ai/claude-code",
-	"codex":    "@openai/codex",
-	"opencode": "opencode-ai",
 }
 
 var registry = "https://registry.npmjs.org/"
@@ -51,23 +45,17 @@ var npmCache = struct {
 func providerVersions(ctx context.Context, list []Installed) []ProviderVersion {
 	out := []ProviderVersion{}
 	for _, p := range list {
-		pkg, ok := packages[p.ID]
-		if !ok && p.ID != "antigravity" {
+		if p.Latest == nil {
 			continue
 		}
-		v := ProviderVersion{ID: p.ID, Name: p.Name, Current: semver.FindString(p.Version)}
-		if p.ID == "antigravity" {
-			v.Latest = antigravityLatest(ctx)
-		} else {
-			v.Latest = npmLatest(ctx, pkg)
-		}
+		v := ProviderVersion{ID: p.ID, Name: p.Name, Current: semver.FindString(p.Version), Latest: p.Latest(ctx)}
 		v.Available = v.Current != "" && v.Latest != "" && newer(v.Latest, v.Current)
 		out = append(out, v)
 	}
 	return out
 }
 
-func npmLatest(ctx context.Context, pkg string) string {
+func NPMLatest(ctx context.Context, pkg string) string {
 	npmCache.Lock()
 	if time.Since(npmCache.at[pkg]) < checkTTL {
 		v := npmCache.latest[pkg]
@@ -106,9 +94,7 @@ func newer(a, b string) bool {
 	return false
 }
 
-const antigravityManifestBase = "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/"
-
-func antigravityLatest(ctx context.Context) string {
+func ManifestLatest(ctx context.Context, base string) string {
 	platform := runtime.GOOS + "_" + runtime.GOARCH
 	if runtime.GOOS == "linux" {
 		out, _ := cmdexec.CommandContext(ctx, "ldd", "/bin/ls").CombinedOutput()
@@ -117,8 +103,8 @@ func antigravityLatest(ctx context.Context) string {
 		}
 	}
 	npmCache.Lock()
-	if time.Since(npmCache.at[platform]) < checkTTL {
-		v := npmCache.latest[platform]
+	if time.Since(npmCache.at[base+platform]) < checkTTL {
+		v := npmCache.latest[base+platform]
 		npmCache.Unlock()
 		return v
 	}
@@ -126,11 +112,11 @@ func antigravityLatest(ctx context.Context) string {
 	var manifest struct{ Version string }
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	if getJSON(ctx, antigravityManifestBase+platform+".json", &manifest) != nil {
+	if getJSON(ctx, base+platform+".json", &manifest) != nil {
 		return ""
 	}
 	npmCache.Lock()
-	npmCache.at[platform], npmCache.latest[platform] = time.Now(), manifest.Version
+	npmCache.at[base+platform], npmCache.latest[base+platform] = time.Now(), manifest.Version
 	npmCache.Unlock()
 	return manifest.Version
 }

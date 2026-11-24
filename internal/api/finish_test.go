@@ -52,7 +52,7 @@ func newFinishServer(t *testing.T, settings Settings) (*Server, string) {
 	store := data.New(db, log)
 	state := nodestate.New(db)
 	s := &Server{Store: store, Node: Node{ID: log.Node()}, Settings: NewSettingsStore(state, settings)}
-	s.Runtime = runtime.NewManager(db, store, log.Node(), dir, state)
+	s.Runtime = runtime.NewManager(db, store, log.Node(), dir, state, nil)
 	return s, dir
 }
 

@@ -16,18 +16,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/migueel15/dory/internal/cmdexec"
-	"github.com/migueel15/dory/internal/update"
-
 	"github.com/migueel15/dory/internal/api"
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/browser"
+	"github.com/migueel15/dory/internal/cmdexec"
 	"github.com/migueel15/dory/internal/compress"
 	"github.com/migueel15/dory/internal/config"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/devices"
 	"github.com/migueel15/dory/internal/dictation"
 	"github.com/migueel15/dory/internal/github"
+	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/procpool"
 	"github.com/migueel15/dory/internal/localdb"
 	"github.com/migueel15/dory/internal/mcp"
 	"github.com/migueel15/dory/internal/mesh"
@@ -37,6 +37,7 @@ import (
 	"github.com/migueel15/dory/internal/outbox"
 	"github.com/migueel15/dory/internal/runtime"
 	"github.com/migueel15/dory/internal/skills"
+	"github.com/migueel15/dory/internal/update"
 	"github.com/migueel15/dory/internal/version"
 	"github.com/migueel15/dory/web"
 )
@@ -113,7 +114,10 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		log.Printf("publish repository locations: %v", err)
 	}
 	providers := []runtime.Provider{runtime.Claude{}, runtime.Codex{}, runtime.OpenCode{}, runtime.Antigravity{}}
-	rt := runtime.NewManager(store.LocalDB(), store, log_.Node(), cfg.DataDir, state, providers...)
+	var rt *runtime.Manager
+	pool := procpool.New(func(thread string) bool { return len(rt.ThreadServices(thread)) != 0 })
+	rt = runtime.NewManager(store.LocalDB(), store, log_.Node(), cfg.DataDir, state, pool, providers...)
+	go pool.Reap(ctx)
 	agentToken := auth.Secret()
 	rt.MCPURL = "http://" + loopbackAddr(cfg.Listen) + "/mcp"
 	rt.MCPToken = agentToken
@@ -132,7 +136,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	if err != nil {
 		return err
 	}
-	reconciler := &skills.Reconciler{Store: store, Node: log_.Node(), Home: home, Config: rt.ConfigDir, State: state, DataDir: cfg.DataDir,
+	reconciler := &skills.Reconciler{Store: store, Node: log_.Node(), Home: home, Locations: func() map[string]harness.SkillLocation { return rt.SkillDirs(home) }, State: state, DataDir: cfg.DataDir,
 		Installed: func(ctx context.Context) []string {
 			var ids []string
 			for _, p := range rt.Providers(ctx) {
@@ -203,7 +207,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	go notices.Run(ctx)
 	srv.InfoChanged = net.Changed
 	srv.Updater = &update.Updater{DataDir: cfg.DataDir, Active: rt.Active, Providers: rt.UpdateAll, Restart: func() {
-		runtime.CloseAllLive()
+		pool.CloseAll()
 		if srv.Settings.Get().StopServicesOnShutdown {
 			rt.StopAllServices()
 		}
@@ -213,7 +217,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 			var out []update.Installed
 			for _, p := range rt.Providers(ctx) {
 				if p.Installed {
-					out = append(out, update.Installed{ID: p.ID, Name: p.Name, Version: p.Version})
+					out = append(out, update.Installed{ID: p.ID, Name: p.Name, Version: p.Version, Latest: rt.LatestVersion(p.ID)})
 				}
 			}
 			return out
@@ -274,7 +278,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		}
 		return err
 	case <-ctx.Done():
-		runtime.CloseAllLive()
+		pool.CloseAll()
 		if srv.Settings.Get().StopServicesOnShutdown {
 			rt.StopAllServices()
 		}

@@ -7,6 +7,8 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+
+	"github.com/migueel15/dory/internal/harness"
 )
 
 type buffer struct {
@@ -87,7 +89,9 @@ func TestClaudeSessionDeniesWithoutAccess(t *testing.T) {
 // asker is an interactive provider whose turn asks one question and waits.
 type asker struct{}
 
-func (asker) ID() string                              { return "asker" }
+func (asker) Info() harness.Info {
+	return harness.Info{ID: "asker", Capabilities: harness.Capabilities{MidTurnRequests: true}}
+}
 func (asker) Detect(context.Context) Status           { return Status{ID: "asker", Installed: true} }
 func (asker) Usage(context.Context) ([]Window, error) { return nil, ErrNoUsage }
 func (asker) Start(ctx context.Context, t Turn) (Session, error) {
@@ -102,7 +106,7 @@ func (asker) Start(ctx context.Context, t Turn) (Session, error) {
 		case <-ctx.Done():
 		}
 	}()
-	return s, nil
+	return harness.Adapt(s.Events(), s.Answer), nil
 }
 
 type askSession struct {
@@ -122,7 +126,7 @@ func (s *askSession) Answer(id string, a [][]string) error {
 func TestManagerWaitsForAnswer(t *testing.T) {
 	ctx := context.Background()
 	m, store := manager(t, 0)
-	m.providers["asker"] = asker{}
+	m.registry.Register(asker{})
 	th, _ := m.Create(ctx, NewThread{Provider: "asker"})
 	if err := m.Send(ctx, th.ID, "pregunta"); err != nil {
 		t.Fatal(err)

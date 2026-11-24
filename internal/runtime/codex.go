@@ -3,14 +3,22 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
+
+	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/procpool"
+	"github.com/migueel15/dory/internal/update"
 )
 
 // Codex runs turns over "codex app-server" (codex_app.go); a later turn
 // resumes the same thread. codexParser maps the items of "codex exec --json",
 // which app-server items are converted to.
 type Codex struct {
-	Bin string
+	pool    *procpool.Pool
+	cache   *summaryCache
+	history *usageCache
+	Bin     string
 	// Account tells one extra account of this harness from the default one;
 	// Home is its CODEX_HOME and Label its display name.
 	Account, Home, Label string
@@ -19,7 +27,7 @@ type Codex struct {
 func (c Codex) ID() string { return accountID("codex", c.Account) }
 
 // Environ is the environment of every process run for this account.
-func (c Codex) Environ() []string { return accountEnv("CODEX_HOME", c.Home) }
+func (c Codex) Environ() []string { return accountEnv(c.ConfigEnv(), c.Home) }
 
 func (c Codex) bin() string {
 	if c.Bin != "" {
@@ -32,8 +40,7 @@ func (c Codex) Detect(ctx context.Context) Status {
 	version, ok := detect(ctx, c.bin())
 	efforts := []string{"low", "medium", "high", "xhigh"}
 	status := Status{ID: c.ID(), Driver: "codex", Name: accountName("Codex", c.Label), Home: c.Home, Installed: ok, Version: version,
-		Models:       []Model{{Slug: "gpt-5.5", Name: "GPT-5.5", Efforts: efforts}},
-		Capabilities: []string{"interrupt", "resume", "effort", "usage"},
+		Models: []Model{{Slug: "gpt-5.5", Name: "GPT-5.5", Efforts: efforts}},
 	}
 	if ok {
 		if models := codexModels(ctx, c.bin(), c.Environ()); len(models) > 0 {
@@ -205,4 +212,39 @@ func stripCodexMemoryCitations(text string, streaming bool) string {
 		}
 		text = rest
 	}
+}
+
+func (c Codex) Info() harness.Info {
+	return harness.Info{ID: c.ID(), Driver: "codex", Name: "Codex", Order: 1,
+		Capabilities: harness.Capabilities{Resume: true, MidTurnRequests: true, UsageReport: true, SystemPrompt: true, Effort: true, OfflineHistory: true}}
+}
+
+func (c Codex) WithPool(p *procpool.Pool) harness.Driver {
+	c.pool = p
+	c.cache = &summaryCache{seen: map[summaryKey]cachedSummary{}}
+	c.history = &usageCache{files: map[string]usageFile{}}
+	return c
+}
+func (c Codex) WithAccount(a Account) harness.Driver {
+	c.Account, c.Home, c.Label = a.Slug, a.Home, a.Name
+	return c
+}
+
+func (Codex) ConfigEnv() string              { return "CODEX_HOME" }
+func (Codex) DefaultHome(home string) string { return filepath.Join(home, ".codex") }
+func (c Codex) AccountHome() string          { return c.Home }
+
+func (Codex) ProcessNames() []string                   { return []string{"codex"} }
+func (Codex) LatestVersion(ctx context.Context) string { return update.NPMLatest(ctx, "@openai/codex") }
+func (c Codex) Commands(p Paths, dir string) (commands, skills []Entry) {
+	home := p.Home
+	commands = markdownEntries(filepath.Join(accountDir(p, c), "prompts"), "/prompts:")
+	for _, root := range []string{filepath.Join(accountDir(p, c), "skills"), filepath.Join(home, ".agents", "skills"), filepath.Join(dir, ".codex", "skills"), filepath.Join(dir, ".agents", "skills")} {
+		skills = append(skills, skillEntries(root, "$")...)
+	}
+	return
+}
+
+func (c Codex) SkillDir(p Paths) harness.SkillLocation {
+	return harness.SkillLocation{Dir: filepath.Join(accountDir(p, c), "skills")}
 }

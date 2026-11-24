@@ -5,11 +5,19 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/procpool"
 )
 
 type fixtureQuotaProvider struct {
 	Antigravity
 	windows []Window
+}
+
+func (p fixtureQuotaProvider) WithPool(pool *procpool.Pool) harness.Driver {
+	p.pool = pool
+	return p
 }
 
 func (p fixtureQuotaProvider) Usage(context.Context) ([]Window, error) { return p.windows, nil }
@@ -33,9 +41,9 @@ func TestAntigravityQuotaStore(t *testing.T) {
 	p := fixtureQuotaProvider{windows: append(got, Window{Kind: "expired", ResetsAt: reset.Add(-2 * time.Hour), Utilization: 0.5})}
 	dir := t.TempDir()
 	state := testNodeState(t)
-	m := NewManager(nil, nil, "node", dir, state, p)
+	m := NewManager(nil, nil, "node", dir, state, nil, p)
 	m.RefreshUsage(t.Context())
-	restarted := NewManager(nil, nil, "node", dir, state, p)
+	restarted := NewManager(nil, nil, "node", dir, state, nil, p)
 	if got := restarted.Usage()[antigravityID]; !reflect.DeepEqual(got, want) {
 		t.Fatalf("stored and visible windows = %+v, want %+v", got, want)
 	}

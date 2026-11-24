@@ -6,7 +6,6 @@
 package mcp
 
 import (
-	"github.com/migueel15/dory/internal/apperr"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/migueel15/dory/internal/api"
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/htmlrender"
@@ -479,7 +479,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 		if id == "" {
 			return nil, apperr.New(apperr.Invalid, "list_services only works inside a Dory thread")
 		}
-		return runtime.ThreadServices(id), nil
+		return s.Runtime.ThreadServices(id), nil
 	})
 	add(srv, "stop_service", "Stop one of this thread's listening processes by pid.", func(ctx context.Context, in struct {
 		PID int `json:"pid"`
@@ -488,7 +488,7 @@ func build(s *api.Server, devices bool) *sdk.Server {
 		if id == "" {
 			return nil, apperr.New(apperr.Invalid, "stop_service only works inside a Dory thread")
 		}
-		if err := runtime.StopService(id, in.PID); err != nil {
+		if err := s.Runtime.StopService(id, in.PID); err != nil {
 			return nil, err
 		}
 		return map[string]any{"stopped": in.PID}, nil

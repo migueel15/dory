@@ -5,6 +5,8 @@ import (
 	"context"
 	"os"
 	"time"
+
+	"github.com/migueel15/dory/internal/harness"
 )
 
 // Replay is a test provider: it plays back a recorded Claude Code stream-json
@@ -14,7 +16,9 @@ type Replay struct {
 	Delay time.Duration
 }
 
-func (Replay) ID() string { return "replay" }
+func (Replay) Info() harness.Info {
+	return harness.Info{ID: "replay", Driver: "replay", Name: "Reproducción"}
+}
 
 func (Replay) Usage(context.Context) ([]Window, error) { return nil, ErrNoUsage }
 
@@ -24,7 +28,7 @@ func (r Replay) Detect(context.Context) Status {
 		Models: []Model{{Slug: "grabacion", Name: "Grabación"}}, Capabilities: []string{"interrupt"}}
 }
 
-func (r Replay) Run(ctx context.Context, t Turn) (<-chan Event, error) {
+func (r Replay) Start(ctx context.Context, t Turn) (Session, error) {
 	raw, err := os.ReadFile(r.File)
 	if err != nil {
 		return nil, err
@@ -51,5 +55,7 @@ func (r Replay) Run(ctx context.Context, t Turn) (<-chan Event, error) {
 			events <- Event{Done: true}
 		}
 	}()
-	return events, nil
+	return harness.Adapt(events, rejectResponse), nil
 }
+
+func rejectResponse(string, [][]string) error { return ErrNoRequest }

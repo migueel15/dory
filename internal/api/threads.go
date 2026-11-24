@@ -45,7 +45,7 @@ type Remote interface {
 
 func (s *Server) mountThreads(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/threads/{id}/services", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
-		writeJSON(w, http.StatusOK, runtime.ThreadServices(t.ID))
+		writeJSON(w, http.StatusOK, s.Runtime.ThreadServices(t.ID))
 	}))
 	mux.HandleFunc("POST /api/threads/{id}/processes/{pid}/stop", s.owned(func(w http.ResponseWriter, r *http.Request, t data.Thread) {
 		pid, err := strconv.Atoi(r.PathValue("pid"))
@@ -53,7 +53,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 			writeErr(w, r, apperr.New(apperr.Invalid, "invalid PID").With("reason", "pid_invalid"))
 			return
 		}
-		if err := runtime.StopService(t.ID, pid); err != nil {
+		if err := s.Runtime.StopService(t.ID, pid); err != nil {
 			writeErr(w, r, err)
 			return
 		}
@@ -305,7 +305,7 @@ func (s *Server) mountThreads(mux *http.ServeMux) {
 			return
 		}
 		home, _ := os.UserHomeDir()
-		commands, skills := runtime.Commands(s.Runtime.Paths(home), dir, t.Provider)
+		commands, skills := s.Runtime.Commands(s.Runtime.Paths(home), dir, t.Provider)
 		writeJSON(w, http.StatusOK, map[string]any{"commands": commands, "skills": skills})
 	}))
 	// Files of the thread's folder, for @ mentions in the composer.

@@ -3,8 +3,8 @@ package runtime
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,79 +12,76 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/migueel15/dory/internal/harness"
 )
 
-// External is a conversation a harness saved on this machine, started from
-// the harness itself rather than from Dory.
-type External struct {
-	Provider  string `json:"provider"`
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	Dir       string `json:"dir"`
-	Branch    string `json:"branch,omitempty"`
-	UpdatedAt string `json:"updated_at"`
-	path      string
-}
+type External = harness.External
 
 // externalLimit bounds how many recent sessions of each harness are listed.
 const externalLimit = 150
 
 type summaryCache struct {
 	mu   sync.Mutex
-	seen map[string]cachedSummary
+	seen map[summaryKey]cachedSummary
 }
+
+type summaryKey struct{ provider, path string }
 
 type cachedSummary struct {
 	mod time.Time
 	ext External
 }
 
-var summaries = summaryCache{seen: map[string]cachedSummary{}}
+type sessionParser func([]byte, *External)
+type recordParser func([]byte, func(Message), []Message, map[string]int)
 
-// ExternalSessions lists the recent conversations of Claude Code and Codex on
-// this machine, newest first.
-func ExternalSessions(p Paths) []External {
+func (c Claude) List(_ context.Context, p Paths) []External {
+	return c.cache.list(c.ID(), filepath.Join(accountDir(p, c), "projects", "*", "*.jsonl"), claudeSummary)
+}
+
+func (c Codex) List(_ context.Context, p Paths) []External {
+	return c.cache.list(c.ID(), filepath.Join(accountDir(p, c), "sessions", "*", "*", "*", "rollout-*.jsonl"), codexSummary)
+}
+
+func (c *summaryCache) list(provider, pattern string, parse sessionParser) []External {
+	if c == nil {
+		c = &summaryCache{seen: map[summaryKey]cachedSummary{}}
+	}
 	var out []External
-	for provider, pattern := range map[string]string{
-		"claude": filepath.Join(p.Dir("claude"), "projects", "*", "*.jsonl"),
-		"codex":  filepath.Join(p.Dir("codex"), "sessions", "*", "*", "*", "rollout-*.jsonl"),
-	} {
-		files, _ := filepath.Glob(pattern)
-		type file struct {
-			path string
-			mod  time.Time
-		}
-		var list []file
-		for _, f := range files {
-			if st, err := os.Stat(f); err == nil {
-				list = append(list, file{f, st.ModTime()})
-			}
-		}
-		sort.Slice(list, func(i, j int) bool { return list[i].mod.After(list[j].mod) })
-		if len(list) > externalLimit {
-			list = list[:externalLimit]
-		}
-		for _, f := range list {
-			e, ok := summarize(provider, f.path, f.mod)
-			if ok {
-				out = append(out, e)
-			}
+	files, _ := filepath.Glob(pattern)
+	type file struct {
+		path string
+		mod  time.Time
+	}
+	var list []file
+	for _, f := range files {
+		if st, err := os.Stat(f); err == nil {
+			list = append(list, file{f, st.ModTime()})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt > out[j].UpdatedAt })
+	sort.Slice(list, func(i, j int) bool { return list[i].mod.After(list[j].mod) })
+	if len(list) > externalLimit {
+		list = list[:externalLimit]
+	}
+	for _, f := range list {
+		if e, ok := c.summarize(provider, f.path, f.mod, parse); ok {
+			out = append(out, e)
+		}
+	}
 	return out
 }
 
 // summarize reads the title, folder and branch of a session file, cached by
 // modification time because files can be large.
-func summarize(provider, path string, mod time.Time) (External, bool) {
-	summaries.mu.Lock()
-	c, hit := summaries.seen[path]
-	summaries.mu.Unlock()
+func (cache *summaryCache) summarize(provider, path string, mod time.Time, parse sessionParser) (External, bool) {
+	cache.mu.Lock()
+	c, hit := cache.seen[summaryKey{provider, path}]
+	cache.mu.Unlock()
 	if hit && c.mod.Equal(mod) {
 		return c.ext, c.ext.ID != ""
 	}
-	e := External{Provider: provider, path: path, UpdatedAt: mod.UTC().Format(time.RFC3339)}
+	e := External{Provider: provider, Path: path, UpdatedAt: mod.UTC().Format(time.RFC3339)}
 	f, err := os.Open(path)
 	if err != nil {
 		return e, false
@@ -93,20 +90,14 @@ func summarize(provider, path string, mod time.Time) (External, bool) {
 	scan := bufio.NewScanner(f)
 	scan.Buffer(make([]byte, 64<<10), 64<<20)
 	for scan.Scan() {
-		line := scan.Bytes()
-		switch provider {
-		case "claude":
-			claudeSummary(line, &e)
-		case "codex":
-			codexSummary(line, &e)
-		}
+		parse(scan.Bytes(), &e)
 	}
 	if e.Title == "" {
 		e.ID = ""
 	}
-	summaries.mu.Lock()
-	summaries.seen[path] = cachedSummary{mod, e}
-	summaries.mu.Unlock()
+	cache.mu.Lock()
+	cache.seen[summaryKey{provider, path}] = cachedSummary{mod, e}
+	cache.mu.Unlock()
 	return e, e.ID != ""
 }
 
@@ -192,19 +183,15 @@ func doryMessage(text string) bool {
 	return strings.HasPrefix(text, "<dory-context ") || strings.HasPrefix(text, "<dory-plan ")
 }
 
-// ExternalSession finds one session by id.
-func ExternalSession(p Paths, provider, id string) (External, error) {
-	for _, e := range ExternalSessions(p) {
-		if e.Provider == provider && e.ID == id {
-			return e, nil
-		}
-	}
-	return External{}, ErrNotFound.Msgf("%s session %s", provider, id)
+func (c Claude) Read(_ context.Context, e External) ([]Message, error) {
+	return readExternal(e, claudeRecord)
+}
+func (c Codex) Read(_ context.Context, e External) ([]Message, error) {
+	return readExternal(e, codexRecord)
 }
 
-// ExternalMessages reads the conversation of a session as Dory messages.
-func ExternalMessages(e External) ([]Message, error) {
-	f, err := os.Open(e.path)
+func readExternal(e External, parse recordParser) ([]Message, error) {
+	f, err := os.Open(e.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -222,14 +209,7 @@ func ExternalMessages(e External) ([]Message, error) {
 		out = append(out, m)
 	}
 	for scan.Scan() {
-		switch e.Provider {
-		case "claude":
-			claudeRecord(scan.Bytes(), emit, out, index)
-		case "codex":
-			codexRecord(scan.Bytes(), emit, out, index)
-		default:
-			return nil, errors.New("unknown provider")
-		}
+		parse(scan.Bytes(), emit, out, index)
 	}
 	return out, scan.Err()
 }
@@ -374,19 +354,45 @@ func codexRecord(line []byte, emit func(Message), out []Message, index map[strin
 }
 
 // sessionFile finds the file where a harness keeps a session.
-func sessionFile(p Paths, provider, id string) string {
-	var pattern string
-	switch provider {
-	case "claude":
-		pattern = filepath.Join(p.Dir("claude"), "projects", "*", id+".jsonl")
-	case "codex":
-		pattern = filepath.Join(p.Dir("codex"), "sessions", "*", "*", "*", "rollout-*"+id+".jsonl")
-	default:
-		return ""
-	}
+func (c Claude) SessionFile(p Paths, id string) string {
+	return firstMatch(filepath.Join(accountDir(p, c), "projects", "*", id+".jsonl"))
+}
+func (c Codex) SessionFile(p Paths, id string) string {
+	return firstMatch(filepath.Join(accountDir(p, c), "sessions", "*", "*", "*", "rollout-*"+id+".jsonl"))
+}
+func firstMatch(pattern string) string {
 	files, _ := filepath.Glob(pattern)
 	if len(files) == 0 {
 		return ""
 	}
 	return files[0]
+}
+
+func (m *Manager) ListExternal(ctx context.Context, p Paths) []External {
+	var out []External
+	for _, d := range m.registry.All() {
+		if d.External != nil && (m.Enabled(d.Info().ID) || d.Info().Capabilities.OfflineHistory) {
+			out = append(out, d.External.List(ctx, p)...)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].UpdatedAt > out[j].UpdatedAt })
+	return out
+}
+
+func (m *Manager) FindExternal(ctx context.Context, p Paths, provider, id string) (External, error) {
+	if d, ok := m.registry.Get(provider); ok && d.External != nil && (m.Enabled(provider) || d.Info().Capabilities.OfflineHistory) {
+		for _, e := range d.External.List(ctx, p) {
+			if e.ID == id {
+				return e, nil
+			}
+		}
+	}
+	return External{}, ErrNotFound.Msgf("%s session %s", provider, id)
+}
+
+func (m *Manager) ReadExternal(ctx context.Context, e External) ([]Message, error) {
+	if d, ok := m.registry.Get(e.Provider); ok && d.External != nil && (m.Enabled(e.Provider) || d.Info().Capabilities.OfflineHistory) {
+		return d.External.Read(ctx, e)
+	}
+	return nil, ErrProvider
 }

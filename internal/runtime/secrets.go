@@ -5,15 +5,14 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
-	"fmt"
-	"github.com/migueel15/dory/internal/apperr"
 	"log"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
+
+	"github.com/migueel15/dory/internal/apperr"
+	"github.com/migueel15/dory/internal/harness"
 )
 
 // Secrets asked through request_secret never reach the model, the database
@@ -23,23 +22,9 @@ import (
 // SecretTTL is how long a secret file lives on disk.
 const SecretTTL = 24 * time.Hour
 
-// SecretField is one value of a secret form.
-type SecretField struct {
-	Name        string `json:"name" jsonschema:"Key of the value in the result, e.g. token; letters, digits and _"`
-	Label       string `json:"label" jsonschema:"What the user sees above the box"`
-	Placeholder string `json:"placeholder,omitempty"`
-	// Secret hides what the user types; nil means true.
-	Secret *bool `json:"secret,omitempty" jsonschema:"false shows what is typed (an email, an id); default true"`
-}
+type SecretField = harness.SecretField
 
-// SecretPrompt is what the user sees: never the values.
-type SecretPrompt struct {
-	Label       string        `json:"label"`
-	Reason      string        `json:"reason"`
-	URL         string        `json:"url,omitempty"`
-	Placeholder string        `json:"placeholder,omitempty"`
-	Fields      []SecretField `json:"fields,omitempty"`
-}
+type SecretPrompt = harness.SecretPrompt
 
 // SecretResult is what the agent gets back.
 type SecretResult struct {
@@ -56,34 +41,12 @@ type secretReply struct {
 }
 
 var (
-	fieldName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,31}$`)
 	// ErrSecretFields is a reply whose fields do not match the request.
 	ErrSecretFields = apperr.New(apperr.Invalid, "the values do not match the requested fields")
 )
 
-// Validate checks the prompt before asking.
-func (p SecretPrompt) Validate() error {
-	if strings.TrimSpace(p.Label) == "" || strings.TrimSpace(p.Reason) == "" {
-		return errors.New("request_secret needs a label and a reason")
-	}
-	if len(p.Fields) > 8 {
-		return errors.New("request_secret takes at most 8 fields")
-	}
-	seen := map[string]bool{}
-	for _, f := range p.Fields {
-		if !fieldName.MatchString(f.Name) {
-			return fmt.Errorf("invalid field name %q", f.Name)
-		}
-		if seen[f.Name] {
-			return fmt.Errorf("repeated field name %q", f.Name)
-		}
-		seen[f.Name] = true
-	}
-	return nil
-}
-
 // names are the keys the reply must carry: the fields, or "value" alone.
-func (p SecretPrompt) names() []string {
+func secretNames(p SecretPrompt) []string {
 	if len(p.Fields) == 0 {
 		return []string{"value"}
 	}
@@ -188,7 +151,7 @@ func (m *Manager) saveReply(p SecretPrompt, values map[string]string) (SecretRes
 		return m.SaveSecret(values["value"])
 	}
 	out := SecretResult{Status: "saved", Files: map[string]string{}}
-	for _, n := range p.names() {
+	for _, n := range secretNames(p) {
 		path, err := m.writeSecret(values[n])
 		if err != nil {
 			for _, f := range out.Files {
@@ -218,7 +181,7 @@ func (m *Manager) AnswerSecret(ctx context.Context, thread, id string, values ma
 		return ErrNoRequest
 	}
 	if !decline {
-		names := w.prompt.names()
+		names := secretNames(w.prompt)
 		if len(values) != len(names) {
 			return ErrSecretFields
 		}

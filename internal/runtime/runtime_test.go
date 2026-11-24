@@ -3,7 +3,6 @@ package runtime
 import (
 	"bytes"
 	"context"
-	"github.com/migueel15/dory/internal/workspace"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,6 +12,7 @@ import (
 	"github.com/migueel15/dory/internal/localdb"
 	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/oplog"
+	"github.com/migueel15/dory/internal/workspace"
 )
 
 func parseFile(t *testing.T, name string, parse func([]byte, func(Event))) []Event {
@@ -124,7 +124,7 @@ func manager(t *testing.T, delay time.Duration) (*Manager, *data.Store) {
 	}
 	store := data.New(db, log)
 	file, _ := filepath.Abs(filepath.Join("testdata", "claude.jsonl"))
-	return NewManager(db, store, log.Node(), dir, nodestate.New(db), Replay{File: file, Delay: delay}), store
+	return NewManager(db, store, log.Node(), dir, nodestate.New(db), nil, Replay{File: file, Delay: delay}), store
 }
 
 func wait(t *testing.T, store *data.Store, id, status string) data.Thread {

@@ -10,13 +10,14 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/procpool"
 	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/outbox"
 	"github.com/migueel15/dory/internal/workspace"
@@ -25,7 +26,7 @@ import (
 var (
 	ErrNotFound = apperr.New(apperr.NotFound, "thread not found")
 	ErrRemote   = apperr.New(apperr.Remote, "thread runs on another node")
-	ErrProvider = apperr.New(apperr.Invalid, "provider not available")
+	ErrProvider = harness.ErrProvider
 	ErrBusy     = apperr.New(apperr.Busy, "wait for the running turn to end before switching provider")
 )
 
@@ -54,15 +55,13 @@ type Queued struct {
 // Manager owns the threads of this node: it starts turns, keeps their
 // messages and tells subscribers what changed.
 type Manager struct {
-	db        *sql.DB
-	state     *nodestate.Store
-	store     *data.Store
-	node      string
-	dataDir   string
-	providers map[string]Provider
-	// provMu guards providers and accounts, which change with the accounts of a harness.
-	provMu   sync.RWMutex
-	accounts *nodestate.Value[[]Account]
+	db       *sql.DB
+	state    *nodestate.Store
+	store    *data.Store
+	node     string
+	dataDir  string
+	registry *harness.Registry
+	pool     *procpool.Pool
 	// MCPURL is the local endpoint. MCPToken is the node secret used to derive thread credentials.
 	MCPURL, MCPToken string
 	// WorktreeRoot returns the folder for new worktrees; empty means the data directory.
@@ -79,8 +78,6 @@ type Manager struct {
 	waiters map[string]chan [][]string
 	// secretWaiters hold the request_secret calls waiting for the user.
 	secretWaiters map[string]secretWaiter
-	// disabled holds the providers turned off on this node.
-	disabled *nodestate.Value[disabledProviders]
 	// asked marks threads whose agent asked the user something this turn.
 	asked map[string]bool
 	// steering marks threads whose turn was stopped to run the head of the queue now.
@@ -101,23 +98,18 @@ type Manager struct {
 	detectedAt time.Time
 }
 
-func NewManager(db *sql.DB, store *data.Store, node, dataDir string, state *nodestate.Store, providers ...Provider) *Manager {
-	m := &Manager{db: db, state: state, store: store, node: node, dataDir: dataDir, providers: map[string]Provider{},
-		running: map[string]context.CancelFunc{}, sessions: map[string]Session{}, queues: map[string][]Queued{}, subs: map[chan Update]string{}, asked: map[string]bool{}, steering: map[string]bool{}, pending: map[string]ThreadSettings{}}
-	for _, p := range providers {
-		m.providers[p.ID()] = p
+func NewManager(db *sql.DB, store *data.Store, node, dataDir string, state *nodestate.Store, pool *procpool.Pool, providers ...Provider) *Manager {
+	if pool == nil {
+		pool = procpool.New(nil)
 	}
+	m := &Manager{db: db, state: state, store: store, node: node, dataDir: dataDir, pool: pool, registry: harness.NewRegistry(state, dataDir, pool, providers...),
+		running: map[string]context.CancelFunc{}, sessions: map[string]Session{}, queues: map[string][]Queued{}, subs: map[chan Update]string{}, asked: map[string]bool{}, steering: map[string]bool{}, pending: map[string]ThreadSettings{}}
 	m.waiters = map[string]chan [][]string{}
 	m.secretWaiters = map[string]secretWaiter{}
 	m.usage = nodestate.NewValue[map[string][]Window](state, nodestate.KeyUsage, nil)
-	m.disabled = nodestate.NewValue(state, nodestate.KeyDisabledProviders, disabledProviders{})
 	if err := m.usage.Load(context.Background()); err != nil {
 		log.Printf("runtime: load usage: %v", err)
 	}
-	if err := m.disabled.Load(context.Background()); err != nil {
-		log.Printf("runtime: load disabled providers: %v", err)
-	}
-	m.loadAccounts()
 	return m
 }
 
@@ -137,14 +129,15 @@ func (m *Manager) WatchUsage(ctx context.Context, every time.Duration) {
 // RefreshUsage asks every provider for its usage at once.
 func (m *Manager) RefreshUsage(ctx context.Context) {
 	var wg sync.WaitGroup
-	for id, p := range m.registered() {
-		if !m.Enabled(id) {
+	for _, p := range m.registry.All() {
+		id := p.Info().ID
+		if p.Usage == nil || !p.Info().Capabilities.UsageReport || !m.Enabled(id) {
 			continue
 		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			windows, err := p.Usage(ctx)
+			windows, err := p.Usage.Usage(ctx)
 			switch {
 			case errors.Is(err, ErrNoUsage):
 			case err != nil:
@@ -155,29 +148,6 @@ func (m *Manager) RefreshUsage(ctx context.Context) {
 		}()
 	}
 	wg.Wait()
-}
-
-// providerOrder lists the registered providers: the known ones first, in a
-// fixed order, then any other by id.
-func (m *Manager) providerOrder() []string {
-	rank := map[string]int{"claude": 0, "codex": 1, "opencode": 2, antigravityID: 3}
-	all := m.registered()
-	ids := make([]string, 0, len(all))
-	for id := range all {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool {
-		ri, iok := rank[driverOf(ids[i])]
-		rj, jok := rank[driverOf(ids[j])]
-		if iok != jok {
-			return iok
-		}
-		if iok && ri != rj {
-			return ri < rj
-		}
-		return ids[i] < ids[j]
-	})
-	return ids
 }
 
 func (m *Manager) saveUsage(ctx context.Context, id string, windows []Window) {
@@ -194,7 +164,6 @@ func (m *Manager) saveUsage(ctx context.Context, id string, windows []Window) {
 // Recover marks as stopped the threads that were working when the node went
 // down: their processes died with it.
 func (m *Manager) Recover(ctx context.Context) error {
-	reapLive(context.WithoutCancel(ctx))
 	m.StopArchivedServices()
 	if err := m.dropRequests(ctx); err != nil {
 		return err
@@ -224,18 +193,26 @@ func (m *Manager) Providers(ctx context.Context) []Status {
 	}
 	m.mu.Unlock()
 	out := make([]Status, 0)
-	for _, id := range m.providerOrder() {
-		p := m.provider0(id)
-		if p == nil {
-			continue
-		}
+	home, _ := os.UserHomeDir()
+	for _, p := range m.registry.All() {
+		info := p.Info()
 		st := p.Detect(ctx)
-		st.Models = m.rememberCatalog(id, st)
-		st.Enabled = m.Enabled(id)
-		if a, ok := p.(Admin); ok && st.Installed {
-			st.LoggedIn, st.Account = a.Session(ctx)
+		st.ID, st.Driver, st.DriverName = info.ID, info.Driver, info.Name
+		st.Models = m.rememberCatalog(info.ID, st)
+		st.Enabled = m.Enabled(info.ID)
+		st.Capabilities = info.Capabilities.Names()
+		if p.Accounts != nil {
+			st.Capabilities = append(st.Capabilities, "accounts")
+			st.DefaultHome = p.Accounts.DefaultHome(home)
+			st.ConfigEnv = p.Accounts.ConfigEnv()
+		}
+		if p.Commands != nil {
+			st.Capabilities = append(st.Capabilities, "skills")
+		}
+		if p.Admin != nil && st.Installed {
+			st.LoggedIn, st.Account = p.Admin.Session(ctx)
 			st.Capabilities = append(st.Capabilities, "login", "update")
-		} else if ok {
+		} else if p.Admin != nil {
 			st.Capabilities = append(st.Capabilities, "install")
 		}
 		out = append(out, st)
@@ -267,7 +244,7 @@ func (m *Manager) Usage() map[string][]Window {
 			if !w.ResetsAt.IsZero() && w.ResetsAt.Before(now) {
 				// Antigravity balances come from a snapshot. A reset does
 				// not tell us how much was consumed in the new window.
-				if k == antigravityID {
+				if m.registry.Capabilities(k).UsageSnapshot {
 					continue
 				}
 				w.Utilization = 0
@@ -410,7 +387,7 @@ func (m *Manager) Clear(ctx context.Context, id string) error {
 	if _, err := m.db.ExecContext(ctx, `UPDATE thread_runtime SET session_id = '', portable_history = 0 WHERE thread_id = ?`, id); err != nil {
 		return err
 	}
-	closeAll(take(func(key string) bool { return key == liveKey(id, t.Provider) }))
+	m.pool.CloseProcess(id, t.Provider)
 	m.save(ctx, Message{ID: newRunID(), ThreadID: id, Role: "clear", Text: "Contexto limpiado", CreatedAt: now()})
 	return nil
 }
@@ -528,31 +505,19 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
 	if sessionProvider != t.Provider {
 		// A previous visit to the destination may have left a live process.
 		// Start a new conversation there with the current portable history.
-		key := liveKey(t.ID, t.Provider)
-		closeAll(take(func(candidate string) bool { return candidate == key }))
+		m.pool.CloseProcess(t.ID, t.Provider)
 	}
 	// The snapshot the turn's changes are diffed against when it ends.
 	root := workspace.RepoRoot(ctx, dir)
 	base := workspace.Snapshot(ctx, root)
 	workspace.KeepSnapshot(ctx, root, t.ID, run, base)
-	var events <-chan Event
-	switch p := p.(type) {
-	case Interactive:
-		s, err := p.Start(ctx, turn)
-		if err != nil {
-			return err
-		}
-		events = s.Events()
-		m.mu.Lock()
-		m.sessions[t.ID] = s
-		m.mu.Unlock()
-	case Runner:
-		if events, err = p.Run(ctx, turn); err != nil {
-			return err
-		}
-	default:
-		return ErrProvider.Msgf("%s cannot run turns", t.Provider)
+	sessionRun, err := p.Start(ctx, turn)
+	if err != nil {
+		return err
 	}
+	m.mu.Lock()
+	m.sessions[t.ID] = sessionRun
+	m.mu.Unlock()
 	var previous TurnModel
 	_ = json.Unmarshal([]byte(lastModel), &previous)
 	current := TurnModel{Provider: t.Provider, Model: &t.Model}
@@ -572,7 +537,7 @@ func (m *Manager) start(ctx context.Context, t data.Thread, q Queued) error {
 	}
 	m.save(ctx, Message{ID: run + ":user", ThreadID: t.ID, RunID: run, Role: "user", Text: text, Detail: attachmentsDetail(files), CreatedAt: startedAt, SenderThreadID: q.Sender})
 	m.setStatus(ctx, t.ID, "working", "")
-	go m.follow(ctx, t, events, marker, change, newLedger(userPrompt, len(turn.Text)-len(prompt), historyChars), run, root, base)
+	go m.follow(ctx, t, sessionRun.Events(), marker, change, newLedger(userPrompt, len(turn.Text)-len(prompt), historyChars), run, root, base)
 	return nil
 }
 
@@ -596,39 +561,41 @@ func (m *Manager) ReportedSettings(ctx context.Context, t data.Thread) ReportedS
 
 // follow stores what a turn emits until it ends, then starts the next
 // queued message, if any.
-func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event, marker Message, change modelChange, usage *ledger, run, root, base string) {
+func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan harness.Event, marker Message, change modelChange, usage *ledger, run, root, base string) {
 	bg := context.WithoutCancel(ctx)
 	status, failure := "idle", ""
 	settings := turnSettings{Provider: t.Provider, Configured: ReportedSettings{Model: t.Model, Effort: t.Effort}}
-	for e := range events {
-		switch {
-		case e.Message != nil:
-			msg := *e.Message
+	messages := turnMessages{run: run, items: map[string]Message{}}
+	for event := range events {
+		if msg, ok := messages.apply(event); ok {
 			msg.ThreadID = t.ID
 			usage.message(msg)
 			m.save(bg, msg)
-		case e.Step != nil:
-			usage.step(*e.Step)
-		case len(e.Steps) > 0:
+			continue
+		}
+		switch e := event.(type) {
+		case harness.StepUsage:
+			usage.step(e)
+		case harness.StepsUsage:
 			usage.batch(e.Steps)
-		case e.Session != "":
-			if _, err := m.db.ExecContext(bg, `UPDATE thread_runtime SET session_id = ?, session_provider = ? WHERE thread_id = ?`, e.Session, t.Provider, t.ID); err != nil {
+		case harness.SessionBound:
+			if _, err := m.db.ExecContext(bg, `UPDATE thread_runtime SET session_id = ?, session_provider = ? WHERE thread_id = ?`, e.ID, t.Provider, t.ID); err != nil {
 				log.Printf("runtime: save session: %v", err)
 			}
-		case e.Settings != nil:
+		case harness.SettingsReported:
 			previous := settings.Reported
-			if e.Settings.Model != "" {
-				settings.Reported.Model = e.Settings.Model
-				if change.To.ReportedModel != e.Settings.Model {
-					change.To.ReportedModel = e.Settings.Model
+			if e.Model != "" {
+				settings.Reported.Model = e.Model
+				if change.To.ReportedModel != e.Model {
+					change.To.ReportedModel = e.Model
 					m.saveTurnModel(bg, t.ID, change.To)
 					if marker.ID != "" {
 						m.saveModelChange(bg, marker, change)
 					}
 				}
 			}
-			if e.Settings.Effort != "" {
-				settings.Reported.Effort = e.Settings.Effort
+			if e.Effort != "" {
+				settings.Reported.Effort = e.Effort
 			}
 			if settings.Reported != previous {
 				raw, _ := json.Marshal(settings)
@@ -638,22 +605,22 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan Event
 					m.publish(Update{ThreadID: t.ID, Reload: true})
 				}
 			}
-		case e.Usage != nil:
-			m.saveUsage(bg, t.Provider, e.Usage)
-		case e.Request != nil:
-			m.request(bg, t.ID, *e.Request)
-		case e.Done:
-			if e.Err != "" {
-				status, failure = "error", e.Err
-				if ctx.Err() != nil {
-					status, failure = "idle", ""
-					m.save(bg, Message{ID: newRunID(), ThreadID: t.ID, Role: "interrupt", Text: "Turno interrumpido", CreatedAt: now()})
-				} else {
-					m.save(bg, Message{ID: newRunID(), ThreadID: t.ID, Role: "system", Text: e.Err, Status: "failed", CreatedAt: now()})
-				}
+		case harness.UsageReported:
+			m.saveUsage(bg, t.Provider, e.Windows)
+		case harness.RequestOpened:
+			m.request(bg, t.ID, e.Request)
+		case harness.TurnEnded:
+			switch {
+			case e.Reason == harness.Interrupted || (e.Reason != harness.Completed && ctx.Err() != nil):
+				status, failure = "idle", ""
+				m.save(bg, Message{ID: newRunID(), ThreadID: t.ID, Role: "interrupt", Text: "Turno interrumpido", CreatedAt: now()})
+			case e.Reason == harness.Failed || e.Reason == harness.NoResponse:
+				status, failure = "error", e.Error
+				m.save(bg, Message{ID: newRunID(), ThreadID: t.ID, Role: "system", Text: failure, Status: "failed", CreatedAt: now()})
 			}
 		}
 	}
+
 	if err := usage.save(bg, m.db, t.ID, run, t.Provider, time.Now()); err != nil {
 		log.Printf("runtime: save usage: %v", err)
 	}
@@ -1064,7 +1031,7 @@ func (m *Manager) Follow(ctx context.Context, p Paths) {
 		}
 		rows, err := m.db.QueryContext(ctx, `SELECT r.thread_id, r.session_id, t.provider FROM thread_runtime r JOIN threads t ON t.id = r.thread_id
 			WHERE r.session_id <> '' AND r.session_provider = t.provider AND r.portable_history = 0
-			AND t.archived_at IS NULL AND t.provider IN ('claude', 'codex')`)
+			AND t.archived_at IS NULL`)
 		if err != nil {
 			continue
 		}
@@ -1081,7 +1048,11 @@ func (m *Manager) Follow(ctx context.Context, p Paths) {
 			if m.Running(l.thread) {
 				continue
 			}
-			path := sessionFile(p, l.provider, l.session)
+			driver, ok := m.registry.Get(l.provider)
+			if !ok || driver.External == nil {
+				continue
+			}
+			path := driver.External.SessionFile(p, l.session)
 			st, err := os.Stat(path)
 			if path == "" || err != nil {
 				continue
@@ -1099,7 +1070,7 @@ func (m *Manager) Follow(ctx context.Context, p Paths) {
 					continue
 				}
 			}
-			if err := m.resync(ctx, l.thread, External{Provider: l.provider, ID: l.session, path: path}); err != nil {
+			if err := m.resync(ctx, l.thread, External{Provider: l.provider, ID: l.session, Path: path}); err != nil {
 				log.Printf("runtime: sync %s: %v", l.thread, err)
 			}
 		}
@@ -1108,7 +1079,7 @@ func (m *Manager) Follow(ctx context.Context, p Paths) {
 
 // resync replaces the conversation of a thread with the one in its file.
 func (m *Manager) resync(ctx context.Context, thread string, e External) error {
-	msgs, err := ExternalMessages(e)
+	msgs, err := m.ReadExternal(ctx, e)
 	if err != nil || len(msgs) == 0 {
 		return err
 	}
@@ -1186,4 +1157,12 @@ func (m *Manager) resync(ctx context.Context, thread string, e External) error {
 	}
 	changed = true
 	return nil
+}
+
+func (m *Manager) LatestVersion(id string) func(context.Context) string {
+	d, ok := m.registry.Get(id)
+	if !ok || d.Info().ID != d.Info().Driver || d.Versions == nil {
+		return nil
+	}
+	return d.Versions.LatestVersion
 }

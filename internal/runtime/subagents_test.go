@@ -17,7 +17,8 @@ func TestSpawnRunsChildAndWakesParent(t *testing.T) {
 	m, store := manager(t, 0)
 	claude := capturedProvider{"claude", make(chan Turn, 2), make(chan chan Event, 2)}
 	codex := capturedProvider{"codex", make(chan Turn, 1), make(chan chan Event, 1)}
-	m.providers[claude.id], m.providers[codex.id] = claude, codex
+	m.registry.Register(claude)
+	m.registry.Register(codex)
 	parent, err := m.Create(ctx, NewThread{Provider: claude.id, Model: "opus", RuntimeMode: "approval-required"})
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +81,7 @@ func TestChildOnAnotherNodeNotifiesItsParentThroughThePeer(t *testing.T) {
 	ctx := context.Background()
 	m, store := manager(t, 0)
 	codex := capturedProvider{"codex", make(chan Turn, 1), make(chan chan Event, 1)}
-	m.providers[codex.id] = codex
+	m.registry.Register(codex)
 	parent, err := store.Threads().Create(ctx, data.Thread{NodeID: "other-node", Provider: "claude", Title: "Padre"})
 	if err != nil {
 		t.Fatal(err)
@@ -191,7 +192,7 @@ func TestDelegationRecordsOutcomeAndFollowUps(t *testing.T) {
 	ctx := context.Background()
 	m, store := manager(t, 0)
 	claude := capturedProvider{"claude", make(chan Turn, 2), make(chan chan Event, 2)}
-	m.providers[claude.id] = claude
+	m.registry.Register(claude)
 	parent, _ := m.Create(ctx, NewThread{Provider: claude.id})
 	child, _ := m.Create(ctx, NewThread{Provider: "replay", ParentID: &parent.ID, Title: "Hijo"})
 	d, err := m.RecordDelegation(ctx, parent.ID, child.ID, m.node, "Hijo")

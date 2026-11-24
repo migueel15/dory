@@ -3,67 +3,23 @@ package runtime
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/migueel15/dory/internal/workspace"
 	"regexp"
 	"strings"
+
+	"github.com/migueel15/dory/internal/harness"
 )
 
-// ToolCall is a tool call in Dory's own terms. Each adapter maps the tools of
-// its harness onto these kinds, so the chat draws one card per kind whatever
-// harness ran it. Only the fields of the kind are set.
-type ToolCall struct {
-	// Kind is edit, command, todo, plan, read, search, web, agent, mcp, question or other.
-	Kind string `json:"kind"`
-	// Name is the harness's own name of the tool.
-	Name string `json:"name"`
-
-	Files    []FileEdit `json:"files,omitempty"`     // edit
-	Command  string     `json:"command,omitempty"`   // command
-	ExitCode *int       `json:"exit_code,omitempty"` // command
-	Todos    []Todo     `json:"todos,omitempty"`     // todo
-	Path     string     `json:"path,omitempty"`      // read, search
-	Lines    string     `json:"lines,omitempty"`     // read: "10-40"
-	Pattern  string     `json:"pattern,omitempty"`   // search
-	URL      string     `json:"url,omitempty"`       // web
-	Query    string     `json:"query,omitempty"`     // web
-	Agent    string     `json:"agent,omitempty"`     // agent: its type
-	Summary  string     `json:"summary,omitempty"`   // agent, command: what it is for, in words
-	Steps    int        `json:"steps,omitempty"`     // agent: tool calls it made
-	Server   string     `json:"server,omitempty"`    // mcp
-	Tool     string     `json:"tool,omitempty"`      // mcp
-	Input    string     `json:"input,omitempty"`     // mcp, other: the arguments as JSON
-
-	Questions []Question `json:"questions,omitempty"` // question
-}
+type ToolCall = harness.ToolCall
 
 // FileEdit is one file an edit touches; Diff holds unified-diff body lines
 // ("+", "-" or " " first) when the harness reports the content.
-type FileEdit = workspace.FileEdit
+type FileEdit = harness.FileEdit
 
-// Todo is one step of the agent's task list; Status is pending, in_progress or completed.
-type Todo struct {
-	Text   string `json:"text"`
-	Status string `json:"status"`
-	// Active is how the step reads while it runs ("Running tests").
-	Active string `json:"active,omitempty"`
-}
+type Todo = harness.Todo
 
-// Question is one question the agent asks the user, with its options.
-type Question struct {
-	// ID is the harness's own id of the question, when it has one.
-	ID          string   `json:"id,omitempty"`
-	Question    string   `json:"question"`
-	Header      string   `json:"header,omitempty"`
-	Options     []Option `json:"options,omitempty"`
-	MultiSelect bool     `json:"multi_select,omitempty"`
-	// Answer holds the chosen labels or free text once the user answered.
-	Answer []string `json:"answer,omitempty"`
-}
+type Question = harness.Question
 
-type Option struct {
-	Label       string `json:"label"`
-	Description string `json:"description,omitempty"`
-}
+type Option = harness.Option
 
 // toolCall maps a call by name and JSON arguments; Claude Code and OpenCode
 // name their tools alike (Edit/edit, Bash/bash…), so both use it.

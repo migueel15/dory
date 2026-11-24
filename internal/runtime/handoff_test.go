@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/migueel15/dory/internal/harness"
 )
 
 type capturedProvider struct {
@@ -14,7 +16,7 @@ type capturedProvider struct {
 	ends  chan chan Event
 }
 
-func (p capturedProvider) ID() string { return p.id }
+func (p capturedProvider) Info() harness.Info { return harness.Info{ID: p.id, Driver: p.id} }
 
 func (p capturedProvider) Usage(context.Context) ([]Window, error) { return nil, ErrNoUsage }
 
@@ -22,11 +24,11 @@ func (p capturedProvider) Detect(context.Context) Status {
 	return Status{ID: p.id, Installed: true}
 }
 
-func (p capturedProvider) Run(_ context.Context, turn Turn) (<-chan Event, error) {
+func (p capturedProvider) Start(_ context.Context, turn Turn) (Session, error) {
 	events := make(chan Event, 3)
 	p.turns <- turn
 	p.ends <- events
-	return events, nil
+	return harness.Adapt(events, rejectResponse), nil
 }
 
 func TestSwitchProviderKeepsThreadAndHandsOffText(t *testing.T) {
@@ -34,7 +36,8 @@ func TestSwitchProviderKeepsThreadAndHandsOffText(t *testing.T) {
 	m, store := manager(t, 0)
 	claude := capturedProvider{"claude", make(chan Turn, 1), make(chan chan Event, 1)}
 	codex := capturedProvider{"codex", make(chan Turn, 1), make(chan chan Event, 1)}
-	m.providers[claude.id], m.providers[codex.id] = claude, codex
+	m.registry.Register(claude)
+	m.registry.Register(codex)
 
 	thread, err := m.Create(ctx, NewThread{Provider: claude.id, Model: "haiku"})
 	if err != nil {
