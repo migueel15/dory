@@ -9,7 +9,8 @@ import { DictationMic, DictationPreview, useDictationInProgress, useLocalDictati
 import { claudeModelName } from "../../components/model-label";
 import { ProviderIcon } from "./launch-picker";
 import { explicitModels, findModel, modelEffort, modelId as concreteModelId, rememberModel } from "../../effort";
-import { iconBtn, MessageParts } from "../chat/chat";
+import { iconBtn } from "../chat/chat";
+import { MessageParts } from "../chat/message-parts";
 import { HoverCard } from "../../components/tooltip";
 import { CodeRefCard, codeRefText } from "../chat/code-ref";
 import type { DraftQuote } from "../chat/quote-selection";
