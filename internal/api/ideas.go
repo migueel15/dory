@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"github.com/migueel15/dory/internal/apperr"
 	"log"
 	"net/http"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/runtime"
 )
@@ -74,7 +74,13 @@ func (s *Server) createIdea(w http.ResponseWriter, r *http.Request) {
 	if body.ProjectID != nil && *body.ProjectID == "" {
 		body.ProjectID = nil
 	}
-	t, err := s.Store.Tasks().Put(ctx, data.Task{ID: body.ID, ProjectID: body.ProjectID, Title: provisionalTitle(text), Description: text, Stage: "inbox"})
+	t, err := s.Store.Tasks().Create(ctx, data.Task{ID: body.ID, ProjectID: body.ProjectID, Title: provisionalTitle(text), Description: text, Stage: "inbox"})
+	if errors.Is(err, data.ErrConflict) {
+		if existing, getErr := s.Store.Tasks().Get(ctx, body.ID); getErr == nil {
+			writeJSON(w, http.StatusOK, existing)
+			return
+		}
+	}
 	if err != nil {
 		writeErr(w, r, err)
 		return
@@ -100,11 +106,10 @@ func (s *Server) titleIdea(ctx context.Context, t data.Task, m runtime.TitleMode
 		return
 	}
 	current, err := s.Store.Tasks().Get(ctx, t.ID)
-	if err != nil || current.Title != t.Title {
+	if err != nil || current.Title != t.Title || current.Description != t.Description {
 		return
 	}
-	current.Title = title
-	if _, err := s.Store.Tasks().Put(ctx, current); err != nil {
+	if _, err := s.Store.Tasks().PatchIf(ctx, current.ID, current.UpdatedAt, data.Fields{"title": title}); err != nil && !errors.Is(err, data.ErrRevisionConflict) {
 		log.Printf("ideas: save title of %s: %v", t.ID, err)
 	}
 }

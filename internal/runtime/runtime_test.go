@@ -210,7 +210,7 @@ func TestRecoverMarksDeadTurns(t *testing.T) {
 	m, store := manager(t, 0)
 	th, _ := m.Create(ctx, NewThread{Provider: "replay"})
 	th.Status = "working"
-	store.Threads().Put(ctx, th)
+	store.Threads().Patch(ctx, th.ID, data.Fields{"status": th.Status})
 	if err := m.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}

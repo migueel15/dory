@@ -25,7 +25,7 @@ func newPlanServer(t *testing.T) (*Server, data.Task) {
 		t.Fatal(err)
 	}
 	s := &Server{Store: data.New(db, log)}
-	task, err := s.Store.Tasks().Put(ctx, data.Task{Title: "Tarea"})
+	task, err := s.Store.Tasks().Create(ctx, data.Task{Title: "Tarea"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestPlanDocument(t *testing.T) {
 func TestPlanFromSections(t *testing.T) {
 	ctx := context.Background()
 	s, task := newPlanServer(t)
-	if _, err := s.Store.Plans().Put(ctx, data.Plan{TaskID: task.ID, Version: 1, Sections: []byte(`{"goal":"Meta","design":"Así"}`), OpenQuestions: []string{"¿Cuándo?"}}); err != nil {
+	if _, err := s.Store.Plans().Create(ctx, data.Plan{TaskID: task.ID, Version: 1, Sections: []byte(`{"goal":"Meta","design":"Así"}`), OpenQuestions: []string{"¿Cuándo?"}}); err != nil {
 		t.Fatal(err)
 	}
 	p, err := s.PlanDocument(ctx, task.ID)

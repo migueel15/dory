@@ -124,17 +124,26 @@ func SeedSystem(ctx context.Context, store *data.Store) error {
 		if err != nil {
 			return err
 		}
-		next := s
-		if !missing {
-			next = cur
-			next.Name, next.Description, next.BodyMD, next.Files, next.Source, next.SystemVersion = s.Name, s.Description, s.BodyMD, s.Files, "system", s.Version
-			next.Version = max(cur.Version+1, s.Version)
-		}
-		if forkOn && next.DisabledAt == nil {
+		var disabledAt *string
+		if forkOn && cur.DisabledAt == nil {
 			now := time.Now().UTC().Format(time.RFC3339Nano)
-			next.DisabledAt = &now
+			disabledAt = &now
 		}
-		if _, err = store.Skills().Put(ctx, next); err != nil {
+		if missing {
+			s.DisabledAt = disabledAt
+			_, err = store.Skills().Create(ctx, s)
+		} else {
+			fields := data.Fields{
+				"name": s.Name, "description": s.Description, "body_md": s.BodyMD,
+				"files": s.Files, "source": s.Source, "system_version": s.Version,
+				"version": max(cur.Version+1, s.Version),
+			}
+			if disabledAt != nil {
+				fields["disabled_at"] = disabledAt
+			}
+			_, err = store.Skills().PatchIf(ctx, cur.ID, cur.UpdatedAt, fields)
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -154,8 +163,11 @@ func adoptName(ctx context.Context, store *data.Store, s data.Skill) (bool, erro
 		if h.ID == s.ID {
 			continue
 		}
-		h.Name, h.ForkedFrom = s.Name+"-custom", &s.ID
-		if _, err = store.Skills().Put(ctx, h); err != nil {
+		fields := data.Fields{"name": s.Name + "-custom", "forked_from": s.ID}
+		if h.ArchivedAt != nil {
+			fields["archived_at"] = h.ArchivedAt
+		}
+		if _, err = store.Skills().PatchIf(ctx, h.ID, h.UpdatedAt, fields); err != nil {
 			return false, err
 		}
 		on = on || h.ArchivedAt == nil && h.DisabledAt == nil
@@ -176,8 +188,7 @@ func SetEnabled(ctx context.Context, store *data.Store, id string, enabled bool)
 	}
 	if !enabled {
 		now := time.Now().UTC().Format(time.RFC3339Nano)
-		s.DisabledAt = &now
-		return store.Skills().Put(ctx, s)
+		return store.Skills().PatchIf(ctx, s.ID, s.UpdatedAt, data.Fields{"disabled_at": now})
 	}
 	if s.Source == "system" {
 		forks, err := store.Skills().List(ctx, data.Filter{Fields: map[string]any{"forked_from": s.ID}, Limit: 1000})
@@ -195,8 +206,7 @@ func SetEnabled(ctx context.Context, store *data.Store, id string, enabled bool)
 			return s, err
 		}
 	}
-	s.DisabledAt = nil
-	return store.Skills().Put(ctx, s)
+	return store.Skills().PatchIf(ctx, s.ID, s.UpdatedAt, data.Fields{"disabled_at": nil})
 }
 
 // Fork copies a system skill into an editable one and turns the original off.

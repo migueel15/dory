@@ -6,8 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
-	"sort"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -43,7 +43,7 @@ func TestSeedInstallsAndNeverDowngrades(t *testing.T) {
 	// A newer binary already wrote version 99: this one must not go back.
 	s, _ := r.Store.Skills().Get(ctx, SystemPrefix+"dory-workflow")
 	s.SystemVersion, s.BodyMD = 99, "nueva"
-	if _, err := r.Store.Skills().Put(ctx, s); err != nil {
+	if _, err := r.Store.Skills().Patch(ctx, s.ID, data.Fields{"system_version": s.SystemVersion, "body_md": s.BodyMD}); err != nil {
 		t.Fatal(err)
 	}
 	if err := SeedSystem(ctx, r.Store); err != nil {
@@ -54,7 +54,7 @@ func TestSeedInstallsAndNeverDowngrades(t *testing.T) {
 	}
 	// An older version in the catalog is upgraded, keeping it disabled.
 	s.SystemVersion = 0
-	r.Store.Skills().Put(ctx, s)
+	r.Store.Skills().Patch(ctx, s.ID, data.Fields{"system_version": s.SystemVersion})
 	SetEnabled(ctx, r.Store, s.ID, false)
 	SeedSystem(ctx, r.Store)
 	if s, _ = r.Store.Skills().Get(ctx, s.ID); s.SystemVersion < 1 || s.BodyMD == "nueva" || s.DisabledAt == nil {
@@ -153,7 +153,7 @@ func TestSeedRestoresEditsOfOldBinaries(t *testing.T) {
 	// knows nothing of system_version.
 	s, _ := r.Store.Skills().Get(ctx, SystemPrefix+"dory-workflow")
 	s.BodyMD, s.Version = "pisada", s.Version+1
-	r.Store.Skills().Put(ctx, s)
+	r.Store.Skills().Patch(ctx, s.ID, data.Fields{"body_md": s.BodyMD, "version": s.Version})
 	SeedSystem(ctx, r.Store)
 	if s, _ = r.Store.Skills().Get(ctx, s.ID); s.BodyMD == "pisada" || s.Version <= 2 {
 		t.Fatalf("old edit kept: %+v", s)
@@ -164,7 +164,7 @@ func TestSeedTakesItsNameFromAUserSkill(t *testing.T) {
 	ctx := context.Background()
 	r, _ := setup(t)
 	// A user skill with the same name, added before system skills existed.
-	user, err := r.Store.Skills().Put(ctx, data.Skill{Name: "dory-workflow", Description: "mía", BodyMD: "propia"})
+	user, err := r.Store.Skills().Create(ctx, data.Skill{Name: "dory-workflow", Description: "mía", BodyMD: "propia"})
 	if err != nil {
 		t.Fatal(err)
 	}

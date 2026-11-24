@@ -53,7 +53,7 @@ func TestFindProjectAndEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := data.New(db, log)
-	p, _ := store.Projects().Put(ctx, data.Project{Slug: "dory", Name: "Dory"})
+	p, _ := store.Projects().Create(ctx, data.Project{Slug: "dory", Name: "Dory"})
 	for _, name := range []string{p.ID, "dory", "DORY"} {
 		if got, err := findProjectByName(ctx, store, name); err != nil || got.ID != p.ID {
 			t.Fatalf("project %q: %+v %v", name, got, err)

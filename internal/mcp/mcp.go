@@ -652,34 +652,49 @@ func saveTask(ctx context.Context, s *api.Server, in taskInput) (data.Task, erro
 	} else if in.Title == "" {
 		return t, data.ErrInvalid.Msgf("title is required")
 	}
-	set := func(dst **string, v string) {
-		if v != "" {
-			*dst = &v
-		}
+	fields := data.Fields{}
+	if in.ProjectID != "" {
+		t.ProjectID = &in.ProjectID
+		fields["project_id"] = in.ProjectID
 	}
-	set(&t.ProjectID, in.ProjectID)
-	set(&t.RepositoryID, in.RepositoryID)
+	if in.RepositoryID != "" {
+		t.RepositoryID = &in.RepositoryID
+		fields["repository_id"] = in.RepositoryID
+	}
 	if in.Title != "" {
 		t.Title = in.Title
+		fields["title"] = in.Title
 	}
 	if in.Description != "" {
 		t.Description = in.Description
+		fields["description"] = in.Description
 	}
 	if in.IssueNumber != 0 {
 		t.IssueNumber = &in.IssueNumber
+		fields["issue_number"] = in.IssueNumber
 	}
 	if in.PRNumber != 0 {
 		t.PRNumber = &in.PRNumber
+		fields["pr_number"] = in.PRNumber
 	}
 	if in.Stage != "" {
 		t.Stage = in.Stage
+		fields["stage"] = in.Stage
 	}
+	var expected *string
 	if t.RepositoryID == nil && t.ProjectID != nil {
 		if repos, _ := store.Repositories().List(ctx, data.Filter{Fields: map[string]any{"project_id": *t.ProjectID}}); len(repos) == 1 {
 			t.RepositoryID = &repos[0].ID
+			fields["repository_id"] = repos[0].ID
+			expected = &t.UpdatedAt
 		}
 	}
-	t, err := s.SaveTask(ctx, t)
+	var err error
+	if t.ID == "" {
+		t, err = s.CreateTask(ctx, t)
+	} else {
+		t, err = s.PatchTask(ctx, t.ID, expected, fields)
+	}
 	if err != nil {
 		return t, err
 	}
@@ -728,7 +743,7 @@ func setTaskProject(ctx context.Context, store *data.Store, taskID, project stri
 			t.RepositoryID = &repos[0].ID
 		}
 	}
-	return store.Tasks().Put(ctx, t)
+	return store.Tasks().PatchIf(ctx, t.ID, t.UpdatedAt, data.Fields{"project_id": t.ProjectID, "repository_id": t.RepositoryID})
 }
 
 func remember(ctx context.Context, store *data.Store, in memoryInput) (data.Memory, error) {
@@ -754,22 +769,33 @@ func remember(ctx context.Context, store *data.Store, in memoryInput) (data.Memo
 			m = same[0]
 		}
 	}
+	fields := data.Fields{}
+	if in.Scope != "" {
+		fields["scope"], fields["scope_id"] = in.Scope, in.ScopeID
+	}
 	if in.Kind != "" {
 		m.Kind = in.Kind
+		fields["kind"] = in.Kind
 	}
 	if in.Title != "" {
 		m.Title = in.Title
+		fields["title"] = in.Title
 	}
 	if in.Content != "" {
 		m.Content = in.Content
+		fields["content"] = in.Content
 	}
 	if in.Labels != nil {
 		m.Labels = in.Labels
+		fields["labels"] = in.Labels
 	}
 	if m.Content == "" {
 		return m, data.ErrInvalid.Msgf("content is required")
 	}
-	return store.Memories().Put(ctx, m)
+	if m.ID == "" {
+		return store.Memories().Create(ctx, m)
+	}
+	return store.Memories().Patch(ctx, m.ID, fields)
 }
 
 func recall(ctx context.Context, store *data.Store, in recallInput) ([]data.Memory, error) {

@@ -6,7 +6,6 @@ import (
 	"github.com/migueel15/dory/internal/apperr"
 	"net/http"
 	"slices"
-	"time"
 
 	"github.com/migueel15/dory/internal/data"
 )
@@ -52,7 +51,7 @@ func (n *Notifier) mountSettings(mux *http.ServeMux) {
 			apperr.WriteHTTP(w, r, apperr.New(apperr.Invalid, "invalid setting"))
 			return
 		}
-		if _, err := n.store.Settings().Put(r.Context(), data.Setting{ID: settingPrefix + body.Kind, Value: body.Mode, UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano)}); err != nil {
+		if _, err := n.store.Settings().Upsert(r.Context(), data.Setting{ID: settingPrefix + body.Kind, Value: body.Mode}); err != nil {
 			apperr.WriteHTTP(w, r, err)
 			return
 		}

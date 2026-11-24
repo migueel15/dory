@@ -60,7 +60,7 @@ func (e Entity) IsJSON(name string) bool {
 	return ok && col.Kind == JSON
 }
 
-// Defaults returns the explicit defaults applied by Put.
+// Defaults returns the explicit defaults applied on creation.
 func (e Entity) Defaults() map[string]any {
 	defaults := make(map[string]any)
 	for _, col := range e.Columns {

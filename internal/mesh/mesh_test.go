@@ -101,12 +101,12 @@ func TestPairSyncAndForward(t *testing.T) {
 	}
 
 	// A change on either side reaches the other.
-	project, err := a.store.Projects().Put(ctx, data.Project{Slug: "dory", Name: "Dory"})
+	project, err := a.store.Projects().Create(ctx, data.Project{Slug: "dory", Name: "Dory"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	eventually(t, "project on b", func() bool { _, err := b.store.Projects().Get(ctx, project.ID); return err == nil })
-	task, _ := b.store.Tasks().Put(ctx, data.Task{ProjectID: &project.ID, Title: "Desde el servidor"})
+	task, _ := b.store.Tasks().Create(ctx, data.Task{ProjectID: &project.ID, Title: "Desde el servidor"})
 	eventually(t, "task on a", func() bool { _, err := a.store.Tasks().Get(ctx, task.ID); return err == nil })
 
 	// Presence: each side sees the other connected.
@@ -143,7 +143,7 @@ func TestPairSyncAndForward(t *testing.T) {
 	if err = a.m.Revoke(ctx, b.m.log.Node()); err != nil {
 		t.Fatal(err)
 	}
-	late, _ := b.store.Tasks().Put(ctx, data.Task{Title: "Tras revocar"})
+	late, _ := b.store.Tasks().Create(ctx, data.Task{Title: "Tras revocar"})
 	time.Sleep(500 * time.Millisecond)
 	if _, err := a.store.Tasks().Get(ctx, late.ID); err == nil {
 		t.Fatal("revoked node still syncs")

@@ -26,7 +26,7 @@ func (s *Server) mountPulls(mux *http.ServeMux) {
 		}
 		return r.PathValue("owner") + "/" + r.PathValue("repo"), n, true
 	}
-	db := s.Store.DB()
+	db := s.Store.LocalDB()
 	mux.HandleFunc("GET "+base+"/reviews", func(w http.ResponseWriter, r *http.Request) {
 		repo, n, ok := target(w, r)
 		if !ok {

@@ -104,7 +104,7 @@ func run() error {
 }
 
 func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplog.Log) error {
-	state := nodestate.New(store.DB())
+	state := nodestate.New(store.LocalDB())
 	if err := importNodeState(ctx, state, cfg.DataDir); err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		log.Printf("publish repository locations: %v", err)
 	}
 	providers := []runtime.Provider{runtime.Claude{}, runtime.Codex{}, runtime.OpenCode{}, runtime.Antigravity{}}
-	rt := runtime.NewManager(store.DB(), store, log_.Node(), cfg.DataDir, state, providers...)
+	rt := runtime.NewManager(store.LocalDB(), store, log_.Node(), cfg.DataDir, state, providers...)
 	agentToken := auth.Secret()
 	rt.MCPURL = "http://" + loopbackAddr(cfg.Listen) + "/mcp"
 	rt.MCPToken = agentToken
@@ -126,7 +126,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	if err != nil {
 		return err
 	}
-	net := mesh.New(store.DB(), log_, id, cfg.NodeName, cfg.MeshPort)
+	net := mesh.New(store.LocalDB(), log_, id, cfg.NodeName, cfg.MeshPort)
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -174,7 +174,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	srv.PeerClient = net.Client()
 	rt.PeerComplete = srv.PeerClient.CompleteDelegation
 	srv.MeshPort = cfg.MeshPort
-	srv.Browser = &browser.Manager{DB: store.DB(), Profile: filepath.Join(cfg.DataDir, "browser-profile"),
+	srv.Browser = &browser.Manager{DB: store.LocalDB(), Profile: filepath.Join(cfg.DataDir, "browser-profile"),
 		Changed: func(id string) { events.Changed("browser", id) }}
 	go srv.Browser.Run(ctx)
 	notices.Columns = srv.TaskColumns

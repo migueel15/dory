@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/migueel15/dory/internal/apperr"
 	"io"
 	"net/http"
@@ -80,16 +81,21 @@ func (s *Server) projectFromRepository(ctx context.Context, name, slug, descript
 			return repo, nil
 		}
 	}
-	p, err := s.Store.Projects().Get(ctx, oplog.ProjectID(remote))
-	if err != nil {
-		if p, err = s.Store.Projects().Put(ctx, data.Project{ID: oplog.ProjectID(remote), Name: name, Slug: slug, Description: description}); err != nil {
-			return data.Repository{}, err
+	projectID := oplog.ProjectID(remote)
+	p, err := s.Store.Projects().Get(ctx, projectID)
+	if errors.Is(err, data.ErrNotFound) {
+		p, err = s.Store.Projects().Create(ctx, data.Project{ID: projectID, Name: name, Slug: slug, Description: description})
+		if errors.Is(err, data.ErrConflict) {
+			p, err = s.Store.Projects().Get(ctx, projectID)
 		}
+	}
+	if err != nil {
+		return data.Repository{}, err
 	}
 	if branch == "" {
 		branch = "main"
 	}
-	return s.Store.Repositories().Put(ctx, data.Repository{ProjectID: p.ID, RemoteURL: remote, DefaultBranch: branch})
+	return s.Store.Repositories().Upsert(ctx, data.Repository{ProjectID: p.ID, RemoteURL: remote, DefaultBranch: branch})
 }
 
 // githubFailure keeps the domain errors of the github package and turns any
@@ -234,7 +240,7 @@ func (s *Server) issueTask(ctx context.Context, repo string, number int, title, 
 			if title == "" {
 				title = "Issue #" + strconv.Itoa(number)
 			}
-			return s.Store.Tasks().Put(ctx, data.Task{ProjectID: &rp.ProjectID, RepositoryID: &rp.ID, IssueNumber: &n, Title: title, Description: description})
+			return s.Store.Tasks().Create(ctx, data.Task{ProjectID: &rp.ProjectID, RepositoryID: &rp.ID, IssueNumber: &n, Title: title, Description: description})
 		}
 	}
 	return data.Task{}, data.ErrNotFound.Msgf("repository not registered: %s", repo)
@@ -330,7 +336,7 @@ func (s *Server) mountDictation(mux *http.ServeMux) {
 			case "capture":
 				project := body.Target.ProjectID
 				deliver = func(ctx context.Context, text string) error {
-					_, err := s.Store.Tasks().Put(ctx, data.Task{ProjectID: project, Title: shortTitle(text), Description: text})
+					_, err := s.Store.Tasks().Create(ctx, data.Task{ProjectID: project, Title: shortTitle(text), Description: text})
 					return err
 				}
 			case "thread":

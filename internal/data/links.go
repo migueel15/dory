@@ -36,7 +36,7 @@ func (s *Store) LinkThread(ctx context.Context, threadID, taskID string, replace
 			return th, ErrInvalid.Msgf("thread is linked to task %s; pass replace to move it", *th.TaskID)
 		}
 	}
-	return s.PatchThread(ctx, threadID, map[string]any{"task_id": taskID, "task_linked_at": s.now().UTC().Format(time.RFC3339Nano)})
+	return s.Threads().PatchIf(ctx, threadID, th.UpdatedAt, Fields{"task_id": taskID, "task_linked_at": s.now().UTC().Format(time.RFC3339Nano)})
 }
 
 // UnlinkThread removes the task of a thread.
@@ -45,7 +45,7 @@ func (s *Store) UnlinkThread(ctx context.Context, threadID string) (Thread, erro
 	if err != nil || th.TaskID == nil {
 		return th, err
 	}
-	return s.PatchThread(ctx, threadID, map[string]any{"task_id": nil, "task_linked_at": nil})
+	return s.Threads().PatchIf(ctx, threadID, th.UpdatedAt, Fields{"task_id": nil, "task_linked_at": nil})
 }
 
 // AddDependency marks that a task must wait for another. It refuses a task
@@ -83,7 +83,7 @@ func (s *Store) AddDependency(ctx context.Context, taskID, dependsOnID string) (
 			next = append(next, d.DependsOnID)
 		}
 	}
-	return s.Dependencies().Put(ctx, Dependency{TaskID: taskID, DependsOnID: dependsOnID})
+	return s.Dependencies().Upsert(ctx, Dependency{TaskID: taskID, DependsOnID: dependsOnID})
 }
 
 // RemoveDependency archives a dependency, which replicates like any change.

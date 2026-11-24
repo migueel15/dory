@@ -27,8 +27,8 @@ func memoryStore(t *testing.T) *data.Store {
 func TestRecallFiltersBeforeLimit(t *testing.T) {
 	ctx := t.Context()
 	store := memoryStore(t)
-	a, _ := store.Projects().Put(ctx, data.Project{Slug: "a", Name: "A"})
-	b, _ := store.Projects().Put(ctx, data.Project{Slug: "b", Name: "B"})
+	a, _ := store.Projects().Create(ctx, data.Project{Slug: "a", Name: "A"})
+	b, _ := store.Projects().Create(ctx, data.Project{Slug: "b", Name: "B"})
 	for i := range 150 {
 		if _, err := remember(ctx, store, memoryInput{Scope: "project", ScopeID: a.ID, Title: fmt.Sprintf("ruido %d", i), Content: "worktree ajeno worktree"}); err != nil {
 			t.Fatal(err)
@@ -50,7 +50,7 @@ func TestRecallFiltersBeforeLimit(t *testing.T) {
 func TestRememberUpdatesSameTitle(t *testing.T) {
 	ctx := t.Context()
 	store := memoryStore(t)
-	p, _ := store.Projects().Put(ctx, data.Project{Slug: "p", Name: "P"})
+	p, _ := store.Projects().Create(ctx, data.Project{Slug: "p", Name: "P"})
 	first, _ := remember(ctx, store, memoryInput{Scope: "project", ScopeID: p.ID, Title: "Regla", Content: "vieja"})
 	second, err := remember(ctx, store, memoryInput{Scope: "project", ScopeID: p.ID, Title: "Regla", Content: "nueva"})
 	if err != nil || second.ID != first.ID || second.Content != "nueva" {

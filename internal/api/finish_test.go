@@ -59,26 +59,26 @@ func newFinishServer(t *testing.T, settings Settings) (*Server, string) {
 func TestSaveTaskStage(t *testing.T) {
 	ctx := context.Background()
 	s, _ := newFinishServer(t, Settings{})
-	task, err := s.Store.Tasks().Put(ctx, data.Task{Title: "a"})
+	task, err := s.Store.Tasks().Create(ctx, data.Task{Title: "a"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	task.Stage = "done"
-	if out, err := s.SaveTask(ctx, task); err != nil || out.Stage != "done" {
+	if out, err := s.PatchTask(ctx, task.ID, nil, data.Fields{"stage": task.Stage}); err != nil || out.Stage != "done" {
 		t.Fatalf("sin pull request: %v %+v", err, out)
 	}
 	task.Stage = "bogus"
-	if _, err := s.SaveTask(ctx, task); !errors.Is(err, data.ErrInvalid) {
+	if _, err := s.PatchTask(ctx, task.ID, nil, data.Fields{"stage": task.Stage}); !errors.Is(err, data.ErrInvalid) {
 		t.Fatalf("stage inválido: %v", err)
 	}
 	// Con una pull request sin estado conocido se rechaza.
 	n := int64(3)
 	task.Stage, task.PRNumber = "inbox", &n
-	if _, err := s.Store.Tasks().Put(ctx, task); err != nil {
+	if _, err := s.Store.Tasks().Patch(ctx, task.ID, data.Fields{"stage": task.Stage, "pr_number": task.PRNumber}); err != nil {
 		t.Fatal(err)
 	}
 	task.Stage = "done"
-	if _, err := s.SaveTask(ctx, task); !errors.Is(err, data.ErrInvalid) {
+	if _, err := s.PatchTask(ctx, task.ID, nil, data.Fields{"stage": task.Stage}); !errors.Is(err, data.ErrInvalid) {
 		t.Fatalf("con pull request: %v", err)
 	}
 }
@@ -86,11 +86,11 @@ func TestSaveTaskStage(t *testing.T) {
 func addThread(t *testing.T, s *Server, task data.Task, worktree string) data.Thread {
 	t.Helper()
 	ctx := context.Background()
-	th, err := s.Store.Threads().Put(ctx, data.Thread{NodeID: s.Node.ID, TaskID: &task.ID, Provider: "claude", Title: "h", Status: "idle"})
+	th, err := s.Store.Threads().Create(ctx, data.Thread{NodeID: s.Node.ID, TaskID: &task.ID, Provider: "claude", Title: "h", Status: "idle"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Store.DB().ExecContext(ctx, `INSERT INTO thread_runtime(thread_id, worktree_path) VALUES (?, ?)`, th.ID, worktree); err != nil {
+	if _, err := s.Store.LocalDB().ExecContext(ctx, `INSERT INTO thread_runtime(thread_id, worktree_path) VALUES (?, ?)`, th.ID, worktree); err != nil {
 		t.Fatal(err)
 	}
 	return th
@@ -110,10 +110,10 @@ func TestFinishTask(t *testing.T) {
 	ctx := context.Background()
 	for _, on := range []bool{false, true} {
 		s, _ := newFinishServer(t, Settings{ArchiveThreadsOnFinish: on})
-		task, _ := s.Store.Tasks().Put(ctx, data.Task{Title: "a"})
+		task, _ := s.Store.Tasks().Create(ctx, data.Task{Title: "a"})
 		th := addThread(t, s, task, "")
 		task.Stage = "done"
-		if _, err := s.SaveTask(ctx, task); err != nil {
+		if _, err := s.PatchTask(ctx, task.ID, nil, data.Fields{"stage": task.Stage}); err != nil {
 			t.Fatal(err)
 		}
 		if got := archived(t, s, th.ID); got != on {
@@ -144,7 +144,7 @@ func TestArchiveRemovesWorktree(t *testing.T) {
 	}
 	git(t, repo, "init", "-q")
 	git(t, repo, "commit", "-q", "--allow-empty", "-m", "init")
-	task, _ := s.Store.Tasks().Put(ctx, data.Task{Title: "a"})
+	task, _ := s.Store.Tasks().Create(ctx, data.Task{Title: "a"})
 	mk := func(name string) (data.Thread, string) {
 		wt := filepath.Join(dir, "worktrees", name)
 		git(t, repo, "worktree", "add", "-q", "-b", name, wt)

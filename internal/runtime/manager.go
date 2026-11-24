@@ -201,8 +201,7 @@ func (m *Manager) Recover(ctx context.Context) error {
 		return err
 	}
 	for _, t := range threads {
-		t.Status = "error"
-		if _, err = m.store.Threads().Put(ctx, t); err != nil {
+		if _, err = m.store.Threads().Patch(ctx, t.ID, data.Fields{"status": "error"}); err != nil {
 			return err
 		}
 		m.save(ctx, Message{ID: newRunID(), ThreadID: t.ID, Role: "system", Text: "El nodo se reinició mientras el agente trabajaba; el turno se interrumpió.", CreatedAt: now()})
@@ -305,7 +304,7 @@ func (m *Manager) Create(ctx context.Context, n NewThread) (data.Thread, error) 
 		linked := now()
 		t.TaskLinkedAt = &linked
 	}
-	t, err := m.store.Threads().Put(ctx, t)
+	t, err := m.store.Threads().Create(ctx, t)
 	if err != nil {
 		return t, err
 	}
@@ -725,7 +724,7 @@ func (m *Manager) setStatusLocked(ctx context.Context, id, status, failure strin
 		// A finished turn is unread until the user opens the thread.
 		fields["read_at"] = nil
 	}
-	if _, err := m.store.PatchThread(ctx, id, fields); err != nil {
+	if _, err := m.store.Threads().Patch(ctx, id, fields); err != nil {
 		log.Printf("runtime: status of %s: %v", id, err)
 	}
 	m.publishLocked(Update{ThreadID: id, Status: status, Error: failure})
@@ -997,7 +996,7 @@ func (m *Manager) syncBranch(ctx context.Context, id string) {
 	if err != nil || t.Branch == branch {
 		return
 	}
-	if _, err := m.store.PatchThread(ctx, id, map[string]any{"branch": branch}); err != nil {
+	if _, err := m.store.Threads().Patch(ctx, id, map[string]any{"branch": branch}); err != nil {
 		log.Printf("runtime: branch of %s: %v", id, err)
 	}
 }
@@ -1033,7 +1032,7 @@ func (m *Manager) Adopt(ctx context.Context, e External, projectID *string) (dat
 	if err != nil {
 		return data.Thread{}, err
 	}
-	t, err := m.store.Threads().Put(ctx, data.Thread{NodeID: m.node, ProjectID: projectID, Provider: e.Provider, Title: e.Title, Branch: e.Branch})
+	t, err := m.store.Threads().Create(ctx, data.Thread{NodeID: m.node, ProjectID: projectID, Provider: e.Provider, Title: e.Title, Branch: e.Branch})
 	if err != nil {
 		return t, err
 	}
