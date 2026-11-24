@@ -80,7 +80,12 @@ export function Messages({ threadId, messages: all, running }: { threadId: strin
   let openQuestion: string | undefined;
   for (const m of messages) openQuestion = m.role === "user" ? undefined : isAsk(m) ? (m.status === "running" ? m.id : undefined) : m.role === "question" ? m.id : openQuestion;
   const prepaint = usePrepaint();
-  return <>{layout(messages, running).map((m) => <div key={m.id} data-anchor={m.id} ref={prepaint} style={offscreen}>{"changes" in m ? <TurnChanges threadId={threadId} turn={m.turn} /> : "worked" in m ? <WorkedBlock items={m.items} secs={m.secs} live={m.live} since={m.since} />
+  // The anchor names a place by turn and position, not by id: after each turn
+  // Dory reloads the conversation from the harness's file with new ids, and
+  // the reader must stay on the same message.
+  let turn = 0, at = 0;
+  const place = (m: Message | Worked | Changes) => { if ("role" in m && m.role === "user") { turn++; at = 0; } return `${turn}:${at++}`; };
+  return <>{layout(messages, running).map((m) => <div key={m.id} data-anchor={place(m)} ref={prepaint} style={offscreen}>{"changes" in m ? <TurnChanges threadId={threadId} turn={m.turn} /> : "worked" in m ? <WorkedBlock items={m.items} secs={m.secs} live={m.live} since={m.since} />
     : <Entry m={m} threadId={threadId} fresh={!initial.current?.has(m.id)} openQuestion={m.id === openQuestion} />}</div>)}</>;
 }
 
@@ -684,21 +689,26 @@ export function useFollow(deps: unknown[]) {
     const el = scroller.current;
     if (!el) return;
     const touch = () => { touched.current = Date.now(); chasing.current = false; };
+    const down = () => { touched.current = Date.now(); };
     // A gesture up leaves the end at once, before content growing in the same
     // frame can pull the view back down and make it flicker.
     // Mark the anchor now: content may grow before the scroll event arrives,
     // and holding with no anchor or an old one moves the view.
     const leave = () => { touch(); if (pinned.current) { pinned.current = false; mark(); } };
-    const wheel = (e: WheelEvent) => { if (e.deltaY < 0) leave(); };
-    const key = (e: KeyboardEvent) => { if (["ArrowUp", "PageUp", "Home"].includes(e.key)) leave(); };
+    const wheel = (e: WheelEvent) => { if (e.deltaY < 0) leave(); else down(); };
+    const key = (e: KeyboardEvent) => { if (["ArrowUp", "PageUp", "Home"].includes(e.key)) leave(); else if (["ArrowDown", "PageDown", "End", " "].includes(e.key)) down(); };
     const pointer = (e: PointerEvent) => { if (e.target === el) { held.current = true; touch(); } }; // the scrollbar
     const release = () => { held.current = false; };
+    // A page rendered in a frame is another document: its wheel and keys never
+    // reach el, so the page reports a gesture up itself.
+    const framed = (e: MessageEvent) => { if (e.data?.doryUp && Array.from(el.querySelectorAll("iframe")).some((f) => f.contentWindow === e.source)) leave(); };
+    window.addEventListener("message", framed);
     window.addEventListener("pointerup", release);
     el.addEventListener("wheel", wheel, { passive: true });
     el.addEventListener("touchmove", touch, { passive: true });
     el.addEventListener("keydown", key);
     el.addEventListener("pointerdown", pointer);
-    return () => { el.removeEventListener("wheel", wheel); el.removeEventListener("touchmove", touch); el.removeEventListener("keydown", key); el.removeEventListener("pointerdown", pointer); window.removeEventListener("pointerup", release); };
+    return () => { el.removeEventListener("wheel", wheel); el.removeEventListener("touchmove", touch); el.removeEventListener("keydown", key); el.removeEventListener("pointerdown", pointer); window.removeEventListener("pointerup", release); window.removeEventListener("message", framed); };
   }, []);
   const onScroll = () => {
     const el = scroller.current;
@@ -706,11 +716,13 @@ export function useFollow(deps: unknown[]) {
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     const up = el.scrollTop < lastTop.current - 1;
     lastTop.current = el.scrollTop;
-    // A move up by the user leaves the end even within the last pixels: re-pinning
-    // there let the next growth pull the view back down, so small wheel or touch
-    // steps could never get out.
-    if (up && !chasing.current && (held.current || Date.now() - touched.current < 1000)) { if (pinned.current) anchor.current = null; pinned.current = false; }
-    else if (distance < 40 && !up) { pinned.current = true; chasing.current = false; }
+    // A move is the user's after a gesture, or with the pointer over a frame,
+    // whose page may not have reported it. A move up by the user leaves the end
+    // even within the last pixels; only the user (or "Ir al final") pins there:
+    // content shrinking under the view clamps it there too.
+    const mine = held.current || chasing.current || Date.now() - touched.current < 1000 || !!el.querySelector("iframe:hover");
+    if (up && !chasing.current && mine) { if (pinned.current) anchor.current = null; pinned.current = false; }
+    else if (distance < 40 && !up && (pinned.current || mine)) { pinned.current = true; chasing.current = false; }
     else if (pinned.current) toEnd(); // the browser moved the view; go back to the end
     if (!pinned.current) mark();
     setAway(!pinned.current && distance > 200);
