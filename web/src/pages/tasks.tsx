@@ -19,7 +19,6 @@ import { IdeaModal } from "../components/capture";
 import { TaskQuickMenu, type QuickLaunch } from "../components/task-quick-menu";
 import { githubRoute } from "../components/refs";
 import { planMessage } from "../lib/auto-message";
-import { isUnread } from "./threads";
 
 // Fixed meaning of each state color (requirement RF-48).
 const TONE = {
@@ -389,10 +388,11 @@ function TaskCard({ c, onOpen, onDrag, onMenu }: { c: Card; onOpen: () => void; 
 // ThreadDot is the v1 colored dot of a thread's state.
 function ThreadDot({ t }: { t: Thread }) {
   const status = t.status;
-  const d = status === "error" ? { label: "Error", color: "bg-red-500", pulse: false }
+  const d = t.state_stale ? { label: "Sin conexión", color: "bg-slate-400", pulse: false }
+    : status === "error" ? { label: "Error", color: "bg-red-500", pulse: false }
     : status === "waiting" ? { label: "Te necesita", color: "bg-amber-500", pulse: true }
     : status === "working" ? { label: "Trabajando", color: "bg-blue-500", pulse: true }
-    : isUnread(t) ? { label: "Terminado, sin leer", color: "bg-emerald-500", pulse: false }
+    : t.unread ? { label: "Terminado, sin leer", color: "bg-emerald-500", pulse: false }
     : { label: "Inactivo", color: "bg-slate-400", pulse: false };
   return <span role="img" title={d.label} aria-label={d.label} className={`size-2 shrink-0 rounded-full ${d.color} ${d.pulse ? "motion-safe:animate-pulse" : ""}`} />;
 }

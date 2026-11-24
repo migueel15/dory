@@ -22,7 +22,6 @@ type Filter = keyof typeof FILTERS;
 const LIST_W = 336;
 const clampList = (w: number) => Math.round(Math.min(Math.max(w, 240), 560));
 
-export const isUnread = (t: Thread) => !t.read_at && t.status !== "working" && !!t.last_activity_at;
 const snoozed = (t: Thread) => !!t.snoozed_until && new Date(t.snoozed_until) > new Date();
 
 // Threads keeps the list of threads on the left and the open one on the right.
@@ -72,7 +71,7 @@ export function Threads() {
   const envOf = (id: string) => {
     if (id === local && nodes.data) return { name: nodes.data.node.name, icon: nodes.data.node.icon, os: nodes.data.node.os };
     const p = mesh.data?.peers.find((x) => x.id === id);
-    return p ? { name: p.name, icon: p.info.node?.icon, os: p.info.node?.os, offline: !p.connected } : { name: "Otro nodo", offline: !!(mesh.data && nodes.data) };
+    return p ? { name: p.name, icon: p.info.node?.icon, os: p.info.node?.os } : { name: "Otro nodo" };
   };
   // Pull requests and issues of each thread, through its task.
   const refsOf = useThreadRefs();
@@ -184,9 +183,10 @@ export function ThreadsHome() {
 }
 
 // ThreadRow is one thread of the side list; right click opens its actions.
-function ThreadRow({ t, sub, refs, env: { offline, ...env }, listVisible }: { t: Thread; sub: string; refs: GhRef[]; env: { name: string; icon?: string; os?: string; offline?: boolean }; listVisible: boolean }) {
+function ThreadRow({ t, sub, refs, env, listVisible }: { t: Thread; sub: string; refs: GhRef[]; env: { name: string; icon?: string; os?: string }; listVisible: boolean }) {
   const menu = useThreadMenu(t);
-  const unread = isUnread(t);
+  const offline = t.state_stale;
+  const unread = t.unread;
   const icons = <>
     {refs.map((r) => <RefChip key={r.kind} r={r} listVisible={listVisible} />)}
     <span className="flex shrink-0 items-center text-slate-400 dark:text-muted"><EnvIcon {...env} /></span>
