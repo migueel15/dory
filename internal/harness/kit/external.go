@@ -5,14 +5,15 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/migueel15/dory/internal/harness"
 )
 
-// externalLimit bounds how many recent sessions of each harness are listed.
-const externalLimit = 150
+// ExternalLimit bounds how many recent sessions of each harness are listed.
+const ExternalLimit = 150
 
 type SummaryCache struct {
 	mu   sync.Mutex
@@ -46,8 +47,8 @@ func (c *SummaryCache) List(provider, pattern string, parse sessionParser) []har
 		}
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].mod.After(list[j].mod) })
-	if len(list) > externalLimit {
-		list = list[:externalLimit]
+	if len(list) > ExternalLimit {
+		list = list[:ExternalLimit]
 	}
 	for _, f := range list {
 		if e, ok := c.summarize(provider, f.path, f.mod, parse); ok {
@@ -119,4 +120,7 @@ func FirstMatch(pattern string) string {
 		return ""
 	}
 	return files[0]
+}
+func DoryMessage(text string) bool {
+	return strings.HasPrefix(text, "<dory-context ") || strings.HasPrefix(text, "<dory-plan ")
 }

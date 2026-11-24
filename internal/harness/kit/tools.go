@@ -3,7 +3,6 @@ package kit
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -94,8 +93,6 @@ func ToolCallFromInput(name string, input json.RawMessage) *harness.ToolCall {
 	}
 	return t
 }
-
-var codeModeCall = regexp.MustCompile(`\btools\.(\w+)\s*\(`)
 
 // codexOutput reads a tool's output from a rollout: a string, or a list of
 // text parts. A code-mode script returns its tool's MCP result as one part

@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -11,41 +10,6 @@ import (
 	"github.com/migueel15/dory/internal/harness"
 	"github.com/migueel15/dory/internal/harness/procpool"
 )
-
-func (c Claude) Session(ctx context.Context) (bool, string) {
-	out, err := withEnv(cmdexec.CommandContext(ctx, c.bin(), "auth", "status"), c.Environ()).Output()
-	var st struct {
-		LoggedIn   bool   `json:"loggedIn"`
-		AuthMethod string `json:"authMethod"`
-	}
-	if err != nil || json.Unmarshal(out, &st) != nil {
-		return false, ""
-	}
-	return st.LoggedIn, st.AuthMethod
-}
-func (c Claude) LoginCommand() []string  { return []string{c.bin(), "auth", "login"} }
-func (c Claude) UpdateCommand() []string { return []string{c.bin(), "update"} }
-
-func (c Codex) Session(ctx context.Context) (bool, string) {
-	out, err := withEnv(cmdexec.CommandContext(ctx, c.bin(), "login", "status"), c.Environ()).CombinedOutput()
-	text := strings.TrimSpace(string(out))
-	return err == nil && strings.HasPrefix(text, "Logged in"), text
-}
-func (c Codex) LoginCommand() []string  { return []string{c.bin(), "login", "--device-auth"} }
-func (c Codex) UpdateCommand() []string { return []string{c.bin(), "update"} }
-
-func (o OpenCode) Session(ctx context.Context) (bool, string) {
-	out, err := cmdexec.CommandContext(ctx, o.bin(), "auth", "list").Output()
-	lines := 0
-	for _, l := range strings.Split(string(out), "\n") {
-		if strings.Contains(l, "stored") {
-			lines++
-		}
-	}
-	return err == nil && lines > 0, strings.TrimSpace(string(out))
-}
-func (o OpenCode) LoginCommand() []string  { return []string{o.bin(), "auth", "login"} }
-func (o OpenCode) UpdateCommand() []string { return []string{o.bin(), "upgrade"} }
 
 type Job = procpool.Job
 

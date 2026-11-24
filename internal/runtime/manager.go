@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +19,7 @@ import (
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/harness"
+	"github.com/migueel15/dory/internal/harness/kit"
 	"github.com/migueel15/dory/internal/harness/procpool"
 	"github.com/migueel15/dory/internal/nodestate"
 	"github.com/migueel15/dory/internal/outbox"
@@ -358,7 +361,7 @@ func (m *Manager) Ask(ctx context.Context, id string, questions []Question) ([][
 	m.request(ctx, id, Request{ID: req, Kind: "question", MessageID: msg.ID, Questions: questions})
 	select {
 	case a := <-answers:
-		msg.Tool.Questions = answered(questions, a)
+		msg.Tool.Questions = kit.Answered(questions, a)
 		msg.Status = "done"
 		m.save(context.WithoutCancel(ctx), msg)
 		return a, nil
@@ -510,11 +513,36 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan harne
 	status, failure := "idle", ""
 	settings := turnSettings{Provider: t.Provider, Configured: ReportedSettings{Model: t.Model, Effort: t.Effort}}
 	messages := turnMessages{run: run, items: map[string]Message{}}
+	checkpoints := make(map[string]textCheckpoint)
+	flush := func() {
+		for _, id := range slices.Sorted(maps.Keys(checkpoints)) {
+			msg := messages.items[id]
+			msg.ThreadID, msg.Streaming = t.ID, false
+			m.save(bg, msg)
+			delete(checkpoints, id)
+		}
+	}
 	for event := range events {
 		if msg, ok := messages.apply(event); ok {
 			msg.ThreadID = t.ID
 			usage.message(msg)
-			m.save(bg, msg)
+			switch event.(type) {
+			case harness.TextDelta:
+				at := time.Now()
+				last, exists := checkpoints[msg.ID]
+				if !exists || last.due(at, len(msg.Text)) {
+					if m.persistMessage(bg, &msg) {
+						checkpoints[msg.ID] = textCheckpoint{at: at, size: len(msg.Text)}
+					}
+				}
+				if _, exists := checkpoints[msg.ID]; !exists {
+					checkpoints[msg.ID] = textCheckpoint{at: at}
+				}
+				m.publish(Update{ThreadID: t.ID, Message: &msg})
+			default:
+				delete(checkpoints, msg.ID)
+				m.save(bg, msg)
+			}
 			continue
 		}
 		switch e := event.(type) {
@@ -554,17 +582,19 @@ func (m *Manager) follow(ctx context.Context, t data.Thread, events <-chan harne
 		case harness.RequestOpened:
 			m.request(bg, t.ID, e.Request)
 		case harness.TurnEnded:
+			flush()
 			switch {
 			case e.Reason == harness.Interrupted || (e.Reason != harness.Completed && ctx.Err() != nil):
 				status, failure = "idle", ""
-				m.save(bg, Message{ID: newRunID(), ThreadID: t.ID, Role: "interrupt", Text: "Turno interrumpido", CreatedAt: now()})
+				m.save(bg, Message{ID: newRunID(), ThreadID: t.ID, Role: "interrupt", Text: turnInterrupted, CreatedAt: now()})
 			case e.Reason == harness.Failed || e.Reason == harness.NoResponse:
-				status, failure = "error", e.Error
+				status, failure = "error", turnError(e)
 				m.save(bg, Message{ID: newRunID(), ThreadID: t.ID, Role: "system", Text: failure, Status: "failed", CreatedAt: now()})
 			}
 		}
 	}
 
+	flush()
 	if err := usage.save(bg, m.db, t.ID, run, t.Provider, time.Now()); err != nil {
 		log.Printf("runtime: save usage: %v", err)
 	}
@@ -644,11 +674,17 @@ func (m *Manager) setStatusLocked(ctx context.Context, id, status, failure strin
 
 // Message is stored with the thread it belongs to.
 func (m *Manager) save(ctx context.Context, msg Message) {
+	if m.persistMessage(ctx, &msg) {
+		m.publish(Update{ThreadID: msg.ThreadID, Message: &msg})
+	}
+}
+
+func (m *Manager) persistMessage(ctx context.Context, msg *Message) bool {
 	streaming := 0
 	if msg.Streaming {
 		streaming = 1
 	}
-	redactSecret(&msg)
+	redactSecret(msg)
 	at := now()
 	if msg.CreatedAt == "" {
 		msg.CreatedAt = at
@@ -660,9 +696,9 @@ func (m *Manager) save(ctx context.Context, msg Message) {
 		msg.ID, msg.ThreadID, msg.RunID, msg.Role, msg.Text, msg.Title, msg.Detail, msg.Status, streaming, msg.CreatedAt, at, toolJSON(msg.Tool), msg.SenderThreadID)
 	if err != nil {
 		log.Printf("runtime: save message: %v", err)
-		return
+		return false
 	}
-	m.publish(Update{ThreadID: msg.ThreadID, Message: &msg})
+	return true
 }
 
 func toolJSON(t *ToolCall) string {

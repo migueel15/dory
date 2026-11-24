@@ -15,8 +15,8 @@ import (
 	"github.com/migueel15/dory/internal/harness"
 )
 
-// usageTimeout bounds one usage query, process start included.
-const usageTimeout = 45 * time.Second
+// UsageTimeout bounds one usage query, process start included.
+const UsageTimeout = 45 * time.Second
 
 // windowKind names a window by its length with the kinds Claude Code uses,
 // so the interface labels every provider the same way.
@@ -40,7 +40,7 @@ func SortWindows(ws []harness.Window) []harness.Window {
 // ask starts cmd, writes each request as a line on its stdin and feeds every
 // stdout line to read until it says it is done. It then closes the process.
 func Ask(ctx context.Context, cmd *exec.Cmd, requests []string, read func(line []byte) (bool, error)) error {
-	ctx, cancel := context.WithTimeout(ctx, usageTimeout)
+	ctx, cancel := context.WithTimeout(ctx, UsageTimeout)
 	defer cancel()
 	full := cmdexec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
 	full.Dir = cmd.Dir

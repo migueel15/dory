@@ -9,38 +9,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sync"
 	"syscall"
 	"time"
+
+	"github.com/migueel15/dory/internal/harness/kit"
 )
 
 // serviceMarker tags every process of a service started by Dory.
 const serviceMarker = "DORY_SERVICE=1"
-
-var (
-	userScopeOnce sync.Once
-	userScopePath string
-)
-
-// userScope returns systemd-run when Dory runs under systemd and a user
-// manager answers, so a service gets its own scope and outlives Dory's unit.
-func userScope() string {
-	userScopeOnce.Do(func() {
-		if os.Getenv("INVOCATION_ID") == "" {
-			return
-		}
-		path, err := exec.LookPath("systemd-run")
-		if err != nil {
-			return
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		if exec.CommandContext(ctx, "systemctl", "--user", "show-environment").Run() == nil {
-			userScopePath = path
-		}
-	})
-	return userScopePath
-}
 
 // StartService runs command in the thread's worktree as a service Dory owns:
 // in its own session, marked with the thread and detached from the agent, so
@@ -64,7 +40,7 @@ func (m *Manager) StartService(ctx context.Context, thread, command string) (pid
 	}
 	defer out.Close()
 	args := []string{"/bin/sh", "-c", command}
-	if scope := userScope(); scope != "" {
+	if scope := kit.UserScope(); scope != "" {
 		args = append([]string{scope, "--user", "--scope", "--quiet", "--"}, args...)
 	}
 	cmd := exec.Command(args[0], args[1:]...)

@@ -28,4 +28,3 @@ func (m *Manager) StopArchivedServices()           {}
 func (m *Manager) StartService(context.Context, string, string) (int, string, error) {
 	return 0, "", errors.New("los servicios solo están disponibles en Linux")
 }
-func userScope() string { return "" }
