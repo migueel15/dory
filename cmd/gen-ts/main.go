@@ -35,7 +35,7 @@ var roots = []any{
 	runtime.Message{}, runtime.ToolCall{}, runtime.FileEdit{}, runtime.Todo{}, runtime.Question{},
 	runtime.Option{}, runtime.Request{}, runtime.SecretPrompt{}, runtime.Queued{}, runtime.Attachment{},
 	runtime.TurnModel{}, runtime.Window{}, runtime.Model{}, runtime.Status{}, runtime.External{},
-	runtime.Job{}, runtime.Delegation{}, runtime.Defaults{}, runtime.KeptWorktree{}, runtime.TitleModel{},
+	runtime.Job{}, runtime.Delegation{}, api.NodeDefaults{}, runtime.KeptWorktree{}, runtime.TitleModel{},
 	runtime.Entry{}, runtime.Service{}, runtime.UsageReport{}, runtime.UsageBreakdownRow{}, runtime.UsageTurn{},
 	skills.Conflict{}, version.Info{},
 	api.ThreadView{}, api.Card{}, api.Settings{}, api.NodeUpdate{}, api.ExternalView{}, peerapi.CreateThreadResponse{},
@@ -52,7 +52,6 @@ var names = map[reflect.Type]string{
 	reflect.TypeFor[runtime.Request]():     "PendingRequest",
 	reflect.TypeFor[runtime.Window]():      "UsageWindow",
 	reflect.TypeFor[runtime.Status]():      "Provider",
-	reflect.TypeFor[runtime.Defaults]():    "NodeDefaults",
 	reflect.TypeFor[update.Status]():       "UpdateStatus",
 	reflect.TypeFor[github.DeviceStatus](): "GithubDeviceState",
 }

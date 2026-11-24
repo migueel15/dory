@@ -157,17 +157,19 @@ func (st *SettingsStore) Set(v Settings) error {
 	return st.value.Set(context.Background(), cloneSettings(v))
 }
 
+type NodeDefaults struct {
+	runtime.Defaults
+	ClaudeHome string `json:"claude_home"`
+	CodexHome  string `json:"codex_home"`
+}
+
 func (s *Server) mountSettings(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/nodes/{node}/settings", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, s.Settings.Get())
 	}))
 	mux.HandleFunc("GET /api/nodes/{node}/defaults", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		defaults := s.Runtime.Defaults()
-		writeJSON(w, http.StatusOK, struct {
-			runtime.Defaults
-			ClaudeHome string `json:"claude_home"`
-			CodexHome  string `json:"codex_home"`
-		}{
+		writeJSON(w, http.StatusOK, NodeDefaults{
 			Defaults:   defaults,
 			ClaudeHome: harness.DefaultConfigDir(defaults.Home, "claude"),
 			CodexHome:  harness.DefaultConfigDir(defaults.Home, "codex"),
