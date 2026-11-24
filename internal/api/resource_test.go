@@ -3,14 +3,33 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/localdb"
+	"github.com/migueel15/dory/internal/oplog"
 )
 
 func TestTaskResourceWrites(t *testing.T) {
-	s, task := newPlanServer(t)
+	ctx := t.Context()
+	db, err := localdb.Open(ctx, filepath.Join(t.TempDir(), "dory.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	log, err := oplog.Open(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := data.New(db, log)
+	s := &Server{Store: store, Tasks: &app.Tasks{Store: store}}
+	task, err := store.Tasks().Create(ctx, data.Task{Title: "Tarea"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	mux := http.NewServeMux()
 	mountResource(mux, "tasks", s.Store.Tasks(), resourceWrites[data.Task]{s.Tasks.Create, s.Tasks.Patch})
 	req := func(method, path, body, match string, want int) {

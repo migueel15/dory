@@ -24,7 +24,7 @@ import (
 )
 
 func TestThreadControlTools(t *testing.T) {
-	tools := toolsOf(t, build(&api.Server{Devices: devices.NewManager()}, false))
+	tools := toolsOf(t, build(&Deps{Devices: devices.NewManager()}, false))
 	for _, n := range []string{"list_models", "list_threads", "get_thread", "thread_configure", "thread_send", "thread_stop", "subagent_spawn", "thread_create", "list_environments", "subagent_status", "subagent_cancel"} {
 		if tools[n] == nil {
 			t.Errorf("missing %s", n)
@@ -72,7 +72,7 @@ func TestFindProjectAndEnvironment(t *testing.T) {
 	if _, err := findProjectByName(ctx, store, "nope"); err == nil {
 		t.Fatal("unknown project accepted")
 	}
-	s := &api.Server{Node: api.Node{ID: "n1", Name: "Portátil"}}
+	s := &Deps{Node: Node{ID: "n1", Name: "Portátil"}}
 	for _, name := range []string{"", "local", "n1", "portátil"} {
 		if got, err := findEnvironment(ctx, s, name); err != nil || got != "n1" {
 			t.Fatalf("environment %q: %q %v", name, got, err)
@@ -107,10 +107,11 @@ func TestAPIAndMCPUseSameThreadSelection(t *testing.T) {
 	state := nodestate.New(db)
 	rt := runtime.NewManager(db, store, log.Node(), dir, state, nil, selectionProvider{})
 	settings := api.NewSettingsStore(state, api.Settings{})
-	s := &api.Server{Store: store, Runtime: rt, Node: api.Node{ID: log.Node()}, Settings: settings,
-		Threads: &app.Threads{Store: store, Runtime: rt, Settings: settings, Node: log.Node(), DataDir: dir}}
+	threads := &app.Threads{Store: store, Runtime: rt, Settings: settings, Node: log.Node(), DataDir: dir}
+	s := &api.Server{Store: store, Runtime: rt, Node: api.Node{ID: log.Node()}, Settings: settings, Threads: threads}
 	mux := http.NewServeMux()
 	s.Register(mux)
+	deps := &Deps{Store: store, Runtime: rt, Node: Node{ID: log.Node()}, Threads: threads}
 
 	const selection = `{"provider":"test","model":"Test Model","effort":"HIGH"}`
 	httpResponse := httptest.NewRecorder()
@@ -121,7 +122,7 @@ func TestAPIAndMCPUseSameThreadSelection(t *testing.T) {
 	}
 
 	const secret = "test-agent-secret"
-	handler := auth.Middleware(nil, config.Config{}, secret)(Handler(s))
+	handler := auth.Middleware(nil, config.Config{}, secret)(Handler(deps))
 	req := httptest.NewRequestWithContext(ctx, "POST", "/mcp?thread="+web.ThreadID, strings.NewReader(
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"thread_create","arguments":`+selection+`}}`))
 	req.Header.Set("Accept", "application/json, text/event-stream")
