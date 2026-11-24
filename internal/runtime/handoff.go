@@ -57,7 +57,7 @@ func (m *Manager) configureLocked(ctx context.Context, id string, settings Threa
 		}
 		fields["runtime_mode"] = *settings.RuntimeMode
 	}
-	return m.store.PatchThread(ctx, id, fields)
+	return m.store.Threads().Patch(ctx, id, fields)
 }
 
 const handoffHistoryBytes = 16_000

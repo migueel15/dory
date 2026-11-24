@@ -43,7 +43,7 @@ func TestEmitIsIdempotentAndKeepsReadState(t *testing.T) {
 	}
 	at := time.Now().UTC().Format(time.RFC3339Nano)
 	list[0].ReadAt = &at
-	store.Notices().Put(ctx, list[0])
+	store.Notices().Patch(ctx, list[0].ID, data.Fields{"read_at": list[0].ReadAt})
 	n.Emit(ctx, "plan.ready", "thread-1", "stamp", "Tarea", "/threads/1")
 	list, _ = store.Notices().List(ctx, data.Filter{})
 	if len(list) != 1 || list[0].ReadAt == nil {
@@ -63,7 +63,7 @@ func TestRetentionDeletesOldReadNotices(t *testing.T) {
 	list, _ := store.Notices().List(ctx, data.Filter{})
 	old := time.Now().Add(-31 * 24 * time.Hour).UTC().Format(time.RFC3339Nano)
 	list[0].ReadAt = &old
-	store.Notices().Put(ctx, list[0])
+	store.Notices().Patch(ctx, list[0].ID, data.Fields{"read_at": list[0].ReadAt})
 	done := make(chan struct{})
 	go func() { n.Run(ctx); close(done) }()
 	time.Sleep(300 * time.Millisecond)
@@ -115,8 +115,8 @@ func TestSettingsMode(t *testing.T) {
 	if n.Mode(ctx, "thread.idle") != ModeAuto {
 		t.Fatal("default must be automatic")
 	}
-	store.Settings().Put(ctx, data.Setting{ID: settingPrefix + "thread.idle", Value: ModeOff})
-	store.Settings().Put(ctx, data.Setting{ID: settingPrefix + "plan.ready", Value: ModePush})
+	store.Settings().Upsert(ctx, data.Setting{ID: settingPrefix + "thread.idle", Value: ModeOff})
+	store.Settings().Upsert(ctx, data.Setting{ID: settingPrefix + "plan.ready", Value: ModePush})
 	n.Emit(ctx, "thread.idle", "t", "1", "", "")
 	n.Emit(ctx, "plan.ready", "t", "1", "", "")
 	list, _ := store.Notices().List(ctx, data.Filter{})

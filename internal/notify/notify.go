@@ -10,7 +10,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/migueel15/dory/internal/apperr"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -20,6 +20,7 @@ import (
 	"time"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
 )
 
@@ -86,7 +87,7 @@ func New(ctx context.Context, store *data.Store, node, dir string) (*Notifier, e
 			return nil, err
 		}
 	}
-	n := &Notifier{db: store.DB(), store: store, node: node, private: keys.Private, public: keys.Public,
+	n := &Notifier{db: store.LocalDB(), store: store, node: node, private: keys.Private, public: keys.Public,
 		last: map[string]string{}, pushed: map[string]bool{}}
 	// Start from the current states, so a restart does not notify old news.
 	threads, err := store.Threads().List(ctx, data.Filter{Limit: 1000})
@@ -99,12 +100,12 @@ func New(ctx context.Context, store *data.Store, node, dir string) (*Notifier, e
 	return n, nil
 }
 
-// Run deletes the notices read more than 30 days ago, every hour.
+// Run archives the notices read more than 30 days ago, every hour.
 func (n *Notifier) Run(ctx context.Context) {
 	go n.expire(ctx)
 	for {
-		cutoff := time.Now().Add(-retention).UTC().Format(time.RFC3339Nano)
-		if _, err := n.db.ExecContext(ctx, `DELETE FROM notices WHERE read_at IS NOT NULL AND read_at < ?`, cutoff); err != nil && ctx.Err() == nil {
+		cutoff := time.Now().Add(-retention)
+		if err := n.store.ArchiveReadNotices(ctx, cutoff); err != nil && ctx.Err() == nil {
 			log.Printf("notify: retention: %v", err)
 		}
 		select {
@@ -232,10 +233,7 @@ func (n *Notifier) Emit(ctx context.Context, kind, subject, stamp, body, url str
 	}
 	sum := sha256.Sum256([]byte(kind + "\x00" + subject + "\x00" + stamp))
 	id := hex.EncodeToString(sum[:16])
-	if _, err := n.store.Notices().Get(ctx, id); err == nil {
-		return
-	}
-	if _, err := n.store.Notices().Put(ctx, data.Notice{ID: id, Kind: kind, Title: title, Body: body, URL: url}); err != nil {
+	if _, err := n.store.Notices().Create(ctx, data.Notice{ID: id, Kind: kind, Title: title, Body: body, URL: url}); err != nil && !errors.Is(err, data.ErrConflict) {
 		log.Printf("notify: %v", err)
 	}
 }
@@ -356,8 +354,7 @@ func (n *Notifier) Mount(mux *http.ServeMux) {
 		at := time.Now().UTC().Format(time.RFC3339Nano)
 		for _, nt := range list {
 			if nt.ReadAt == nil && (len(body.IDs) == 0 || slices.Contains(body.IDs, nt.ID)) {
-				nt.ReadAt = &at
-				if _, err := n.store.Notices().Put(r.Context(), nt); err != nil {
+				if _, err := n.store.Notices().Patch(r.Context(), nt.ID, data.Fields{"read_at": at}); err != nil && !errors.Is(err, data.ErrNotFound) {
 					apperr.WriteHTTP(w, r, err)
 					return
 				}

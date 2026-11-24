@@ -63,20 +63,27 @@ func Save(ctx context.Context, store *data.Store, s data.Skill) (data.Skill, err
 		}
 	}
 	s.Version, s.Source, s.SystemVersion = 1, "", 0
-	if s.ID != "" {
-		if old, err := store.Skills().Get(ctx, s.ID); err == nil {
-			if old.Source == "system" {
-				return old, data.ErrInvalid.Msgf("system skills cannot be edited; fork it").With("reason", "system_skill_readonly")
-			}
-			// Activation and the fork link change only through SetEnabled and Fork.
-			s.ForkedFrom, s.DisabledAt = old.ForkedFrom, old.DisabledAt
-			s.Version = old.Version
-			if old.BodyMD != s.BodyMD || old.Description != s.Description || !maps(old.Files, s.Files) || old.Name != s.Name {
-				s.Version++
-			}
-		}
+	if s.ID == "" {
+		return store.Skills().Create(ctx, s)
 	}
-	return store.Skills().Put(ctx, s)
+	old, err := store.Skills().Get(ctx, s.ID)
+	if err != nil {
+		return old, err
+	}
+	if old.Source == "system" {
+		return old, data.ErrInvalid.Msgf("system skills cannot be edited; fork it").With("reason", "system_skill_readonly")
+	}
+	s.Version = old.Version
+	if old.BodyMD != s.BodyMD || old.Description != s.Description || !maps(old.Files, s.Files) || old.Name != s.Name {
+		s.Version++
+	}
+	if s.Files == nil {
+		s.Files = map[string]string{}
+	}
+	return store.Skills().PatchIf(ctx, s.ID, old.UpdatedAt, data.Fields{
+		"name": s.Name, "description": s.Description, "body_md": s.BodyMD,
+		"files": s.Files, "targets": s.Targets, "version": s.Version,
+	})
 }
 
 func maps(a, b map[string]string) bool {
@@ -359,7 +366,7 @@ func (r *Reconciler) publish(ctx context.Context, states map[string]data.SkillSt
 		if old, ok := have[id]; ok && old.Status == st.Status && old.Version == st.Version && old.Message == st.Message {
 			continue
 		}
-		if _, err = r.Store.SkillStates().Put(ctx, st); err != nil {
+		if _, err = r.Store.SkillStates().Upsert(ctx, st); err != nil {
 			return err
 		}
 	}

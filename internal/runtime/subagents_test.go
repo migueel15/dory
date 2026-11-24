@@ -64,7 +64,7 @@ func TestSpawnLimitsActiveChildren(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = store.PatchThread(ctx, child.ID, map[string]any{"status": "working"}); err != nil {
+		if _, err = store.Threads().Patch(ctx, child.ID, map[string]any{"status": "working"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -78,7 +78,7 @@ func TestChildOnAnotherNodeNotifiesItsParentThroughThePeer(t *testing.T) {
 	m, store := manager(t, 0)
 	codex := capturedProvider{"codex", make(chan Turn, 1), make(chan chan Event, 1)}
 	m.providers[codex.id] = codex
-	parent, err := store.Threads().Put(ctx, data.Thread{NodeID: "other-node", Provider: "claude", Title: "Padre"})
+	parent, err := store.Threads().Create(ctx, data.Thread{NodeID: "other-node", Provider: "claude", Title: "Padre"})
 	if err != nil {
 		t.Fatal(err)
 	}
