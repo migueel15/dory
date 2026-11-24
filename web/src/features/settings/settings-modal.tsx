@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import { useRouterState } from "@tanstack/react-router";
-import { MagnifyingGlass, Bell, Brain, Cpu, ChatsCircle, FolderSimple, GitBranch, GitFork, GithubLogo, HardDrives, Keyboard, Lightbulb, Lightning, Microphone, PaintBrush, SquaresFour, X, type IconProps } from "@phosphor-icons/react";
+import { MagnifyingGlass, Bell, Browser, Brain, Cpu, ChatsCircle, FolderSimple, GitBranch, GitFork, GithubLogo, HardDrives, Keyboard, Lightbulb, Lightning, Microphone, PaintBrush, SquaresFour, X, type IconProps } from "@phosphor-icons/react";
 import { ProvidersSettings } from "./settings-providers";
 import { DictationSettings } from "./settings-dictation";
 import { ShortcutsSettings } from "./settings-shortcuts";
 import { AppearanceSettings } from "./settings-appearance";
+import { BrowserSettings } from "./settings-browser";
 import { IdeasSettings } from "./settings-ideas";
 import { GithubSettings } from "./settings-github";
 import { NoticesSettings } from "./settings-notices";
@@ -34,6 +35,7 @@ const GROUPS: { title: string; sections: Section[] }[] = [
     { id: "shortcuts", label: "Atajos", icon: Keyboard, component: ShortcutsSettings },
     { id: "dictation", label: "Dictado", icon: Microphone, component: DictationSettings },
     { id: "notices", label: "Avisos", icon: Bell, component: NoticesSettings },
+    { id: "browser", label: "Navegador", icon: Browser, component: BrowserSettings },
     { id: "connections", label: "Conexiones", icon: HardDrives, component: ConnectionsSettings },
   ] },
   { title: "Agentes", sections: [
@@ -60,6 +62,7 @@ const SECTIONS = GROUPS.flatMap((g) => g.sections);
 // Keep them in sync when a section adds or renames an option.
 const OPTIONS: Record<string, string[]> = {
   appearance: ["Tema", "Claro", "Oscuro", "Sistema", "Escala de la interfaz", "Zoom"],
+  browser: ["Permitir que los agentes usen el navegador integrado", "Herramientas del navegador", "Buscador", "Google", "DuckDuckGo", "Bloquear el túnel del navegador", "Importar sesiones desde", "Importar ahora", "Importar al iniciar Dory", "Cookies", "Zen", "Firefox", "Chrome"],
   shortcuts: commands.map((c) => c.label),
   dictation: ["Dictado local", "Modelos de dictado", "Vista previa en directo", "Transcribe al terminar", "Descargar modelo"],
   notices: ["Avisos", "Notificaciones push", "Siempre push", "Solo en la app", "Automático", "Desactivado"],
@@ -72,7 +75,7 @@ const OPTIONS: Record<string, string[]> = {
   "source-control": ["Actualizar la rama del hilo automáticamente", "Auto-pull", "Sincronizar rama"],
   worktrees: ["Ubicación por defecto", "Convención de nombres de rama", "Eliminar el worktree al borrar o archivar el hilo", "Eliminar el worktree al mergear su rama"],
   github: ["Conectar GitHub", "Cerrar sesión"],
-  tasks: ["Bloquear el túnel del navegador", "Cerrar los servicios de los hilos al reiniciar Dory", "Dispositivos", "Los agentes pueden usar dispositivos"],
+  tasks: ["Cerrar los servicios de los hilos al reiniciar Dory", "Dispositivos", "Los agentes pueden usar dispositivos"],
   ideas: ["Títulos de las ideas", "Sin títulos automáticos"],
 };
 

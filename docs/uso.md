@@ -111,6 +111,8 @@ La app de Android no usa Web Push ni servicios de Google. Igual que Gotify, mant
 
 ## Apariencia
 
+En **Ajustes → Navegador** eliges, por nodo, si los agentes pueden usar el navegador del hilo (activado por defecto) y el buscador de la barra de direcciones: lo que no sea una dirección se busca con él. En la app de escritorio puedes copiar las sesiones de tu navegador al navegador lateral; los agentes en segundo plano nunca las reciben (ADR-045).
+
 En **Ajustes → Apariencia**, la escala de la interfaz va del 75% al 200%. También cambia con Ctrl + y Ctrl − (Cmd en macOS) y vuelve al 100% con Ctrl 0. Se guarda en cada navegador o app de escritorio.
 
 ## Atajos

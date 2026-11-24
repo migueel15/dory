@@ -196,7 +196,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	}
 	srv.Devices = devices.NewManager()
 	srv.Skills = reconciler
-	srv.Settings = api.NewSettingsStore(state, api.Settings{ArchiveThreadsOnFinish: cfg.Tasks.ArchiveThreadsOnFinish, RemoveWorktreeOnArchive: cfg.Threads.RemoveWorktreeOnArchive, AgentsUseDevices: true, SourceControl: api.SourceControlSettings{AutoPull: true}})
+	srv.Settings = api.NewSettingsStore(state, api.Settings{ArchiveThreadsOnFinish: cfg.Tasks.ArchiveThreadsOnFinish, RemoveWorktreeOnArchive: cfg.Threads.RemoveWorktreeOnArchive, AgentsUseDevices: true, AgentsUseBrowser: true, SourceControl: api.SourceControlSettings{AutoPull: true}})
 	srv.Remote = net
 	srv.PeerClient = net.Client()
 	srv.Threads = &app.Threads{
@@ -230,7 +230,8 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	go out.Run(ctx)
 	srv.MeshPort = cfg.MeshPort
 	srv.Browser = &browser.Manager{DB: store.LocalDB(), Profile: filepath.Join(cfg.DataDir, "browser-profile"),
-		Changed: func(id string) { events.Changed("browser", id) }}
+		Changed:      func(id string) { events.Changed("browser", id) },
+		SearchEngine: func() string { return srv.Settings.Get().BrowserSearchEngine }}
 	go srv.Browser.Run(ctx)
 	notices.Columns = srv.Tasks.Columns
 	notices.InfoChanged = net.Changed
@@ -288,6 +289,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		Session: &app.Session{Node: srv.Node.ID, Tasks: srv.Tasks, Memories: srv.Memories, Projects: srv.Projects},
 		Runtime: rt, Peers: net, PeerClient: srv.PeerClient, Devices: srv.Devices, Browser: srv.Browser,
 		AgentsUseDevices: func() bool { return srv.Settings.Get().AgentsUseDevices },
+		AgentsUseBrowser: func() bool { return srv.Settings.Get().AgentsUseBrowser },
 		Notify:           func(entity, id string, data any) { events.Notify(api.Change{Entity: entity, ID: id, Data: data}) },
 	}))
 	mux.Handle("/", web.Handler())

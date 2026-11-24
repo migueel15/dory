@@ -4,6 +4,7 @@ declare global {
   interface Window { doryDesktop?: { platform: string; setZoom?: (factor: number) => void; browser?: DesktopBrowser } }
   // DesktopBrowser is the bridge to the native views of the thread browser
   // (desktop/preload.js); bounds are CSS pixels of the interface.
+  type CookieImportSettings = { source: string; auto: boolean };
   type Bounds = { x: number; y: number; width: number; height: number };
   interface DesktopBrowser {
     show(tab: string, url: string, bounds: Bounds): Promise<void>;
@@ -12,6 +13,9 @@ declare global {
     // Optional: older desktop builds lack them.
     park?(tab: string): Promise<void>;
     focusUI?(): Promise<void>;
+    importCookies?(source?: string): Promise<{ browser: string; imported: number; failed: number }>;
+    importSources?(): Promise<{ sources: { id: string; name: string }[]; default: string; settings: CookieImportSettings }>;
+    importSettings?(s: CookieImportSettings): Promise<CookieImportSettings>;
     onKey?(cb: (tab: string, key: string) => void): () => void;
     cdp(tab: string, method: string, params: unknown): Promise<unknown>;
     onEvent(cb: (tab: string, method: string, params: unknown) => void): () => void;

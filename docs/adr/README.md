@@ -44,3 +44,4 @@
 | [ADR-042](adr-042-adaptador-acp-generico.md) | Adaptador ACP genérico con perfiles | accepted |
 | [ADR-043](adr-043-errores-y-mensajes-con-codigo.md) | Errores y mensajes con código | accepted |
 | [ADR-044](adr-044-capa-de-aplicacion-y-dominio.md) | Capa de aplicación y dominio | accepted |
+| [ADR-045](adr-045-sesiones-del-usuario-en-el-navegador.md) | Sesiones del usuario solo en el navegador visible | accepted |

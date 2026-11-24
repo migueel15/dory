@@ -158,7 +158,7 @@ func (m *Manager) handle(c *Client, msg clientMessage) {
 				}
 				return
 			}
-			if _, err := m.userNavigate(ctx, c.thread, msg.Tab, normalizeURL(msg.URL)); err != nil {
+			if _, err := m.userNavigate(ctx, c.thread, msg.Tab, m.address(msg.URL)); err != nil {
 				c.fail(err)
 			}
 		}()
