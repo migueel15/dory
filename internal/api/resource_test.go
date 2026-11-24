@@ -1,11 +1,12 @@
 package api
 
 import (
-	"github.com/migueel15/dory/internal/data"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/migueel15/dory/internal/data"
 )
 
 func TestTaskResourceWrites(t *testing.T) {

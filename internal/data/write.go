@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/migueel15/dory/internal/apperr"
@@ -35,7 +34,7 @@ func (r Resource[T]) Upsert(ctx context.Context, v T) (T, error) {
 		return r.save(ctx, v, true)
 	default:
 		var zero T
-		return zero, fmt.Errorf("%w: %s does not support upsert", ErrInvalid, r.entity)
+		return zero, ErrInvalid.Msgf("%s does not support upsert", r.entity)
 	}
 }
 
@@ -139,10 +138,10 @@ func (r Resource[T]) update(ctx context.Context, tx *oplog.Tx, spec schema.Entit
 	for name, value := range fields {
 		col, ok := spec.Column(name)
 		if !ok || name == "created_at" || name == "updated_at" {
-			return zero, fmt.Errorf("%w: %s has no writable column %q", ErrInvalid, r.entity, name)
+			return zero, ErrInvalid.Msgf("%s has no writable column %q", r.entity, name)
 		}
 		if !validValue(col, value) {
-			return zero, fmt.Errorf("%w: incompatible value for %s.%s", ErrInvalid, r.entity, name)
+			return zero, ErrInvalid.Msgf("incompatible value for %s.%s", r.entity, name)
 		}
 		if !same(current[name], value) {
 			changed[name] = value
@@ -164,14 +163,14 @@ func (r Resource[T]) update(ctx context.Context, tx *oplog.Tx, spec schema.Entit
 func (r Resource[T]) write(ctx context.Context, tx *oplog.Tx, id string, f Fields) (T, error) {
 	var zero T
 	if remote, ok := f["remote_url"].(string); ok && r.entity == "repository" && oplog.RepositoryID(remote) != id {
-		return zero, fmt.Errorf("%w: remote_url changes the repository identity", ErrInvalid)
+		return zero, ErrInvalid.Msgf("remote_url changes the repository identity")
 	}
 	if _, err := tx.Write(r.entity, id, f); err != nil {
 		return zero, err
 	}
 	out, err := r.get(ctx, tx, id, true)
 	if _, ok := errors.AsType[*json.UnmarshalTypeError](err); ok {
-		return zero, fmt.Errorf("%w: %v", ErrInvalid, err)
+		return zero, ErrInvalid.Msgf("%v", err)
 	}
 	return out, err
 }
@@ -190,7 +189,7 @@ func writeResult[T any](out T, err error) (T, error) {
 func jsonFields(v any) (Fields, error) {
 	raw, err := json.Marshal(v)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
+		return nil, ErrInvalid.Msgf("%v", err)
 	}
 	return readFields(raw)
 }

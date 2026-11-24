@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/migueel15/dory/internal/apperr"
 	"io"
 	"net/http"
