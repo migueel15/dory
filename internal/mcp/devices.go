@@ -1,14 +1,13 @@
 package mcp
 
 import (
-	"github.com/migueel15/dory/internal/apperr"
 	"context"
 	"errors"
 	"fmt"
+	"github.com/migueel15/dory/internal/apperr"
 	"strings"
 	"time"
 
-	"github.com/migueel15/dory/internal/api"
 	"github.com/migueel15/dory/internal/auth"
 	"github.com/migueel15/dory/internal/devices"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -29,7 +28,7 @@ type tapInput struct {
 	ID    string `json:"id,omitempty" jsonschema:"Resource id of an element of the last device_ui"`
 }
 
-func addDeviceTools(srv *sdk.Server, s *api.Server) {
+func addDeviceTools(srv *sdk.Server, s *Deps) {
 	m := s.Devices
 	// pick resolves the device to act on: the given serial, or the only one ready.
 	pick := func(ctx context.Context, serial string) (string, error) {
@@ -131,8 +130,8 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 		if err != nil {
 			return nil, err
 		}
-		if thread != "" && s.Events != nil {
-			s.Events.Notify(api.Change{Entity: "device", ID: thread, Data: map[string]any{"action": "open", "serial": serial, "floating": in.Floating}})
+		if thread != "" && s.Notify != nil {
+			s.Notify("device", thread, map[string]any{"action": "open", "serial": serial, "floating": in.Floating})
 		}
 		note(ctx, "device_open", serial, "")
 		return map[string]any{"device": serial, "opened_in_thread": thread != ""}, nil
@@ -154,8 +153,8 @@ func addDeviceTools(srv *sdk.Server, s *api.Server) {
 				return nil, err
 			}
 		}
-		if thread != "" && s.Events != nil {
-			s.Events.Notify(api.Change{Entity: "device", ID: thread, Data: map[string]any{"action": "close", "serial": serial}})
+		if thread != "" && s.Notify != nil {
+			s.Notify("device", thread, map[string]any{"action": "close", "serial": serial})
 		}
 		note(ctx, "device_close", serial, "")
 		return map[string]any{"device": serial, "closed": true}, nil

@@ -193,7 +193,11 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		Store: store, Runtime: rt, Workspace: workspace.Git{}, Settings: srv.Settings, Peers: srv.PeerClient,
 		Namer: app.ModelBranchNamer{Runtime: rt}, Node: log_.Node(), DataDir: cfg.DataDir,
 	}
-	srv.Tasks = &app.Tasks{Store: store, Threads: srv.Threads, Node: log_.Node(), ArchiveOnFinish: func() bool { return srv.Settings.Get().ArchiveThreadsOnFinish }}
+	srv.Plans = &app.Plans{Store: store}
+	srv.Memories = &app.Memories{Store: store}
+	srv.Projects = &app.Projects{Store: store}
+	srv.Ideas = &app.Ideas{Store: store, Titles: rt}
+	srv.Tasks = &app.Tasks{Store: store, Threads: srv.Threads, Plans: srv.Plans, Node: log_.Node(), ArchiveOnFinish: func() bool { return srv.Settings.Get().ArchiveThreadsOnFinish }}
 	go gh.Watch(ctx, func() {
 		changed, err := srv.Tasks.RefreshPulls(ctx, gh)
 		if err != nil {
@@ -265,7 +269,14 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	srv.Register(mux)
 	auth.Register(mux, store.Accounts(), cfg)
 	auth.RegisterDevices(mux, store.Accounts())
-	mux.Handle("/mcp", mcp.Handler(srv))
+	mux.Handle("/mcp", mcp.Handler(&mcp.Deps{
+		Store: store, Node: mcp.Node{ID: srv.Node.ID, Name: srv.Node.Name},
+		Threads: srv.Threads, Tasks: srv.Tasks, Plans: srv.Plans, Memories: srv.Memories, Projects: srv.Projects,
+		Session: &app.Session{Node: srv.Node.ID, Tasks: srv.Tasks, Memories: srv.Memories, Projects: srv.Projects},
+		Runtime: rt, Peers: net, PeerClient: srv.PeerClient, Devices: srv.Devices, Browser: srv.Browser,
+		AgentsUseDevices: func() bool { return srv.Settings.Get().AgentsUseDevices },
+		Notify:           func(entity, id string, data any) { events.Notify(api.Change{Entity: entity, ID: id, Data: data}) },
+	}))
 	mux.Handle("/", web.Handler())
 	control, err := controlToken(cfg.DataDir)
 	if err != nil {

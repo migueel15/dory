@@ -1,4 +1,4 @@
-package mcp
+package app
 
 import (
 	"path/filepath"
@@ -21,17 +21,18 @@ func TestSetTaskProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := data.New(db, log)
+	projects := &Projects{Store: store}
 	p, _ := store.Projects().Create(ctx, data.Project{Slug: "x", Name: "X"})
 	task, _ := store.Tasks().Create(ctx, data.Task{Title: "Suelta"})
-	got, err := setTaskProject(ctx, store, task.ID, "x")
+	got, err := projects.SetTaskProject(ctx, task.ID, "x")
 	if err != nil || got.ProjectID == nil || *got.ProjectID != p.ID {
 		t.Fatalf("link by slug: %+v, %v", got, err)
 	}
-	got, err = setTaskProject(ctx, store, task.ID, "")
+	got, err = projects.SetTaskProject(ctx, task.ID, "")
 	if err != nil || got.ProjectID != nil {
 		t.Fatalf("unlink: %+v, %v", got, err)
 	}
-	if _, err = setTaskProject(ctx, store, task.ID, "nope"); err == nil {
+	if _, err = projects.SetTaskProject(ctx, task.ID, "nope"); err == nil {
 		t.Fatal("unknown project accepted")
 	}
 }

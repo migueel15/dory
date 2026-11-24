@@ -41,7 +41,7 @@ func TestWriteErrDomainErrorsKeepStatusCodeAndParams(t *testing.T) {
 		{runtime.ErrDirtyWorktree, 409, apperr.DirtyWorktree},
 		{mesh.ErrUnreachable, 502, apperr.Unreachable},
 		{app.ErrRepositoryNotCloned, 400, apperr.RepositoryNotClone},
-		{ErrPlanConflict.Msgf("now at revision %d", 4).With("revision", 4), 409, apperr.RevisionConflict},
+		{app.ErrPlanConflict.Msgf("now at revision %d", 4).With("revision", 4), 409, apperr.RevisionConflict},
 	} {
 		status, b, _ := errorResponse(t, c.err)
 		if status != c.status || b.Error.Code != c.code || b.Error.Message == "" {
@@ -51,7 +51,7 @@ func TestWriteErrDomainErrorsKeepStatusCodeAndParams(t *testing.T) {
 			t.Errorf("%v does not match itself", c.err)
 		}
 	}
-	_, b, _ := errorResponse(t, ErrPlanConflict.With("revision", 4))
+	_, b, _ := errorResponse(t, app.ErrPlanConflict.With("revision", 4))
 	if b.Error.Params["revision"] != float64(4) {
 		t.Fatalf("params = %v", b.Error.Params)
 	}

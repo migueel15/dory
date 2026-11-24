@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/migueel15/dory/internal/api"
 	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/auth"
@@ -57,7 +56,7 @@ type threadConfigureInput struct {
 	ContinueWith string  `json:"continue_with,omitempty" jsonschema:"Message that starts the next turn with the new selection"`
 }
 
-func addThreadTools(srv *sdkServer, s *api.Server) {
+func addThreadTools(srv *sdkServer, s *Deps) {
 	m := s.Runtime
 	add(srv, "list_models", "List providers, models and efforts of this node. Use it to turn \"haiku\", \"opus\" or \"codex\" into provider and model. A model is accepted by slug, display name (\"Sonnet 5.5\") or resolved id (\"claude-sonnet-5-5\").", func(ctx context.Context, in struct {
 		Provider string `json:"provider,omitempty"`
@@ -230,7 +229,7 @@ func addThreadTools(srv *sdkServer, s *api.Server) {
 	})
 	add(srv, "list_environments", "List environments (this node and its peers) and whether they are connected.", func(ctx context.Context, _ struct{}) (any, error) {
 		out := []map[string]any{{"id": s.Node.ID, "name": s.Node.Name, "connected": true, "this_node": true}}
-		if peers, ok := s.Remote.(peerLister); ok {
+		if peers := s.Peers; peers != nil {
 			list, err := peers.Peers(ctx)
 			if err != nil {
 				return nil, err
@@ -332,17 +331,18 @@ func activity(t data.Thread) string {
 	return t.CreatedAt
 }
 
-type peerLister interface {
+// PeerLister lists the nodes of the mesh.
+type PeerLister interface {
 	Peers(context.Context) ([]mesh.Peer, error)
 }
 
 // findEnvironment resolves a node id or name; empty is this node.
-func findEnvironment(ctx context.Context, s *api.Server, name string) (string, error) {
+func findEnvironment(ctx context.Context, s *Deps, name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || name == "local" || name == s.Node.ID || strings.EqualFold(name, s.Node.Name) {
 		return s.Node.ID, nil
 	}
-	if peers, ok := s.Remote.(peerLister); ok {
+	if peers := s.Peers; peers != nil {
 		list, err := peers.Peers(ctx)
 		if err != nil {
 			return "", err
@@ -385,7 +385,7 @@ type newThreadInput struct {
 }
 
 // threadInput resolves the names accepted by MCP before calling the application.
-func threadInput(ctx context.Context, s *api.Server, in newThreadInput, node string, project *string) (app.CreateThread, error) {
+func threadInput(ctx context.Context, s *Deps, in newThreadInput, node string, project *string) (app.CreateThread, error) {
 	if in.Environment != "" {
 		node = in.Environment
 	}

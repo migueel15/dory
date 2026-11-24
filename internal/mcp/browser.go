@@ -1,10 +1,8 @@
 package mcp
 
 import (
-	"github.com/migueel15/dory/internal/apperr"
 	"context"
-
-	"github.com/migueel15/dory/internal/api"
+	"github.com/migueel15/dory/internal/apperr"
 )
 
 // pngImage is a tool result shown to the agent as an image.
@@ -17,7 +15,7 @@ type browserTab struct {
 // addBrowser registers the tools of the thread's browser. They run on the
 // node of the thread, whether the tab lives in the node's headless Chromium
 // or in the desktop app where the user watches it.
-func addBrowser(srv *sdkServer, s *api.Server) {
+func addBrowser(srv *sdkServer, s *Deps) {
 	thread := func(ctx context.Context) (string, error) {
 		id, _ := ctx.Value(threadKey{}).(string)
 		if id == "" {
@@ -40,8 +38,8 @@ func addBrowser(srv *sdkServer, s *api.Server) {
 		if err != nil {
 			return nil, err
 		}
-		if s.Events != nil {
-			s.Events.Notify(api.Change{Entity: "browser", ID: id, Data: map[string]string{"action": "open"}})
+		if s.Notify != nil {
+			s.Notify("browser", id, map[string]string{"action": "open"})
 		}
 		return tab, nil
 	})

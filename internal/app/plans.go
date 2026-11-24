@@ -1,32 +1,36 @@
-package api
+package app
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/migueel15/dory/internal/apperr"
-	"net/http"
 	"strings"
 	"sync"
 
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
 )
 
 // ErrPlanConflict refuses a save based on an older revision of the plan.
 var ErrPlanConflict = apperr.New(apperr.RevisionConflict, "the plan changed since it was read; read it again")
 
-// planMu serializes the saves of plans on this node, so a read-modify-write
-// of the agent and one of the user cannot interleave.
-var planMu sync.Mutex
+// Plans reads and writes the plan document of a task. Its lock serializes the
+// saves on this node, so a read-modify-write of the agent and one of the user
+// cannot interleave.
+type Plans struct {
+	Store *data.Store
+
+	mu sync.Mutex
+}
 
 // legacySections are the fixed sections of the plans written before the plan
 // became one document, in the order they are shown.
 var legacySections = [][2]string{{"goal", "Objetivo"}, {"scope", "Alcance"}, {"where", "Dónde"}, {"design", "Diseño"}, {"requirements", "Requisitos"}, {"validation", "Validación"}, {"risks", "Riesgos"}}
 
-// planMarkdown is the document of a plan; plans from before the document
+// PlanMarkdown is the document of a plan; plans from before the document
 // are rendered from their sections and open questions.
-func planMarkdown(p data.Plan) string {
+func PlanMarkdown(p data.Plan) string {
 	if p.BodyMD != "" {
 		return p.BodyMD
 	}
@@ -54,8 +58,8 @@ func planMarkdown(p data.Plan) string {
 	return strings.TrimSpace(b.String())
 }
 
-// latestPlan is the newest version of a task's plan; ok is false without one.
-func (s *Server) latestPlan(ctx context.Context, taskID string) (p data.Plan, ok bool, err error) {
+// latest is the newest version of a task's plan; ok is false without one.
+func (s *Plans) latest(ctx context.Context, taskID string) (p data.Plan, ok bool, err error) {
 	plans, err := s.Store.Plans().List(ctx, data.Filter{Fields: map[string]any{"task_id": taskID}, Limit: 1000})
 	if err != nil {
 		return p, false, err
@@ -68,31 +72,31 @@ func (s *Server) latestPlan(ctx context.Context, taskID string) (p data.Plan, ok
 	return p, ok, nil
 }
 
-// PlanDocument is the current plan of a task with its document filled in. A
+// Document is the current plan of a task with its document filled in. A
 // task without a plan gives an empty document at revision 0.
-func (s *Server) PlanDocument(ctx context.Context, taskID string) (data.Plan, error) {
+func (s *Plans) Document(ctx context.Context, taskID string) (data.Plan, error) {
 	if _, err := s.Store.Tasks().Get(ctx, taskID); err != nil {
 		return data.Plan{}, err
 	}
-	p, ok, err := s.latestPlan(ctx, taskID)
+	p, ok, err := s.latest(ctx, taskID)
 	if err != nil || !ok {
 		return data.Plan{TaskID: taskID}, err
 	}
-	p.BodyMD = planMarkdown(p)
+	p.BodyMD = PlanMarkdown(p)
 	return p, nil
 }
 
-// WritePlan replaces the plan document. With base >= 0 it refuses the save
+// Write replaces the plan document. With base >= 0 it refuses the save
 // when the plan is no longer at that revision. Changing an accepted plan
 // leaves it waiting for the user to accept it again.
-func (s *Server) WritePlan(ctx context.Context, taskID, body string, base int64, author string) (data.Plan, error) {
-	planMu.Lock()
-	defer planMu.Unlock()
-	return s.writePlan(ctx, taskID, body, base, author)
+func (s *Plans) Write(ctx context.Context, taskID, body string, base int64, author string) (data.Plan, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.write(ctx, taskID, body, base, author)
 }
 
-func (s *Server) writePlan(ctx context.Context, taskID, body string, base int64, author string) (data.Plan, error) {
-	cur, err := s.PlanDocument(ctx, taskID)
+func (s *Plans) write(ctx context.Context, taskID, body string, base int64, author string) (data.Plan, error) {
+	cur, err := s.Document(ctx, taskID)
 	if err != nil {
 		return cur, err
 	}
@@ -127,12 +131,12 @@ func (s *Server) writePlan(ctx context.Context, taskID, body string, base int64,
 	return out, err
 }
 
-// EditPlan replaces one exact piece of the plan document. The piece must
+// Edit replaces one exact piece of the plan document. The piece must
 // appear once, so an edit never lands in the wrong place.
-func (s *Server) EditPlan(ctx context.Context, taskID, old, replacement string, base int64, author string) (data.Plan, error) {
-	planMu.Lock()
-	defer planMu.Unlock()
-	cur, err := s.PlanDocument(ctx, taskID)
+func (s *Plans) Edit(ctx context.Context, taskID, old, replacement string, base int64, author string) (data.Plan, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur, err := s.Document(ctx, taskID)
 	if err != nil {
 		return cur, err
 	}
@@ -149,31 +153,59 @@ func (s *Server) EditPlan(ctx context.Context, taskID, old, replacement string, 
 	default:
 		return cur, data.ErrInvalid.Msgf("old_text appears %d times; include more context", n)
 	}
-	return s.writePlan(ctx, taskID, strings.Replace(cur.BodyMD, old, replacement, 1), cur.Revision, author)
+	return s.write(ctx, taskID, strings.Replace(cur.BodyMD, old, replacement, 1), cur.Revision, author)
 }
 
-func (s *Server) planRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/tasks/{id}/plan", func(w http.ResponseWriter, r *http.Request) {
-		p, err := s.PlanDocument(r.Context(), r.PathValue("id"))
-		if err != nil {
-			writeErr(w, r, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, p)
-	})
-	mux.HandleFunc("PUT /api/tasks/{id}/plan", func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			BodyMD   string `json:"body_md"`
-			Revision int64  `json:"revision"`
-		}
-		if !decode(w, r, &body) {
-			return
-		}
-		p, err := s.WritePlan(r.Context(), r.PathValue("id"), body.BodyMD, body.Revision, "user")
-		if err != nil {
-			writeErr(w, r, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, p)
-	})
+// Pending says whether the latest plan of a task waits for the user to accept
+// it. A task without a plan is not pending.
+func (s *Plans) Pending(ctx context.Context, taskID string) (bool, error) {
+	latest, ok, err := s.latest(ctx, taskID)
+	if err != nil || !ok {
+		return false, err
+	}
+	return latest.AcceptedAt == nil, nil
+}
+
+// Accept marks the latest plan accepted and the task ready.
+func (s *Plans) Accept(ctx context.Context, taskID string) (data.Task, data.Plan, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	latest, ok, err := s.latest(ctx, taskID)
+	if err != nil {
+		return data.Task{}, data.Plan{}, err
+	}
+	if !ok {
+		return data.Task{}, data.Plan{}, data.ErrInvalid.Msgf("the task has no plan")
+	}
+	return s.Store.AcceptPlan(ctx, latest)
+}
+
+// List is every version of the plan of a task.
+func (s *Plans) List(ctx context.Context, taskID string) ([]data.Plan, error) {
+	return s.Store.Plans().List(ctx, data.Filter{Fields: map[string]any{"task_id": taskID}, Limit: 1000})
+}
+
+// WriteByAgent saves a whole plan for an agent. Rewriting an existing plan
+// blind would drop what the user is writing, so it needs the revision the
+// agent read; a nil revision only creates the first version.
+func (s *Plans) WriteByAgent(ctx context.Context, taskID, body string, revision *int64) (data.Plan, error) {
+	base := int64(-1)
+	if revision != nil {
+		base = *revision
+	} else if cur, err := s.Document(ctx, taskID); err != nil {
+		return cur, err
+	} else if cur.Revision > 0 {
+		return cur, apperr.New(apperr.Conflict, "the plan already exists: change parts of it with plan_edit, or pass the revision from plan_read to rewrite it")
+	}
+	return s.Write(ctx, taskID, body, base, "agent")
+}
+
+// EditByAgent replaces one exact piece of the plan for an agent; a nil
+// revision skips the revision check.
+func (s *Plans) EditByAgent(ctx context.Context, taskID, old, replacement string, revision *int64) (data.Plan, error) {
+	base := int64(-1)
+	if revision != nil {
+		base = *revision
+	}
+	return s.Edit(ctx, taskID, old, replacement, base, "agent")
 }

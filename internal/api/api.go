@@ -47,6 +47,10 @@ type Server struct {
 	Runtime      *runtime.Manager
 	Threads      *app.Threads
 	Tasks        *app.Tasks
+	Plans        *app.Plans
+	Memories     *app.Memories
+	Projects     *app.Projects
+	Ideas        *app.Ideas
 	GitHub       *github.Client
 	Dictation    *dictation.Manager
 	SpeechModels *dictation.LocalModels
@@ -81,7 +85,7 @@ type Server struct {
 func (s *Server) Register(mux *http.ServeMux) {
 	mountResource(mux, "projects", s.Store.Projects())
 	mountResource(mux, "repositories", s.Store.Repositories())
-	mountResource(mux, "tasks", s.Store.Tasks(), resourceWrites[data.Task]{s.CreateTask, s.PatchTask})
+	mountResource(mux, "tasks", s.Store.Tasks(), resourceWrites[data.Task]{s.Tasks.Create, s.Tasks.Patch})
 	mountResource(mux, "memories", s.Store.Memories())
 	mux.HandleFunc("GET /api/version", version.Handler())
 	mux.HandleFunc("GET /api/node", s.node)
@@ -139,16 +143,13 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	var hits []data.Hit
 	var err error
 	if r.URL.Query().Get("type") == "task" {
-		hits, err = s.Store.SearchTasks(r.Context(), r.URL.Query().Get("q"), limit)
+		hits, err = s.Memories.SearchTasks(r.Context(), r.URL.Query().Get("q"), limit)
 	} else {
-		hits, err = s.Store.Search(r.Context(), r.URL.Query().Get("q"), limit)
+		hits, err = s.Memories.Search(r.Context(), r.URL.Query().Get("q"), limit)
 	}
 	if err != nil {
 		writeErr(w, r, err)
 		return
-	}
-	if hits == nil {
-		hits = []data.Hit{}
 	}
 	writeJSON(w, http.StatusOK, hits)
 }

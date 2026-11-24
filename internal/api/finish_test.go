@@ -46,11 +46,11 @@ func TestSaveTaskStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	task.Stage = "done"
-	if out, err := s.PatchTask(ctx, task.ID, nil, data.Fields{"stage": task.Stage}); err != nil || out.Stage != "done" {
+	if out, err := s.Tasks.Patch(ctx, task.ID, nil, data.Fields{"stage": task.Stage}); err != nil || out.Stage != "done" {
 		t.Fatalf("sin pull request: %v %+v", err, out)
 	}
 	task.Stage = "bogus"
-	if _, err := s.PatchTask(ctx, task.ID, nil, data.Fields{"stage": task.Stage}); !errors.Is(err, data.ErrInvalid) {
+	if _, err := s.Tasks.Patch(ctx, task.ID, nil, data.Fields{"stage": task.Stage}); !errors.Is(err, data.ErrInvalid) {
 		t.Fatalf("stage inválido: %v", err)
 	}
 	// Con una pull request sin estado conocido se rechaza.
@@ -60,7 +60,7 @@ func TestSaveTaskStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	task.Stage = "done"
-	if _, err := s.PatchTask(ctx, task.ID, nil, data.Fields{"stage": task.Stage}); !errors.Is(err, data.ErrInvalid) {
+	if _, err := s.Tasks.Patch(ctx, task.ID, nil, data.Fields{"stage": task.Stage}); !errors.Is(err, data.ErrInvalid) {
 		t.Fatalf("con pull request: %v", err)
 	}
 }
@@ -95,7 +95,7 @@ func TestFinishTask(t *testing.T) {
 		task, _ := s.Store.Tasks().Create(ctx, data.Task{Title: "a"})
 		th := addThread(t, s, task, "")
 		task.Stage = "done"
-		if _, err := s.PatchTask(ctx, task.ID, nil, data.Fields{"stage": task.Stage}); err != nil {
+		if _, err := s.Tasks.Patch(ctx, task.ID, nil, data.Fields{"stage": task.Stage}); err != nil {
 			t.Fatal(err)
 		}
 		if got := archived(t, s, th.ID); got != on {
