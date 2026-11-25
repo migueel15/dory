@@ -167,3 +167,79 @@ func TestValidBranchName(t *testing.T) {
 		t.Fatal("ValidBranchName")
 	}
 }
+
+func TestRemoteBranches(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	origin, clone := filepath.Join(root, "origin"), filepath.Join(root, "clone")
+	os.Mkdir(origin, 0o755)
+	git(t, origin, "init", "-q", "-b", "main")
+	git(t, origin, "commit", "-q", "--allow-empty", "-m", "base")
+	git(t, origin, "checkout", "-q", "-b", "feat/remote")
+	git(t, origin, "commit", "-q", "--allow-empty", "-m", "remote-commit")
+	git(t, origin, "checkout", "-q", "main")
+
+	git(t, root, "clone", "-q", origin, clone)
+
+	// Remote branches appear deduplicated alongside local ones, without HEAD.
+	b := ListBranches(ctx, clone)
+	if b.Current != "main" || !slices.Contains(b.Branches, "main") || !slices.Contains(b.Branches, "feat/remote") || slices.Contains(b.Branches, "HEAD") {
+		t.Fatalf("branches = %+v", b)
+	}
+	if len(b.Branches) != 2 {
+		t.Fatalf("expected 2 deduplicated branches, got %+v", b.Branches)
+	}
+
+	// New branch created on origin after clone appears after FetchOrigin.
+	git(t, origin, "checkout", "-q", "-b", "feat/later")
+	git(t, origin, "commit", "-q", "--allow-empty", "-m", "later-commit")
+	git(t, origin, "checkout", "-q", "main")
+	if err := FetchOrigin(ctx, clone); err != nil {
+		t.Fatalf("FetchOrigin: %v", err)
+	}
+	b = ListBranches(ctx, clone)
+	if !slices.Contains(b.Branches, "feat/later") {
+		t.Fatalf("missing feat/later after fetch: %+v", b.Branches)
+	}
+
+	// Switching to a remote-only branch creates a local tracking branch.
+	if err := SwitchBranch(ctx, clone, "feat/remote"); err != nil {
+		t.Fatalf("SwitchBranch remote: %v", err)
+	}
+	if cur, _ := CurrentBranch(ctx, clone); cur != "feat/remote" {
+		t.Fatalf("current = %q", cur)
+	}
+	if up, err := Output(ctx, clone, "rev-parse", "--abbrev-ref", "@{u}"); err != nil || up != "origin/feat/remote" {
+		t.Fatalf("upstream = %q (%v)", up, err)
+	}
+
+	// AddWorktree on a remote-only branch tracks origin/<branch> instead of branching from HEAD.
+	wt := filepath.Join(t.TempDir(), "wt-later")
+	if err := AddWorktree(ctx, clone, wt, "feat/later", ""); err != nil {
+		t.Fatalf("AddWorktree remote: %v", err)
+	}
+	if cur, _ := CurrentBranch(ctx, wt); cur != "feat/later" {
+		t.Fatalf("wt branch = %q", cur)
+	}
+	if up, err := Output(ctx, wt, "rev-parse", "--abbrev-ref", "@{u}"); err != nil || up != "origin/feat/later" {
+		t.Fatalf("wt upstream = %q (%v)", up, err)
+	}
+	if msg, _ := Output(ctx, wt, "log", "-1", "--format=%s"); msg != "later-commit" {
+		t.Fatalf("wt tip = %q, want later-commit", msg)
+	}
+
+	// AddWorktree with a remote-only base branch resolves origin/<base>.
+	git(t, origin, "checkout", "-q", "-b", "feat/remote-base")
+	git(t, origin, "commit", "-q", "--allow-empty", "-m", "remote-base-commit")
+	git(t, origin, "checkout", "-q", "main")
+	if err := FetchOrigin(ctx, clone); err != nil {
+		t.Fatalf("FetchOrigin 2: %v", err)
+	}
+	wtBase := filepath.Join(t.TempDir(), "wt-base")
+	if err := AddWorktree(ctx, clone, wtBase, "feat/derived", "feat/remote-base"); err != nil {
+		t.Fatalf("AddWorktree remote base: %v", err)
+	}
+	if msg, _ := Output(ctx, wtBase, "log", "-1", "--format=%s"); msg != "remote-base-commit" {
+		t.Fatalf("wtBase tip = %q, want remote-base-commit", msg)
+	}
+}
