@@ -109,9 +109,6 @@ body { @apply bg-slate-50 text-slate-900 dark:bg-canvas dark:text-text; }
 *::-webkit-scrollbar-thumb:hover { background-color: var(--sb-thumb-hover); border-width: 2px; }
 *::-webkit-scrollbar-thumb:active { background-color: var(--sb-thumb-hover); }
 
-/* Layout that follows the measured width frame by frame: never transitioned. */
-.sidebar-track { transition-property: none !important; }
-
 /* One font for the whole interface, answers included: the desktop's own
    (Adwaita Sans on GNOME), else Inter, else the system's. */
 @theme {

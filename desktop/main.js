@@ -215,6 +215,12 @@ async function open() {
   win.webContents.on("will-navigate", (e, target) => {
     if (!target.startsWith(url)) { e.preventDefault(); shell.openExternal(target); }
   });
+  win.webContents.on("before-input-event", (e, input) => {
+    if (input.type === "keyDown" && (input.control || input.meta) && !input.alt && !input.shift && input.key.toLowerCase() === "r") {
+      e.preventDefault();
+      win.webContents.reload();
+    }
+  });
   // Closing the window hides it: the app and its core stay in the tray.
   win.on("close", (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
   await win.loadURL(url);

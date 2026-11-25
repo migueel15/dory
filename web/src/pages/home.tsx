@@ -186,7 +186,7 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
 export function Home() {
   const navigate = useNavigate();
   return (
-    <div className="mx-auto flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] max-w-3xl flex-col justify-center sm:h-[calc(100dvh-3rem-2px)]">
+    <div className="mx-auto flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] max-w-3xl flex-col justify-center sm:h-[calc(100dvh-5.5rem-2px)]">
       <NewThread centered onCreated={(id) => navigate({ to: "/threads/$threadId", params: { threadId: id } })} />
     </div>
   );

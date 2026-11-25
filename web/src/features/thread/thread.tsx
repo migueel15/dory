@@ -16,7 +16,6 @@ import { storage,storageKeys } from "../../lib/storage";
 import { events } from "../../lib/store";
 import { useThreadsFold } from "../../lib/threads-fold";
 import { turnDiff } from "../../lib/turn-changes";
-import { hasWindowClose } from "../../lib/window-close";
 import { TaskDetail } from "../board/task-detail";
 import { Messages } from "../chat/chat";
 import { ToEnd,useFollow } from "../chat/follow";
@@ -106,9 +105,9 @@ export function ThreadView() {
   const deviceView = (k: string, floating = false) => <DevicePanel key={k} node={thread?.node_id ?? "local"} serial={panel.meta[k]?.serial ?? null} floating={floating} onFloat={(v) => panel.setMeta(k, { floating: v })}
     onSerial={(serial, name) => panel.setMeta(k, serial ? { serial, ...(panel.meta[k]?.name ? {} : { name }) } : { serial: undefined })} />;
   return (
-    <div className="relative flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
+    <div className="relative flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] min-h-0 sm:h-[calc(100dvh-5.5rem-2px)]">
       {/* The panel toggle is pinned to the page corner, so opening the panel never moves it. */}
-      <div className={`absolute right-1 top-0 z-30 sm:-top-2 ${hasWindowClose ? "sm:right-8" : "sm:-right-1"}`}><SidePanelToggle panel={panel} /></div>
+      <div className="absolute right-1 top-0 z-30 sm:-right-1 sm:-top-2"><SidePanelToggle panel={panel} /></div>
       <div onPointerEnter={toComposer} className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Header threadId={threadId} panel={panel} />
         <ThreadChat threadId={threadId} />
@@ -195,7 +194,7 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
   const setTaskOpen = useCallback((v: boolean) => { setTaskOpenState(v); try { if (v) storage.set(taskKey, "1"); else storage.remove(taskKey); } catch { /* per-viewer only */ } }, [taskKey]);
   if (!t) return <div className="h-12 shrink-0" />;
   return (
-    <div className={`relative z-20 flex shrink-0 flex-wrap items-center gap-2 pb-2 pl-1 pr-11 transition-[padding,margin] ${fold ? (fold.folded ? "sm:pl-10" : "sm:pl-2") : ""} duration-300 ease-out motion-reduce:transition-none sm:-mt-2 ${hasWindowClose ? "sm:pr-20" : ""} ${panel.open ? "lg:!pr-1" : ""} ${panel.open ? "lg:mr-0 sm:-mr-2" : "sm:-mr-2"}`}>
+    <div className={`relative z-20 flex shrink-0 flex-wrap items-center gap-2 pb-2 pl-1 pr-11 transition-[padding,margin] sm:pl-2 duration-300 ease-out motion-reduce:transition-none sm:-mt-2 ${panel.open ? "lg:!pr-1" : ""} ${panel.open ? "lg:mr-0 sm:-mr-2" : "sm:-mr-2"}`}>
       {projectName && <span className="flex min-w-0 max-w-[40%] shrink items-center gap-2 text-slate-500 dark:text-muted"><span className="truncate">{projectName}</span><span aria-hidden="true">/</span></span>}
       {editing ? (
         <form className="min-w-0 flex-1" onSubmit={(e) => { e.preventDefault(); setEditing(false); if (title.trim()) act.mutate({ action: "rename", title: title.trim() }); }}>

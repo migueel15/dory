@@ -43,6 +43,7 @@ export const events = {
   turnFilterChanged: createEmitter<string>(),
   commandsOpen: createEmitter(),
   focusThreadSearch: createEmitter(),
+  toggleThreadList: createEmitter(),
   fontsChanged: createEmitter(),
   scaleChanged: createEmitter(),
   themeChanged: createEmitter(),

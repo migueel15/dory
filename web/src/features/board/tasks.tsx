@@ -60,7 +60,7 @@ export function Tasks() {
   }, [panel, search.task]);
   const drop = (col: Column) => { if (drag && MANUAL[col]) move.mutate({ id: drag, stage: MANUAL[col]! }); setDrag(undefined); };
   return (
-    <div className="flex flex-col gap-3 sm:h-[calc(100dvh-3rem-2px)]">
+    <div className="flex flex-col gap-3 sm:h-[calc(100dvh-5.5rem-2px)]">
       <div className="flex shrink-0 items-center gap-2">
         <h2 className="font-semibold">Kanban</h2>
         <Button className="ml-auto" onClick={() => setAdding(true)}><Plus weight="regular" className="size-4" />Nueva idea</Button>

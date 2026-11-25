@@ -7,7 +7,6 @@ export const storageKeys = {
   uiScale: "ui-scale",
   theme: "theme",
   project: "project",
-  sidebarFolded: "dory.sidebar-folded",
   threadsFolded: "dory.threads-folded",
   threadsWidth: "dory.threads-width",
   diffView: "dory.diff-view",

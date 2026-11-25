@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useShortcuts } from "../../components/shortcuts";
 import { formatChord } from "../composer/dictation-shortcut";
-import { hasWindowClose } from "../../lib/window-close";
 import { ContextMenu } from "../../components/context-menu";
 import { ResizeHandle } from "./thread";
 import { Browser, ClipboardText, DeviceMobile, GitDiff, Plus, SidebarSimple, TerminalWindow, X } from "@phosphor-icons/react";
@@ -125,7 +124,7 @@ export function SidePanel({ panel, threadId, render, available, onRename, onClos
       <div className="ml-auto flex min-h-0 w-[var(--panel-w)] shrink-0 [contain:layout_paint]">
       <ResizeHandle panel={aside} width={width} onResize={resize} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col border-l border-slate-200 dark:border-border">
-      <div role="tablist" className={`flex shrink-0 items-center gap-1 h-10 border-b border-slate-200 px-2 pb-2 dark:border-border ${hasWindowClose ? "pr-[4.5rem]" : "pr-10"}`}>
+      <div role="tablist" className="flex h-10 shrink-0 items-center gap-1 border-b border-slate-200 px-2 pb-2 pr-10 dark:border-border">
         {panel.tabs.map((k) => (
           <div key={k} className={`group flex items-center rounded-md text-sm ${panel.active === k ? "bg-slate-100 font-medium dark:bg-raised" : "text-slate-500 hover:bg-slate-50 dark:text-muted dark:hover:bg-raised/60"}`}>
             {renaming === k ? (
