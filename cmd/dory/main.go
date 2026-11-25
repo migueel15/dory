@@ -213,14 +213,24 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	finish := func() { srv.Tasks.FinishSoon(ctx) }
 	finishSoon.Store(&finish)
 	go gh.Watch(ctx, func() {
-		changed, err := srv.Tasks.RefreshPulls(ctx, gh)
-		if err != nil {
-			log.Printf("refresh pull requests: %v", err)
-		}
-		events.Changed("github", "")
-		notices.Github()
-		if changed {
-			srv.Tasks.Finish(ctx)
+		for {
+			changed, more, err := srv.Tasks.RefreshPulls(ctx, gh)
+			if err != nil {
+				log.Printf("refresh pull requests: %v", err)
+			}
+			events.Changed("github", "")
+			notices.Github()
+			if changed {
+				srv.Tasks.Finish(ctx)
+			}
+			if !more || err != nil {
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(200 * time.Millisecond):
+			}
 		}
 	})
 	srv.Tasks.StartWorktreeMaintenance(ctx)
