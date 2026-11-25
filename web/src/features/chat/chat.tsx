@@ -1,5 +1,5 @@
 import { ArrowCounterClockwise,CaretDown,Check,Copy,ListChecks,Stop,WarningCircle } from "@phosphor-icons/react";
-import { useCallback,useEffect,useMemo,useRef,useState } from "react";
+import { memo,useEffect,useMemo,useRef,useState } from "react";
 import { api,type Message } from "../../api/client";
 import { Md,copyText } from "../../components/ui";
 import { messageText,t } from "../../i18n/es";
@@ -29,35 +29,21 @@ export const shortTime = new Intl.DateTimeFormat("es-ES", { hour: "2-digit", min
 // Only messages that arrive after it mounts animate in.
 // Messages off screen skip layout and paint (content-visibility), so a long
 // conversation does not reflow whole while the side panel slides its width.
-// "auto" remembers each one's last real height once painted.
+// They render visibly for two frames on mount so "auto" records each message's
+// real height upfront; otherwise scrolling up would reveal real heights on the
+// fly, shifting scrollHeight above the viewport and causing scroll stutters.
+const measuring = { contentVisibility: "visible", containIntrinsicSize: "auto 160px" } as const;
 const offscreen = { contentVisibility: "auto", containIntrinsicSize: "auto 160px" } as const;
 
-// usePrepaint paints once each message that comes within 2000px of the
-// visible area, so its real height is known before it scrolls into view and
-// the page does not jump; afterwards it is skipped again with that height.
-function usePrepaint() {
-  const observer = useRef<IntersectionObserver | null>(null);
-  useEffect(() => () => observer.current?.disconnect(), []);
-  return useCallback((el: HTMLDivElement | null) => {
-    if (!el) return;
-    if (!observer.current) {
-      observer.current = new IntersectionObserver((entries) => {
-        for (const e of entries) {
-          if (!e.isIntersecting) continue;
-          const target = e.target as HTMLElement;
-          observer.current?.unobserve(target);
-          target.style.contentVisibility = "visible";
-          requestAnimationFrame(() => requestAnimationFrame(() => { target.style.contentVisibility = "auto"; }));
-        }
-      }, { root: el.closest("[data-scroller]"), rootMargin: "2000px 0px" });
-    }
-    observer.current.observe(el);
-  }, []);
-}
-
-export function Messages({ threadId, messages: all, running }: { threadId: string; messages: Message[]; running: boolean }) {
+export const Messages = memo(function Messages({ threadId, messages: all, running }: { threadId: string; messages: Message[]; running: boolean }) {
   const initial = useRef<Set<string> | null>(null);
   if (!initial.current) initial.current = new Set(all.map((m) => m.id));
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    let f2 = 0;
+    const f1 = requestAnimationFrame(() => { f2 = requestAnimationFrame(() => setSettled(true)); });
+    return () => { cancelAnimationFrame(f1); cancelAnimationFrame(f2); };
+  }, []);
   // The ask_user call holds the question and survives the resync from the
   // harness's session file; the question message Dory saved does not, so
   // when the call is there it is the one shown.
@@ -68,15 +54,15 @@ export function Messages({ threadId, messages: all, running }: { threadId: strin
   // A question is open while nothing the user sent came after it.
   let openQuestion: string | undefined;
   for (const m of messages) openQuestion = m.role === "user" ? undefined : isAsk(m) ? (m.status === "running" ? m.id : undefined) : m.role === "question" ? m.id : openQuestion;
-  const prepaint = usePrepaint();
+  const itemStyle = settled ? offscreen : measuring;
   // The anchor names a place by turn and position, not by id: after each turn
   // Dory reloads the conversation from the harness's file with new ids, and
   // the reader must stay on the same message.
   let turn = 0, at = 0;
   const place = (m: Message | Worked | Changes) => { if ("role" in m && m.role === "user") { turn++; at = 0; } return `${turn}:${at++}`; };
-  return <>{layout(messages, running).map((m) => <div key={m.id} data-anchor={place(m)} ref={prepaint} style={offscreen}>{"changes" in m ? <TurnChanges threadId={threadId} turn={m.turn} /> : "worked" in m ? <WorkedBlock Entry={Entry} items={m.items} secs={m.secs} live={m.live} since={m.since} />
+  return <>{layout(messages, running).map((m) => <div key={m.id} data-anchor={place(m)} style={itemStyle}>{"changes" in m ? <TurnChanges threadId={threadId} turn={m.turn} /> : "worked" in m ? <WorkedBlock Entry={Entry} items={m.items} secs={m.secs} live={m.live} since={m.since} />
     : <Entry m={m} threadId={threadId} fresh={!initial.current?.has(m.id)} openQuestion={m.id === openQuestion} />}</div>)}</>;
-}
+});
 
 // latestTodos keeps, of a turn's task lists, only the last: each update of the
 // list is a new call, and the chat shows the list once, updated in place.
