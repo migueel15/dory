@@ -21,7 +21,8 @@
   --color-accent-border: #474d83;
 }
 
-.dark :where(button, a, input, textarea, select):not(.outline-none):focus-visible {
+:where(button, a):focus-visible { outline: none; }
+.dark :where(input, textarea, select):not(.outline-none):focus-visible {
   outline: 2px solid var(--color-accent-text);
   outline-offset: 2px;
 }
