@@ -1,5 +1,6 @@
 import { createContext, useContext, type AnchorHTMLAttributes, type HTMLAttributes, type ImgHTMLAttributes } from "react";
 import { Link } from "@tanstack/react-router";
+import { storage, storageKeys } from "../lib/storage";
 
 // GitHub pull requests and issues open inside Dory, which shows them.
 const GH = /^https?:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/(pull|issues)\/(\d+)(?:[/?#].*)?$/;
@@ -26,17 +27,36 @@ export const parseFileRef = (raw: string): FileRef | undefined => {
 // the pull request page opens its diff on that line.
 export const FileRefContext = createContext<((ref: FileRef) => void) | null>(null);
 
+// ThreadBrowserContext opens external links in the thread's integrated browser
+// when the user preference is set to "integrated" (default).
+export const ThreadBrowserContext = createContext<((url: string) => void) | null>(null);
+
 const refCls = "cursor-pointer text-blue-700 underline decoration-current/30 underline-offset-2 hover:decoration-current dark:text-accent-text";
 
 // RefLink renders Markdown links: GitHub PRs and issues go to Dory's page,
-// file references to the host view, the rest open as usual.
-export function RefLink({ href, children, node: _n, ...rest }: AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) {
+// file references to the host view, the rest open in the integrated or system
+// browser according to the user's preference.
+export function RefLink({ href, children, node: _n, onClick, ...rest }: AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) {
   const openRef = useContext(FileRefContext);
+  const openInBrowser = useContext(ThreadBrowserContext);
   const gh = githubRoute(href);
   if (gh) return <Link to="/github/$owner/$repo/$kind/$number" params={gh} className={rest.className}>{children}</Link>;
   const file = openRef && href ? parseFileRef(href) : undefined;
   if (file && openRef) return <button type="button" className={refCls} onClick={() => openRef(file)} title={`Abrir ${file.path}${file.line ? `:${file.line}` : ""} en el diff`}>{children}</button>;
-  return <a href={href} {...rest}>{children}</a>;
+  const isExternal = !!href && /^https?:\/\//i.test(href);
+  const handleClick: AnchorHTMLAttributes<HTMLAnchorElement>["onClick"] = (e) => {
+    onClick?.(e);
+    if (e.defaultPrevented || !isExternal || !openInBrowser) return;
+    if (e.shiftKey || e.altKey || e.button !== 0) return;
+    const pref = storage.get(storageKeys.linkOpenTarget) || "integrated";
+    const invert = e.ctrlKey || e.metaKey;
+    const useIntegrated = invert ? pref !== "integrated" : pref === "integrated";
+    if (useIntegrated) {
+      e.preventDefault();
+      openInBrowser(href);
+    }
+  };
+  return <a href={href} target={isExternal ? "_blank" : rest.target} rel={isExternal ? "noreferrer" : rest.rel} onClick={handleClick} {...rest}>{children}</a>;
 }
 
 // RefCode makes inline code that names a file (`a/b.go:12`) clickable when the

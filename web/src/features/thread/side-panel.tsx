@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useShortcuts } from "../../components/shortcuts";
 import { formatChord } from "../composer/dictation-shortcut";
-import { hasWindowClose } from "../../lib/window-close";
 import { ContextMenu } from "../../components/context-menu";
 import { ResizeHandle } from "./thread";
 import { Browser, ClipboardText, DeviceMobile, GitDiff, Plus, SidebarSimple, TerminalWindow, X } from "@phosphor-icons/react";
 import { useHasUnseen } from "../../lib/terminal/activity";
 import { events } from "../../lib/store";
 import { storage, storageKeys } from "../../lib/storage";
+import { hasWindowClose } from "../../lib/window-close";
 
 // A thread's side panel holds tabs of objects related to the thread: its
 // changes and the plan of its task; new kinds join TAB_KINDS.
@@ -80,7 +80,7 @@ export function SidePanelToggle({ panel }: { panel: SidePanelState }) {
   const getShortcut = useShortcuts();
   return (
     <button type="button" onClick={panel.toggle} title={`${panel.open ? "Cerrar el panel lateral" : "Abrir el panel lateral"} (${formatChord(getShortcut("thread-panel"))})`} aria-label="Panel lateral" aria-pressed={panel.open}
-      className={`grid size-8 place-items-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-text-secondary dark:hover:bg-raised ${panel.open ? "bg-slate-100 dark:bg-raised" : ""}`}>
+      className={`grid size-8 place-items-center rounded-md text-slate-600 transition-[background-color,transform] duration-150 hover:bg-slate-100 active:scale-95 dark:text-text-secondary dark:hover:bg-raised ${panel.open ? "bg-slate-100 dark:bg-raised" : ""}`}>
       <SidebarSimple weight="regular" className="size-4 -scale-x-100" />
     </button>
   );
@@ -120,14 +120,17 @@ export function SidePanel({ panel, threadId, render, available, onRename, onClos
     // pixel width while the content stays pinned right at full width, so it
     // enters from the right edge and the chat slides aside.
     <aside ref={aside} aria-label="Panel lateral" aria-hidden={!panel.open} inert={!panel.open}
-      className={`hidden min-h-0 overflow-hidden lg:-mt-2 lg:flex lg:shrink-0 lg:transition-[width] lg:duration-300 lg:ease-out motion-reduce:transition-none ${panel.open ? "lg:w-[var(--panel-w)]" : "lg:w-0"}`}
+      className={`hidden min-h-0 overflow-hidden lg:-mt-2 lg:flex lg:shrink-0 lg:transition-[width] lg:duration-[260ms] lg:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${panel.open ? "lg:w-[var(--panel-w)]" : "lg:w-0"}`}
       style={{ "--panel-w": `${width}px` } as CSSProperties}>
       <div className="ml-auto flex min-h-0 w-[var(--panel-w)] shrink-0 [contain:layout_paint]">
       <ResizeHandle panel={aside} width={width} onResize={resize} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col border-l border-slate-200 dark:border-border">
-      <div role="tablist" className={`flex shrink-0 items-center gap-1 h-10 border-b border-slate-200 px-2 pb-2 dark:border-border ${hasWindowClose ? "pr-[4.5rem]" : "pr-10"}`}>
+      <div role="tablist" className={`flex h-10 shrink-0 items-center gap-1 border-b border-slate-200 px-2 pb-2 dark:border-border ${hasWindowClose ? "pr-28" : "pr-10"}`}>
         {panel.tabs.map((k) => (
-          <div key={k} className={`group flex items-center rounded-md text-sm ${panel.active === k ? "bg-slate-100 font-medium dark:bg-raised" : "text-slate-500 hover:bg-slate-50 dark:text-muted dark:hover:bg-raised/60"}`}>
+          <div key={k}
+            onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+            onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); onCloseTab?.(k); panel.close(k); } }}
+            className={`group flex items-center rounded-md text-sm ${panel.active === k ? "bg-slate-100 font-medium dark:bg-raised" : "text-slate-500 hover:bg-slate-50 dark:text-muted dark:hover:bg-raised/60"}`}>
             {renaming === k ? (
               <input autoFocus defaultValue={panel.label(k)} aria-label="Nombre de la pestaña" className="mx-1 w-28 rounded bg-white px-1.5 py-0.5 text-sm outline-none ring-1 ring-slate-300 dark:bg-surface dark:ring-border-strong"
                 onBlur={(e) => { const name = e.target.value.trim(); if (name && !onRename?.(k, name)) panel.setMeta(k, { name }); setRenaming(null); }}

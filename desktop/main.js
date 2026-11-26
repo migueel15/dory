@@ -1,7 +1,7 @@
 // Dory desktop: a window over the core of this machine. The app runs the core
 // it ships as its child and lives in the tray, so threads keep running with
 // the window closed; quitting from the tray stops both (ADR-029).
-const { app, BrowserWindow, WebContentsView, ipcMain, shell, Menu, Tray, nativeImage, dialog, session } = require("electron");
+const { app, BrowserWindow, WebContentsView, ipcMain, shell, Menu, Tray, nativeImage, dialog, session, clipboard } = require("electron");
 const net = require("node:net");
 const { execFile, spawn } = require("node:child_process");
 const fs = require("node:fs");
@@ -193,6 +193,36 @@ async function followUpdates(url) {
   });
 }
 
+function attachContextMenu(wc) {
+  wc.on("context-menu", (_e, params) => {
+    const items = [];
+    const { editFlags, isEditable, selectionText, linkURL } = params;
+
+    if (isEditable) {
+      items.push(
+        { label: "Deshacer", role: "undo", enabled: editFlags.canUndo },
+        { label: "Rehacer", role: "redo", enabled: editFlags.canRedo },
+        { type: "separator" },
+        { label: "Cortar", role: "cut", enabled: editFlags.canCut },
+        { label: "Copiar", role: "copy", enabled: editFlags.canCopy },
+        { label: "Pegar", role: "paste", enabled: editFlags.canPaste },
+        { type: "separator" },
+        { label: "Seleccionar todo", role: "selectAll", enabled: editFlags.canSelectAll },
+      );
+    } else if (selectionText && selectionText.trim()) {
+      items.push({ label: "Copiar", role: "copy", enabled: editFlags.canCopy });
+    }
+
+    if (linkURL) {
+      if (items.length) items.push({ type: "separator" });
+      items.push({ label: "Copiar enlace", click: () => clipboard.writeText(linkURL) });
+    }
+
+    if (!items.length) return;
+    Menu.buildFromTemplate(items).popup({ window: BrowserWindow.fromWebContents(wc) || win });
+  });
+}
+
 async function open() {
   if (!devURL) {
     await migrateCore().catch((err) => console.error("dory: migrate core:", err.message));
@@ -207,6 +237,7 @@ async function open() {
     icon: iconPath,
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true },
   });
+  attachContextMenu(win.webContents);
   // Links to other sites open in the system browser.
   win.webContents.setWindowOpenHandler(({ url: target }) => {
     if (!target.startsWith(url)) { shell.openExternal(target); return { action: "deny" }; }
@@ -214,6 +245,12 @@ async function open() {
   });
   win.webContents.on("will-navigate", (e, target) => {
     if (!target.startsWith(url)) { e.preventDefault(); shell.openExternal(target); }
+  });
+  win.webContents.on("before-input-event", (e, input) => {
+    if (input.type === "keyDown" && (input.control || input.meta) && !input.alt && !input.shift && input.key.toLowerCase() === "r") {
+      e.preventDefault();
+      win.webContents.reload();
+    }
   });
   // Closing the window hides it: the app and its core stay in the tray.
   win.on("close", (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
@@ -246,6 +283,7 @@ function browserView(tab, target) {
   v = { view };
   views.set(tab, v);
   const wc = view.webContents;
+  attachContextMenu(wc);
   // Popups (sign-in with Google and the like) open as real child windows, so
   // they keep window.opener and can hand the result back to the page. Other
   // new windows become tabs of the same thread; the page stays here.

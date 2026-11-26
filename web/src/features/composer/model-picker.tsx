@@ -8,7 +8,7 @@ import { formatChord } from "./dictation-shortcut";
 export type MenuOption = { value: string; label: string; group?: string; modelId?: string; icon?: React.ReactNode };
 
 // Chip is a compact dropdown for the composer toolbar; the menu opens upwards.
-export function Chip({ value, options, onChange, title, icon, below = false, prefix, shortcutBranch = false }: { value: string; options: MenuOption[]; onChange: (v: string) => void; title: string; icon?: React.ReactNode; below?: boolean; prefix?: string; shortcutBranch?: boolean }) {
+export function Chip({ value, options, onChange, title, icon, below = false, align = "left", prefix, shortcutBranch = false }: { value: string; options: MenuOption[]; onChange: (v: string) => void; title: string; icon?: React.ReactNode; below?: boolean; align?: "left" | "right"; prefix?: string; shortcutBranch?: boolean }) {
   const [open, setOpen] = useState(false);
   const getShortcut = useShortcuts();
   const box = useOutside(open, () => setOpen(false));
@@ -27,7 +27,7 @@ export function Chip({ value, options, onChange, title, icon, below = false, pre
         {current?.icon ?? icon}<span className="truncate">{prefix && `${prefix} `}{current?.label ?? value}</span><CaretDown weight="regular" className="size-3 shrink-0 opacity-60" />
       </button>
       {open && (
-        <ul role="listbox" className={`absolute left-0 z-20 max-h-72 min-w-[12rem] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-border dark:bg-surface ${below ? "top-full mt-2" : "bottom-full mb-2"}`}>
+        <ul role="listbox" className={`absolute ${align === "right" ? "right-0" : "left-0"} z-20 max-h-72 min-w-[12rem] max-w-[min(24rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-border dark:bg-surface ${below ? "top-full mt-2" : "bottom-full mb-2"}`}>
           {shortcutBranch && <li><input autoFocus aria-label="Buscar rama" value={query} onChange={(e) => { setQuery(e.target.value); setHighlight(0); }} onKeyDown={(e) => {
             if (e.key === "Escape") { e.stopPropagation(); close(); }
             else if (e.key === "ArrowDown") { e.preventDefault(); setHighlight((i) => Math.min(i + 1, filtered.length - 1)); }
@@ -148,7 +148,7 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
   const modelLabel = claude ||
     (modelId === (current?.modelId ?? selected) ? current?.label : undefined) ||
     (modelId && modelId !== "default" ? modelId : "Seleccionar modelo");
-  const effortLabel = reportedEffort || effort;
+  const effortLabel = effort || reportedEffort;
   // On touch screens the search waits for a tap, so the keyboard does not cover the list.
   const touch = window.matchMedia("(pointer: coarse)").matches;
   const settingsLabel = effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel;

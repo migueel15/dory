@@ -172,7 +172,7 @@ export const prose = [
   "[&_h1]:border-b [&_h1]:border-slate-200 [&_h1]:pb-1 [&_h1]:text-xl [&_h1]:font-bold dark:[&_h1]:border-border",
   "[&_h2]:border-b [&_h2]:border-slate-200 [&_h2]:pb-1 [&_h2]:text-lg [&_h2]:font-semibold dark:[&_h2]:border-border",
   "[&_h3]:text-base [&_h3]:font-semibold [&_h4]:font-semibold [&_h1,&_h2,&_h3,&_h4]:mt-4 [&_h1,&_h2,&_h3,&_h4]:text-slate-900 dark:[&_h1,&_h2,&_h3,&_h4]:text-white",
-  "[&_a]:text-accent [&_a]:underline-offset-2 hover:[&_a]:underline dark:[&_a]:text-accent-text",
+  "[&_a]:text-accent [&_a]:underline-offset-2 [&_a:hover]:underline dark:[&_a]:text-accent-text",
   "[&_ul]:ml-5 [&_ul]:list-disc [&_ol]:ml-5 [&_ol]:list-decimal [&_li]:my-0.5 [&_li>ul]:mt-1 [&_li>ol]:mt-1",
   "[&_ul.contains-task-list]:ml-0 [&_ul.contains-task-list]:list-none [&_li.task-list-item]:flex [&_li.task-list-item]:flex-wrap [&_li.task-list-item]:items-baseline [&_li.task-list-item]:gap-2 [&_li.task-list-item>ul]:basis-full [&_li.task-list-item>ul]:ml-6",
   "[&_input[type=checkbox]]:size-4 [&_input[type=checkbox]]:translate-y-0.5 [&_input[type=checkbox]]:accent-green-600",

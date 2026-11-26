@@ -5,9 +5,10 @@ import { Md,copyText } from "../../components/ui";
 import { messageText,t } from "../../i18n/es";
 import { events } from "../../lib/store";
 import { HtmlCard,htmlRef } from "./html-card";
+import { MemoryCitations,extractMemoryCitations } from "./memory-citation";
 import { ModelChangeDivider,readModelChange } from "./model-change";
 import { NativeQuestionCard,QuestionCard } from "./question-card";
-import { Changes,Reasoning,StepLine,Worked,WorkedBlock,layout } from "./steps";
+import { Changes,QuestionStep,Reasoning,StepLine,Worked,WorkedBlock,layout } from "./steps";
 import { rehypeFade,useSmoothText } from "./stream";
 import { AgentMessage,agentNote } from "./subagents";
 import { TodoCard,ToolCard,isAsk } from "./tool-card";
@@ -60,7 +61,7 @@ export const Messages = memo(function Messages({ threadId, messages: all, runnin
   // the reader must stay on the same message.
   let turn = 0, at = 0;
   const place = (m: Message | Worked | Changes) => { if ("role" in m && m.role === "user") { turn++; at = 0; } return `${turn}:${at++}`; };
-  return <>{layout(messages, running).map((m) => <div key={m.id} data-anchor={place(m)} style={itemStyle}>{"changes" in m ? <TurnChanges threadId={threadId} turn={m.turn} /> : "worked" in m ? <WorkedBlock Entry={Entry} items={m.items} secs={m.secs} live={m.live} since={m.since} />
+  return <>{layout(messages, running).map((m) => <div key={m.id} data-anchor={place(m)} style={itemStyle}>{"changes" in m ? <TurnChanges threadId={threadId} turn={m.turn} /> : "worked" in m ? <WorkedBlock Entry={Entry} items={m.items} secs={m.secs} live={m.live} since={m.since} endedAt={m.endedAt} stopped={m.stopped} expanded={m.expanded} />
     : <Entry m={m} threadId={threadId} fresh={!initial.current?.has(m.id)} openQuestion={m.id === openQuestion} />}</div>)}</>;
 });
 
@@ -94,14 +95,14 @@ export function Entry({ m, threadId = "", fresh = false, openQuestion = false }:
     case "reasoning":
       return <Reasoning m={m} />;
     case "tool":
-      if (isAsk(m)) return <QuestionCard m={m} />;
+      if (isAsk(m)) return openQuestion ? <QuestionCard m={m} /> : <QuestionStep m={m} />;
       if (htmlRef(m)) return <HtmlCard m={m} threadId={threadId} />;
-      if (m.tool?.kind === "question") return <NativeQuestionCard m={m} />;
+      if (m.tool?.kind === "question") return openQuestion ? <NativeQuestionCard m={m} /> : <QuestionStep m={m} />;
       return m.tool ? <ToolCard m={m} /> : <StepLine run={[m]} />;
     case "plan":
       return m.tool?.kind === "todo" ? <TodoCard m={m} /> : <PlanCard m={m} />;
     case "question":
-      return <QuestionCard m={m} />;
+      return openQuestion ? <QuestionCard m={m} /> : <QuestionStep m={m} />;
     case "model-change":
       return <ModelChangeDivider change={readModelChange(m.detail)} />;
     case "interrupt":
@@ -137,8 +138,14 @@ function Answer({ m }: { m: Message }) {
   const text = useSmoothText(m.text, m.streaming);
   const seen = useRef<number[]>([]);
   const fade = useMemo(() => (live.current ? [rehypeFade(seen.current)] : []), [live.current]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!text) return null;
-  return <Md serif rehypePlugins={fade}>{text}</Md>;
+  const { body, citations } = useMemo(() => extractMemoryCitations(text, m.streaming), [text, m.streaming]);
+  if (!body && !citations.length) return null;
+  return (
+    <>
+      {body && <Md serif rehypePlugins={fade}>{body}</Md>}
+      <MemoryCitations citations={citations} />
+    </>
+  );
 }
 
 function Dots() {

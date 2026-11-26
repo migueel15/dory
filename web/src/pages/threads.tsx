@@ -1,6 +1,6 @@
 import { Check,FunnelSimple,MagnifyingGlass,Plus,PushPin,SidebarSimple } from "@phosphor-icons/react";
 import { Link,Outlet,useNavigate,useParams } from "@tanstack/react-router";
-import { useMemo,useRef,useState,type CSSProperties,type ReactNode,type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect,useMemo,useRef,useState,type CSSProperties,type ReactNode,type PointerEvent as ReactPointerEvent,type TouchEvent as ReactTouchEvent } from "react";
 import { repoName,type Thread } from "../api/client";
 import { useMesh,useNode,useRepositories } from "../api/queries/hooks";
 import { useExternalSessions,useThreadList } from "../api/queries/threads";
@@ -36,10 +36,50 @@ export function Threads() {
   // On desktop the thread list folds away while a thread is open; remembered in this browser.
   const [listFolded, setListFolded] = useState(() => { try { return storage.get(storageKeys.threadsFolded) === "1"; } catch { return false; } });
   const foldList = (v: boolean) => { setListFolded(v); try { storage.set(storageKeys.threadsFolded, v ? "1" : "0"); } catch { /* per-browser only */ } };
+  // On mobile the thread list is a full-screen drawer closed by default,
+  // opened via the top-left button or by swiping right (and closed by swiping left).
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [swipeProgress, setSwipeProgress] = useState<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const touchRef = useRef<{ x0: number; y0: number; t0: number; axis: "x" | "y" | null; startOpen: boolean; width: number } | null>(null);
+  useEffect(() => { setMobileOpen(false); }, [threadId]);
+  const onTouchStart = (e: ReactTouchEvent<HTMLDivElement>) => {
+    if (window.innerWidth >= 640 || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    const width = containerRef.current?.clientWidth || window.innerWidth;
+    touchRef.current = { x0: touch.clientX, y0: touch.clientY, t0: Date.now(), axis: null, startOpen: mobileOpen, width };
+  };
+  const onTouchMove = (e: ReactTouchEvent<HTMLDivElement>) => {
+    const g = touchRef.current;
+    if (!g || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - g.x0;
+    const dy = e.touches[0].clientY - g.y0;
+    if (!g.axis) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      g.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+    }
+    if (g.axis !== "x") return;
+    if (!g.startOpen && dx <= 0) { setSwipeProgress(null); return; }
+    if (g.startOpen && dx >= 0) { setSwipeProgress(null); return; }
+    const next = g.startOpen ? 1 + dx / g.width : dx / g.width;
+    setSwipeProgress(Math.max(0, Math.min(1, next)));
+  };
+  const onTouchEnd = (e: ReactTouchEvent<HTMLDivElement>) => {
+    const g = touchRef.current;
+    touchRef.current = null;
+    if (!g || g.axis !== "x" || swipeProgress === null) { setSwipeProgress(null); return; }
+    const dx = (e.changedTouches[0]?.clientX ?? g.x0) - g.x0;
+    const dt = Math.max(1, Date.now() - g.t0);
+    const velocity = dx / dt;
+    const open = g.startOpen ? !(swipeProgress < 0.7 || velocity < -0.35) : (swipeProgress > 0.3 || velocity > 0.35);
+    setMobileOpen(open);
+    setSwipeProgress(null);
+  };
   const searchInput = useRef<HTMLInputElement>(null);
-  useEmitter(events.focusThreadSearch, () => { foldList(false); requestAnimationFrame(() => searchInput.current?.focus()); });
-  const folded = listFolded && !!threadId;
-  useCommand("thread-list", () => foldList(!listFolded), !!threadId);
+  useEmitter(events.focusThreadSearch, () => { foldList(false); setMobileOpen(true); requestAnimationFrame(() => searchInput.current?.focus()); });
+  useEmitter(events.toggleThreadList, () => { foldList(!listFolded); setMobileOpen((v) => !v); });
+  const folded = listFolded;
+  useCommand("thread-list", () => { foldList(!listFolded); setMobileOpen((v) => !v); });
   // The list width is dragged from its right edge and kept per browser.
   const [listWidth, setListWidth] = useState(() => { try { return clampList(Number(storage.get(storageKeys.threadsWidth)) || LIST_W); } catch { return LIST_W; } });
   const [dragging, setDragging] = useState(false);
@@ -89,18 +129,27 @@ export function Threads() {
       })
       .sort((a, b) => (b.pinned_at ? 1 : 0) - (a.pinned_at ? 1 : 0) || (b.last_activity_at ?? b.created_at).localeCompare(a.last_activity_at ?? a.created_at));
   }, [threads.data, repos.data, filter, query, project]);
+  const mobileTranslate = swipeProgress !== null ? `${(swipeProgress - 1) * 100}%` : mobileOpen ? "0%" : "-100%";
   return (
-    <div className="relative flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] min-h-0 sm:h-[calc(100dvh-3rem-2px)]" style={{ "--list-w": `${listWidth}px` } as CSSProperties}>
-      {/* The list toggle is pinned to the page corner: the list slides in under it and pushes the thread aside. */}
-      {threadId && <button type="button" onClick={() => foldList(!folded)} title={folded ? "Mostrar los hilos" : "Ocultar los hilos"} aria-label={folded ? "Mostrar los hilos" : "Ocultar los hilos"}
-        className="absolute -left-2 -top-2 z-30 hidden size-8 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 sm:grid dark:text-text-secondary dark:hover:bg-raised"><SidebarSimple weight="regular" className="size-4" /></button>}
-      <aside inert={folded} className={`relative ${dragging ? "sm:!transition-none" : ""} min-h-0 w-full shrink-0 flex-col overflow-hidden border-slate-200 sm:-mt-2.5 sm:border-r dark:border-border sm:-ml-4 sm:items-end sm:transition-[width,border-color] sm:duration-300 sm:ease-out motion-reduce:transition-none ${folded ? "sm:w-4 sm:!border-r-0" : "sm:w-[var(--list-w)]"} ${threadId ? "hidden sm:flex" : "flex"}`}>
+    <div ref={containerRef} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={() => { touchRef.current = null; setSwipeProgress(null); }}
+      className="relative flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] min-h-0 overflow-hidden sm:h-[calc(100dvh-3rem-2px)] sm:overflow-visible"
+      style={{ "--list-w": `${listWidth}px`, "--mobile-x": mobileTranslate } as CSSProperties}>
+      <div className="absolute left-0 top-0 z-40 bg-slate-50 pr-1 dark:bg-canvas sm:-left-4 sm:-top-2 sm:z-30 sm:pl-2">
+        <button type="button" onClick={() => { if (window.innerWidth < 640) setMobileOpen((v) => !v); else foldList(!folded); }}
+          aria-label={folded ? "Mostrar lista de hilos" : "Ocultar lista de hilos"} title={folded ? "Mostrar lista de hilos" : "Ocultar lista de hilos"}
+          className="grid size-8 place-items-center rounded-md text-slate-600 transition-[background-color,transform] duration-150 hover:bg-slate-100 active:scale-95 dark:text-text-secondary dark:hover:bg-raised">
+          <SidebarSimple weight="regular" className="size-4" aria-hidden="true" />
+        </button>
+      </div>
+      <aside inert={!mobileOpen && folded ? true : undefined}
+        onClick={(e) => { if (window.innerWidth < 640 && (e.target as HTMLElement).closest("a")) setMobileOpen(false); }}
+        className={`flex min-h-0 w-full shrink-0 flex-col overflow-hidden border-slate-200 dark:border-border max-sm:absolute max-sm:inset-0 max-sm:z-30 max-sm:bg-slate-50 max-sm:dark:bg-canvas max-sm:translate-x-[var(--mobile-x)] ${swipeProgress !== null ? "max-sm:!transition-none" : "max-sm:transition-transform max-sm:duration-[260ms] max-sm:ease-[cubic-bezier(0.22,1,0.36,1)]"} sm:relative ${dragging ? "sm:!transition-none" : ""} sm:-mt-2.5 sm:border-r sm:-ml-4 sm:items-end sm:transition-[width,border-color] sm:duration-[260ms] sm:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${folded ? "sm:w-0 sm:!border-r-0" : "sm:w-[var(--list-w)]"}`}>
         {!folded && <div role="separator" aria-orientation="vertical" aria-label="Redimensionar lista de hilos" onPointerDown={startDrag} onDoubleClick={() => saveWidth(LIST_W)}
           className="absolute inset-y-0 right-0 z-10 hidden w-1.5 translate-x-1/2 cursor-col-resize hover:bg-accent/40 sm:block" />}
         {/* The content keeps its width while the list slides open or closed. */}
-        <div className={`flex min-h-0 w-full flex-1 flex-col sm:w-[var(--list-w)] sm:shrink-0 sm:transition-[opacity,visibility] sm:duration-300 motion-reduce:transition-none ${folded ? "sm:invisible sm:opacity-0" : ""}`}>
-        <div className={`flex items-center gap-1.5 px-2 pb-2 ${threadId ? "sm:pl-11" : ""}`}>
-          <div className="flex min-w-0 flex-1 items-center gap-2 px-2">
+        <div className="flex min-h-0 w-full flex-1 flex-col sm:w-[var(--list-w)] sm:shrink-0">
+        <div className="flex items-center gap-1.5 px-2 pb-2 pl-10 sm:pl-11">
+          <div className="flex min-w-0 flex-1 items-center gap-2 px-1">
             <MagnifyingGlass weight="regular" className="size-4 shrink-0 text-slate-400" />
             <input ref={searchInput} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar hilo…" aria-label="Buscar hilos"
               className="min-h-9 w-full bg-transparent text-sm !outline-none placeholder:text-slate-400" />
@@ -149,7 +198,9 @@ export function Threads() {
         </div>
         </div>
       </aside>
-      <section className={`min-h-0 min-w-0 flex-1 ${folded ? "sm:-ml-2" : ""} sm:transition-[margin] sm:duration-300 sm:ease-out ${threadId ? "flex flex-col" : "hidden sm:flex sm:flex-col"}`}><ThreadsFold.Provider value={threadId ? { folded, toggle: () => foldList(!folded) } : null}><Outlet /></ThreadsFold.Provider></section>
+      <section className={`relative flex min-h-0 min-w-0 flex-1 flex-col ${folded ? "sm:ml-2" : ""} sm:transition-[margin] sm:duration-[260ms] sm:ease-[cubic-bezier(0.22,1,0.36,1)]`}>
+        <ThreadsFold.Provider value={threadId ? { folded, toggle: () => foldList(!folded) } : null}><Outlet /></ThreadsFold.Provider>
+      </section>
     </div>
   );
 }

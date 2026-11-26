@@ -164,12 +164,12 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
               options={[{ value: "checkout", label: "Checkout actual" }, { value: "worktree", label: "Nuevo worktree" }, { value: "existing", label: "Worktree existente" }]} />
             <span className="ml-auto" />
             {mode === "existing" && (worktreeList.data?.length ? (
-              <Chip below title="Worktree" icon={<GitBranch className="size-4 shrink-0" />} value={chosen?.path ?? ""} onChange={setExisting}
+              <Chip below align="right" title="Worktree" icon={<GitBranch className="size-4 shrink-0" />} value={chosen?.path ?? ""} onChange={setExisting}
                 options={worktreeList.data.map((w) => ({ value: w.path, label: `${w.branch || "(sin rama)"} · ${w.path.split("/").pop()}${w.working ? " · en marcha" : w.threads ? ` · ${w.threads} hilo${w.threads > 1 ? "s" : ""}` : ""}` }))} />
             ) : worktreeList.isSuccess && <span>No hay worktrees</span>)}
             {mode !== "existing" && !!branchList.data?.branches.length && (
               <>
-                <Chip below shortcutBranch prefix={worktree ? "Desde" : undefined} title={worktree ? "Rama de la que sale el worktree" : "Rama del checkout"} icon={<GitBranch className="size-4 shrink-0" />} value={branch} onChange={setBase}
+                <Chip below align="right" shortcutBranch prefix={worktree ? "Desde" : undefined} title={worktree ? "Rama de la que sale el worktree" : "Rama del checkout"} icon={<GitBranch className="size-4 shrink-0" />} value={branch} onChange={setBase}
                   options={branchList.data.branches.map((b) => ({ value: b, label: b }))} />
               </>
             )}

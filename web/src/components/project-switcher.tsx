@@ -55,10 +55,12 @@ export function ProjectSwitcher({ compact = false, folded = false }: { compact?:
   const button = (
     <button ref={trigger} type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => { setTip(null); setOpen(!open); }} title={folded ? undefined : `Cambiar de proyecto (${formatChord(getShortcut("project"))})`}
       onMouseEnter={showTip} onMouseLeave={() => setTip(null)} onFocus={showTip} onBlur={() => setTip(null)}
-      className={`flex w-full items-center overflow-hidden rounded text-left ${compact ? "min-h-11 px-2" : "h-8 px-[0.4375rem]"} text-sm font-medium text-slate-800 hover:bg-slate-200 dark:text-text dark:hover:bg-raised ${open ? "bg-slate-200 dark:bg-raised" : ""}`}>
-      {current ? <FolderSimple weight="duotone" aria-hidden="true" className="mr-2.5 size-[1.125rem] shrink-0 opacity-80" /> : <SquaresFour weight="duotone" aria-hidden="true" className="mr-2.5 size-[1.125rem] shrink-0 opacity-80" />}
-      <span className="min-w-0 flex-1 truncate">{name}</span>
-      <CaretUpDown weight="regular" aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
+      className={`flex items-center overflow-hidden rounded-lg text-left text-sm font-medium transition-colors ${folded ? "size-10 justify-center text-slate-500 hover:bg-slate-200/70 hover:text-slate-900 dark:text-zinc-500 dark:hover:bg-raised dark:hover:text-text" : `w-full text-slate-800 hover:bg-slate-200 dark:text-text dark:hover:bg-raised ${compact ? "min-h-11 px-2" : "h-8 px-[0.4375rem]"}`} ${open ? "bg-slate-200 dark:bg-hover dark:text-white" : ""}`}>
+      {current ? <FolderSimple weight="duotone" aria-hidden="true" className={folded ? "size-6 shrink-0" : "mr-2.5 size-[1.125rem] shrink-0 opacity-80"} /> : <SquaresFour weight="duotone" aria-hidden="true" className={folded ? "size-6 shrink-0" : "mr-2.5 size-[1.125rem] shrink-0 opacity-80"} />}
+      {!folded && <>
+        <span className="min-w-0 flex-1 truncate">{name}</span>
+        <CaretUpDown weight="regular" aria-hidden="true" className="size-4 shrink-0 text-slate-400" />
+      </>}
     </button>
   );
 

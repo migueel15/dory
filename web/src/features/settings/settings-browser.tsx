@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import { Info } from "@phosphor-icons/react";
 import { Button, ErrorText, Select } from "../../components/ui";
+import { storage, storageKeys } from "../../lib/storage";
 import { SettingRow, useNodeSettings, type SectionProps } from "./settings-node";
+
+const LINK_TARGETS = [
+  { value: "integrated", label: "Navegador integrado" },
+  { value: "system", label: "Navegador del sistema" },
+];
 
 // The ids are the keys of browser.SearchEngines in Go.
 const ENGINES = [
@@ -20,11 +26,20 @@ type Sources = { sources: { id: string; name: string }[]; default: string };
 // its sign-ins from (ADR-045).
 export function BrowserSettings({ node }: SectionProps) {
   const settings = useNodeSettings(node);
+  const [linkTarget, setLinkTarget] = useState(() => storage.get(storageKeys.linkOpenTarget) || "integrated");
+  const changeLinkTarget = (v: string) => {
+    setLinkTarget(v);
+    storage.set(storageKeys.linkOpenTarget, v);
+  };
   return (
     <div className="space-y-6">
       <section aria-labelledby="browser-title" className="space-y-2">
         <h2 id="browser-title" className="text-lg font-semibold">Navegador</h2>
         <SettingRow settings={settings} field="agents_use_browser" title="Permitir que los agentes usen el navegador" />
+        <div className="flex items-center gap-4 text-sm">
+          <strong className="font-medium">Abrir enlaces en</strong>
+          <Select className="w-56 shrink-0" value={linkTarget} onChange={changeLinkTarget} options={LINK_TARGETS} />
+        </div>
         <div className="flex items-center gap-4 text-sm">
           <strong className="font-medium">Motor de búsqueda</strong>
           <Select className="w-48 shrink-0" value={settings.get("browser_search_engine") || "google"} onChange={(v) => settings.set({ browser_search_engine: v })} options={ENGINES} disabled={!settings.loaded || settings.pending} />

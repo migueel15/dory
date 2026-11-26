@@ -6,16 +6,16 @@ import { req } from "../api/client";
 import { qk } from "../api/queries/keys";
 import { useNotices as useNoticeInbox,useReadNotices } from "../api/queries/settings";
 import type { Notice } from "../api/types.gen";
-import { Button } from "./ui";
+import { Button,uuid } from "./ui";
 
 const b64 = (s: string) => {
   const raw = atob((s + "=".repeat((4 - (s.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
   return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 };
 
-// subscribe asks for permission and registers this browser for push notices
-// from this node (the phone app subscribes to the server node).
-async function subscribe() {
+// subscribeNotices asks for permission and registers this browser for push
+// notices from this node (the phone app subscribes to the server node).
+export async function subscribeNotices() {
   if (!("Notification" in window)) throw new Error("Este navegador no admite avisos");
   if ((await Notification.requestPermission()) !== "granted") throw new Error("Permiso denegado");
   const reg = await navigator.serviceWorker?.ready;
@@ -33,7 +33,7 @@ export function NoticesToggle() {
   const on = perm === "granted";
   return (
     <button type="button" title={error || (on ? "Avisos activados" : "Activar avisos")} aria-label={on ? "Avisos activados" : "Activar avisos"}
-      onClick={() => { if (!on) subscribe().then(() => setPerm("granted"), (e: Error) => { setError(e.message); setPerm(Notification.permission); }); }}
+      onClick={() => { if (!on) subscribeNotices().then(() => setPerm("granted"), (e: Error) => { setError(e.message); setPerm(Notification.permission); }); }}
       className="grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-slate-200 sm:min-h-0 sm:min-w-0 dark:hover:bg-raised">
       {on ? <BellRinging className="size-5" /> : <Bell className="size-5" />}
     </button>
@@ -126,7 +126,7 @@ export function NoticeInbox() {
 }
 
 // One id per loaded interface, so the mesh can tell open interfaces apart.
-const interfaceId = crypto.randomUUID();
+const interfaceId = uuid();
 
 // idleAfter is how long without input before a focused interface counts as
 // unattended.
