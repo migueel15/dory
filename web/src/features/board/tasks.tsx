@@ -82,7 +82,7 @@ export function Tasks() {
                   {all && <button type="button" onClick={() => setExpanded(undefined)} className="rounded px-1.5 text-xs text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">Mostrar menos</button>}
                   <span className="ml-auto text-xs tabular-nums text-slate-500 dark:text-muted">{list.length}</span>
                 </header>
-                <ColumnCards list={list} all={all} onExpand={() => setExpanded(col)} card={cardEl} />
+                <ColumnCards key={project} list={list} all={all} onExpand={() => setExpanded(col)} card={cardEl} />
               </section>
             );
           })}

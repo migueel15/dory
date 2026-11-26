@@ -12,21 +12,25 @@ import { useArm } from "../github/github-ui";
 import { GAP,MORE_H,PAD,ago,lastActivity,status } from "./card-layout";
 import { slot } from "./card-status";
 
-// ColumnCards shows the cards that fit in the visible height. It measures the real height of each card in a hidden copy,
-// so cards with less content leave room for more, and the rest go behind a "+N más" button.
+const MOBILE_PAGE = 5;
+
+// ColumnCards shows the cards that fit in the visible height on desktop, and pages by 5 cards on mobile.
+// On desktop it measures the real height of each card in a hidden copy, so cards with less content leave room for more.
 export function ColumnCards({ list, all, onExpand, card }: { list: Card[]; all: boolean; onExpand: () => void; card: (c: Card) => React.ReactNode }) {
   const zone = useRef<HTMLDivElement>(null);
   const probe = useRef<HTMLDivElement>(null);
+  const [isDesktop, setIsDesktop] = useState(() => window.matchMedia("(min-width: 640px)").matches);
   const [fit, setFit] = useState(Infinity);
+  const [mobileLimit, setMobileLimit] = useState(MOBILE_PAGE);
   // A column cannot show more than a screenful, so measuring the first cards is enough.
   const probed = list.slice(0, 40);
   const key = probed.map((c) => `${c.id}:${c.title}:${c.column}:${c.threads.length}:${c.pr_number}:${c.branch}`).join("|");
   useLayoutEffect(() => {
     const z = zone.current, p = probe.current;
-    if (!z || !p) return setFit(Infinity);
     const desktop = window.matchMedia("(min-width: 640px)");
     const measure = () => {
-      if (!desktop.matches || all) return setFit(Infinity);
+      setIsDesktop(desktop.matches);
+      if (!z || !p || !desktop.matches || all) return setFit(Infinity);
       const avail = z.clientHeight - PAD * 2;
       const hs = Array.from(p.children).map((e) => (e as HTMLElement).offsetHeight);
       let used = 0, n = 0;
@@ -43,16 +47,27 @@ export function ColumnCards({ list, all, onExpand, card }: { list: Card[]; all: 
     };
     measure();
     const ro = new ResizeObserver(measure);
-    ro.observe(z);
-    ro.observe(p);
+    if (z) ro.observe(z);
+    if (p) ro.observe(p);
     desktop.addEventListener("change", measure);
     return () => { ro.disconnect(); desktop.removeEventListener("change", measure); };
   }, [key, all, list.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  const shown = fit === Infinity || all ? list : list.slice(0, fit);
+  const shown = isDesktop
+    ? (fit === Infinity || all ? list : list.slice(0, fit))
+    : list.slice(0, mobileLimit);
+  const remaining = list.length - shown.length;
   return (
     <div ref={zone} className={`relative flex min-h-0 flex-1 flex-col gap-2 p-2 ${all ? "overflow-y-auto" : "sm:overflow-hidden"}`}>
       {shown.map(card)}
-      {shown.length < list.length && <button type="button" onClick={onExpand} className="shrink-0 rounded-lg border border-dashed border-slate-300 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-50 dark:border-border-strong dark:text-muted dark:hover:bg-raised">+{list.length - shown.length} más</button>}
+      {remaining > 0 && (
+        <button
+          type="button"
+          onClick={isDesktop ? onExpand : () => setMobileLimit((n) => n + MOBILE_PAGE)}
+          className="shrink-0 rounded-lg border border-dashed border-slate-300 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-50 dark:border-border-strong dark:text-muted dark:hover:bg-raised"
+        >
+          {isDesktop ? `+${remaining} más` : `Ver más (${remaining})`}
+        </button>
+      )}
       {!all && <div ref={probe} aria-hidden="true" className="pointer-events-none invisible absolute inset-x-0 top-0 flex flex-col gap-2 p-2 max-sm:hidden">{probed.map(card)}</div>}
     </div>
   );
