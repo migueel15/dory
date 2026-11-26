@@ -13,9 +13,9 @@ const b64 = (s: string) => {
   return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 };
 
-// subscribe asks for permission and registers this browser for push notices
-// from this node (the phone app subscribes to the server node).
-async function subscribe() {
+// subscribeNotices asks for permission and registers this browser for push
+// notices from this node (the phone app subscribes to the server node).
+export async function subscribeNotices() {
   if (!("Notification" in window)) throw new Error("Este navegador no admite avisos");
   if ((await Notification.requestPermission()) !== "granted") throw new Error("Permiso denegado");
   const reg = await navigator.serviceWorker?.ready;
@@ -33,7 +33,7 @@ export function NoticesToggle() {
   const on = perm === "granted";
   return (
     <button type="button" title={error || (on ? "Avisos activados" : "Activar avisos")} aria-label={on ? "Avisos activados" : "Activar avisos"}
-      onClick={() => { if (!on) subscribe().then(() => setPerm("granted"), (e: Error) => { setError(e.message); setPerm(Notification.permission); }); }}
+      onClick={() => { if (!on) subscribeNotices().then(() => setPerm("granted"), (e: Error) => { setError(e.message); setPerm(Notification.permission); }); }}
       className="grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-slate-200 sm:min-h-0 sm:min-w-0 dark:hover:bg-raised">
       {on ? <BellRinging className="size-5" /> : <Bell className="size-5" />}
     </button>

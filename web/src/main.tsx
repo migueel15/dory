@@ -276,7 +276,7 @@ function Layout() {
         <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto overflow-x-hidden pt-3 pb-4">{railLinks}</nav>
         <div className="shrink-0 pb-2"><ProjectSwitcher folded /></div>
         <SidebarFooter username={me.data.username} onLogout={() => logout.mutate()} update={<MeshUpdateButton />}
-          controls={[<NoticeInbox key="i" />, <NoticesToggle key="n" />, <ThemeToggle key="t" />, <SettingsLink key="settings" />, <UsageQuick key="u" />]} />
+          controls={[<NoticeInbox key="i" />, <SettingsLink key="settings" />, <UsageQuick key="u" />]} />
       </aside>
       {/* On desktop the current view is a card framed by the sidebar background. */}
       <div className="min-w-0 flex-1 sm:mb-2 sm:mr-2 sm:overflow-auto sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">

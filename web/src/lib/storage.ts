@@ -22,6 +22,7 @@ export const storageKeys = {
   shortcuts: "dory.shortcuts",
   dictationModel: "dory.dictation-model",
   dictationShortcut: "dory.dictation-shortcut",
+  linkOpenTarget: "dory.link-open-target",
   usageProvider: "dory-usage-provider",
   launch: (section: string) => `dory.launch.${section}`,
   lastModelOf: (section: string) => `dory.last-model:${section}`,

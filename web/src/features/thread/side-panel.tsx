@@ -126,7 +126,10 @@ export function SidePanel({ panel, threadId, render, available, onRename, onClos
       <div className="flex min-h-0 min-w-0 flex-1 flex-col border-l border-slate-200 dark:border-border">
       <div role="tablist" className="flex h-10 shrink-0 items-center gap-1 border-b border-slate-200 px-2 pb-2 pr-10 dark:border-border">
         {panel.tabs.map((k) => (
-          <div key={k} className={`group flex items-center rounded-md text-sm ${panel.active === k ? "bg-slate-100 font-medium dark:bg-raised" : "text-slate-500 hover:bg-slate-50 dark:text-muted dark:hover:bg-raised/60"}`}>
+          <div key={k}
+            onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+            onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); onCloseTab?.(k); panel.close(k); } }}
+            className={`group flex items-center rounded-md text-sm ${panel.active === k ? "bg-slate-100 font-medium dark:bg-raised" : "text-slate-500 hover:bg-slate-50 dark:text-muted dark:hover:bg-raised/60"}`}>
             {renaming === k ? (
               <input autoFocus defaultValue={panel.label(k)} aria-label="Nombre de la pestaña" className="mx-1 w-28 rounded bg-white px-1.5 py-0.5 text-sm outline-none ring-1 ring-slate-300 dark:bg-surface dark:ring-border-strong"
                 onBlur={(e) => { const name = e.target.value.trim(); if (name && !onRename?.(k, name)) panel.setMeta(k, { name }); setRenaming(null); }}

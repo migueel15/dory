@@ -5,6 +5,7 @@ import { Md,copyText } from "../../components/ui";
 import { messageText,t } from "../../i18n/es";
 import { events } from "../../lib/store";
 import { HtmlCard,htmlRef } from "./html-card";
+import { MemoryCitations,extractMemoryCitations } from "./memory-citation";
 import { ModelChangeDivider,readModelChange } from "./model-change";
 import { NativeQuestionCard,QuestionCard } from "./question-card";
 import { Changes,Reasoning,StepLine,Worked,WorkedBlock,layout } from "./steps";
@@ -137,8 +138,14 @@ function Answer({ m }: { m: Message }) {
   const text = useSmoothText(m.text, m.streaming);
   const seen = useRef<number[]>([]);
   const fade = useMemo(() => (live.current ? [rehypeFade(seen.current)] : []), [live.current]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!text) return null;
-  return <Md serif rehypePlugins={fade}>{text}</Md>;
+  const { body, citations } = useMemo(() => extractMemoryCitations(text, m.streaming), [text, m.streaming]);
+  if (!body && !citations.length) return null;
+  return (
+    <>
+      {body && <Md serif rehypePlugins={fade}>{body}</Md>}
+      <MemoryCitations citations={citations} />
+    </>
+  );
 }
 
 function Dots() {

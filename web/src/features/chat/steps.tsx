@@ -1,11 +1,11 @@
-import { Brain,CaretDown,CaretRight,ChatText,Question as QuestionIcon,TerminalWindow,Wrench } from "@phosphor-icons/react";
+import { Brain,CaretDown,CaretRight,ChatText,FileText,Globe,MagnifyingGlass,PencilSimple,Question as QuestionIcon,Robot,TerminalWindow,Wrench } from "@phosphor-icons/react";
 import { useEffect,useState } from "react";
 import { type Message } from "../../api/client";
 import { Md } from "../../components/ui";
 import { t } from "../../i18n/es";
 import { htmlRef } from "./html-card";
 import { NativeQuestionCard,QuestionCard } from "./question-card";
-import { GroupCard,ToolCard,askQuestions,isAsk } from "./tool-card";
+import { GroupCard,TodoCard,ToolCard,askQuestions,isAsk } from "./tool-card";
 import { turnFiles,type Turn } from "./turn-changes";
 
 export const running = (m: Message) => m.streaming || (m.role === "tool" && !["completed", "failed", "error", "declined", "interrupted", "cancelled"].includes(m.status ?? ""));
@@ -160,9 +160,181 @@ const elapsed = (secs: number) => {
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 };
 
+const baseName = (p = "") => p.replace(/\/+$/, "").split("/").pop() || p;
+
+function actionIcon(m: Message) {
+  const kind = m.tool?.kind;
+  if (kind === "read") return <FileText className="size-4 shrink-0" />;
+  if (kind === "search") return <MagnifyingGlass weight="regular" className="size-4 shrink-0" />;
+  if (kind === "edit") return <PencilSimple className="size-4 shrink-0" />;
+  if (kind === "command" || shells.has(m.title ?? "")) return <TerminalWindow weight="regular" className="size-4 shrink-0" />;
+  if (kind === "web") return <Globe className="size-4 shrink-0" />;
+  if (kind === "agent") return <Robot className="size-4 shrink-0" />;
+  return <Wrench weight="regular" className="size-4 shrink-0" />;
+}
+
+function actionLabel(m: Message): string {
+  const live = running(m);
+  const bad = failed(m);
+  const tc = m.tool;
+  if (tc) {
+    switch (tc.kind) {
+      case "read":
+        return `${live ? "Leyendo" : "Leyó"} ${baseName(tc.path) || "fichero"}`;
+      case "search":
+        return `${live ? "Buscando" : "Buscó"} ${tc.pattern || "en el código"}`;
+      case "edit": {
+        const files = tc.files ?? [];
+        if (files.length === 1) {
+          const f = files[0];
+          const verb = f.change === "add" ? (live ? "Creando" : "Creó") : f.change === "delete" ? "Borró" : live ? "Editando" : "Editó";
+          return `${verb} ${baseName(f.path)}`;
+        }
+        return `${live ? "Editando" : "Editó"} ${files.length} ficheros`;
+      }
+      case "command":
+        return tc.summary || `${live ? "Ejecutando" : bad ? "Falló" : "Ejecutó"} ${commandName(tc.command || m.detail) || "comando"}`;
+      case "web":
+        return tc.url ? `${live ? "Leyendo" : "Leyó"} ${tc.url}` : `${live ? "Buscando" : "Buscó"} «${tc.query ?? ""}»`;
+      case "agent":
+        return `${tc.agent || "Subagente"}${tc.summary ? `: ${tc.summary}` : ""}`;
+      case "mcp":
+        return tc.tool ? `${tc.server ?? "MCP"} · ${tc.tool}` : tc.name || m.title || "Herramienta";
+      default:
+        return tc.name || m.title || "Herramienta";
+    }
+  }
+  if (shells.has(m.title ?? "")) {
+    return `${live ? "Ejecutando" : bad ? "Falló" : "Ejecutó"} ${commandName(m.detail) || "comando"}`;
+  }
+  return m.title || "Herramienta";
+}
+
+type WorkBlock =
+  | { kind: "reasoning"; m: Message }
+  | { kind: "note"; m: Message }
+  | { kind: "question"; m: Message }
+  | { kind: "todo"; m: Message }
+  | { kind: "actions"; items: Message[] };
+
+// workBlocks splits a turn's work so reasoning and notes read directly as prose,
+// while every tool call between them collapses into one expandable action group.
+function workBlocks(items: Message[]): WorkBlock[] {
+  const out: WorkBlock[] = [];
+  for (const m of items) {
+    if (m.role === "reasoning") {
+      if (!m.text.trim() && !m.streaming) continue;
+      out.push({ kind: "reasoning", m });
+    } else if (m.role === "assistant") {
+      out.push({ kind: "note", m });
+    } else if (isQuestion(m)) {
+      out.push({ kind: "question", m });
+    } else if (m.tool?.kind === "todo") {
+      out.push({ kind: "todo", m });
+    } else {
+      const last = out.at(-1);
+      if (last?.kind === "actions") last.items.push(m);
+      else out.push({ kind: "actions", items: [m] });
+    }
+  }
+  return out;
+}
+
+function actionCategory(m: Message): "read" | "search" | "edit" | "command" | "web" | "agent" | "other" {
+  const kind = m.tool?.kind;
+  if (kind === "read" || kind === "search" || kind === "edit" || kind === "command" || kind === "web" || kind === "agent") return kind;
+  if (shells.has(m.title ?? "")) return "command";
+  return "other";
+}
+
+function groupSummary(items: Message[]): string {
+  const counts = new Map<ReturnType<typeof actionCategory>, number>();
+  for (const m of items) {
+    const c = actionCategory(m);
+    counts.set(c, (counts.get(c) ?? 0) + 1);
+  }
+  if (counts.size === 1) {
+    const [[cat, n]] = counts.entries();
+    switch (cat) {
+      case "read": return `Leyó ${n} ficheros`;
+      case "search": return `Hizo ${n} búsquedas`;
+      case "edit": return `Editó ${n} ficheros`;
+      case "command": return `Ejecutó ${n} comandos`;
+      case "web": return `Consultó ${n} páginas`;
+      case "agent": return `Lanzó ${n} subagentes`;
+      default: return `Usó ${n} herramientas`;
+    }
+  }
+  const labels: Record<ReturnType<typeof actionCategory>, [string, string]> = {
+    read: ["lectura", "lecturas"],
+    search: ["búsqueda", "búsquedas"],
+    edit: ["edición", "ediciones"],
+    command: ["comando", "comandos"],
+    web: ["consulta web", "consultas web"],
+    agent: ["subagente", "subagentes"],
+    other: ["herramienta", "herramientas"],
+  };
+  return Array.from(counts.entries())
+    .map(([cat, n]) => `${n} ${n === 1 ? labels[cat][0] : labels[cat][1]}`)
+    .join(", ");
+}
+
+// ActionGroup collapses consecutive tool calls between thoughts into one line:
+// while running it shows the latest action; once finished, a generic summary.
+function ActionGroup({ items }: { items: Message[] }) {
+  const [open, setOpen] = useState(false);
+  const latest = items[items.length - 1];
+  const active = items.some(running);
+  const hasError = !active && items.some(failed);
+  const finishedGroup = !active && items.length > 1;
+  const label = finishedGroup ? groupSummary(items) : actionLabel(latest);
+  const sameCategory = items.every((m) => actionCategory(m) === actionCategory(items[0]));
+  const icon = finishedGroup && !sameCategory ? <Wrench weight="regular" className="size-4 shrink-0" /> : actionIcon(latest);
+  return (
+    <div className="text-[0.8125rem] leading-relaxed text-slate-500 dark:text-muted">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
+        className="flex w-full min-w-0 items-center gap-2 py-0.5 text-left hover:text-slate-900 dark:hover:text-white">
+        {icon}
+        <span className={`min-w-0 flex-1 truncate ${active ? "shimmer-text font-medium" : ""} ${hasError ? "text-red-600 dark:text-red-400" : ""}`}>
+          {label}
+        </span>
+        {active && items.length > 1 && (
+          <span className="shrink-0 text-[0.6875rem] tabular-nums opacity-70">
+            {items.length} acciones
+          </span>
+        )}
+        {open ? <CaretDown weight="regular" className="size-3 shrink-0 opacity-70" /> : <CaretRight weight="regular" className="size-3 shrink-0 opacity-70" />}
+      </button>
+      {open && (
+        <div className="mb-1 ml-6 mt-1 space-y-1 border-l border-slate-200 pl-3 dark:border-border">
+          {stepRuns(items).map((r) => <StepLine key={r[0].id} run={r} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReasoningText({ m }: { m: Message }) {
+  if (!m.text.trim()) return null;
+  return (
+    <div className="text-[0.875rem] leading-relaxed text-slate-600 dark:text-text-secondary [&_*]:!text-inherit [&_p]:my-0.5">
+      <Md>{m.text}</Md>
+    </div>
+  );
+}
+
+function NoteText({ m }: { m: Message }) {
+  if (!m.text.trim()) return null;
+  return (
+    <div className="text-[0.875rem] leading-relaxed text-slate-900 dark:text-white [&_*]:!text-inherit [&_p]:my-0.5">
+      <Md>{m.text}</Md>
+    </div>
+  );
+}
+
 // WorkedBlock is a turn's work: while it runs, a ticking "Working for 12s"
 // line and its steps; once it ends, a folded "Worked for 1m 59s".
-export function WorkedBlock({ Entry, items, secs, live = false, since }: { Entry: React.ComponentType<{ m: Message }>; items: Message[]; secs: number; live?: boolean; since?: string }) {
+export function WorkedBlock({ Entry: _Entry, items, secs, live = false, since }: { Entry: React.ComponentType<{ m: Message }>; items: Message[]; secs: number; live?: boolean; since?: string }) {
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -171,18 +343,37 @@ export function WorkedBlock({ Entry, items, secs, live = false, since }: { Entry
     return () => clearInterval(id);
   }, [live]);
   const from = Date.parse(since ?? "");
+  const blocks = workBlocks(items);
+  const renderBlock = (b: WorkBlock) => {
+    switch (b.kind) {
+      case "reasoning":
+        return <ReasoningText key={b.m.id} m={b.m} />;
+      case "note":
+        return <NoteText key={b.m.id} m={b.m} />;
+      case "question":
+        return <QuestionStep key={b.m.id} m={b.m} />;
+      case "todo":
+        return <TodoCard key={b.m.id} m={b.m} />;
+      case "actions":
+        return <ActionGroup key={b.items[0].id} items={b.items} />;
+    }
+  };
   if (live) {
+    const lastBlock = blocks.at(-1);
+    const hasRunningAction = lastBlock?.kind === "actions" && lastBlock.items.some(running);
+    const isThinking = lastBlock?.kind === "reasoning" && lastBlock.m.streaming;
     return (
       <div className="space-y-1.5">
         <div role="status" className="flex items-center gap-3 text-xs text-slate-500 dark:text-muted">
           <span className="shrink-0 font-medium tabular-nums">Working for {Number.isFinite(from) ? elapsed((now - from) / 1000) : "…"}</span>
           <span className="h-px flex-1 bg-slate-200 dark:bg-border" />
         </div>
-        {/* While the turn runs, what the agent writes between steps reads as a
-            normal answer; once it ends it folds into "Worked for…" with the rest. */}
-        {stepRuns(items).map((r) => stepKind(r[0]) === "note" && !r[0].tool
-          ? <div key={r[0].id} className="space-y-4">{r.map((m) => <Entry key={m.id} m={m} />)}</div>
-          : <StepLine key={r[0].id} run={r} />)}
+        {blocks.map(renderBlock)}
+        {!hasRunningAction && (
+          <div className="text-xs font-medium">
+            <span className="shimmer-text">{isThinking ? "Pensando…" : "Trabajando…"}</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -193,7 +384,7 @@ export function WorkedBlock({ Entry, items, secs, live = false, since }: { Entry
         <span className="shrink-0 font-medium tabular-nums">{secs >= 1 ? `Worked for ${elapsed(secs)}` : "Worked"}</span>
         <span className="h-px flex-1 bg-slate-200 dark:bg-border" />
       </button>
-      {open && items.length > 0 && <div className="mt-1.5 space-y-1.5">{stepRuns(items).map((r) => <StepLine key={r[0].id} run={r} />)}</div>}
+      {open && blocks.length > 0 && <div className="mt-1.5 space-y-1.5">{blocks.map(renderBlock)}</div>}
     </div>
   );
 }

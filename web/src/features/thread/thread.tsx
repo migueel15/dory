@@ -8,6 +8,7 @@ import { useNodeProviders,usePlan,useProjects,useThreadView } from "../../api/qu
 import { qk } from "../../api/queries/keys";
 import { useAdoptSession,useExternalSession,useThreadAction,useThreadDiff } from "../../api/queries/threads";
 import { PlanDoc } from "../../components/plan-doc";
+import { ThreadBrowserContext } from "../../components/refs";
 import { useCommand } from "../../components/shortcuts";
 import { Button,ErrorText,uuid } from "../../components/ui";
 import { setDiffBase,useDiffBase } from "../../lib/diff-base";
@@ -30,7 +31,7 @@ import { Chip } from "../composer/model-picker";
 import { Queue } from "../composer/queue";
 import { type Suggestion } from "../github/diff-parts";
 import { Diff } from "../github/github-diff";
-import { BrowserPanel } from "./browser-panel";
+import { BrowserPanel,openInThreadBrowser } from "./browser-panel";
 import { TerminalPanel } from "./terminal-panel";
 import { terminalApi } from "../../lib/terminal/client";
 import { DevicePanel,FloatingWindow } from "./device-panel";
@@ -272,7 +273,11 @@ function ThreadConversation({ threadId }: { threadId: string }) {
       <div ref={scroller} data-scroller onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto pt-10 pb-3 [overflow-anchor:none] [scrollbar-gutter:stable]">
         <div className="mx-auto w-full max-w-[55.2rem] space-y-4 px-3 sm:px-6">
           {t && t.messages.length === 0 && <p className="py-10 text-center text-sm text-slate-500 dark:text-muted">Sin mensajes todavía. Escribe abajo para empezar.</p>}
-          {t && <Messages key={t.id} threadId={t.id} messages={t.messages} running={t.running} />}
+          {t && (
+            <ThreadBrowserContext.Provider value={(url) => { void openInThreadBrowser(t.id, url); }}>
+              <Messages key={t.id} threadId={t.id} messages={t.messages} running={t.running} />
+            </ThreadBrowserContext.Provider>
+          )}
           {t && <Queue t={t} />}
           {t && !t.local && <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">Este hilo corre en otro nodo.</p>}
         </div>

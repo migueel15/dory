@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "../../api/queries/keys";
 import { useNoticeSettings,useSaveNoticeSetting,type NoticeSetting } from "../../api/queries/settings";
-import { ErrorText,Select } from "../../components/ui";
+import { subscribeNotices } from "../../components/notices";
+import { Button,ErrorText,Select } from "../../components/ui";
 
 type Setting = NoticeSetting;
 
@@ -20,6 +22,23 @@ export function NoticesSettings() {
   const save = useSaveNoticeSetting({
     onSettled: () => qc.invalidateQueries({ queryKey: qk.noticeSettings() }),
   });
+  const supported = "Notification" in window;
+  const [perm, setPerm] = useState<NotificationPermission>(() => (supported ? Notification.permission : "denied"));
+  const [permError, setPermError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const activate = async () => {
+    setBusy(true);
+    setPermError("");
+    try {
+      await subscribeNotices();
+      setPerm("granted");
+    } catch (e) {
+      setPermError(e instanceof Error ? e.message : String(e));
+      if (supported) setPerm(Notification.permission);
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <section aria-labelledby="notices-title" className="space-y-3">
       <h2 id="notices-title" className="text-lg font-semibold">Avisos</h2>
@@ -27,6 +46,17 @@ export function NoticesSettings() {
         Automático: con Dory en primer plano el aviso sale dentro de la app; si no, llega como push al móvil o, sin móvil, como notificación del sistema.
         «Siempre push» lo envía aunque haya una interfaz con foco, «Solo en la app» nunca lo envía como push y «Desactivado» lo silencia. Se aplica a todos tus dispositivos.
       </p>
+      {supported && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-border">
+          <span className="min-w-0 font-medium">Notificaciones en este navegador</span>
+          {perm === "granted" ? (
+            <span className="shrink-0 text-xs text-emerald-600 dark:text-emerald-400">Activadas</span>
+          ) : (
+            <Button onClick={activate} disabled={busy}>{busy ? "Activando…" : "Activar avisos"}</Button>
+          )}
+        </div>
+      )}
+      {permError && <p className="text-xs text-red-600 dark:text-red-400">{permError}</p>}
       <ul className="space-y-2">
         {(list.data ?? []).map((s) => (
           <li key={s.kind} className="flex items-center justify-between gap-3">
