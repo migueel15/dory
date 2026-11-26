@@ -6,7 +6,7 @@ import { req } from "../api/client";
 import { qk } from "../api/queries/keys";
 import { useNotices as useNoticeInbox,useReadNotices } from "../api/queries/settings";
 import type { Notice } from "../api/types.gen";
-import { Button } from "./ui";
+import { Button,uuid } from "./ui";
 
 const b64 = (s: string) => {
   const raw = atob((s + "=".repeat((4 - (s.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
@@ -126,7 +126,7 @@ export function NoticeInbox() {
 }
 
 // One id per loaded interface, so the mesh can tell open interfaces apart.
-const interfaceId = crypto.randomUUID();
+const interfaceId = uuid();
 
 // idleAfter is how long without input before a focused interface counts as
 // unattended.
