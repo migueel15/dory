@@ -110,6 +110,8 @@ En **Ajustes → Avisos** eliges para cada tipo de evento: Automático, Siempre 
 
 La app de Android no usa Web Push ni servicios de Google. Igual que Gotify, mantiene un servicio en primer plano conectado al flujo de eventos de un nodo emparejado (prueba los nodos guardados por turnos) y muestra una notificación nativa por cada aviso nuevo sin leer, salvo mientras la propia app está en pantalla, y nada para los tipos en *Solo en la app* o *Desactivado*. El servicio deja fija la notificación «Dory conectado a la malla», que puedes silenciar desde los ajustes del canal. Arranca al abrir la app, al guardar nodos y al encender el móvil. Si el móvil no alcanza ningún nodo (fuera de la red local y sin Tailscale), reintenta cada vez más espaciado hasta que vuelve a tener conexión.
 
+La app de iPhone no tiene push ni conexión permanente: comprueba los avisos cuando iOS le da tiempo en segundo plano, con las mismas reglas. Ver [App de iPhone](ios.md#avisos).
+
 ## Apariencia
 
 En **Ajustes → Navegador** eliges, por nodo, si los agentes pueden usar el navegador del hilo (activado por defecto) y el buscador de la barra de direcciones: lo que no sea una dirección se busca con él. En la app de escritorio puedes copiar las sesiones de tu navegador al navegador lateral; los agentes en segundo plano nunca las reciben (ADR-045).

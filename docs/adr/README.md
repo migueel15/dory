@@ -45,3 +45,4 @@
 | [ADR-043](adr-043-errores-y-mensajes-con-codigo.md) | Errores y mensajes con código | accepted |
 | [ADR-044](adr-044-capa-de-aplicacion-y-dominio.md) | Capa de aplicación y dominio | accepted |
 | [ADR-045](adr-045-sesiones-del-usuario-en-el-navegador.md) | Sesiones del usuario solo en el navegador visible | accepted |
+| [ADR-046](adr-046-app-de-ios-nativa.md) | App de iOS nativa sin cuenta de pago | accepted |

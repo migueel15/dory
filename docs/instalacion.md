@@ -82,13 +82,17 @@ La lista de entornos disponibles muestra anuncios recientes de la red local y no
 
 Para emparejar, abre en el ordenador **Entornos → Mostrar código**. En la app selecciona el entorno disponible e introduce el código; para escribir la dirección manualmente, usa el botón «+» junto a «Disponibles para emparejar». Cada nodo se empareja por separado. Los móviles emparejados aparecen en Entornos y se pueden revocar desde ahí.
 
+## App de iPhone
+
+La app de iPhone está en `mobile/ios`, hecha en Swift, y se instala sin Mac ni cuenta de pago con SideStore o AltStore. Cada cambio en `mobile/ios` publica en `main` una prerelease `ios-<ejecución>-<intento>` con `dory-ios.ipa` sin firmar; las PR lo dejan como artefacto. Instalación, dictado con Siri y avisos: [App de iPhone](ios.md).
+
 La interfaz también funciona como PWA si publicas un nodo por HTTPS (`tailscale serve --bg --https=443 http://127.0.0.1:7700`, con `public_origin` y `cookie_secure = true`).
 
 ## Versiones
 
 - **Estable:** cada etiqueta `v*` publica cada plataforma al terminar su compilación. La release completa para clientes anteriores aparece cuando terminan todas.
 - **Nightly:** cada push a `main` publica cada plataforma al terminar. La release `nightly` completa queda como versión de transición para clientes anteriores; el actualizador nuevo consulta la última release de su plataforma. El enlace de instalación `nightly` instala esa transición y después se puede ejecutar `dory update`.
-- **Pull requests:** se comprueban el núcleo y la interfaz y se generan binarios y apps de escritorio como artefactos. Los cambios de Android generan además una APK como artefacto.
+- **Pull requests:** se comprueban el núcleo y la interfaz y se generan binarios y apps de escritorio como artefactos. Los cambios de Android generan además una APK como artefacto, y los de iPhone un IPA.
 
 Una plataforma puede ofrecer una versión más reciente que otra mientras se compila; si una falla, conserva la última publicación válida. La primera sustitución de la release `nightly` compartida debe realizarse sin actualizaciones simultáneas de clientes antiguos: su actualizador no puede garantizar coherencia mientras cambia esa release. Las descargas de las nuevas publicaciones por plataforma usan releases inmutables.
 
