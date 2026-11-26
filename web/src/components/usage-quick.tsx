@@ -90,7 +90,7 @@ export function UsageQuick({ tab = false }: { tab?: boolean }) {
         onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onFocus={() => setHover(true)} onBlur={() => setHover(false)}
         onClick={() => { setHover(false); setOpen(!open); }}
         className={tab
-          ? `flex h-14 flex-col items-center justify-center gap-0.5 text-[0.6875rem] font-medium ${open ? "text-slate-900 dark:text-white" : "text-slate-500 dark:text-muted"}`
+          ? `outline-none flex h-14 flex-col items-center justify-center gap-0.5 text-[0.6875rem] font-medium ${open ? "text-slate-900 dark:text-white" : "text-slate-500 dark:text-muted"}`
           : `grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-slate-200 sm:min-h-0 sm:min-w-0 sm:px-3 sm:py-1.5 dark:hover:bg-raised ${open ? "bg-slate-200 dark:bg-raised" : ""}`}>
         <Dial short={inner && usedOf(inner)} long={outer && usedOf(outer)} className={tab ? "size-6" : "size-5"} />
         {tab && "Uso"}
