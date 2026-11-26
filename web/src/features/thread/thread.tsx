@@ -195,7 +195,7 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
   useEffect(() => setTaskOpenState(readTask()), [taskKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const setTaskOpen = useCallback((v: boolean) => { setTaskOpenState(v); try { if (v) storage.set(taskKey, "1"); else storage.remove(taskKey); } catch { /* per-viewer only */ } }, [taskKey]);
   return (
-    <div className={`relative z-20 flex shrink-0 flex-wrap items-center gap-2 pb-2 pl-1 ${hasWindowClose ? "pr-[6.5rem]" : "pr-11"} transition-[padding,margin] ${fold?.folded ? "sm:pl-10" : "sm:pl-2"} duration-[260ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none sm:-mt-2 ${panel.open ? "lg:!pr-1" : ""} ${panel.open ? "lg:mr-0 sm:-mr-2" : "sm:-mr-2"}`}>
+    <div className={`relative z-20 flex shrink-0 flex-wrap items-center gap-2 pb-2 pl-10 ${hasWindowClose ? "pr-[6.5rem]" : "pr-11"} transition-[padding,margin] ${fold?.folded ? "sm:pl-10" : "sm:pl-2"} duration-[260ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none sm:-mt-2 ${panel.open ? "lg:!pr-1" : ""} ${panel.open ? "lg:mr-0 sm:-mr-2" : "sm:-mr-2"}`}>
       {projectName && <span className="flex min-w-0 max-w-[40%] shrink items-center gap-2 text-slate-500 dark:text-muted"><span className="truncate">{projectName}</span><span aria-hidden="true">/</span></span>}
       {!t ? (
         <span className="min-w-0 flex-1" />
