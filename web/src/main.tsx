@@ -1,4 +1,4 @@
-import { ChartBar,DotsThreeCircle,Gear,GitPullRequest,House,IconContext,Kanban,Moon,SidebarSimple,SignOut,Sun,X } from "@phosphor-icons/react";
+import { ChartBar,DotsThreeCircle,Gear,GitPullRequest,House,IconContext,Kanban,Moon,SignOut,Sun,X } from "@phosphor-icons/react";
 import { QueryClient,QueryClientProvider,useQueryClient } from "@tanstack/react-query";
 import { Link,Outlet,RouterProvider,createRootRoute,createRoute,createRouter,lazyRouteComponent,redirect,useLocation,useNavigate } from "@tanstack/react-router";
 import { StrictMode,useEffect,useRef,useState } from "react";
@@ -250,36 +250,30 @@ function Layout() {
   );
   // Phone tabs: the main sections are one tap away; the rest sits under "Más".
   const tab = "flex h-14 flex-col items-center justify-center gap-0.5 text-[0.6875rem] font-medium text-slate-500 dark:text-muted [&.active]:text-slate-900 dark:[&.active]:text-white";
-  const moreActive = path.startsWith("/github") || path.startsWith("/usage");
+  const moreActive = path.startsWith("/usage");
   const moreLinks = (
     <>
-      <Link to="/github" className={link}><GitPullRequest weight="duotone" className={ico} aria-hidden="true" />GitHub</Link>
       <Link to="/usage" className={link}><ChartBar weight="duotone" className={ico} aria-hidden="true" />Uso</Link>
     </>
   );
   return (
     <div className="min-h-dvh bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex sm:h-screen sm:flex-col sm:bg-white sm:dark:bg-surface">
-      <header className="hidden h-12 shrink-0 items-center justify-between pl-5 pr-3 pt-1 sm:flex">
-        <div className="flex items-center gap-2">
-          <Link to="/threads" className="flex items-center gap-2 font-bold">Dory<DevBadge /></Link>
-          {path.startsWith("/threads") && (
-            <button type="button" onClick={() => events.toggleThreadList.emit()} aria-label="Mostrar u ocultar barra lateral" title="Mostrar u ocultar barra lateral"
-              className="grid size-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-200/70 hover:text-slate-900 dark:text-zinc-500 dark:hover:bg-raised dark:hover:text-text">
-              <SidebarSimple weight="regular" className="size-6" aria-hidden="true" />
-            </button>
-          )}
-        </div>
-        <WindowClose />
-      </header>
       <div className="min-h-0 flex-1 sm:flex">
       <aside className="hidden h-full w-14 shrink-0 flex-col items-center overflow-hidden bg-white dark:bg-surface sm:flex">
-        <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto overflow-x-hidden pt-3 pb-4">{railLinks}</nav>
+        <div className="flex shrink-0 flex-col items-center pt-3 pb-1">
+          <Link to="/threads" aria-label="Dory" title={import.meta.env.DEV ? "Dory (dev)" : "Dory"}
+            className={`grid size-10 place-items-center rounded-lg transition-colors hover:bg-slate-200/70 dark:hover:bg-raised ${import.meta.env.DEV ? "text-amber-500 dark:text-amber-400" : "text-slate-900 dark:text-white"}`}>
+            <DoryLogo className="size-7" />
+          </Link>
+        </div>
+        <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto overflow-x-hidden pt-2 pb-4">{railLinks}</nav>
         <div className="shrink-0 pb-2"><ProjectSwitcher folded /></div>
         <SidebarFooter username={me.data.username} onLogout={() => logout.mutate()} update={<MeshUpdateButton />}
           controls={[<NoticeInbox key="i" />, <SettingsLink key="settings" />, <UsageQuick key="u" />]} />
       </aside>
       {/* On desktop the current view is a card framed by the sidebar background. */}
-      <div className="min-w-0 flex-1 sm:mb-2 sm:mr-2 sm:overflow-auto sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">
+      <div className="relative min-w-0 flex-1 sm:my-2 sm:mr-2 sm:overflow-auto sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">
+      <div className="absolute right-2 top-2 z-40 hidden sm:block"><WindowClose /></div>
       <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2 sm:hidden">
         <div className="flex h-12 items-center gap-1">
           <Link to="/" className="mr-1 flex shrink-0 items-center gap-2 font-bold">Dory<DevBadge /></Link>
@@ -320,7 +314,6 @@ function Layout() {
             <NoticesToggle />
             <ThemeToggle />
             <SettingsLink />
-            <UsageQuick />
           </div>
           <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 py-1 pl-3 pr-1 dark:border-border">
             <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
@@ -331,9 +324,11 @@ function Layout() {
       </dialog>
       <main className={`mx-auto p-2 pb-[calc(0.5rem_+_var(--tabbar))] sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /></main></div>
       </div>
-      <nav aria-label="Navegación móvil" className="mobile-tabbar fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] dark:border-border dark:bg-surface sm:hidden">
-        <Link to="/threads" className={`${tab} relative`}><House className="size-6" aria-hidden="true" />Inicio{attention > 0 && <span className="absolute left-1/2 top-1 ml-2 min-w-4 rounded-full bg-orange-500 px-1 text-center text-[0.625rem] font-semibold leading-4 text-white" aria-label={`${attention} te necesitan`}>{attention}</span>}</Link>
+      <nav aria-label="Navegación móvil" className="mobile-tabbar fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] dark:border-border dark:bg-surface sm:hidden">
         <Link to="/tasks" className={tab}><Kanban className="size-6" aria-hidden="true" />Tareas</Link>
+        <Link to="/github" className={tab}><GitPullRequest className="size-6" aria-hidden="true" />GitHub</Link>
+        <Link to="/threads" className={`${tab} relative`}><House className="size-6" aria-hidden="true" />Inicio{attention > 0 && <span className="absolute left-1/2 top-1 ml-2 min-w-4 rounded-full bg-orange-500 px-1 text-center text-[0.625rem] font-semibold leading-4 text-white" aria-label={`${attention} te necesitan`}>{attention}</span>}</Link>
+        <UsageQuick tab />
         <button type="button" aria-controls="mobile-navigation" aria-expanded={menu} onClick={() => setMenu(!menu)} className={`${tab} ${menu || moreActive ? "text-slate-900 dark:text-white" : ""}`}><DotsThreeCircle className="size-6" aria-hidden="true" />Más</button>
       </nav><CommandPalette /><TooltipHost /><NoticeAlerts />
     </div>
@@ -398,6 +393,16 @@ createRoot(document.getElementById("root")!).render(
 );
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+
+function DoryLogo({ className = "size-7" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 2000 2000" className={className} aria-hidden="true">
+      <g transform="translate(0,2000) scale(0.1,-0.1)" fill="currentColor" stroke="none">
+        <path d="M9220 17273 c-320 -13 -1017 -104 -1400 -182 -1797 -367 -3231 -1417 -3759 -2752 -505 -1279 -162 -2710 829 -3456 259 -195 570 -351 850 -427 373 -100 1026 -107 1390 -16 1232 312 2074 1535 1738 2525 -57 170 -91 217 -154 217 -55 0 -73 -25 -111 -157 -117 -410 -412 -714 -793 -817 -112 -30 -364 -33 -478 -5 -217 52 -439 176 -595 330 -350 345 -449 898 -261 1457 327 972 1455 1774 2869 2039 900 168 1895 122 2828 -130 1341 -362 2615 -1196 3482 -2279 96 -120 104 -126 160 -120 34 3 67 44 67 82 0 80 -279 572 -506 892 -819 1153 -2006 2001 -3416 2441 -624 195 -1436 320 -2310 355 -234 9 -280 10 -430 3z M9990 15739 c-292 -20 -594 -71 -855 -145 -360 -102 -789 -268 -843 -327 -33 -36 -32 -91 2 -125 25 -26 28 -26 233 -33 1134 -40 1804 -288 2504 -926 744 -677 1199 -1586 1326 -2649 25 -214 25 -782 0 -1014 -180 -1629 -1151 -3074 -2552 -3796 -424 -218 -1163 -465 -1632 -544 -186 -32 -238 -22 -236 42 1 32 140 570 318 1233 47 176 110 410 140 520 29 110 71 265 93 345 22 80 77 278 122 440 161 583 260 972 364 1440 112 504 193 900 189 923 -8 38 -46 69 -87 69 -47 0 -42 5 -170 -155 -279 -349 -523 -577 -839 -785 -670 -441 -1495 -563 -2387 -351 -261 62 -251 71 -375 -366 -143 -504 -245 -867 -520 -1835 -46 -162 -122 -430 -169 -595 -46 -165 -132 -466 -190 -670 -538 -1895 -676 -2391 -891 -3195 -140 -522 -138 -515 -89 -561 41 -38 87 -30 334 64 1261 476 1978 522 3735 237 1193 -194 1519 -230 2072 -230 2553 -1 4881 1301 6160 3445 1095 1836 1235 4162 363 6015 -751 1594 -2202 2783 -4050 3319 -543 157 -1471 251 -2070 210z" />
+      </g>
+    </svg>
+  );
+}
 
 function DevBadge() {
   if (!import.meta.env.DEV) return null;

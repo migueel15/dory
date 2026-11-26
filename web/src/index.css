@@ -160,7 +160,7 @@ body { @apply bg-slate-50 text-slate-900 dark:bg-canvas dark:text-text; }
 /* Shimmer sweep on active step/status text while the agent is working. */
 @keyframes shimmer-sweep {
   0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
+  100% { background-position: 0% 0; }
 }
 .shimmer-text {
   background: linear-gradient(

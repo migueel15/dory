@@ -5,6 +5,7 @@ import { Card, ErrorText, Select, iconButton } from "../components/ui";
 import { AreaChart, StackedBar, compact, percent, providerColor, usd } from "../components/usage-charts";
 import { ProviderIcon, useNodes } from "../features/composer/launch-picker";
 import { expectedRemaining, paceTitle, windowLabel, windowMinutes, windowReset } from "../lib/usage-pace";
+import { windowCloseInset } from "../lib/window-close";
 import { PaceMark } from "../components/pace-mark";
 import { qk } from "../api/queries/keys";
 import { useNode } from "../api/queries/hooks";
@@ -114,7 +115,7 @@ export function Usage() {
   const providers = Object.keys(PROVIDER_NAMES);
   return (
     <div className="mx-auto max-w-6xl space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className={`flex flex-wrap items-center gap-2 ${windowCloseInset}`}>
         <h1 className="flex items-center gap-1 text-lg font-semibold">
           <span>Uso</span><span className="text-slate-400">/</span>
           <Select plain value={provider} onChange={(v) => set({ provider: v || undefined })}

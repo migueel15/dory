@@ -1,5 +1,5 @@
-import { Brain,CaretDown,CaretRight,ChatText,FileText,Globe,MagnifyingGlass,PencilSimple,Question as QuestionIcon,Robot,TerminalWindow,Wrench } from "@phosphor-icons/react";
-import { useEffect,useState } from "react";
+import { Brain,CaretDown,CaretRight,ChatText,FileText,Globe,MagnifyingGlass,PencilSimple,Question as QuestionIcon,Robot,TerminalWindow,Wrench,XCircle } from "@phosphor-icons/react";
+import { useEffect,useRef,useState } from "react";
 import { type Message } from "../../api/client";
 import { Md } from "../../components/ui";
 import { t } from "../../i18n/es";
@@ -7,6 +7,14 @@ import { htmlRef } from "./html-card";
 import { NativeQuestionCard,QuestionCard } from "./question-card";
 import { GroupCard,TodoCard,ToolCard,askQuestions,isAsk } from "./tool-card";
 import { turnFiles,type Turn } from "./turn-changes";
+
+const shortTime = new Intl.DateTimeFormat("es-ES", { hour: "2-digit", minute: "2-digit" });
+
+function formatTime(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : shortTime.format(d);
+}
 
 export const running = (m: Message) => m.streaming || (m.role === "tool" && !["completed", "failed", "error", "declined", "interrupted", "cancelled"].includes(m.status ?? ""));
 export const failed = (m: Message) => m.status === "failed" || m.status === "error";
@@ -33,7 +41,7 @@ export const stepKind = (m: Message) => m.role === "assistant" ? "note" : m.role
 export function stepRuns(items: Message[]): Message[][] {
   const out: Message[][] = [];
   for (const m of items) {
-    if (m.role === "reasoning" && !m.text.trim() && !m.streaming) continue;
+    if (m.role === "reasoning" && !m.text.trim()) continue;
     const last = out.at(-1);
     if (last && !isQuestion(m) && !isQuestion(last[0]) && stepKind(last[0]) === stepKind(m)) last.push(m);
     else out.push([m]);
@@ -43,26 +51,53 @@ export function stepRuns(items: Message[]): Message[][] {
 
 export const isQuestion = (m: Message) => isAsk(m) || m.tool?.kind === "question" || m.role === "question";
 
-// QuestionStep is a question of the agent among the steps: one line, and the
-// card with the questions and answers when opened.
+export const oneLine = (text = "") => text.replace(/[`*_#>]/g, "").replace(/\s+/g, " ").trim();
+
+// thoughtPreview extracts the latest bold title (**...**) if present, otherwise
+// the first sentence of a reasoning block, stripped of Markdown.
+export function thoughtPreview(text = ""): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const bolds = [...trimmed.matchAll(/\*\*([^*]+)\*\*/g)];
+  const lastBold = bolds.at(-1)?.[1]?.trim();
+  if (lastBold) return oneLine(lastBold);
+  const firstLine = trimmed.split(/\n+/)[0] ?? "";
+  const sentence = firstLine.match(/^(.+?[.!?])(?:\s|$)/)?.[1] ?? firstLine;
+  return oneLine(sentence);
+}
+
+// settleSupersededReasoning marks any reasoning item followed by another item
+// as finished even if the provider never closed its streaming flag.
+function settleSupersededReasoning(items: Message[]): Message[] {
+  return items.map((m, i) =>
+    m.role === "reasoning" && m.streaming && i < items.length - 1 ? { ...m, streaming: false } : m,
+  );
+}
+
+// QuestionStep is a standalone row for an agent question: shows the question
+// and a summary of the answer ("¿Uso JWT? → JWT"), expanding on click.
 export function QuestionStep({ m }: { m: Message }) {
   const [open, setOpen] = useState(false);
   const qs = isAsk(m) ? askQuestions(m) : m.tool?.questions ?? [];
   const first = qs[0]?.question ?? m.text;
-  const answered = qs.some((q) => q.answer?.length);
+  const answers = qs.map((q) => q.answer?.join(", ")).filter(Boolean);
+  const answered = answers.length > 0;
   return (
     <div className="text-[0.8125rem] leading-relaxed text-slate-500 dark:text-muted">
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
-        className="flex w-full min-w-0 items-center gap-2 text-left hover:text-slate-900 dark:hover:text-white">
+        className="flex min-h-6 w-full min-w-0 items-center gap-2 text-left hover:text-slate-900 dark:hover:text-white">
         <QuestionIcon weight="regular" className="size-4 shrink-0" />
-        <span className="min-w-0 flex-1 truncate">{answered ? "Respondida" : t("question.title")}: {oneLine(first)}{qs.length > 1 ? ` (+${qs.length - 1})` : ""}</span>
+        <span className="min-w-0 flex-1 truncate">
+          {oneLine(first) || t("question.title")}
+          {qs.length > 1 ? ` (+${qs.length - 1})` : ""}
+          {answered && <span className="text-slate-700 dark:text-text-secondary"> → {oneLine(answers[0])}</span>}
+        </span>
+        {open ? <CaretDown weight="regular" className="size-3 shrink-0 opacity-70" /> : <CaretRight weight="regular" className="size-3 shrink-0 opacity-70" />}
       </button>
       {open && <div className="mb-1 ml-6 mt-1.5">{isAsk(m) || m.role === "question" ? <QuestionCard m={m} /> : <NativeQuestionCard m={m} />}</div>}
     </div>
   );
 }
-
-export const oneLine = (t = "") => t.replace(/[`*_#>]/g, "").replace(/\s+/g, " ").trim();
 
 // StepLine is a run of steps of one kind: an icon and one line with the latest
 // step. A click opens every step of the run in full.
@@ -80,19 +115,19 @@ export function LegacyStep({ run }: { run: Message[] }) {
   const live = running(m), bad = failed(m);
   const icon = kind === "think" ? <Brain weight="regular" className="size-4 shrink-0" /> : kind === "cmd" ? <TerminalWindow weight="regular" className="size-4 shrink-0" />
     : kind === "note" ? <ChatText weight="regular" className="size-4 shrink-0" /> : <Wrench weight="regular" className="size-4 shrink-0" />;
-  const line = kind === "think" ? (oneLine(m.text) || "Thinking…")
+  const line = kind === "think" ? (thoughtPreview(m.text) || (live ? "Pensando" : "Pensó"))
     : kind === "note" ? oneLine(m.text)
-    : kind === "cmd" ? `${live ? "Running" : bad ? "Failed" : "Ran"} ${commandName(m.detail) || "command"}`
-    : m.title || "Tool";
+    : kind === "cmd" ? `${live ? "Ejecutando" : bad ? "Falló" : "Ejecutó"} ${commandName(m.detail) || "comando"}`
+    : m.title || "Herramienta";
   const full = (x: Message) => x.role === "tool"
     ? <pre key={x.id} className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-100 p-2 font-mono text-[0.6875rem] dark:bg-raised">{[x.detail, x.text].filter(Boolean).join("\n\n")}</pre>
     : <div key={x.id} className="[&_*]:!text-inherit [&_p]:my-0.5"><Md>{x.text}</Md></div>;
   return (
     <div className={`text-[0.8125rem] leading-relaxed ${kind === "note" ? "text-slate-700 dark:text-text-secondary" : "text-slate-500 dark:text-muted"}`}>
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
-        className="flex w-full min-w-0 items-center gap-2 text-left hover:text-slate-900 dark:hover:text-white">
-        {icon}
-        <span className={`min-w-0 flex-1 truncate ${live ? "motion-safe:animate-pulse" : ""} ${bad ? "text-red-600 dark:text-red-400" : ""}`}>{line}</span>
+        className="flex min-h-6 w-full min-w-0 items-center gap-2 text-left hover:text-slate-900 dark:hover:text-white">
+        {bad ? <XCircle weight="regular" className="size-4 shrink-0 text-red-500" /> : icon}
+        <span className={`min-w-0 flex-1 truncate ${live ? "shimmer-text" : ""} ${bad ? "text-red-600 dark:text-red-400" : ""}`}>{line}</span>
         {run.length > 1 && <span className="shrink-0 text-[0.6875rem] tabular-nums opacity-60">{run.length}</span>}
       </button>
       {open && <div className="mb-1 ml-6 mt-1 space-y-1.5">{run.map(full)}</div>}
@@ -101,11 +136,22 @@ export function LegacyStep({ run }: { run: Message[] }) {
 }
 
 // Worked is a turn's work folded into one entry.
-export type Worked = { worked: true; id: string; items: Message[]; secs: number; live?: boolean; since?: string };
+export type Worked = {
+  worked: true;
+  id: string;
+  items: Message[];
+  secs: number;
+  live?: boolean;
+  since?: string;
+  endedAt?: string;
+  stopped?: boolean;
+  expanded?: boolean;
+};
 
 // layout lays a conversation out turn by turn. In a finished turn, everything
-// between the user's message and the final answer folds into one "Worked
-// for…" entry; the turn still running shows its steps as they come.
+// between the user's message and the final answer folds into one "Trabajó
+// durante…" entry (leaving questions, errors and HTML cards outside the fold);
+// the turn still running shows its live status and latest group.
 export type Changes = { changes: true; id: string; turn: Turn };
 
 // changeTurns lists the turns that edited files, oldest first.
@@ -113,9 +159,12 @@ export const changeTurns = (ms: Message[]): Turn[] => layout(ms, false).flatMap(
 
 export function layout(ms: Message[], live: boolean): (Message | Worked | Changes)[] {
   const out: (Message | Worked | Changes)[] = [];
-  // A question is one more step: the composer is where it is answered. A
-  // rendered HTML page is part of the answer and stays out of the fold.
-  const isWork = (m: Message) => m.role === "reasoning" || (m.role === "tool" && !htmlRef(m)) || m.role === "question" || m.role === "assistant";
+  // Questions, rendered HTML pages and errors stay outside the finished fold.
+  const isWork = (m: Message) =>
+    m.role === "reasoning" ||
+    (m.role === "tool" && !htmlRef(m) && !isQuestion(m)) ||
+    m.role === "assistant";
+  const isLiveWork = (m: Message) => isWork(m) || isQuestion(m);
   let start = 0;
   const flush = (end: number, last: boolean) => {
     // The turn's git diff is only read by the box of its changes.
@@ -124,10 +173,17 @@ export function layout(ms: Message[], live: boolean): (Message | Worked | Change
     let head: Message | undefined;
     if (seg[0]?.role === "user") { head = seg[0]; out.push(seg.shift()!); }
     if (last && live) {
-      // The text the model is writing last reads as the answer, as in Claude.
+      // The text the model is writing last reads as the answer.
       const tail = seg.at(-1)?.role === "assistant" ? seg.at(-1) : undefined;
-      out.push({ worked: true, live: true, id: `working:${head?.id ?? seg[0]?.id ?? "turn"}`, items: seg.filter((m) => isWork(m) && m !== tail), secs: 0, since: head?.created_at || seg[0]?.created_at });
-      out.push(...seg.filter((m) => !isWork(m) || m === tail));
+      out.push({
+        worked: true,
+        live: true,
+        id: `working:${head?.id ?? seg[0]?.id ?? "turn"}`,
+        items: seg.filter((m) => isLiveWork(m) && m !== tail),
+        secs: 0,
+        since: head?.created_at || seg[0]?.created_at,
+      });
+      out.push(...seg.filter((m) => !isLiveWork(m) || m === tail));
       return;
     }
     // A finished turn that edited files ends with the box of its changes.
@@ -137,9 +193,20 @@ export function layout(ms: Message[], live: boolean): (Message | Worked | Change
     for (let i = seg.length - 1; i >= 0; i--) if (seg[i].role === "assistant") { answer = i; break; }
     const work = seg.filter((m, i) => isWork(m) && i !== answer);
     if (!work.length) { out.push(...seg); box(); return; }
+    const stopped = seg.some((m) => m.role === "interrupt");
+    const turnFailed = seg.some((m) => m.status === "failed");
     const from = Date.parse(head?.created_at || work[0].created_at);
-    const to = Date.parse((answer >= 0 ? seg[answer] : work[work.length - 1]).created_at);
-    out.push({ worked: true, id: `worked:${work[0].id}`, items: work, secs: Number.isFinite(from) && Number.isFinite(to) ? (to - from) / 1000 : 0 });
+    const endedAt = (answer >= 0 ? seg[answer] : work[work.length - 1]).created_at;
+    const to = Date.parse(endedAt);
+    out.push({
+      worked: true,
+      id: `worked:${work[0].id}`,
+      items: work,
+      secs: Number.isFinite(from) && Number.isFinite(to) ? (to - from) / 1000 : 0,
+      endedAt,
+      stopped,
+      expanded: turnFailed,
+    });
     out.push(...seg.filter((m, i) => !(isWork(m) && i !== answer)));
     box();
   };
@@ -211,21 +278,19 @@ function actionLabel(m: Message): string {
 }
 
 type WorkBlock =
-  | { kind: "reasoning"; m: Message }
   | { kind: "note"; m: Message }
   | { kind: "question"; m: Message }
   | { kind: "todo"; m: Message }
-  | { kind: "actions"; items: Message[] };
+  | { kind: "group"; items: Message[] };
 
-// workBlocks splits a turn's work so reasoning and notes read directly as prose,
-// while every tool call between them collapses into one expandable action group.
-function workBlocks(items: Message[]): WorkBlock[] {
+// workBlocks groups consecutive reasoning and tool calls into a single work
+// group; assistant notes, questions and todo lists break the group.
+function workBlocks(rawItems: Message[]): WorkBlock[] {
+  const items = settleSupersededReasoning(rawItems);
   const out: WorkBlock[] = [];
   for (const m of items) {
-    if (m.role === "reasoning") {
-      if (!m.text.trim() && !m.streaming) continue;
-      out.push({ kind: "reasoning", m });
-    } else if (m.role === "assistant") {
+    if (m.role === "reasoning" && !m.text.trim()) continue;
+    if (m.role === "assistant") {
       out.push({ kind: "note", m });
     } else if (isQuestion(m)) {
       out.push({ kind: "question", m });
@@ -233,8 +298,8 @@ function workBlocks(items: Message[]): WorkBlock[] {
       out.push({ kind: "todo", m });
     } else {
       const last = out.at(-1);
-      if (last?.kind === "actions") last.items.push(m);
-      else out.push({ kind: "actions", items: [m] });
+      if (last?.kind === "group") last.items.push(m);
+      else out.push({ kind: "group", items: [m] });
     }
   }
   return out;
@@ -247,22 +312,22 @@ function actionCategory(m: Message): "read" | "search" | "edit" | "command" | "w
   return "other";
 }
 
-function groupSummary(items: Message[]): string {
+function groupSummary(tools: Message[]): string {
   const counts = new Map<ReturnType<typeof actionCategory>, number>();
-  for (const m of items) {
+  for (const m of tools) {
     const c = actionCategory(m);
     counts.set(c, (counts.get(c) ?? 0) + 1);
   }
   if (counts.size === 1) {
     const [[cat, n]] = counts.entries();
     switch (cat) {
-      case "read": return `Leyó ${n} ficheros`;
-      case "search": return `Hizo ${n} búsquedas`;
-      case "edit": return `Editó ${n} ficheros`;
-      case "command": return `Ejecutó ${n} comandos`;
-      case "web": return `Consultó ${n} páginas`;
-      case "agent": return `Lanzó ${n} subagentes`;
-      default: return `Usó ${n} herramientas`;
+      case "read": return n === 1 ? "Leyó 1 fichero" : `Leyó ${n} ficheros`;
+      case "search": return n === 1 ? "Hizo 1 búsqueda" : `Hizo ${n} búsquedas`;
+      case "edit": return n === 1 ? "Editó 1 fichero" : `Editó ${n} ficheros`;
+      case "command": return n === 1 ? "Ejecutó 1 comando" : `Ejecutó ${n} comandos`;
+      case "web": return n === 1 ? "Consultó 1 página" : `Consultó ${n} páginas`;
+      case "agent": return n === 1 ? "Lanzó 1 subagente" : `Lanzó ${n} subagentes`;
+      default: return n === 1 ? "Usó 1 herramienta" : `Usó ${n} herramientas`;
     }
   }
   const labels: Record<ReturnType<typeof actionCategory>, [string, string]> = {
@@ -279,46 +344,118 @@ function groupSummary(items: Message[]): string {
     .join(", ");
 }
 
-// ActionGroup collapses consecutive tool calls between thoughts into one line:
-// while running it shows the latest action; once finished, a generic summary.
-function ActionGroup({ items }: { items: Message[] }) {
-  const [open, setOpen] = useState(false);
-  const latest = items[items.length - 1];
-  const active = items.some(running);
-  const hasError = !active && items.some(failed);
-  const finishedGroup = !active && items.length > 1;
-  const label = finishedGroup ? groupSummary(items) : actionLabel(latest);
-  const sameCategory = items.every((m) => actionCategory(m) === actionCategory(items[0]));
-  const icon = finishedGroup && !sameCategory ? <Wrench weight="regular" className="size-4 shrink-0" /> : actionIcon(latest);
+// ReasoningScroll shows full reasoning text in a bounded scrollable box with
+// top/bottom fade masks that sticks to the bottom only if already at the bottom.
+function ReasoningScroll({ items }: { items: Message[] }) {
+  const box = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+  const lastText = items.map((m) => m.text).join("");
+  useEffect(() => {
+    const el = box.current;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  }, [lastText]);
+  const onScroll = () => {
+    const el = box.current;
+    if (!el) return;
+    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  };
   return (
-    <div className="text-[0.8125rem] leading-relaxed text-slate-500 dark:text-muted">
-      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
-        className="flex w-full min-w-0 items-center gap-2 py-0.5 text-left hover:text-slate-900 dark:hover:text-white">
-        {icon}
-        <span className={`min-w-0 flex-1 truncate ${active ? "shimmer-text font-medium" : ""} ${hasError ? "text-red-600 dark:text-red-400" : ""}`}>
-          {label}
-        </span>
-        {active && items.length > 1 && (
-          <span className="shrink-0 text-[0.6875rem] tabular-nums opacity-70">
-            {items.length} acciones
-          </span>
-        )}
-        {open ? <CaretDown weight="regular" className="size-3 shrink-0 opacity-70" /> : <CaretRight weight="regular" className="size-3 shrink-0 opacity-70" />}
-      </button>
-      {open && (
-        <div className="mb-1 ml-6 mt-1 space-y-1 border-l border-slate-200 pl-3 dark:border-border">
-          {stepRuns(items).map((r) => <StepLine key={r[0].id} run={r} />)}
-        </div>
-      )}
+    <div
+      ref={box}
+      onScroll={onScroll}
+      style={{ maskImage: "linear-gradient(to bottom, transparent, black 12px, black calc(100% - 12px), transparent)" }}
+      className="mb-1 ml-6 mt-1 max-h-[min(18rem,50vh)] space-y-2 overflow-y-auto py-2 text-[0.8125rem] leading-relaxed text-slate-500 dark:text-muted [&_*]:!text-inherit [&_p]:my-0.5"
+    >
+      {items.map((m) => <div key={m.id}><Md>{m.text}</Md></div>)}
     </div>
   );
 }
 
-function ReasoningText({ m }: { m: Message }) {
-  if (!m.text.trim()) return null;
+// WorkGroup renders a group of consecutive reasoning and tool calls.
+// When live, it renders at most two flat lines (last thought + current tool)
+// instead of a growing list. When closed, it collapses into a single summary line.
+function WorkGroup({ items, isLive }: { items: Message[]; isLive: boolean }) {
+  const [open, setOpen] = useState(false);
+  const thoughts = items.filter((m) => m.role === "reasoning" && m.text.trim());
+  const tools = items.filter((m) => m.role !== "reasoning");
+  const lastThought = thoughts.at(-1);
+  const lastTool = tools.at(-1);
+  const time = formatTime(items.at(-1)?.created_at);
+
+  if (isLive) {
+    const toolFailed = lastTool ? failed(lastTool) : false;
+    const thoughtActive = !lastTool;
+    return (
+      <div className="text-[0.8125rem] leading-relaxed text-slate-500 dark:text-muted">
+        <button type="button" onClick={() => items.length > 0 && setOpen(!open)} aria-expanded={open}
+          className="flex w-full flex-col gap-0.5 text-left">
+          {(lastThought || !lastTool) && (
+            <span className="flex min-h-6 w-full min-w-0 items-center gap-2 hover:text-slate-900 dark:hover:text-white">
+              <Brain weight="regular" className="size-4 shrink-0" />
+              <span className={`min-w-0 max-w-full truncate ${thoughtActive ? "shimmer-text" : ""}`}>
+                {(lastThought && thoughtPreview(lastThought.text)) || "Pensando"}
+              </span>
+            </span>
+          )}
+          {lastTool && (
+            <span className="flex min-h-6 w-full min-w-0 items-center gap-2 hover:text-slate-900 dark:hover:text-white">
+              {toolFailed
+                ? <XCircle weight="regular" className="size-4 shrink-0 text-red-500" />
+                : actionIcon(lastTool)}
+              <span className={`min-w-0 max-w-full truncate shimmer-text ${toolFailed ? "text-red-600 dark:text-red-400" : ""}`}>
+                {toolFailed ? "Pensando" : actionLabel(lastTool)}
+              </span>
+            </span>
+          )}
+        </button>
+        {open && (
+          tools.length === 0
+            ? <ReasoningScroll items={thoughts} />
+            : (
+              <div className="mb-1 ml-6 mt-1 space-y-1 border-l border-slate-200 pl-3 dark:border-border">
+                {stepRuns(items).map((r) => <StepLine key={r[0].id} run={r} />)}
+              </div>
+            )
+        )}
+      </div>
+    );
+  }
+
+  // Closed group: single summary row with caret, icon, summary and time.
+  const onlyReasoning = tools.length === 0;
+  const hasError = tools.some(failed);
+  const label = onlyReasoning
+    ? (thoughts.length > 1 ? `Pensó (×${thoughts.length})` : thoughtPreview(lastThought?.text) || "Pensó")
+    : tools.length === 1
+      ? actionLabel(tools[0])
+      : groupSummary(tools);
+  const sameCategory = tools.length > 0 && tools.every((m) => actionCategory(m) === actionCategory(tools[0]));
+  const icon = onlyReasoning
+    ? <Brain weight="regular" className="size-4 shrink-0" />
+    : hasError
+      ? <XCircle weight="regular" className="size-4 shrink-0 text-red-500" />
+      : tools.length === 1 || sameCategory
+        ? actionIcon(tools[0])
+        : <Wrench weight="regular" className="size-4 shrink-0" />;
+
   return (
-    <div className="text-[0.875rem] leading-relaxed text-slate-600 dark:text-text-secondary [&_*]:!text-inherit [&_p]:my-0.5">
-      <Md>{m.text}</Md>
+    <div className="text-[0.8125rem] leading-relaxed text-slate-500 dark:text-muted">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
+        className="flex min-h-6 w-full min-w-0 items-center gap-2 text-left hover:text-slate-900 dark:hover:text-white">
+        {open ? <CaretDown weight="regular" className="size-3 shrink-0 opacity-70" /> : <CaretRight weight="regular" className="size-3 shrink-0 opacity-70" />}
+        {icon}
+        <span className={`min-w-0 flex-1 truncate ${hasError ? "text-red-600 dark:text-red-400" : ""}`}>{label}</span>
+        {time && <span className="shrink-0 text-[0.6875rem] tabular-nums opacity-60">{time}</span>}
+      </button>
+      {open && (
+        onlyReasoning
+          ? <ReasoningScroll items={thoughts} />
+          : (
+            <div className="mb-1 ml-6 mt-1 space-y-1 border-l border-slate-200 pl-3 dark:border-border">
+              {stepRuns(items).map((r) => <StepLine key={r[0].id} run={r} />)}
+            </div>
+          )
+      )}
     </div>
   );
 }
@@ -332,10 +469,28 @@ function NoteText({ m }: { m: Message }) {
   );
 }
 
-// WorkedBlock is a turn's work: while it runs, a ticking "Working for 12s"
-// line and its steps; once it ends, a folded "Worked for 1m 59s".
-export function WorkedBlock({ Entry: _Entry, items, secs, live = false, since }: { Entry: React.ComponentType<{ m: Message }>; items: Message[]; secs: number; live?: boolean; since?: string }) {
-  const [open, setOpen] = useState(false);
+// WorkedBlock is a turn's work: while it runs, a ticking "Trabajando durante 12s"
+// header with a live two-line group; once it ends, a folded "Trabajó durante 1m 59s".
+export function WorkedBlock({
+  Entry: _Entry,
+  items,
+  secs,
+  live = false,
+  since,
+  endedAt,
+  stopped = false,
+  expanded = false,
+}: {
+  Entry: React.ComponentType<{ m: Message }>;
+  items: Message[];
+  secs: number;
+  live?: boolean;
+  since?: string;
+  endedAt?: string;
+  stopped?: boolean;
+  expanded?: boolean;
+}) {
+  const [open, setOpen] = useState(expanded);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!live) return;
@@ -344,67 +499,70 @@ export function WorkedBlock({ Entry: _Entry, items, secs, live = false, since }:
   }, [live]);
   const from = Date.parse(since ?? "");
   const blocks = workBlocks(items);
-  const renderBlock = (b: WorkBlock) => {
+  const renderBlock = (b: WorkBlock, index: number) => {
+    const isLastLive = live && index === blocks.length - 1;
     switch (b.kind) {
-      case "reasoning":
-        return <ReasoningText key={b.m.id} m={b.m} />;
       case "note":
         return <NoteText key={b.m.id} m={b.m} />;
       case "question":
         return <QuestionStep key={b.m.id} m={b.m} />;
       case "todo":
         return <TodoCard key={b.m.id} m={b.m} />;
-      case "actions":
-        return <ActionGroup key={b.items[0].id} items={b.items} />;
+      case "group":
+        return <WorkGroup key={isLastLive ? "live-group" : b.items[0].id} items={b.items} isLive={isLastLive} />;
     }
   };
   if (live) {
     const lastBlock = blocks.at(-1);
-    const hasRunningAction = lastBlock?.kind === "actions" && lastBlock.items.some(running);
-    const isThinking = lastBlock?.kind === "reasoning" && lastBlock.m.streaming;
+    const showIdleThinking = !lastBlock || lastBlock.kind !== "group";
     return (
       <div className="space-y-1.5">
-        <div role="status" className="flex items-center gap-3 text-xs text-slate-500 dark:text-muted">
-          <span className="shrink-0 font-medium tabular-nums">Working for {Number.isFinite(from) ? elapsed((now - from) / 1000) : "…"}</span>
-          <span className="h-px flex-1 bg-slate-200 dark:bg-border" />
+        <div role="status" className="space-y-1">
+          <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-muted">
+            <span className="shrink-0 font-medium tabular-nums">
+              {Number.isFinite(from) ? `Trabajando durante ${elapsed((now - from) / 1000)}` : "Trabajando…"}
+            </span>
+          </div>
+          <div className="h-px w-full bg-slate-200 dark:bg-border" />
         </div>
         {blocks.map(renderBlock)}
-        {!hasRunningAction && (
-          <div className="text-xs font-medium">
-            <span className="shimmer-text">{isThinking ? "Pensando…" : "Trabajando…"}</span>
-          </div>
-        )}
+        {showIdleThinking && <WorkGroup key="live-group" items={[]} isLive />}
       </div>
     );
   }
+  const time = formatTime(endedAt);
+  const summary = stopped
+    ? (secs >= 1 ? `Lo paraste tras ${elapsed(secs)}` : "Lo paraste")
+    : (secs >= 1 ? `Trabajó durante ${elapsed(secs)}` : "Trabajó");
   return (
     <div className="text-sm">
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-3 py-0.5 text-xs text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
-        <span className="shrink-0 font-medium tabular-nums">{secs >= 1 ? `Worked for ${elapsed(secs)}` : "Worked"}</span>
-        <span className="h-px flex-1 bg-slate-200 dark:bg-border" />
+        className="flex w-full items-center gap-1.5 py-0.5 text-xs text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
+        <span className="shrink-0 font-medium tabular-nums">{summary}</span>
+        {open ? <CaretDown weight="regular" className="size-3 shrink-0 opacity-70" /> : <CaretRight weight="regular" className="size-3 shrink-0 opacity-70" />}
+        <span className="flex-1" />
+        {time && <span className="shrink-0 text-[0.6875rem] tabular-nums opacity-60">{time}</span>}
       </button>
+      <div className="mt-1 h-px w-full bg-slate-200 dark:bg-border" />
       {open && blocks.length > 0 && <div className="mt-1.5 space-y-1.5">{blocks.map(renderBlock)}</div>}
     </div>
   );
 }
 
-// Reasoning shows the model's thinking folded to its title; open while it thinks.
+// Reasoning shows a standalone reasoning block folded to its preview line.
 export function Reasoning({ m }: { m: Message }) {
-  const [opened, setOpen] = useState<boolean | null>(null);
-  const open = opened ?? m.streaming;
-  if (!m.text.trim() && !m.streaming) return null;
+  const [open, setOpen] = useState(false);
+  if (!m.text.trim()) return null;
+  const preview = thoughtPreview(m.text) || (m.streaming ? "Pensando" : "Pensó");
   return (
-    <div className="text-sm">
+    <div className="text-[0.8125rem] leading-relaxed text-slate-500 dark:text-muted">
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 py-0.5 text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
-        <Brain className="size-3.5 shrink-0" />{m.streaming ? "Pensando…" : "Razonamiento"}
-        {open ? <CaretDown weight="regular" className="size-3 shrink-0" /> : <CaretRight weight="regular" className="size-3 shrink-0" />}
+        className="flex min-h-6 w-full min-w-0 items-center gap-2 text-left hover:text-slate-900 dark:hover:text-white">
+        <Brain weight="regular" className="size-4 shrink-0" />
+        <span className={`min-w-0 flex-1 truncate ${m.streaming ? "shimmer-text" : ""}`}>{preview}</span>
+        {open ? <CaretDown weight="regular" className="size-3 shrink-0 opacity-70" /> : <CaretRight weight="regular" className="size-3 shrink-0 opacity-70" />}
       </button>
-      {open && m.text.trim() && (
-        <div className="mt-0.5 border-l-2 border-slate-200 pl-3 text-[0.8125rem] leading-relaxed text-slate-500 dark:border-border dark:text-muted [&_*]:!text-inherit"><Md>{m.text}</Md></div>
-      )}
+      {open && <ReasoningScroll items={[m]} />}
     </div>
   );
 }
-

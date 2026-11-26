@@ -1,4 +1,4 @@
-import { Circle,CircleNotch,ClockCounterClockwise,GitDiff,Kanban,WarningCircle,XCircle } from "@phosphor-icons/react";
+import { Circle,CircleNotch,ClockCounterClockwise,GitDiff,Info,Kanban,WarningCircle,XCircle } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate,useParams } from "@tanstack/react-router";
 import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type MouseEvent as ReactMouseEvent,type RefObject } from "react";
@@ -16,6 +16,7 @@ import { addDraftQuote,removeDraftQuotes,useDraftQuotes } from "../../lib/draft-
 import { storage,storageKeys } from "../../lib/storage";
 import { events } from "../../lib/store";
 import { useThreadsFold } from "../../lib/threads-fold";
+import { hasWindowClose } from "../../lib/window-close";
 import { turnDiff } from "../../lib/turn-changes";
 import { TaskDetail } from "../board/task-detail";
 import { Messages } from "../chat/chat";
@@ -106,9 +107,9 @@ export function ThreadView() {
   const deviceView = (k: string, floating = false) => <DevicePanel key={k} node={thread?.node_id ?? "local"} serial={panel.meta[k]?.serial ?? null} floating={floating} onFloat={(v) => panel.setMeta(k, { floating: v })}
     onSerial={(serial, name) => panel.setMeta(k, serial ? { serial, ...(panel.meta[k]?.name ? {} : { name }) } : { serial: undefined })} />;
   return (
-    <div className="relative flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] min-h-0 sm:h-[calc(100dvh-5.5rem-2px)]">
+    <div className="relative flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
       {/* The panel toggle is pinned to the page corner, so opening the panel never moves it. */}
-      <div className="absolute right-1 top-0 z-30 sm:-right-1 sm:-top-2"><SidePanelToggle panel={panel} /></div>
+      <div className={`absolute right-1 top-0 z-30 sm:-top-2 ${hasWindowClose ? "sm:right-14" : "sm:-right-1"}`}><SidePanelToggle panel={panel} /></div>
       <div onPointerEnter={toComposer} className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Header threadId={threadId} panel={panel} />
         <ThreadChat threadId={threadId} />
@@ -193,20 +194,25 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
   const [taskOpen, setTaskOpenState] = useState(readTask);
   useEffect(() => setTaskOpenState(readTask()), [taskKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const setTaskOpen = useCallback((v: boolean) => { setTaskOpenState(v); try { if (v) storage.set(taskKey, "1"); else storage.remove(taskKey); } catch { /* per-viewer only */ } }, [taskKey]);
-  if (!t) return <div className="h-12 shrink-0" />;
   return (
-    <div className={`relative z-20 flex shrink-0 flex-wrap items-center gap-2 pb-2 pl-1 pr-11 transition-[padding,margin] sm:pl-2 duration-300 ease-out motion-reduce:transition-none sm:-mt-2 ${panel.open ? "lg:!pr-1" : ""} ${panel.open ? "lg:mr-0 sm:-mr-2" : "sm:-mr-2"}`}>
+    <div className={`relative z-20 flex shrink-0 flex-wrap items-center gap-2 pb-2 pl-1 ${hasWindowClose ? "pr-[6.5rem]" : "pr-11"} transition-[padding,margin] ${fold?.folded ? "sm:pl-10" : "sm:pl-2"} duration-[260ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none sm:-mt-2 ${panel.open ? "lg:!pr-1" : ""} ${panel.open ? "lg:mr-0 sm:-mr-2" : "sm:-mr-2"}`}>
       {projectName && <span className="flex min-w-0 max-w-[40%] shrink items-center gap-2 text-slate-500 dark:text-muted"><span className="truncate">{projectName}</span><span aria-hidden="true">/</span></span>}
-      {editing ? (
+      {!t ? (
+        <span className="min-w-0 flex-1" />
+      ) : editing ? (
         <form className="min-w-0 flex-1" onSubmit={(e) => { e.preventDefault(); setEditing(false); if (title.trim()) act.mutate({ action: "rename", title: title.trim() }); }}>
           <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => setEditing(false)} onKeyDown={(e) => { if (e.key === "Escape") setEditing(false); }} className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-sm dark:border-border-strong" />
         </form>
       ) : (
         <h1 className="min-w-0 flex-1 cursor-text truncate font-semibold" title={`${t.title} · doble clic para renombrar`} onDoubleClick={() => { setTitle(t.title); setEditing(true); }} onContextMenu={menu.open}>{t.title || "Hilo"}</h1>
       )}
-      {t.parent_id ? <ParentLink parentId={t.parent_id} /> : t.origin_id && <ParentLink parentId={t.origin_id} origin />}
-      {t.task_id && <TaskCard taskId={t.task_id} open={taskOpen} setOpen={setTaskOpen} popup={panel.open} />}
-      <ThreadInfo t={t} popup={panel.open} hidden={!!t.task_id && taskOpen} onOpen={() => setTaskOpen(false)} diff={panel.open && panel.active === "diff"} toggleDiff={() => { if (panel.open && panel.active === "diff") panel.toggle(); else { setTurnFilter(threadId, null); panel.show("diff"); } }} />
+      {t?.parent_id ? <ParentLink parentId={t.parent_id} /> : t?.origin_id && <ParentLink parentId={t.origin_id} origin />}
+      {t?.task_id && <TaskCard taskId={t.task_id} open={taskOpen} setOpen={setTaskOpen} popup={panel.open} />}
+      {t ? (
+        <ThreadInfo t={t} popup={panel.open} hidden={!!t.task_id && taskOpen} onOpen={() => setTaskOpen(false)} diff={panel.open && panel.active === "diff"} toggleDiff={() => { if (panel.open && panel.active === "diff") panel.toggle(); else { setTurnFilter(threadId, null); panel.show("diff"); } }} />
+      ) : (
+        <button type="button" disabled aria-label="Detalles del hilo" className={headerButton(false)}><Info weight="regular" className="size-4" /></button>
+      )}
       <ErrorText error={act.error ?? menu.error} />
       {menu.menu}
     </div>

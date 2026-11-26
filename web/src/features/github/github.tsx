@@ -8,6 +8,7 @@ import { useGithubClosed,useGithubOverview } from "../../api/queries/github";
 import { qk } from "../../api/queries/keys";
 import { Arrow,Card,ErrorText,Input,Select,pill } from "../../components/ui";
 import { storage,storageKeys } from "../../lib/storage";
+import { windowCloseInset } from "../../lib/window-close";
 import { DefineIssueDialog } from "../../pages/define-issue";
 import { useProject } from "../../project";
 import { buildStacks,groupByStack,pullKey } from "../../stack";
@@ -135,7 +136,7 @@ export function Github() {
   return (
     <div className="space-y-4">
       {resolving && <DefineIssueDialog resolve repo={resolving.repo} number={resolving.number} onClose={() => setResolving(null)} />}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className={`flex flex-wrap items-center justify-between gap-3 ${windowCloseInset}`}>
         <div className="flex min-w-0 items-baseline gap-2">
           <h1 className="text-xl font-bold">GitHub</h1>
           <span className="truncate text-sm text-slate-500 dark:text-muted">

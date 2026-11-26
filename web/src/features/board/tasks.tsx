@@ -8,6 +8,7 @@ import { useBoard } from "../../api/queries/hooks";
 import { qk } from "../../api/queries/keys";
 import { useMoveTask } from "../../api/queries/tasks";
 import { Button,ErrorText } from "../../components/ui";
+import { windowCloseInset } from "../../lib/window-close";
 import { useProject } from "../../project";
 import { IdeaModal } from "../composer/capture";
 import { lastActivity } from "./card-layout";
@@ -60,8 +61,8 @@ export function Tasks() {
   }, [panel, search.task]);
   const drop = (col: Column) => { if (drag && MANUAL[col]) move.mutate({ id: drag, stage: MANUAL[col]! }); setDrag(undefined); };
   return (
-    <div className="flex flex-col gap-3 sm:h-[calc(100dvh-5.5rem-2px)]">
-      <div className="flex shrink-0 items-center gap-2">
+    <div className="flex flex-col gap-3 sm:h-[calc(100dvh-3rem-2px)]">
+      <div className={`flex shrink-0 items-center gap-2 ${windowCloseInset}`}>
         <h2 className="font-semibold">Kanban</h2>
         <Button className="ml-auto" onClick={() => setAdding(true)}><Plus weight="regular" className="size-4" />Nueva idea</Button>
       </div>

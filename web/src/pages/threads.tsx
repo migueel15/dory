@@ -1,4 +1,4 @@
-import { Check,FunnelSimple,MagnifyingGlass,Plus,PushPin } from "@phosphor-icons/react";
+import { Check,FunnelSimple,MagnifyingGlass,Plus,PushPin,SidebarSimple } from "@phosphor-icons/react";
 import { Link,Outlet,useNavigate,useParams } from "@tanstack/react-router";
 import { useMemo,useRef,useState,type CSSProperties,type ReactNode,type PointerEvent as ReactPointerEvent } from "react";
 import { repoName,type Thread } from "../api/client";
@@ -91,14 +91,20 @@ export function Threads() {
       .sort((a, b) => (b.pinned_at ? 1 : 0) - (a.pinned_at ? 1 : 0) || (b.last_activity_at ?? b.created_at).localeCompare(a.last_activity_at ?? a.created_at));
   }, [threads.data, repos.data, filter, query, project]);
   return (
-    <div className="relative flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] min-h-0 sm:h-[calc(100dvh-5.5rem-2px)]" style={{ "--list-w": `${listWidth}px` } as CSSProperties}>
-      <aside inert={folded} className={`relative ${dragging ? "sm:!transition-none" : ""} min-h-0 w-full shrink-0 flex-col overflow-hidden border-slate-200 sm:-mt-2.5 sm:border-r dark:border-border sm:-ml-4 sm:items-end sm:transition-[width,border-color] sm:duration-300 sm:ease-out motion-reduce:transition-none ${folded ? "sm:w-4 sm:!border-r-0" : "sm:w-[var(--list-w)]"} ${threadId ? "hidden sm:flex" : "flex"}`}>
+    <div className="relative flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] min-h-0 sm:h-[calc(100dvh-3rem-2px)]" style={{ "--list-w": `${listWidth}px` } as CSSProperties}>
+      <div className="absolute -left-4 -top-2 z-30 hidden bg-slate-50 pl-2 pr-1 dark:bg-canvas sm:block">
+        <button type="button" onClick={() => foldList(!folded)} aria-label={folded ? "Mostrar lista de hilos" : "Ocultar lista de hilos"} title={folded ? "Mostrar lista de hilos" : "Ocultar lista de hilos"}
+          className="grid size-8 place-items-center rounded-md text-slate-600 transition-[background-color,transform] duration-150 hover:bg-slate-100 active:scale-95 dark:text-text-secondary dark:hover:bg-raised">
+          <SidebarSimple weight="regular" className="size-4" aria-hidden="true" />
+        </button>
+      </div>
+      <aside inert={folded} className={`relative ${dragging ? "sm:!transition-none" : ""} min-h-0 w-full shrink-0 flex-col overflow-hidden border-slate-200 sm:-mt-2.5 sm:border-r dark:border-border sm:-ml-4 sm:items-end sm:transition-[width,border-color] sm:duration-[260ms] sm:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${folded ? "sm:w-0 sm:!border-r-0" : "sm:w-[var(--list-w)]"} ${threadId ? "hidden sm:flex" : "flex"}`}>
         {!folded && <div role="separator" aria-orientation="vertical" aria-label="Redimensionar lista de hilos" onPointerDown={startDrag} onDoubleClick={() => saveWidth(LIST_W)}
           className="absolute inset-y-0 right-0 z-10 hidden w-1.5 translate-x-1/2 cursor-col-resize hover:bg-accent/40 sm:block" />}
         {/* The content keeps its width while the list slides open or closed. */}
-        <div className={`flex min-h-0 w-full flex-1 flex-col sm:w-[var(--list-w)] sm:shrink-0 sm:transition-[opacity,visibility] sm:duration-300 motion-reduce:transition-none ${folded ? "sm:invisible sm:opacity-0" : ""}`}>
-        <div className="flex items-center gap-1.5 px-2 pb-2">
-          <div className="flex min-w-0 flex-1 items-center gap-2 px-2">
+        <div className="flex min-h-0 w-full flex-1 flex-col sm:w-[var(--list-w)] sm:shrink-0">
+        <div className="flex items-center gap-1.5 px-2 pb-2 sm:pl-11">
+          <div className="flex min-w-0 flex-1 items-center gap-2 px-1">
             <MagnifyingGlass weight="regular" className="size-4 shrink-0 text-slate-400" />
             <input ref={searchInput} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar hilo…" aria-label="Buscar hilos"
               className="min-h-9 w-full bg-transparent text-sm !outline-none placeholder:text-slate-400" />
@@ -147,7 +153,9 @@ export function Threads() {
         </div>
         </div>
       </aside>
-      <section className={`min-h-0 min-w-0 flex-1 ${folded ? "sm:-ml-2" : ""} sm:transition-[margin] sm:duration-300 sm:ease-out ${threadId ? "flex flex-col" : "hidden sm:flex sm:flex-col"}`}><ThreadsFold.Provider value={threadId ? { folded, toggle: () => foldList(!folded) } : null}><Outlet /></ThreadsFold.Provider></section>
+      <section className={`relative min-h-0 min-w-0 flex-1 ${folded ? "sm:ml-2" : ""} sm:transition-[margin] sm:duration-[260ms] sm:ease-[cubic-bezier(0.22,1,0.36,1)] ${threadId ? "flex flex-col" : "hidden sm:flex sm:flex-col"}`}>
+        <ThreadsFold.Provider value={threadId ? { folded, toggle: () => foldList(!folded) } : null}><Outlet /></ThreadsFold.Provider>
+      </section>
     </div>
   );
 }
