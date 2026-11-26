@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - 'mobile/**'
+      - '!mobile/ios/**'
       - '.github/workflows/android.yml'
   pull_request:
     paths:
       - 'mobile/**'
+      - '!mobile/ios/**'
       - '.github/workflows/android.yml'
   workflow_dispatch:
 
