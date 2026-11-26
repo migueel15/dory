@@ -238,13 +238,11 @@ function Layout() {
   // Desktop left rail: always vertical icons, darker muted gray at rest,
   // lighter hover background + whiter border when active.
   const railLink = "outline-none relative grid size-10 shrink-0 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-slate-200/70 hover:text-slate-900 dark:text-zinc-500 dark:hover:bg-raised dark:hover:text-text [&.active]:bg-slate-200/80 [&.active]:text-slate-900 dark:[&.active]:bg-hover dark:[&.active]:text-white";
-  const railDivider = <div className="my-1.5 w-6 border-t border-slate-200 dark:border-border" />;
   const railLinks = (
     <>
       <Link to="/threads" className={railLink} aria-label="Inicio" title="Inicio"><House weight="duotone" className={railIco} aria-hidden="true" />{attention > 0 && <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-orange-500" />}</Link>
       <Link to="/tasks" className={railLink} aria-label="Tareas" title="Tareas"><Kanban weight="duotone" className={railIco} aria-hidden="true" /></Link>
       <Link to="/github" className={railLink} aria-label="GitHub" title="GitHub"><GitPullRequest weight="duotone" className={railIco} aria-hidden="true" /></Link>
-      {railDivider}
       <Link to="/usage" className={railLink} aria-label="Uso" title="Uso"><ChartBar weight="duotone" className={railIco} aria-hidden="true" /></Link>
     </>
   );
