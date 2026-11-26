@@ -325,8 +325,8 @@ function Layout() {
       <main className={`mx-auto p-2 pb-[calc(0.5rem_+_var(--tabbar))] sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /></main></div>
       </div>
       <nav aria-label="Navegación móvil" className="mobile-tabbar fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] dark:border-border dark:bg-surface sm:hidden">
-        <Link to="/tasks" className={tab}><Kanban className="size-6" aria-hidden="true" />Tareas</Link>
         <Link to="/github" className={tab}><GitPullRequest className="size-6" aria-hidden="true" />GitHub</Link>
+        <Link to="/tasks" className={tab}><Kanban className="size-6" aria-hidden="true" />Tareas</Link>
         <Link to="/threads" className={`${tab} relative`}><House className="size-6" aria-hidden="true" />Inicio{attention > 0 && <span className="absolute left-1/2 top-1 ml-2 min-w-4 rounded-full bg-orange-500 px-1 text-center text-[0.625rem] font-semibold leading-4 text-white" aria-label={`${attention} te necesitan`}>{attention}</span>}</Link>
         <UsageQuick tab />
         <button type="button" aria-controls="mobile-navigation" aria-expanded={menu} onClick={() => setMenu(!menu)} className={`${tab} ${menu || moreActive ? "text-slate-900 dark:text-white" : ""}`}><DotsThreeCircle className="size-6" aria-hidden="true" />Más</button>
