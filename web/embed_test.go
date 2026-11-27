@@ -77,3 +77,22 @@ func TestEmbeddedHandlerETagAndGzip(t *testing.T) {
 		t.Fatalf("SPA fallback Cache-Control = %q, want no-cache", got)
 	}
 }
+
+func TestEmbeddedHandlerMissingAssetIsNotFound(t *testing.T) {
+	fsys := fstest.MapFS{
+		"index.html": {Data: []byte("<!doctype html><html><body>dory</body></html>")},
+	}
+	h := handlerForFS(fsys)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/assets/old-build.js", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("missing asset status = %d, want 404", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/tasks", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "dory") {
+		t.Fatalf("SPA route status = %d, want index.html", rec.Code)
+	}
+}

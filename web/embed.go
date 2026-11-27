@@ -148,7 +148,9 @@ func handlerForFS(root fs.FS) http.Handler {
 			serveFile(w, r, name, f)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/api/") {
+		// A missing built file must not answer with the page: a service worker
+		// would keep that HTML as the asset.
+		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(name, "assets/") {
 			http.NotFound(w, r)
 			return
 		}
