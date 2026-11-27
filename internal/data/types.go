@@ -28,8 +28,10 @@ type Repository struct {
 // Task is one piece of work, either internal or backed by an external issue.
 // Stage keeps manual decisions: inbox, ready, done or cancelled (or "" for external).
 type Task struct {
-	ID           string  `json:"id"`
-	Source       string  `json:"source"`
+	ID     string `json:"id"`
+	Source string `json:"source"`
+	// ExternalID is the stable id of the task in its provider; empty for internal tasks.
+	ExternalID   string  `json:"external_id"`
 	ProjectID    *string `json:"project_id"`
 	RepositoryID *string `json:"repository_id"`
 	Number       *int64  `json:"number"`

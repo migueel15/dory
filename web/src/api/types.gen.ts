@@ -10,6 +10,7 @@ export type Attachment = {
 export type Card = {
   "id": string;
   "source": string;
+  "external_id": string;
   "project_id": string | null;
   "repository_id": string | null;
   "number": number | null;
@@ -23,6 +24,7 @@ export type Card = {
   "created_at": string;
   "updated_at": string;
   "archived_at": string | null;
+  "adopted": boolean;
   "column": Column;
   "reason"?: string;
   "repo"?: string;
@@ -184,6 +186,7 @@ export type GithubEvent = {
 };
 
 export type GithubIssue = {
+  "node_id": string;
   "repo": string;
   "project_id": string;
   "number": number;
@@ -611,6 +614,7 @@ export type Step = {
 export type Task = {
   "id": string;
   "source": string;
+  "external_id": string;
   "project_id": string | null;
   "repository_id": string | null;
   "number": number | null;

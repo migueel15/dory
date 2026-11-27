@@ -3,66 +3,121 @@ package data
 import (
 	"context"
 	"crypto/sha1"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/migueel15/dory/internal/oplog"
 	"github.com/migueel15/dory/internal/schema"
 )
 
-// ExternalTaskID returns the deterministic UUIDv5 for a GitHub issue task.
-func ExternalTaskID(repositoryID string, number int64) string {
-	return ExternalTaskIDForSource("github", repositoryID, number)
-}
-
-// ExternalTaskIDForSource returns the deterministic UUIDv5 for an external task.
-func ExternalTaskIDForSource(source, repositoryID string, number int64) string {
-	if source == "" {
-		source = "github"
-	}
-	sum := sha1.Sum([]byte(fmt.Sprintf("dory-task:%s:%s#%d", source, repositoryID, number)))
+// AdoptedTaskID is the id of the task that adopts an external item. It comes
+// from the item's key, so adopting it on two nodes gives the same task.
+func AdoptedTaskID(source, externalID string) string {
+	sum := sha1.Sum([]byte("dory-task:" + source + ":" + externalID))
 	sum[6] = sum[6]&0x0f | 0x50 // version 5
 	sum[8] = sum[8]&0x3f | 0x80 // RFC 4122 variant
 	return fmt.Sprintf("%x-%x-%x-%x-%x", sum[0:4], sum[4:6], sum[6:8], sum[8:10], sum[10:16])
 }
 
-// EnsureExternalTask creates or returns the replicated task row for an external issue.
-func (s *Store) EnsureExternalTask(ctx context.Context, projectID *string, repositoryID string, number int64) (Task, error) {
-	if repositoryID == "" || number <= 0 {
-		return Task{}, ErrInvalid.Msgf("repository_id and positive number required")
+// ExternalRef is an item of an external provider: its key and the data a task
+// keeps when it adopts the item.
+type ExternalRef struct {
+	Source       string
+	ExternalID   string
+	ProjectID    *string
+	RepositoryID string
+	Number       int64
+	Title        string
+	Description  string
+}
+
+func (ref ExternalRef) valid() error {
+	if ref.Source == "" || ref.Source == "internal" || ref.ExternalID == "" {
+		return ErrInvalid.Msgf("external source and id required")
 	}
-	id := ExternalTaskID(repositoryID, number)
+	return nil
+}
+
+// owner is the live task that holds an external key, if any.
+func (s *Store) owner(ctx context.Context, tx *oplog.Tx, source, externalID string) (Task, bool, error) {
+	rows, err := s.Tasks().list(ctx, tx, Filter{Fields: map[string]any{"source": source, "external_id": externalID}, Limit: 1}, false)
+	if err != nil || len(rows) == 0 {
+		return Task{}, false, err
+	}
+	return rows[0], true, nil
+}
+
+// AdoptTask returns the task that holds ref's key. Without one it creates the
+// task with AdoptedTaskID, or restores it when it was archived.
+func (s *Store) AdoptTask(ctx context.Context, ref ExternalRef) (Task, error) {
+	if err := ref.valid(); err != nil {
+		return Task{}, err
+	}
 	var out Task
 	spec, _ := schema.Lookup("task")
 	err := s.log.Tx(ctx, func(tx *oplog.Tx) error {
-		existing, err := s.Tasks().get(ctx, tx, id, true)
-		if err == nil {
-			if existing.ArchivedAt != nil {
-				out, err = s.Tasks().patchTx(ctx, tx, spec, id, nil, Fields{"archived_at": nil})
-				return err
-			}
-			out = existing
-			return nil
+		t, ok, err := s.owner(ctx, tx, ref.Source, ref.ExternalID)
+		if err != nil || ok {
+			out = t
+			return err
 		}
-		if !errors.Is(err, ErrNotFound) {
+		id := AdoptedTaskID(ref.Source, ref.ExternalID)
+		if _, err := s.Tasks().get(ctx, tx, id, true); err == nil {
+			out, err = s.Tasks().patchTx(ctx, tx, spec, id, nil, Fields{"archived_at": nil})
+			return err
+		} else if !errors.Is(err, ErrNotFound) {
 			return err
 		}
 		now := s.now().UTC().Format(time.RFC3339Nano)
-		fields := Fields{
-			"source":        "github",
-			"project_id":    projectID,
-			"repository_id": repositoryID,
-			"number":        number,
-			"title":         "",
-			"description":   "",
-			"stage":         "",
-			"branch":        "",
-			"position":      "",
-			"created_at":    now,
-			"updated_at":    now,
+		var repo, number any
+		if ref.RepositoryID != "" {
+			repo = ref.RepositoryID
 		}
-		out, err = s.Tasks().write(ctx, tx, id, fields)
+		if ref.Number > 0 {
+			number = json.Number(strconv.FormatInt(ref.Number, 10))
+		}
+		out, err = s.Tasks().write(ctx, tx, id, Fields{
+			"source": ref.Source, "external_id": ref.ExternalID, "project_id": ref.ProjectID,
+			"repository_id": repo, "number": number, "title": ref.Title, "description": ref.Description,
+			"stage": "", "branch": "", "position": "", "created_at": now, "updated_at": now,
+		})
+		return err
+	})
+	return writeResult(out, err)
+}
+
+// AttachExternal gives an existing task the key of an external item, for
+// instance the issue Dory created for it; the task keeps its id. It fails when
+// another task already holds the key.
+func (s *Store) AttachExternal(ctx context.Context, taskID string, ref ExternalRef) (Task, error) {
+	if err := ref.valid(); err != nil {
+		return Task{}, err
+	}
+	var out Task
+	spec, _ := schema.Lookup("task")
+	err := s.log.Tx(ctx, func(tx *oplog.Tx) error {
+		t, ok, err := s.owner(ctx, tx, ref.Source, ref.ExternalID)
+		if err != nil {
+			return err
+		}
+		if ok {
+			if t.ID != taskID {
+				return ErrConflict.Msgf("%s item %s already belongs to task %s", ref.Source, ref.ExternalID, t.ID)
+			}
+			out = t
+			return nil
+		}
+		fields := Fields{"source": ref.Source, "external_id": ref.ExternalID}
+		if ref.RepositoryID != "" {
+			fields["repository_id"] = ref.RepositoryID
+		}
+		if ref.Number > 0 {
+			fields["number"] = json.Number(strconv.FormatInt(ref.Number, 10))
+		}
+		out, err = s.Tasks().patchTx(ctx, tx, spec, taskID, nil, fields)
 		return err
 	})
 	return writeResult(out, err)

@@ -12,6 +12,13 @@ import (
 	"github.com/migueel15/dory/internal/data"
 )
 
+// TaskAdopter knows the tasks and cached external items, and adopts an item
+// into a task.
+type TaskAdopter interface {
+	Known(ctx context.Context, id string) bool
+	Adopt(ctx context.Context, id string) (data.Task, error)
+}
+
 // ErrPlanConflict refuses a save based on an older revision of the plan.
 var ErrPlanConflict = apperr.New(apperr.RevisionConflict, "the plan changed since it was read; read it again")
 
@@ -20,6 +27,8 @@ var ErrPlanConflict = apperr.New(apperr.RevisionConflict, "the plan changed sinc
 // cannot interleave.
 type Plans struct {
 	Store *data.Store
+	// Tasks finds external items and adopts them on the first save of a plan.
+	Tasks TaskAdopter
 
 	mu sync.Mutex
 }
@@ -74,16 +83,9 @@ func (s *Plans) latest(ctx context.Context, taskID string) (p data.Plan, ok bool
 
 // Document is the current plan of a task with its document filled in. A
 // task without a plan gives an empty document at revision 0.
-func (s *Plans) hasExternalTask(ctx context.Context, taskID string) (repoID string, number int64, ok bool) {
-	err := s.Store.LocalDB().QueryRowContext(ctx,
-		`SELECT repository_id, number FROM external_tasks_cache WHERE task_id = ?`, taskID,
-	).Scan(&repoID, &number)
-	return repoID, number, err == nil && repoID != "" && number > 0
-}
-
 func (s *Plans) Document(ctx context.Context, taskID string) (data.Plan, error) {
 	if _, err := s.Store.Tasks().Get(ctx, taskID); err != nil {
-		if _, _, ok := s.hasExternalTask(ctx, taskID); !ok {
+		if s.Tasks == nil || !s.Tasks.Known(ctx, taskID) {
 			return data.Plan{}, err
 		}
 	}
@@ -105,6 +107,9 @@ func (s *Plans) Write(ctx context.Context, taskID, body string, base int64, auth
 }
 
 func (s *Plans) write(ctx context.Context, taskID, body string, base int64, author string) (data.Plan, error) {
+	if err := s.adopt(ctx, taskID); err != nil {
+		return data.Plan{}, err
+	}
 	cur, err := s.Document(ctx, taskID)
 	if err != nil {
 		return cur, err
@@ -138,6 +143,15 @@ func (s *Plans) write(ctx context.Context, taskID, body string, base int64, auth
 		return cur, ErrPlanConflict
 	}
 	return out, err
+}
+
+// adopt makes an external item a task before its plan is saved.
+func (s *Plans) adopt(ctx context.Context, taskID string) error {
+	if s.Tasks == nil {
+		return nil
+	}
+	_, err := s.Tasks.Adopt(ctx, taskID)
+	return err
 }
 
 // Edit replaces one exact piece of the plan document. The piece must

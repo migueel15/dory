@@ -44,13 +44,13 @@ func TestTaskResourceWrites(t *testing.T) {
 	}
 	path := "/api/tasks/" + task.ID
 	req("POST", "/api/tasks", `{"id":"`+task.ID+`","title":"Duplicada"}`, "", 409)
-	req("PATCH", path, `{"description":"Editar","issue_number":123}`, `"`+task.UpdatedAt+`"`, 200)
+	req("PATCH", path, `{"description":"Editar","pr_number":123}`, `"`+task.UpdatedAt+`"`, 200)
 	req("PUT", path, `{"title":"Antigua","updated_at":"`+task.UpdatedAt+`"}`, "", 409)
-	req("PUT", path, `{"issue_number":null}`, "", 200)
+	req("PUT", path, `{"pr_number":null}`, "", 200)
 	req("PATCH", path, `{"unknown":true}`, "", 400)
 	req("PATCH", "/api/tasks/missing", `{"title":"Ausente"}`, "", 404)
 	got, err := s.Store.Tasks().Get(t.Context(), task.ID)
-	if err != nil || got.Description != "Editar" || got.Title != task.Title || got.IssueNumber != nil {
+	if err != nil || got.Description != "Editar" || got.Title != task.Title || got.PRNumber != nil {
 		t.Fatalf("task = %+v, err = %v", got, err)
 	}
 }

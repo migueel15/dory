@@ -19,6 +19,7 @@
 
 - Desaparecen los duplicados entre tareas internas y sus issues, y entre nodos.
 - Una issue no adoptada solo existe en los nodos con acceso al proveedor; es lo esperado.
-- Hay que archivar las filas `source = github` creadas por #359. Sus hilos y planes quedan sin tarea hasta volver a vincularlos.
-- Si dos tareas internas distintas reciben la misma clave a la vez en nodos distintos, debe ganar una de forma determinista; se resuelve al adoptar.
+- Las filas `source = github` creadas por #359 (sin `external_id`) se archivan al arrancar, sin migrar nada. Sus hilos y planes siguen apuntando a las tareas archivadas; si la issue sigue abierta, vuelve a verse como sincronizada y es una tarea nueva al adoptarla.
+- No está validado que GitHub conserve el `node_id` al transferir una issue a otro repositorio. Si no lo conserva, la issue transferida se verá como un elemento nuevo y la tarea anterior quedará con su último estado conocido.
+- Si dos tareas internas distintas reciben la misma clave a la vez en nodos distintos, ambas la conservan hasta que se resuelva a mano; en un mismo nodo la segunda se rechaza como conflicto.
 - Cada proveedor nuevo implementa la caché, la clave estable y el enlace (vista interna o URL); el tablero y la adopción no cambian.

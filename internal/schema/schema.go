@@ -158,6 +158,7 @@ var registry = []Entity{
 	{Name: "task", Table: "tasks", Key: []string{"id"},
 		Columns: []Column{
 			{Name: "source", Kind: Text, Default: "internal"},
+			{Name: "external_id", Kind: Text},
 			{Name: "project_id", Kind: Text, Nullable: true},
 			{Name: "repository_id", Kind: Text, Nullable: true},
 			{Name: "number", Kind: Int, Nullable: true},

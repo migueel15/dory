@@ -212,7 +212,7 @@ func (s *Server) mountGitHub(mux *http.ServeMux) {
 		if !decode(w, r, &body) {
 			return
 		}
-		t, err := s.Projects.IssueTask(r.Context(), repo(r), n, body.Title, body.Description)
+		t, err := s.Tasks.AdoptRepoIssue(r.Context(), repo(r), int64(n))
 		if err != nil {
 			writeErr(w, r, err)
 			return

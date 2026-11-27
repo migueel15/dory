@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/migueel15/dory/internal/data"
-	"github.com/migueel15/dory/internal/github"
 	"github.com/migueel15/dory/internal/oplog"
 )
 
@@ -146,18 +145,4 @@ func (a *Projects) FromRepository(ctx context.Context, name, slug, description, 
 // Checkout is the repository and local path of the checkout of a project.
 func (a *Projects) Checkout(ctx context.Context, projectID string) (repositoryID, path string, err error) {
 	return RepositoryCheckout(ctx, a.Store, &projectID, "")
-}
-
-// IssueTask creates a task linked to an issue of a registered repository.
-func (a *Projects) IssueTask(ctx context.Context, repo string, number int, title, description string) (data.Task, error) {
-	repos, err := a.Store.Repositories().ListAll(ctx, data.Filter{})
-	if err != nil {
-		return data.Task{}, err
-	}
-	for _, rp := range repos {
-		if name, ok := github.ParseRemote(rp.RemoteURL); ok && strings.EqualFold(name, repo) {
-			return a.Store.EnsureExternalTask(ctx, &rp.ProjectID, rp.ID, int64(number))
-		}
-	}
-	return data.Task{}, data.ErrNotFound.Msgf("repository not registered: %s", repo)
 }

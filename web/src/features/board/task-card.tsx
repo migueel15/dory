@@ -221,8 +221,9 @@ export function TaskCard({ c, onOpen, onDrag, onMenu }: { c: Card; onOpen: () =>
           </span>
         </div>
         {where && <p className="flex items-center gap-2 text-xs text-slate-500 dark:text-muted"><GitBranch aria-hidden="true" className="size-4 shrink-0" /><span className="truncate">{where}</span></p>}
-        {((c.labels && c.labels.length > 0) || c.plan_accepted) && (
+        {((c.labels && c.labels.length > 0) || c.plan_accepted || !c.adopted) && (
           <div className="flex flex-wrap items-center gap-1 text-[11px]">
+            {!c.adopted && <span title="Se ve desde la caché de este nodo; se convierte en tarea de Dory al editarla, planificarla o lanzarla" className="rounded border border-dashed border-slate-300 px-1.5 py-0.5 text-slate-500 dark:border-white/20 dark:text-muted">Sincronizada</span>}
             {c.plan_accepted && <span className="rounded bg-indigo-100 px-1.5 py-0.5 font-medium text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">Plan listo</span>}
             {(c.labels ?? []).slice(0, 3).map((lbl) => {
               const hex = c.label_colors?.[lbl];

@@ -183,6 +183,7 @@ func (ri restIssue) toIssue(repo string) Issue {
 		milestone = ri.Milestone.Title
 	}
 	return Issue{
+		NodeID:      ri.NodeID,
 		Repo:        repo,
 		Number:      ri.Number,
 		Title:       ri.Title,
@@ -205,6 +206,19 @@ func (ri restIssue) toIssue(repo string) Issue {
 
 func (c *Client) CreateIssue(ctx context.Context, repo string, in IssueCreateInput) (Issue, string, error) {
 	raw, err := c.requestJSON(ctx, http.MethodPost, "/repos/"+repo+"/issues", in)
+	if err != nil {
+		return Issue{}, "", err
+	}
+	var ri restIssue
+	if err := json.Unmarshal(raw, &ri); err != nil {
+		return Issue{}, "", err
+	}
+	return ri.toIssue(repo), ri.Body, nil
+}
+
+// GetIssue reads one issue with its body.
+func (c *Client) GetIssue(ctx context.Context, repo string, number int) (Issue, string, error) {
+	raw, err := c.requestJSON(ctx, http.MethodGet, fmt.Sprintf("/repos/%s/issues/%d", repo, number), nil)
 	if err != nil {
 		return Issue{}, "", err
 	}

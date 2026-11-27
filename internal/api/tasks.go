@@ -41,7 +41,7 @@ func (s *Server) mountTasks(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, deps)
 	})
 	mux.HandleFunc("PUT /api/tasks/{id}/dependencies/{dep}", func(w http.ResponseWriter, r *http.Request) {
-		d, err := s.Store.Dependencies().Upsert(r.Context(), data.Dependency{TaskID: r.PathValue("id"), DependsOnID: r.PathValue("dep")})
+		d, err := s.Tasks.AddDependency(r.Context(), r.PathValue("id"), r.PathValue("dep"))
 		if err != nil {
 			writeErr(w, r, err)
 			return
@@ -137,7 +137,7 @@ func (s *Server) moveTaskStage(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	t, err := s.Store.MoveStage(r.Context(), r.PathValue("id"), body.Stage)
+	t, err := s.Tasks.Patch(r.Context(), r.PathValue("id"), nil, data.Fields{"stage": body.Stage})
 	if err != nil {
 		writeErr(w, r, err)
 		return
@@ -154,13 +154,7 @@ func (s *Server) setTaskState(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	id := r.PathValue("id")
-	p, _, err := s.Tasks.ProviderFor(r.Context(), id)
-	if err != nil {
-		writeErr(w, r, err)
-		return
-	}
-	u, err := p.SetState(r.Context(), id, app.TaskStateInput{State: body.State, Reason: body.Reason})
+	u, err := s.Tasks.SetState(r.Context(), r.PathValue("id"), app.TaskStateInput{State: body.State, Reason: body.Reason})
 	if err != nil {
 		writeErr(w, r, err)
 		return
@@ -191,13 +185,7 @@ func (s *Server) commentTask(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	id := r.PathValue("id")
-	p, _, err := s.Tasks.ProviderFor(r.Context(), id)
-	if err != nil {
-		writeErr(w, r, err)
-		return
-	}
-	c, err := p.Comment(r.Context(), id, body.Body)
+	c, err := s.Tasks.Comment(r.Context(), r.PathValue("id"), body.Body)
 	if err != nil {
 		writeErr(w, r, err)
 		return

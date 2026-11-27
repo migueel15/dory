@@ -20,6 +20,9 @@ type Ref struct {
 
 // Issue is an open issue with the pull requests that will close it.
 type Issue struct {
+	// NodeID is GitHub's global id of the issue; it survives renames of the
+	// repository and identifies the task of an adopted issue.
+	NodeID    string   `json:"node_id"`
 	Repo      string   `json:"repo"`
 	ProjectID string   `json:"project_id"`
 	Number    int      `json:"number"`
@@ -92,7 +95,32 @@ type Overview struct {
 
 type repoData struct {
 	issues []Issue
+	// closed are the most recently closed issues, kept out of the overview.
+	closed []Issue
 	pulls  []Pull
+}
+
+// openIssueLimit is how many open issues are read per repository.
+const openIssueLimit = 50
+
+// IssueSnapshot is what the last refresh read of a repository's issues.
+type IssueSnapshot struct {
+	Repo   string
+	Open   []Issue
+	Closed []Issue
+	// Complete says Open holds every open issue of the repository.
+	Complete bool
+}
+
+// IssueSnapshots returns the issues of every repository read so far.
+func (c *Client) IssueSnapshots() []IssueSnapshot {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]IssueSnapshot, 0, len(c.byRepo))
+	for repo, d := range c.byRepo {
+		out = append(out, IssueSnapshot{Repo: repo, Open: d.issues, Closed: d.closed, Complete: len(d.issues) < openIssueLimit})
+	}
+	return out
 }
 
 type ruleEntry struct {
@@ -114,9 +142,10 @@ const pullFields = `id number title url state isDraft updatedAt headRefName base
 const overviewQuery = `query($owner: String!, $name: String!) { viewer { login } repository(owner: $owner, name: $name) {
   pullRequests(states: OPEN, first: 50, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { ` + pullFields + ` } }
   issues(states: OPEN, first: 50, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { ` + issueFields + ` } }
+  closedIssues: issues(states: CLOSED, first: 20, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { ` + issueFields + ` } }
 } }`
 
-const issueFields = `number title url state stateReason updatedAt author { login } labels(first: 10) { nodes { name } } ` + metaFields + `
+const issueFields = `id number title url state stateReason updatedAt author { login } labels(first: 10) { nodes { name } } ` + metaFields + `
     closedByPullRequestsReferences(first: 10) { nodes { number title } }`
 
 type login struct {
@@ -243,7 +272,7 @@ type wireIssue struct {
 }
 
 func (w wireIssue) issue(repo, project string) Issue {
-	i := Issue{Repo: repo, ProjectID: project, Number: w.Number, Title: w.Title, Author: name(w.Author), URL: w.URL, State: w.State, UpdatedAt: w.UpdatedAt, Labels: w.Labels.names(), Pulls: w.Closed.Nodes, StateReason: w.StateReason, Meta: w.meta()}
+	i := Issue{NodeID: w.ID, Repo: repo, ProjectID: project, Number: w.Number, Title: w.Title, Author: name(w.Author), URL: w.URL, State: w.State, UpdatedAt: w.UpdatedAt, Labels: w.Labels.names(), Pulls: w.Closed.Nodes, StateReason: w.StateReason, Meta: w.meta()}
 	return i
 }
 
@@ -458,6 +487,9 @@ func (c *Client) fetchRepo(ctx context.Context, repo, project string) (repoData,
 			Issues struct {
 				Nodes []wireIssue `json:"nodes"`
 			} `json:"issues"`
+			ClosedIssues struct {
+				Nodes []wireIssue `json:"nodes"`
+			} `json:"closedIssues"`
 		} `json:"repository"`
 	}
 	if err := c.graphql(ctx, overviewQuery, map[string]any{"owner": owner, "name": short}, &data); err != nil {
@@ -478,6 +510,9 @@ func (c *Client) fetchRepo(ctx context.Context, repo, project string) (repoData,
 	wg.Wait()
 	for _, w := range data.Repository.Issues.Nodes {
 		out.issues = append(out.issues, w.issue(repo, project))
+	}
+	for _, w := range data.Repository.ClosedIssues.Nodes {
+		out.closed = append(out.closed, w.issue(repo, project))
 	}
 	return out, nil
 }
