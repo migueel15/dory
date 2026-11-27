@@ -1,4 +1,4 @@
-import { ArrowUp,ClipboardText,Desktop,Folder,FolderOpen,GitBranch,GitFork } from "@phosphor-icons/react";
+import { ArrowUp,CaretDown,ClipboardText,Desktop,Folder,FolderOpen,GitBranch,GitFork } from "@phosphor-icons/react";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useLayoutEffect,useRef,useState } from "react";
@@ -9,6 +9,7 @@ import { useCommand,useShortcuts } from "../components/shortcuts";
 import { ErrorText,iconButton } from "../components/ui";
 import { modelEffort,modelId } from "../effort";
 import { composerArea,composerFrame } from "../features/composer/composer";
+import { MobileComposer,mobileSendButton } from "../features/composer/mobile-composer";
 import { useComposerFiles } from "../features/composer/composer-files";
 import { formatChord } from "../features/composer/dictation-shortcut";
 import { DictationMic,DictationPreview } from "../features/composer/dictation-ui";
@@ -18,6 +19,7 @@ import { Chip,ModelPicker } from "../features/composer/model-picker";
 import { useSuggest } from "../features/composer/suggest";
 import { planMessage } from "../lib/auto-message";
 import { useProject } from "../project";
+import { useMobile } from "../lib/use-mobile";
 
 
 // NewThread is the chat box of the start screen (requirement 13.2): the
@@ -30,6 +32,7 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
   const [project, setProject] = useState(current);
   const [text, setText] = useState("");
   const [plan, setPlan] = useState(false);
+  const mobile = useMobile();
   // Files wait in the box until the thread exists: then they are uploaded to
   // it and go out with the first message.
   const attach = useComposerFiles();
@@ -97,6 +100,98 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
   const provider = form.value.provider ?? "";
   const suggest = useSuggest({ key: ["new", form.value.node, provider, project], commands: () => api.nodeCommands(form.value.node, provider, project || undefined) }, text, box, setText);
   const projectName = (projects.data ?? []).find((p) => p.id === project)?.name;
+  const projectOptions = [{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))];
+  const modelPicker = (
+    <ModelPicker compact={mobile} models={models} providers={form.providers} modelId={form.value.model} selected={form.value.provider ? JSON.stringify([form.value.provider, form.value.model]) : ""} effort={form.value.effort}
+      effortsOf={(value) => {
+        const option = models.find((m) => m.value === value);
+        const efforts = option?.model.efforts;
+        return option && efforts?.length ? { values: efforts, initial: modelEffort(option.provider, option.model) } : undefined;
+      }}
+      onSelectClose={() => box.current?.focus()}
+      onChange={(value, effort) => {
+        const model = models.find((m) => m.value === value);
+        if (model) form.selectModel(model.provider, model.model, effort);
+      }} />
+  );
+  const planToggle = (
+    <button type="button" title={`Modo plan (${formatChord(getShortcut("plan"))})`} aria-pressed={plan} onClick={() => setPlan(!plan)}
+      className={mobile ? "inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-200 px-3 text-sm font-medium text-slate-600 hover:bg-slate-100 aria-pressed:bg-slate-200 dark:border-border dark:text-text-secondary dark:hover:bg-raised dark:aria-pressed:bg-raised" : "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium hover:bg-slate-100 aria-pressed:bg-slate-200 dark:hover:bg-raised dark:aria-pressed:bg-raised"}>
+      <ClipboardText className="size-4" />Modo plan
+    </button>
+  );
+  const sendButton = (
+    <button type="submit" className={mobile ? mobileSendButton : iconButton} title="Enviar" aria-label="Enviar" disabled={(!dictation.value.trim() && !files.length) || !form.ready || start.isPending}>
+      {start.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <ArrowUp className="size-4" weight={mobile ? "bold" : "regular"} />}
+    </button>
+  );
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!dictation.active && suggest.onKeyDown(e)) return;
+    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+    if (dictation.active || window.matchMedia("(min-width: 640px)").matches) {
+      e.preventDefault();
+      if (e.repeat) return;
+      submit();
+    }
+  };
+  const workspaceChips = (
+    <>
+      {!mobile && <Chip below title="Entorno" icon={<Desktop className="size-4 shrink-0" />} value={form.value.node} onChange={form.setNode} options={form.nodes} />}
+      {!mobile && <span aria-hidden="true" className="h-4 w-px bg-slate-200 dark:bg-border" />}
+      {!mobile && <Chip below title="Proyecto" icon={<Folder className="size-4 shrink-0" />} value={project} onChange={setProject} options={projectOptions} />}
+      {project && (
+        <>
+          <Chip variant={mobile ? "pill" : "chip"} below={!mobile} title="Espacio de trabajo" icon={mode !== "checkout" ? <GitFork className="size-4 shrink-0" /> : <FolderOpen className="size-4 shrink-0" />}
+            value={mode} onChange={(v) => setMode(v as typeof mode)}
+            options={[{ value: "checkout", label: "Checkout actual" }, { value: "worktree", label: "Nuevo worktree" }, { value: "existing", label: "Worktree existente" }]} />
+          {!mobile && <span className="ml-auto" />}
+          {mode === "existing" && (worktreeList.data?.length ? (
+            <Chip variant={mobile ? "pill" : "chip"} below={!mobile} align={mobile ? "left" : "right"} title="Worktree" icon={<GitBranch className="size-4 shrink-0" />} value={chosen?.path ?? ""} onChange={setExisting}
+              options={worktreeList.data.map((w) => ({ value: w.path, label: `${w.branch || "(sin rama)"} · ${w.path.split("/").pop()}${w.working ? " · en marcha" : w.threads ? ` · ${w.threads} hilo${w.threads > 1 ? "s" : ""}` : ""}` }))} />
+          ) : worktreeList.isSuccess && <span>No hay worktrees</span>)}
+          {mode !== "existing" && !!branchList.data?.branches.length && (
+            <Chip variant={mobile ? "pill" : "chip"} below={!mobile} align={mobile ? "left" : "right"} shortcutBranch prefix={worktree ? "Desde" : undefined} title={worktree ? "Rama de la que sale el worktree" : "Rama del checkout"} icon={<GitBranch className="size-4 shrink-0" />} value={branch} onChange={setBase}
+              options={branchList.data.branches.map((b) => ({ value: b, label: b }))} />
+          )}
+        </>
+      )}
+    </>
+  );
+  const error = <ErrorText error={start.error ?? dictation.error ?? form.error ?? projects.error ?? branchList.error} />;
+  if (mobile) {
+    // On phones the box is one line pinned to the bottom; the project is
+    // picked from the title and the rest hides behind the + button.
+    const projectSelect = (variant: "pill" | "text") => <Chip below variant={variant} title="Proyecto" icon={<Folder className="size-4 shrink-0" />} value={project} onChange={setProject}
+      placeholder="Elegir proyecto" options={projectOptions} />;
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+          <h1 className="text-3xl font-light tracking-tight">
+            {projectName ? <>¿Qué construimos en {projectSelect("text")}?</> : "¿Qué hacemos hoy?"}
+          </h1>
+          <div className="flex flex-wrap items-center justify-center gap-2 text-sm">
+            {!projectName && projectSelect("pill")}
+            <Chip below variant="pill" title="Entorno" icon={<Desktop className="size-4 shrink-0" />} value={form.value.node} onChange={form.setNode} options={form.nodes} />
+          </div>
+          {projectName && <button type="button" onClick={() => setProject("")} className="text-sm font-medium text-slate-500 dark:text-muted">o empieza sin proyecto</button>}
+        </div>
+        <div className="px-3 pb-3">
+        <MobileComposer
+          form={{ "data-dictation-panel": true, "data-unsaved-draft": !!text.trim() || files.length > 0 || dictation.active, onSubmit: (e) => { e.preventDefault(); submit(); }, ...attach.formProps }}
+          extras={() => <>{attach.attachButton}{planToggle}{workspaceChips}</>}
+          top={<>{!dictation.active && suggest.menu}{attach.tray}</>}
+          field={<>
+            {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} />}
+            <textarea ref={box} data-dictation-disabled={start.isPending || undefined} rows={1} value={dictation.value} readOnly={dictation.active} onChange={(e) => setText(e.target.value)} onSelect={() => { if (!dictation.active) suggest.track(); }} aria-label="Mensaje"
+              placeholder={dictation.active ? "" : plan ? "Describe la tarea…" : "¿En qué trabajamos?"} onKeyDown={onKeyDown}
+              className={showingDictation ? "sr-only" : `${composerArea} !px-1 !py-1.5 !text-base`} />
+          </>}
+          actions={<>{modelPicker}<DictationMic round dictation={dictation} disabled={start.isPending} />{sendButton}</>} />
+        </div>
+        {error}
+      </div>
+    );
+  }
   return (
     <div className={centered ? "relative" : "space-y-2"}>
       <div className={`mb-6 space-y-2 text-center ${centered ? "absolute inset-x-0 bottom-full" : ""}`}>
@@ -115,68 +210,24 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
         {attach.tray}
         {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} className="min-h-16" />}
         <textarea ref={box} data-dictation-disabled={start.isPending || undefined} rows={2} autoFocus value={dictation.value} readOnly={dictation.active} onChange={(e) => setText(e.target.value)} onSelect={() => { if (!dictation.active) suggest.track(); }} aria-label="Mensaje"
-          placeholder={plan ? "Describe la tarea que quieres definir…" : "¿En qué trabajamos?"}
-          onKeyDown={(e) => {
-            if (!dictation.active && suggest.onKeyDown(e)) return;
-            if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
-            if (dictation.active || window.matchMedia("(min-width: 640px)").matches) {
-              e.preventDefault();
-              if (e.repeat) return;
-              submit();
-            }
-          }}
+          placeholder={dictation.active ? "" : plan ? "Describe la tarea que quieres definir…" : "¿En qué trabajamos?"}
+          onKeyDown={onKeyDown}
           className={showingDictation ? "sr-only" : `${composerArea} min-h-16`} />
         <div className="flex items-end gap-0.5 px-2 pb-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
             {attach.attachButton}
-            <ModelPicker models={models} providers={form.providers} modelId={form.value.model} selected={form.value.provider ? JSON.stringify([form.value.provider, form.value.model]) : ""} effort={form.value.effort}
-              effortsOf={(value) => {
-                const option = models.find((m) => m.value === value);
-                const efforts = option?.model.efforts;
-                return option && efforts?.length ? { values: efforts, initial: modelEffort(option.provider, option.model) } : undefined;
-              }}
-              onSelectClose={() => box.current?.focus()}
-              onChange={(value, effort) => {
-                const model = models.find((m) => m.value === value);
-                if (model) form.selectModel(model.provider, model.model, effort);
-              }} />
-            <button type="button" title={`Modo plan (${formatChord(getShortcut("plan"))})`} aria-pressed={plan} onClick={() => setPlan(!plan)}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium hover:bg-slate-100 aria-pressed:bg-slate-200 dark:hover:bg-raised dark:aria-pressed:bg-raised">
-              <ClipboardText className="size-4" />Modo plan
-            </button>
+            {modelPicker}
+            {planToggle}
           </div>
           <DictationMic dictation={dictation} disabled={start.isPending} />
-          <button type="submit" className={iconButton} title="Enviar" aria-label="Enviar" disabled={(!dictation.value.trim() && !files.length) || !form.ready || start.isPending}>
-            {start.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <ArrowUp className="size-4" weight="regular" />}
-          </button>
+          {sendButton}
         </div>
       </form>
       <div className={centered ? "absolute inset-x-0 top-full space-y-2 pt-2" : "space-y-2"}>
       <div className="flex flex-wrap items-center gap-1 px-2 text-xs text-slate-500 dark:text-muted">
-        <Chip below title="Entorno" icon={<Desktop className="size-4 shrink-0" />} value={form.value.node} onChange={form.setNode} options={form.nodes} />
-        <span aria-hidden="true" className="h-4 w-px bg-slate-200 dark:bg-border" />
-        <Chip below title="Proyecto" icon={<Folder className="size-4 shrink-0" />} value={project} onChange={setProject}
-          options={[{ value: "", label: "Sin proyecto" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: p.name }))]} />
-        {project && (
-          <>
-            <Chip below title="Espacio de trabajo" icon={mode !== "checkout" ? <GitFork className="size-4 shrink-0" /> : <FolderOpen className="size-4 shrink-0" />}
-              value={mode} onChange={(v) => setMode(v as typeof mode)}
-              options={[{ value: "checkout", label: "Checkout actual" }, { value: "worktree", label: "Nuevo worktree" }, { value: "existing", label: "Worktree existente" }]} />
-            <span className="ml-auto" />
-            {mode === "existing" && (worktreeList.data?.length ? (
-              <Chip below align="right" title="Worktree" icon={<GitBranch className="size-4 shrink-0" />} value={chosen?.path ?? ""} onChange={setExisting}
-                options={worktreeList.data.map((w) => ({ value: w.path, label: `${w.branch || "(sin rama)"} · ${w.path.split("/").pop()}${w.working ? " · en marcha" : w.threads ? ` · ${w.threads} hilo${w.threads > 1 ? "s" : ""}` : ""}` }))} />
-            ) : worktreeList.isSuccess && <span>No hay worktrees</span>)}
-            {mode !== "existing" && !!branchList.data?.branches.length && (
-              <>
-                <Chip below align="right" shortcutBranch prefix={worktree ? "Desde" : undefined} title={worktree ? "Rama de la que sale el worktree" : "Rama del checkout"} icon={<GitBranch className="size-4 shrink-0" />} value={branch} onChange={setBase}
-                  options={branchList.data.branches.map((b) => ({ value: b, label: b }))} />
-              </>
-            )}
-          </>
-        )}
+        {workspaceChips}
       </div>
-      <ErrorText error={start.error ?? dictation.error ?? form.error ?? projects.error ?? branchList.error} />
+      {error}
       </div>
     </div>
   );
@@ -186,7 +237,7 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
 export function Home() {
   const navigate = useNavigate();
   return (
-    <div className="mx-auto flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] max-w-3xl flex-col justify-center sm:h-[calc(100dvh-3rem-2px)]">
+    <div className="keyboard-follow mx-auto flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] max-w-3xl flex-col justify-center sm:h-[calc(100dvh-3rem-2px)]">
       <NewThread centered onCreated={(id) => navigate({ to: "/threads/$threadId", params: { threadId: id } })} />
     </div>
   );

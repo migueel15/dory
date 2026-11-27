@@ -32,6 +32,13 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+        // "Dory Dev": a test app installed beside the real one, with its own
+        // pairings. Build with assembleDevserver.
+        devserver {
+            initWith debug
+            applicationIdSuffix ".dev"
+            matchingFallbacks = ['debug']
+        }
     }
 }
 

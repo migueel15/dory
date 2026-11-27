@@ -24,7 +24,13 @@ import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
 import com.getcapacitor.BridgeWebViewClient;
+import android.view.View;
+import android.view.WindowManager;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsAnimationCompat;
+import androidx.core.view.WindowInsetsCompat;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 public class MainActivity extends BridgeActivity {
@@ -132,6 +138,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(DoryPlugin.class);
         super.onCreate(savedInstanceState);
         bridge.getWebView().addJavascriptInterface(new NoticeBridge(), "DoryAndroid");
+        followKeyboard();
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS);
         }
@@ -187,5 +194,41 @@ public class MainActivity extends BridgeActivity {
                 else finish();
             }
         });
+    }
+
+    private int lastIme = -1;
+
+    // followKeyboard lets the keyboard overlay the WebView instead of resizing
+    // it, and passes the page the height it covers on every frame of its
+    // animation; the page's screens shrink from the bottom with it.
+    private void followKeyboard() {
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
+        View decor = getWindow().getDecorView();
+        ViewCompat.setWindowInsetsAnimationCallback(decor, new WindowInsetsAnimationCompat.Callback(WindowInsetsAnimationCompat.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+            @Override
+            public WindowInsetsCompat onProgress(WindowInsetsCompat insets, List<WindowInsetsAnimationCompat> running) {
+                sendIme(imeHeight(decor, insets));
+                return insets;
+            }
+
+            @Override
+            public void onEnd(WindowInsetsAnimationCompat animation) {
+                WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(decor);
+                if (insets != null) sendIme(imeHeight(decor, insets));
+            }
+        });
+    }
+
+    private void sendIme(int css) {
+        if (css == lastIme) return;
+        lastIme = css;
+        bridge.getWebView().evaluateJavascript("window.__doryKeyboard&&__doryKeyboard(" + css + ")", null);
+    }
+
+    // imeHeight is how much of the WebView the keyboard covers, in CSS pixels.
+    private int imeHeight(View decor, WindowInsetsCompat insets) {
+        // The decor view is already padded above the navigation bar.
+        int px = Math.max(0, insets.getInsets(WindowInsetsCompat.Type.ime()).bottom - decor.getPaddingBottom());
+        return Math.round(px / getResources().getDisplayMetrics().density);
     }
 }

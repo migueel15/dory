@@ -50,8 +50,11 @@ body { @apply bg-slate-50 text-slate-900 dark:bg-canvas dark:text-text; }
 /* Phones keep a bottom tab bar; it hides while typing so the keyboard has room. */
 :root { --tabbar: 0px; }
 @media (max-width: 639.98px) {
-  :root { --tabbar: calc(3.5rem + 1px + env(safe-area-inset-bottom)); }
+  :root { --tabbar-base: calc(3.5rem + 1px + env(safe-area-inset-bottom)); --tabbar: var(--tabbar-base); }
   :root.typing { --tabbar: 0px; }
+  /* Phones scroll by touch: no scroll bars. */
+  * { scrollbar-width: none; }
+  *::-webkit-scrollbar { display: none; }
   :root.typing .mobile-tabbar { display: none; }
 }
 .mobile-drawer::backdrop { background: rgb(0 0 0 / 0.5); }
@@ -196,3 +199,8 @@ body { @apply bg-slate-50 text-slate-900 dark:bg-canvas dark:text-text; }
 @media (prefers-reduced-motion: reduce) {
   .shimmer-text { animation: none; background: none; color: inherit; }
 }
+@keyframes extras-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+}
+@keyframes sheet-up { from { transform: translateY(100%); } }
+@keyframes sheet-fade { from { opacity: 0; } }

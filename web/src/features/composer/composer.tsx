@@ -2,6 +2,10 @@ import { ArrowUp,ClipboardText,Code,ListBullets,Quotes,Stop,X } from "@phosphor-
 import { useQueryClient } from "@tanstack/react-query";
 import { useLayoutEffect,useRef,useState } from "react";
 import { api,usable,type ThreadView } from "../../api/client";
+import { useMobile } from "../../lib/use-mobile";
+import { MobileComposer,mobileSendButton } from "./mobile-composer";
+import { composerArea,composerFrame } from "./composer-styles";
+export { composerArea,composerFrame };
 import { useNodeProviders } from "../../api/queries/hooks";
 import { qk } from "../../api/queries/keys";
 import { useAnswerQuestion,useAnswerSecret,useInterruptThread,useSendMessage,useSendText,useThreadSettings } from "../../api/queries/threads";
@@ -27,8 +31,6 @@ import { threadSource,useSuggest } from "./suggest";
 // The composer of a thread, kept from Dory v1: attachments, @ mentions of
 // files, model, effort and permissions, and send, queue or stop.
 
-export const composerFrame = "relative z-10 rounded-3xl border border-slate-200 bg-white shadow-md dark:border-raised dark:bg-surface";
-export const composerArea = "relative block max-h-60 w-full resize-none break-words bg-transparent px-4 pb-1 pt-3.5 text-[0.9375rem] leading-6 !outline-none placeholder:text-slate-400";
 
 export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   t: ThreadView;
@@ -42,6 +44,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   const key = qk.thread(t.id);
   const providers = useNodeProviders(t.node_id, { staleTime: 60_000 });
   const [text, setText] = useState("");
+  const mobile = useMobile();
   useEmitter(events.fillComposer, (d) => { if (d.threadId === t.id) { setText(d.text); area.current?.focus(); } });
   const dictation = useLocalDictation(text, setText, area, { panelShortcut: true, onEnter: (steer) => latestSubmit.current(steer) });
   const showingDictation = !!dictation.preview;
@@ -221,11 +224,112 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   useLayoutEffect(() => { latestSubmit.current = submit; });
   if (!t.local) return null;
   const busy = t.running;
+  const formProps = {
+    "data-quote-ui": true, "data-dictation-panel": true,
+    "data-unsaved-draft": !!text.trim() || files.length > 0 || quotes.length > 0 || dictation.active,
+    onSubmit: (e: React.FormEvent) => { e.preventDefault(); submit(); },
+    ...attach.formProps,
+  };
+  const errors = Boolean(send.error || planning.error || settings.error || stop.error || dictation.error) && <div className="px-4 pb-2"><ErrorText error={send.error ?? planning.error ?? settings.error ?? stop.error ?? dictation.error} /></div>;
   return (
-    <div className="mx-auto w-full max-w-[55.2rem] px-3 pb-4 pt-2 sm:px-6">
-      <form data-quote-ui data-dictation-panel data-unsaved-draft={!!text.trim() || files.length > 0 || quotes.length > 0 || dictation.active} onSubmit={(e) => { e.preventDefault(); submit(); }}
-        {...attach.formProps}
-        className={composerFrame}>
+    <div className="relative mx-auto w-full max-w-[55.2rem] px-3 pb-4 pt-2 sm:px-6">
+      {mobile ? (
+        <MobileComposer form={formProps} top={<>
+        {secret ? <SecretPanel key={secret.id} request={secret} busy={answerSecret.isPending} error={answerSecret.error}
+          onSend={(values) => answerSecret.mutate({ values })} onDecline={() => answerSecret.mutate({ decline: true })} />
+          : asking && <QuestionPanel flow={flow} busy={reply.isPending} error={reply.error} />}
+        {!dictation.active && suggest.menu}
+        {codeTip.card}
+        {quotes.length > 0 && (
+          <ul ref={quoteList} aria-label="Citas del mensaje" className="mx-2 mt-2 max-h-44 space-y-1.5 overflow-y-auto overscroll-contain px-1 py-1">
+            {quotes.map((quote) => (
+              <li key={quote.id} title={quote.code ? undefined : quote.reply ? `${quote.text}\n\n${quote.reply}` : quote.text}
+                onPointerEnter={quote.code ? (e) => codeTip.show(e.currentTarget, quote) : undefined} onPointerLeave={quote.code ? codeTip.hide : undefined}
+                className="flex min-w-0 items-center gap-2 rounded-lg bg-slate-50 px-2 py-1.5 text-sm dark:bg-raised">
+                {quote.code ? <>
+                  <Code weight="thin" aria-hidden="true" className="size-4 shrink-0 text-slate-500 dark:text-muted" />
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs">{quote.code.path.split("/").pop()}<span className="text-slate-500 dark:text-muted">:{quote.code.start === quote.code.end ? quote.code.start : `${quote.code.start}-${quote.code.end}`}</span>{quote.reply && <span className="ml-2 font-sans text-sm">{quote.reply}</span>}</span>
+                </> : <>
+                  <Quotes weight="thin" aria-hidden="true" className="size-4 shrink-0 text-slate-500 dark:text-muted" />
+                  <span className="min-w-0 flex-1 truncate">{quote.text}</span>
+                  {quote.reply && <span className="shrink-0 text-xs text-slate-500 dark:text-muted">Con respuesta</span>}
+                </>}
+                <button type="button" onClick={() => onRemoveQuotes([quote.id])} aria-label={quote.code ? `Quitar referencia ${quote.code.path}` : `Quitar cita ${quoteLabel(quote.text)}`}
+                  className="grid size-6 shrink-0 place-items-center text-slate-500 hover:text-slate-900 dark:text-muted dark:hover:text-white">
+                  <X weight="regular" className="size-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {attach.tray}
+        </>} field={<>
+
+          {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} format={(part) => paintTokens(part, tokens)} />}
+          {/* Tokens show as objects: this layer paints the text under a see-through textarea, glyph for glyph, so the caret stays aligned. */}
+          {!showingDictation && ranges.length > 0 && <div ref={paint} aria-hidden="true" className={`pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words text-[0.9375rem] leading-6 ${mobile ? "px-1 py-1.5" : "px-4 pb-1 pt-3.5"}`}>
+            {paintTokens(text, tokens)}{"\u200b"}
+          </div>}
+          <textarea ref={area} data-dictation-disabled={send.isPending || undefined} rows={1} value={dictation.value} readOnly={dictation.active} onChange={(e) => setText(e.target.value)} onSelect={() => { if (!dictation.active) { snapSelection(); suggest.track(); } }} onClick={() => { if (!dictation.active) suggest.track(); }} aria-label="Mensaje"
+            onScroll={(e) => { if (paint.current) paint.current.scrollTop = e.currentTarget.scrollTop; }}
+            placeholder={dictation.active ? "" : asking ? (flow.q?.options?.length ? "Escribe otra respuesta…" : "Escribe tu respuesta…") : t.status === "waiting" ? "Escribe tu respuesta…" : "Escribe al hilo…"}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
+              if (dictation.active) {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (!e.repeat) submit(e.ctrlKey || e.metaKey);
+                }
+                return;
+              }
+              if (suggest.onKeyDown(e) || deleteToken(e)) return;
+              if (e.key === "Enter" && !e.shiftKey && window.matchMedia("(min-width: 640px)").matches) {
+                e.preventDefault();
+                if (!e.repeat) submit(e.ctrlKey || e.metaKey);
+              }
+            }}
+            className={showingDictation ? "sr-only" : `${composerArea} ${mobile ? "!px-1 !py-1.5 !text-base" : ""} ${ranges.length ? "text-transparent caret-slate-900 dark:caret-white" : ""}`} />
+                </>} actions={<>
+            <ModelPicker compact={mobile} models={modelOptions} providers={pickerProviders} selected={JSON.stringify([t.provider, selectedModel])} effort={t.effort}
+              modelId={t.reported_settings?.model ?? selectedModel} reportedEffort={t.reported_settings?.effort}
+              effortsOf={(value) => {
+                const option = modelOptions.find((model) => model.value === value);
+                const efforts = option?.model.efforts;
+                return option && efforts?.length ? { values: efforts, initial: modelEffort(option.provider, option.model) } : undefined;
+              }}
+              onSelectClose={() => area.current?.focus()}
+              onChange={(value, effort) => {
+                const option = modelOptions.find((model) => model.value === value);
+                if (!option) return;
+                const choice = { provider: option.provider, model: option.modelId, effort };
+                if (settings.isPending || choice.provider !== t.provider || choice.model !== t.model || effort !== t.effort) settings.mutate(choice);
+                else rememberModel(choice);
+              }} />
+          {!mobile && <button type="button" onClick={() => planning.mutate()} disabled={!canPlan} title={planQueued ? "Planificación en cola" : `Planificar esta conversación (${formatChord(getShortcut("plan"))})`} aria-label="Planificar esta conversación" className={iconButton}>
+            <ClipboardText weight="regular" className="size-4" />
+          </button>}
+          <DictationMic round={mobile} dictation={dictation} disabled={send.isPending} />
+          {busy && !asking && !outgoing && !files.length && !dictation.active ? (
+            <button type="button" onClick={() => stop.mutate()} disabled={stop.isPending} title="Parar el turno en curso" aria-label="Parar"
+              className={mobile ? mobileSendButton : iconButton}>
+              <Stop weight="fill" className="size-3.5" />
+            </button>
+          ) : (
+            <button type="submit" disabled={asking ? (!text.trim() && !files.some((file) => file.done) && !dictation.active) || reply.isPending || uploading || (dictating && !dictation.active) || dictation.phase === "finishing" : !canSend} title={asking ? "Responder (Enter)" : busy ? "Encolar (Enter) · Mandar ya (Ctrl+Enter)" : "Enviar (Enter)"} aria-label={asking ? "Responder" : "Enviar"}
+              className={mobile ? mobileSendButton : iconButton}>
+              {send.isPending || reply.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : busy && !asking ? <ListBullets weight="regular" className="block size-4" /> : <ArrowUp weight="regular" className="block size-4" />}
+            </button>
+          )}
+        </>} below={errors}
+          extras={(close) => <>
+            {attach.attachButton}
+            <button type="button" onClick={() => { close(); planning.mutate(); }} disabled={!canPlan}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-200 px-3 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:border-border dark:text-text-secondary dark:hover:bg-raised">
+              <ClipboardText className="size-4" />{planQueued ? "Planificación en cola" : "Planificar"}
+            </button>
+          </>} />
+      ) : (
+      <form {...formProps} className={composerFrame}>
         {secret ? <SecretPanel key={secret.id} request={secret} busy={answerSecret.isPending} error={answerSecret.error}
           onSend={(values) => answerSecret.mutate({ values })} onDecline={() => answerSecret.mutate({ decline: true })} />
           : asking && <QuestionPanel flow={flow} busy={reply.isPending} error={reply.error} />}
@@ -255,14 +359,15 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
         )}
         {attach.tray}
         <div className="relative">
+
           {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} format={(part) => paintTokens(part, tokens)} />}
           {/* Tokens show as objects: this layer paints the text under a see-through textarea, glyph for glyph, so the caret stays aligned. */}
-          {!showingDictation && ranges.length > 0 && <div ref={paint} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-4 pb-1 pt-3.5 text-[0.9375rem] leading-6">
+          {!showingDictation && ranges.length > 0 && <div ref={paint} aria-hidden="true" className={`pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words text-[0.9375rem] leading-6 ${mobile ? "px-1 py-1.5" : "px-4 pb-1 pt-3.5"}`}>
             {paintTokens(text, tokens)}{"\u200b"}
           </div>}
           <textarea ref={area} data-dictation-disabled={send.isPending || undefined} rows={1} value={dictation.value} readOnly={dictation.active} onChange={(e) => setText(e.target.value)} onSelect={() => { if (!dictation.active) { snapSelection(); suggest.track(); } }} onClick={() => { if (!dictation.active) suggest.track(); }} aria-label="Mensaje"
             onScroll={(e) => { if (paint.current) paint.current.scrollTop = e.currentTarget.scrollTop; }}
-            placeholder={asking ? (flow.q?.options?.length ? "Escribe otra respuesta…" : "Escribe tu respuesta…") : t.status === "waiting" ? "Escribe tu respuesta…" : "Escribe al hilo…"}
+            placeholder={dictation.active ? "" : asking ? (flow.q?.options?.length ? "Escribe otra respuesta…" : "Escribe tu respuesta…") : t.status === "waiting" ? "Escribe tu respuesta…" : "Escribe al hilo…"}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return;
               if (dictation.active) {
@@ -278,12 +383,12 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
                 if (!e.repeat) submit(e.ctrlKey || e.metaKey);
               }
             }}
-            className={showingDictation ? "sr-only" : `${composerArea} ${ranges.length ? "text-transparent caret-slate-900 dark:caret-white" : ""}`} />
-        </div>
+            className={showingDictation ? "sr-only" : `${composerArea} ${mobile ? "!px-1 !py-1.5 !text-base" : ""} ${ranges.length ? "text-transparent caret-slate-900 dark:caret-white" : ""}`} />
+                </div>
         <div className="flex items-center gap-0.5 px-2 pb-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
             {attach.attachButton}
-            <ModelPicker models={modelOptions} providers={pickerProviders} selected={JSON.stringify([t.provider, selectedModel])} effort={t.effort}
+            <ModelPicker compact={mobile} models={modelOptions} providers={pickerProviders} selected={JSON.stringify([t.provider, selectedModel])} effort={t.effort}
               modelId={t.reported_settings?.model ?? selectedModel} reportedEffort={t.reported_settings?.effort}
               effortsOf={(value) => {
                 const option = modelOptions.find((model) => model.value === value);
@@ -299,24 +404,25 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
                 else rememberModel(choice);
               }} />
           </div>
-          <button type="button" onClick={() => planning.mutate()} disabled={!canPlan} title={planQueued ? "Planificación en cola" : `Planificar esta conversación (${formatChord(getShortcut("plan"))})`} aria-label="Planificar esta conversación" className={iconButton}>
+          {!mobile && <button type="button" onClick={() => planning.mutate()} disabled={!canPlan} title={planQueued ? "Planificación en cola" : `Planificar esta conversación (${formatChord(getShortcut("plan"))})`} aria-label="Planificar esta conversación" className={iconButton}>
             <ClipboardText weight="regular" className="size-4" />
-          </button>
-          <DictationMic dictation={dictation} disabled={send.isPending} />
+          </button>}
+          <DictationMic round={mobile} dictation={dictation} disabled={send.isPending} />
           {busy && !asking && !outgoing && !files.length && !dictation.active ? (
             <button type="button" onClick={() => stop.mutate()} disabled={stop.isPending} title="Parar el turno en curso" aria-label="Parar"
-              className={iconButton}>
+              className={mobile ? mobileSendButton : iconButton}>
               <Stop weight="fill" className="size-3.5" />
             </button>
           ) : (
             <button type="submit" disabled={asking ? (!text.trim() && !files.some((file) => file.done) && !dictation.active) || reply.isPending || uploading || (dictating && !dictation.active) || dictation.phase === "finishing" : !canSend} title={asking ? "Responder (Enter)" : busy ? "Encolar (Enter) · Mandar ya (Ctrl+Enter)" : "Enviar (Enter)"} aria-label={asking ? "Responder" : "Enviar"}
-              className={iconButton}>
+              className={mobile ? mobileSendButton : iconButton}>
               {send.isPending || reply.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : busy && !asking ? <ListBullets weight="regular" className="block size-4" /> : <ArrowUp weight="regular" className="block size-4" />}
             </button>
           )}
         </div>
-        {Boolean(send.error || planning.error || settings.error || stop.error || dictation.error) && <div className="px-4 pb-2"><ErrorText error={send.error ?? planning.error ?? settings.error ?? stop.error ?? dictation.error} /></div>}
+        {errors}
       </form>
+      )}
     </div>
   );
 }
