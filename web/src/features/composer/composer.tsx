@@ -234,7 +234,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   return (
     <div className="relative mx-auto w-full max-w-[55.2rem] px-3 pb-4 pt-2 sm:px-6">
       {mobile ? (
-        <MobileComposer form={formProps} top={<>
+        <MobileComposer form={formProps} active={dictation.active || !!text} top={<>
         {secret ? <SecretPanel key={secret.id} request={secret} busy={answerSecret.isPending} error={answerSecret.error}
           onSend={(values) => answerSecret.mutate({ values })} onDecline={() => answerSecret.mutate({ decline: true })} />
           : asking && <QuestionPanel flow={flow} busy={reply.isPending} error={reply.error} />}
