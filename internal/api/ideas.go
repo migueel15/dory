@@ -9,14 +9,15 @@ import (
 func (s *Server) mountIdeas(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/ideas", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			ID        string  `json:"id"`
-			Text      string  `json:"text"`
-			ProjectID *string `json:"project_id"`
+			ID          string               `json:"id"`
+			Text        string               `json:"text"`
+			ProjectID   *string              `json:"project_id"`
+			Attachments []runtime.Attachment `json:"attachments"`
 		}
 		if !decode(w, r, &body) {
 			return
 		}
-		t, err := s.Ideas.Create(r.Context(), body.ID, body.Text, body.ProjectID)
+		t, err := s.Ideas.Create(r.Context(), body.ID, body.Text, body.ProjectID, body.Attachments)
 		if err != nil {
 			writeErr(w, r, err)
 			return

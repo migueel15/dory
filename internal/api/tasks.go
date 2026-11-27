@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/migueel15/dory/internal/app"
+	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/domain/board"
 )
@@ -99,6 +100,29 @@ func (s *Server) mountTasks(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/tasks/{id}/state", s.setTaskState)
 	mux.HandleFunc("GET /api/tasks/{id}/comments", s.listTaskComments)
 	mux.HandleFunc("POST /api/tasks/{id}/comments", s.commentTask)
+	mux.HandleFunc("POST /api/tasks/{id}/attachments", func(w http.ResponseWriter, r *http.Request) {
+		f, h, err := r.FormFile("file")
+		if err != nil {
+			writeErr(w, r, apperr.New(apperr.Invalid, "file is required"))
+			return
+		}
+		defer f.Close()
+		a, err := s.Runtime.SaveTaskAttachment(r.PathValue("id"), h.Filename, h.Header.Get("Content-Type"), f)
+		if err != nil {
+			writeErr(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, a)
+	})
+	mux.HandleFunc("GET /api/tasks/{id}/attachments/{file}", func(w http.ResponseWriter, r *http.Request) {
+		path, err := s.Runtime.TaskAttachmentPath(r.PathValue("id"), r.PathValue("file"))
+		if err != nil {
+			writeErr(w, r, err)
+			return
+		}
+		w.Header().Set("Cache-Control", "private, max-age=86400")
+		http.ServeFile(w, r, path)
+	})
 	mux.HandleFunc("GET /api/threads/{id}/pulls", s.listThreadPulls)
 	mux.HandleFunc("POST /api/threads/{id}/pulls", s.linkThreadPull)
 	mux.HandleFunc("DELETE /api/threads/{id}/pulls/{repository_id}/{number}", s.unlinkThreadPull)
