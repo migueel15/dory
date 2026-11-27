@@ -12,6 +12,8 @@ li .sub { color: var(--muted); font-size: 12px; font-family: ui-monospace, monos
 li .grow { flex: 1; min-width: 0; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
 .dot.on { background: #16a34a; }
+li.opening { border-color: var(--accent); opacity: .85; }
+.spinner { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); flex: none; animation: refresh-spin .7s linear infinite; }
 .forget { background: none; border: 0; color: var(--muted); font-size: 13px; padding: 6px; }
 form { display: grid; gap: 8px; }
 input { padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font-size: 16px; }

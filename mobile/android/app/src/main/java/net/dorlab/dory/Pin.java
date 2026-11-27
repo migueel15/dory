@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
@@ -22,6 +23,8 @@ import javax.net.ssl.X509TrustManager;
 final class Pin {
     /** host:port → pin of the node the app is talking to. */
     static final Map<String, String> byHost = new ConcurrentHashMap<>();
+    /** pin → reusable SSLSocketFactory for TLS session resumption and keep-alive. */
+    private static final Map<String, SSLSocketFactory> factories = new ConcurrentHashMap<>();
 
     static String of(X509Certificate cert) throws Exception {
         byte[] sum = MessageDigest.getInstance("SHA-256").digest(cert.getPublicKey().getEncoded());
@@ -48,6 +51,24 @@ final class Pin {
      */
     static HttpsURLConnection open(String url, String want, String[] seen) throws Exception {
         HttpsURLConnection c = (HttpsURLConnection) new java.net.URL(url).openConnection();
+        SSLSocketFactory sf;
+        if (want != null && seen == null) {
+            sf = factories.get(want);
+            if (sf == null) {
+                sf = createSocketFactory(want, null);
+                factories.put(want, sf);
+            }
+        } else {
+            sf = createSocketFactory(want, seen);
+        }
+        c.setSSLSocketFactory(sf);
+        c.setHostnameVerifier((h, s) -> true); // the pin, not the name, identifies the node
+        c.setConnectTimeout(4000);
+        c.setReadTimeout(15000);
+        return c;
+    }
+
+    private static SSLSocketFactory createSocketFactory(String want, String[] seen) throws Exception {
         X509TrustManager tm = new X509TrustManager() {
             public void checkClientTrusted(X509Certificate[] chain, String type) {}
             public void checkServerTrusted(X509Certificate[] chain, String type) throws CertificateException {
@@ -65,10 +86,6 @@ final class Pin {
         };
         SSLContext ctx = SSLContext.getInstance("TLS");
         ctx.init(null, new TrustManager[] { tm }, null);
-        c.setSSLSocketFactory(ctx.getSocketFactory());
-        c.setHostnameVerifier((h, s) -> true); // the pin, not the name, identifies the node
-        c.setConnectTimeout(4000);
-        c.setReadTimeout(15000);
-        return c;
+        return ctx.getSocketFactory();
     }
 }

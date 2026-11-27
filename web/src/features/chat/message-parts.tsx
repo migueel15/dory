@@ -1,4 +1,4 @@
-import { defaultUrlTransform, Md } from "../../components/ui";
+import { defaultUrlTransform, Md } from "../../components/markdown";
 import { TokenChip, tokenize, type TokenKind } from "../composer/composer-tokens";
 import { splitMessageQuotes } from "./message-quotes";
 import { CodeRefChip } from "./code-ref";

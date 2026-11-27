@@ -16,6 +16,7 @@ import android.os.Bundle;
 import android.webkit.PermissionRequest;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
@@ -33,6 +34,7 @@ public class MainActivity extends BridgeActivity {
     static final String NOTICE_NODE = "notice-node", NOTICE_URL = "notice-url";
     private PermissionRequest pendingPermission;
     private boolean mediaPromptOpen;
+    private AssetCache assetCache;
     private final ActivityResultLauncher<String[]> mediaPermissions = registerForActivityResult(
         new ActivityResultContracts.RequestMultiplePermissions(), this::finishMediaPermission);
 
@@ -131,6 +133,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(DoryPlugin.class);
         super.onCreate(savedInstanceState);
+        assetCache = new AssetCache(this);
         bridge.getWebView().addJavascriptInterface(new NoticeBridge(), "DoryAndroid");
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS);
@@ -167,6 +170,15 @@ public class MainActivity extends BridgeActivity {
                 String want = Pin.byHost.get(u.getHost() + ":" + u.getPort());
                 if (want != null && want.equals(Pin.of(error.getCertificate()))) handler.proceed();
                 else handler.cancel();
+            }
+
+            // Serve immutable /assets/* from local disk cache so Chromium's SSL
+            // error bypass does not force re-downloading them on every open.
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                WebResourceResponse cached = assetCache.intercept(request);
+                if (cached != null) return cached;
+                return super.shouldInterceptRequest(view, request);
             }
 
             // Links inside an open node stay in the app.

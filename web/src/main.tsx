@@ -1,7 +1,7 @@
 import { ChartBar,ChatsCircle,DotsThreeCircle,Gear,GithubLogo,House,IconContext,Kanban,Moon,SidebarSimple,SignOut,Sun,X } from "@phosphor-icons/react";
 import { QueryClient,QueryClientProvider,useQueryClient } from "@tanstack/react-query";
 import { Link,Outlet,RouterProvider,createRootRoute,createRoute,createRouter,lazyRouteComponent,redirect,useLocation,useNavigate } from "@tanstack/react-router";
-import { StrictMode,useEffect,useLayoutEffect,useRef,useState } from "react";
+import { StrictMode,Suspense,lazy,useEffect,useLayoutEffect,useRef,useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ApiError } from "./api/client";
 import { useLiveUpdates } from "./api/live";
@@ -15,14 +15,10 @@ import { listenShortcuts,useCommand } from "./components/shortcuts";
 import { TooltipHost } from "./components/tooltip";
 import { Button,Input,Label,errMsg } from "./components/ui";
 import { UsageQuick } from "./components/usage-quick";
-import { Tasks } from "./features/board/tasks";
-import { Github } from "./features/github/github";
-import { SettingsModal } from "./features/settings/settings-modal";
 import "./index.css";
 import { storage,storageKeys } from "./lib/storage";
 import { events } from "./lib/store";
 import { WindowClose,hasWindowClose } from "./lib/window-close";
-import { Environments,Memories,memorySearch } from "./pages/crud";
 import { Home } from "./pages/home";
 import { Threads,ThreadsHome } from "./pages/threads";
 import { applyUiFont } from "./lib/fonts";
@@ -135,6 +131,8 @@ function ThemeToggle() {
   );
 }
 
+const SettingsModal = lazy(() => import("./features/settings/settings-modal").then((m) => ({ default: m.SettingsModal })));
+
 function SettingsLink() {
   const [open, setOpen] = useState(false);
   return <>
@@ -142,7 +140,7 @@ function SettingsLink() {
       className="inline-flex min-h-11 items-center justify-center rounded-md px-3 py-1.5 hover:bg-slate-200 dark:hover:bg-raised sm:min-h-0">
       <Gear weight="duotone" className="size-5" aria-hidden="true" />
     </button>
-    {open && <SettingsModal onClose={() => setOpen(false)} />}
+    {open && <Suspense fallback={null}><SettingsModal onClose={() => setOpen(false)} /></Suspense>}
   </>;
 }
 
@@ -239,7 +237,23 @@ function Layout() {
       desktop.removeEventListener("change", closeOnDesktop);
     };
   }, [menu, !!me.data]);
-  if (me.isPending) return null;
+  if (me.isPending) {
+    return (
+      <div className="min-h-dvh bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex sm:h-screen sm:bg-white sm:dark:bg-surface" aria-busy="true">
+        {desktop && <aside className={`h-screen shrink-0 bg-white dark:bg-surface ${folded ? "w-14" : "w-56"}`} />}
+        <div className="min-w-0 flex-1 sm:my-2 sm:mr-2 sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">
+          {!desktop && (
+            <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2">
+              <div className="flex h-12 items-center gap-2 font-bold">Dory<DevBadge /></div>
+            </nav>
+          )}
+          <div className="grid min-h-[60dvh] place-items-center">
+            <p role="status" className="text-sm text-slate-500 dark:text-muted">Cargando…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (!me.data) return <Login />;
   const ico = "size-[1.125rem] shrink-0";
   // On desktop a link is 32 px tall with the icon 7 px in, so folded (32 px wide)
@@ -278,6 +292,7 @@ function Layout() {
   );
   return (
     <div className="min-h-dvh bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex sm:h-screen sm:bg-white sm:dark:bg-surface">
+      {desktop && (
       <aside className={`sticky top-0 hidden h-screen shrink-0 flex-col overflow-hidden bg-white transition-[width] duration-200 ease-out dark:bg-surface sm:flex ${folded ? "w-14" : "w-56"}`}>
         {/* The toggle sits first, centered on the icon column, so it never moves. */}
         <div className="flex w-56 items-center pl-3 pr-2">
@@ -295,6 +310,7 @@ function Layout() {
         <SidebarFooter folded={folded} username={me.data.username} onLogout={() => logout.mutate()} update={<MeshUpdateButton />}
           controls={[<NoticeInbox key="i" />, <NoticesToggle key="n" />, <ThemeToggle key="t" />, <SettingsLink key="settings" />, <UsageQuick key="u" />]} />
       </aside>
+      )}
       {/* On desktop the current view is a card framed by the sidebar background. */}
       <div className="min-w-0 flex-1 sm:my-2 sm:mr-2 sm:overflow-auto sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">
       <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2 sm:hidden">
@@ -332,18 +348,22 @@ function Layout() {
         </div>
         <div className="shrink-0 space-y-3 border-t border-slate-200 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-border">
           {/* Theme, settings and usage live here on phones so the top bar keeps room for the project. */}
-          <div className="flex items-center gap-1 [&>*]:flex [&>*]:flex-1 [&>*]:items-center [&>*]:justify-center">
-            <NoticeInbox />
-            <NoticesToggle />
-            <ThemeToggle />
-            <SettingsLink />
-            <UsageQuick />
-          </div>
-          <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 py-1 pl-3 pr-1 dark:border-border">
-            <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
-            <Button variant="bare" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => logout.mutate()}><SignOut weight="regular" className="size-5" aria-hidden="true" /></Button>
-          </div>
-          <VersionBadge />
+          {!desktop && menu && (
+            <>
+              <div className="flex items-center gap-1 [&>*]:flex [&>*]:flex-1 [&>*]:items-center [&>*]:justify-center">
+                <NoticeInbox />
+                <NoticesToggle />
+                <ThemeToggle />
+                <SettingsLink />
+                <UsageQuick />
+              </div>
+              <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 py-1 pl-3 pr-1 dark:border-border">
+                <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
+                <Button variant="bare" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => logout.mutate()}><SignOut weight="regular" className="size-5" aria-hidden="true" /></Button>
+              </div>
+              <VersionBadge />
+            </>
+          )}
         </div>
       </dialog>
       <main className={`mx-auto p-2 pb-[calc(0.5rem_+_var(--tabbar))] sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"} ${hasWindowClose && !path.startsWith("/threads") ? "sm:px-14" : ""}`}><Outlet /></main><WindowClose /></div>
@@ -362,20 +382,34 @@ function Layout() {
 // browser is idle (and on hover, see defaultPreload) to keep navigation instant.
 const pages = {
   thread: () => import("./features/thread/thread"),
+  tasks: () => import("./features/board/tasks"),
+  github: () => import("./features/github/github"),
   githubDetail: () => import("./features/github/github-detail"),
   usage: () => import("./pages/usage"),
   projects: () => import("./pages/projects"),
   skills: () => import("./pages/skills"),
+  crud: () => import("./pages/crud"),
 };
 const ThreadView = lazyRouteComponent(pages.thread, "ThreadView");
 const ExternalView = lazyRouteComponent(pages.thread, "ExternalView");
+const Tasks = lazyRouteComponent(pages.tasks, "Tasks");
+const Github = lazyRouteComponent(pages.github, "Github");
 const GithubView = lazyRouteComponent(pages.githubDetail, "GithubView");
 const Usage = lazyRouteComponent(pages.usage, "Usage");
 const Projects = lazyRouteComponent(pages.projects, "Projects");
 const ProjectDetail = lazyRouteComponent(pages.projects, "ProjectDetail");
 const Skills = lazyRouteComponent(pages.skills, "Skills");
+const Environments = lazyRouteComponent(pages.crud, "Environments");
+const Memories = lazyRouteComponent(pages.crud, "Memories");
+const memorySearch = (s: Record<string, unknown>) => ({ q: typeof s.q === "string" ? s.q : undefined, kind: typeof s.kind === "string" ? s.kind : undefined });
 const idle = (fn: () => void) => ("requestIdleCallback" in window ? window.requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 1500));
-idle(() => { for (const load of Object.values(pages)) load().catch(() => {}); });
+const skipIdlePrefetch =
+  window.matchMedia("(max-width: 639.98px)").matches ||
+  "DoryAndroid" in window ||
+  Boolean((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData);
+if (!skipIdlePrefetch) {
+  idle(() => { for (const load of Object.values(pages)) load().catch(() => {}); });
+}
 
 const root = createRootRoute({ component: Layout });
 // The threads section keeps its list on the left; home and each thread fill the middle.

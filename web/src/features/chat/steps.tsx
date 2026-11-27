@@ -1,7 +1,7 @@
 import { Brain,CaretDown,CaretRight,ChatText,Question as QuestionIcon,TerminalWindow,Wrench } from "@phosphor-icons/react";
 import { useEffect,useState } from "react";
 import { type Message } from "../../api/client";
-import { Md } from "../../components/ui";
+import { Md } from "../../components/markdown";
 import { t } from "../../i18n/es";
 import { htmlRef } from "./html-card";
 import { NativeQuestionCard,QuestionCard } from "./question-card";

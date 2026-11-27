@@ -3,7 +3,7 @@ import { useShortcuts } from "../../components/shortcuts";
 import { formatChord } from "../composer/dictation-shortcut";
 import { hasWindowClose } from "../../lib/window-close";
 import { ContextMenu } from "../../components/context-menu";
-import { ResizeHandle } from "./thread";
+import { ResizeHandle } from "../../components/resize-handle";
 import { Browser, ClipboardText, DeviceMobile, GitDiff, Plus, SidebarSimple, TerminalWindow, X } from "@phosphor-icons/react";
 import { useHasUnseen } from "../../lib/terminal/activity";
 import { events } from "../../lib/store";

@@ -251,7 +251,7 @@ func (m *Mesh) Serve(ctx context.Context) error {
 				}
 				return &m.id.DeviceCert, nil
 			},
-			NextProtos: []string{"http/1.1"},
+			NextProtos: []string{"h2", "http/1.1"},
 			ClientAuth: tls.RequestClientCert,
 			MinVersion: tls.VersionTLS13,
 		},

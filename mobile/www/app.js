@@ -7,6 +7,7 @@ const PORT = 7710;
 const CAPTURE_NODE = "dory.capture-node";
 
 let saved = JSON.parse(localStorage.getItem(KEY) || "[]");
+let openingId = null;
 const online = new Map(); // id → reachable now
 const localFound = new Map(); // id → anuncio reciente de la red local
 const meshFound = new Map(); // nodo emparejado → última lista de pares conectados
@@ -186,14 +187,17 @@ function render() {
   list.replaceChildren();
   $("none").hidden = saved.length > 0;
   for (const env of saved) {
-    const li = el("li");
-    li.append(el("span", "dot" + (online.get(env.id) ? " on" : "")));
+    const isOpening = openingId === env.id;
+    const li = el("li", isOpening ? "opening" : null);
+    li.append(el("span", isOpening ? "spinner" : "dot" + (online.get(env.id) ? " on" : "")));
     const text = el("div", "grow");
-    text.append(el("div", "name", env.name), el("div", "sub", env.address));
+    text.append(el("div", "name", env.name), el("div", "sub", isOpening ? "Conectando…" : env.address));
     li.append(text);
     const forget = el("button", "forget", "Olvidar");
+    forget.disabled = Boolean(openingId);
     forget.onclick = (e) => {
       e.stopPropagation();
+      if (openingId) return;
       if (!confirm(`¿Olvidar ${env.name}? Tendrás que emparejarlo de nuevo.`)) return;
       Dory.forget({ address: env.address });
       saved = saved.filter((s) => s.id !== env.id);
@@ -244,13 +248,25 @@ function render() {
 }
 
 async function open(env) {
+  if (openingId) return;
+  openingId = env.id;
   $("open-error").textContent = "";
+  render();
   try {
     await Dory.open({ address: env.address, pin: env.pin, token: env.token });
   } catch (e) {
+    openingId = null;
     $("open-error").textContent = `${env.name}: ${e.message}`;
+    render();
   }
 }
+
+window.addEventListener("pageshow", () => {
+  if (openingId) {
+    openingId = null;
+    render();
+  }
+});
 
 // check sees whether a paired node answers and learns the other nodes of its
 // mesh, whose addresses also work from outside home through Tailscale.

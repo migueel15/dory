@@ -8,7 +8,7 @@ import { useProjectBranches,useProjectWorktrees } from "../api/queries/threads";
 import { useCommand,useShortcuts } from "../components/shortcuts";
 import { ErrorText,iconButton } from "../components/ui";
 import { modelEffort,modelId } from "../effort";
-import { composerArea,composerFrame } from "../features/composer/composer";
+import { composerArea,composerFrame } from "../features/composer/composer-styles";
 import { useComposerFiles } from "../features/composer/composer-files";
 import { formatChord } from "../features/composer/dictation-shortcut";
 import { DictationMic,DictationPreview } from "../features/composer/dictation-ui";

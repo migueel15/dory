@@ -92,6 +92,8 @@ type Manager struct {
 	// failed catalog read never falls back to the short built-in list.
 	catalogs   map[string][]Model
 	detectedAt time.Time
+	refreshing bool
+	detectGen  uint64
 }
 
 func NewManager(db *sql.DB, store *data.Store, node, dataDir string, state *nodestate.Store, pool *procpool.Pool, providers ...Provider) *Manager {
@@ -178,15 +180,43 @@ func (m *Manager) Recover(ctx context.Context) error {
 }
 
 // Providers reports the harnesses of this machine, with their session. The
-// answer is cached for a minute: detecting runs each harness.
+// answer is cached for a minute: detecting runs each harness. Once warm, stale
+// entries are returned immediately while a single background goroutine refreshes.
 func (m *Manager) Providers(ctx context.Context) []Status {
 	m.mu.Lock()
-	if m.detected != nil && time.Since(m.detectedAt) < time.Minute {
+	if m.detected != nil {
 		out := m.detected
+		if time.Since(m.detectedAt) >= time.Minute && !m.refreshing {
+			m.refreshing = true
+			gen := m.detectGen
+			go func() {
+				rctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				fresh := m.detectProviders(rctx)
+				m.mu.Lock()
+				if m.detectGen == gen {
+					m.detected, m.detectedAt = fresh, time.Now()
+				}
+				m.refreshing = false
+				m.mu.Unlock()
+			}()
+		}
 		m.mu.Unlock()
 		return out
 	}
+	gen := m.detectGen
 	m.mu.Unlock()
+
+	out := m.detectProviders(ctx)
+	m.mu.Lock()
+	if m.detectGen == gen {
+		m.detected, m.detectedAt = out, time.Now()
+	}
+	m.mu.Unlock()
+	return out
+}
+
+func (m *Manager) detectProviders(ctx context.Context) []Status {
 	out := make([]Status, 0)
 	home, _ := os.UserHomeDir()
 	for _, p := range m.registry.All() {
@@ -212,9 +242,6 @@ func (m *Manager) Providers(ctx context.Context) []Status {
 		}
 		out = append(out, st)
 	}
-	m.mu.Lock()
-	m.detected, m.detectedAt = out, time.Now()
-	m.mu.Unlock()
 	return out
 }
 
@@ -222,6 +249,7 @@ func (m *Manager) Providers(ctx context.Context) []Status {
 func (m *Manager) invalidate() {
 	m.mu.Lock()
 	m.detected = nil
+	m.detectGen++
 	m.mu.Unlock()
 }
 
