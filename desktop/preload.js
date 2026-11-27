@@ -17,6 +17,7 @@ const listen = (channel, cb) => {
 contextBridge.exposeInMainWorld("doryDesktop", {
   platform: process.platform,
   setZoom: (factor) => webFrame.setZoomFactor(Number(factor) || 1),
+  hide: () => ipcRenderer.send("window:hide"),
   onUpdateProgress: (cb) => listen("update:progress", cb),
   // The thread browser: native views of tabs and the tunnel to remote nodes.
   browser: {

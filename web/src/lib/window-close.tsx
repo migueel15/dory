@@ -1,7 +1,7 @@
 import { X } from "@phosphor-icons/react";
 
 declare global {
-  interface Window { doryDesktop?: { platform: string; setZoom?: (factor: number) => void; browser?: DesktopBrowser } }
+  interface Window { doryDesktop?: { platform: string; setZoom?: (factor: number) => void; hide?: () => void; browser?: DesktopBrowser } }
   // DesktopBrowser is the bridge to the native views of the thread browser
   // (desktop/preload.js); bounds are CSS pixels of the interface.
   type CookieImportSettings = { source: string; auto: boolean };
@@ -43,7 +43,7 @@ export const windowCloseInset = hasWindowClose ? "sm:pr-12" : "";
 export function WindowClose() {
   if (!hasWindowClose) return null;
   return (
-    <button type="button" onClick={() => window.close()} title="Cerrar la ventana" aria-label="Cerrar la ventana"
+    <button type="button" onClick={() => (window.doryDesktop?.hide ? window.doryDesktop.hide() : window.close())} title="Cerrar la ventana" aria-label="Cerrar la ventana"
       className="m-0.5 grid size-7 place-items-center rounded-full bg-slate-200/80 text-slate-600 transition-[background-color,color,transform] duration-150 hover:bg-slate-300/80 hover:text-slate-900 active:scale-95 dark:bg-raised dark:text-text-secondary dark:hover:bg-hover dark:hover:text-white">
       <X weight="bold" className="size-3.5" />
     </button>
