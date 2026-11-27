@@ -221,8 +221,10 @@ func (m *LocalModels) startWorker(bin string, model localModel, worker *nemoWork
 	port := fmt.Sprint(listener.Addr().(*net.TCPAddr).Port)
 	listener.Close()
 	worker.address = &url.URL{Scheme: "http", Host: "127.0.0.1:" + port}
+	// The limit also counts all audio of a live session: 64 MiB is ~35 min at
+	// 16 kHz. The batch endpoint keeps its own 12 MiB check.
 	cmd := cmdexec.CommandContext(m.ctx, bin, "serve", "--host", "127.0.0.1", "--port", port,
-		"--asr-model", m.path(model), "--no-ui", "--max-upload-mb", "12", "--api-key", worker.token)
+		"--asr-model", m.path(model), "--no-ui", "--max-upload-mb", "64", "--api-key", worker.token)
 	cmd.Stderr = os.Stderr
 	if err = cmd.Start(); err != nil {
 		worker.err = err

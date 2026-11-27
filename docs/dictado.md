@@ -13,6 +13,8 @@ En **Ajustes → Atajos**, descarga el modelo y marca **Usar modelo**. La prefer
 - **Parakeet TDT 0.6B v3:** inserta el texto al detener la grabación.
 - **Nemotron Streaming 3.5 0.6B:** inserta una vista previa mientras hablas y completa la transcripción al detener la grabación.
 
+Con Nemotron el dictado dura hasta 30 minutos y con Parakeet hasta 5; al llegar al límite termina como si lo detuvieras y se inserta el texto.
+
 Pulsa el micrófono en el inicio, dentro de un hilo o al redactar una respuesta a una cita. También está disponible en comentarios de revisión y campos de texto libre como ideas, descripciones y planes. Al terminar puedes editar el texto antes de enviarlo o guardarlo.
 
 Un tono breve ascendente indica que el micrófono ya está grabando. Un tono descendente indica que ha dejado de grabar y empieza a finalizar la transcripción.

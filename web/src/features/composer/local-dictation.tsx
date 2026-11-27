@@ -263,7 +263,7 @@ export function useLocalDictation(text: string, setText: (text: string) => void,
             reject(new Error("Dictado cancelado."));
           }, { once: true });
           socket.onopen = () => socket.send(JSON.stringify({
-            type: "session.update", session: { sample_rate: context.sampleRate, language: "es-ES" },
+            type: "session.update", session: { sample_rate: 16000, language: "es-ES" },
           }));
           socket.onmessage = ({ data }) => {
             if (current.current !== session) return;
@@ -300,7 +300,7 @@ export function useLocalDictation(text: string, setText: (text: string) => void,
             end(session, undefined, new Error("El modelo no puede seguir el ritmo del micrófono."));
             return;
           }
-          session.socket.send(pcm16(samples));
+          session.socket.send(pcm16(resample(samples, context.sampleRate)));
         } else {
           session.recording.push(resample(samples, context.sampleRate));
         }
@@ -308,7 +308,8 @@ export function useLocalDictation(text: string, setText: (text: string) => void,
       };
       source.connect(processor);
       processor.connect(context.destination);
-      session.timeout = window.setTimeout(() => void finish(session), 5 * 60 * 1000);
+      // Live dictation ends like a stop at 30 min (the session lifetime); a batch at 5 min.
+      session.timeout = window.setTimeout(() => void finish(session), (session.socket ? 30 : 5) * 60 * 1000);
       session.phase = "recording";
       setPhase("recording");
       playDictationSound("start");
