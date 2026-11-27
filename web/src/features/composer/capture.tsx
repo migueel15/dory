@@ -1,21 +1,15 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect,useLayoutEffect,useRef,useState } from "react";
-import { api } from "../../api/client";
 import { useProjects } from "../../api/queries/hooks";
 import { qk } from "../../api/queries/keys";
 import { useCreateIdea } from "../../api/queries/tasks";
 import { Button,ErrorText,Modal,Select,Textarea,uuid } from "../../components/ui";
 import { useProject } from "../../project";
+import { useComposerFiles } from "./composer-files";
 import { autosizeTextarea } from "./composer-styles";
 import { DictationMic,DictationPreview,useEnterFinishesDictation } from "./dictation-ui";
 import { useDictationInProgress,useLocalDictation } from "./local-dictation";
-
-// createIdea saves raw text as an inbox task. The server gives it a
-// provisional title and may replace it with one written by the title model.
-function createIdea(id: string, raw: string, projectId: string) {
-  return api.createIdea({ id, text: raw, project_id: projectId || null });
-}
 
 // IdeaCapture is the quick way to drop ideas in the inbox (requirement RF-29): a large text box, the project and two save actions.
 export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, projectId }: { onDone?: () => void; focusOnSlash?: boolean; autoFocus?: boolean; projectId?: string }) {
@@ -29,15 +23,17 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
   // Follow the global filter when it changes; a manual pick only affects this entry.
   useEffect(() => { setProject(projectId || current); }, [projectId, current]);
   const box = useRef<HTMLTextAreaElement>(null);
+  const attach = useComposerFiles();
   const dictation = useLocalDictation(text, setText, box);
   useEnterFinishesDictation(dictation, box);
   const dictating = useDictationInProgress();
   const showingDictation = !!dictation.preview;
   const picker = useRef<HTMLButtonElement>(null);
   const projects = useProjects();
-  const save = useCreateIdea<{ id: string; raw: string; define: boolean }>(project, {
+  const save = useCreateIdea<{ id: string; raw: string; files: File[]; define: boolean }>(project, {
     onSuccess: (item, { define }) => {
       setText("");
+      attach.clear();
       qc.invalidateQueries({ queryKey: qk.board() });
       if (define || !keepOpen) onDone?.();
       else focusAfterSave.current = true;
@@ -50,7 +46,8 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
       box.current?.focus();
     }
   }, [save.isPending]);
-  const submit = (define: boolean) => { if (text.trim() && !save.isPending && !dictating) save.mutate({ id: uuid(), raw: text.trim(), define }); };
+  const canSubmit = Boolean((text.trim() || attach.files.length > 0) && !save.isPending && !dictating);
+  const submit = (define: boolean) => { if (canSubmit) save.mutate({ id: uuid(), raw: text.trim(), files: attach.files.map((f) => f.file), define }); };
   // Grow with the content.
   useLayoutEffect(() => {
     const el = box.current;
@@ -71,7 +68,8 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
     else if (e.altKey && e.code === "KeyP") { e.preventDefault(); picker.current?.focus(); picker.current?.click(); }
   };
   return (
-    <div data-dictation-panel className="space-y-3">
+    <div data-dictation-panel className="space-y-3" {...attach.formProps}>
+      {attach.tray}
       {dictation.preview && <DictationPreview value={dictation.value} range={dictation.preview} className="min-h-40 !px-0 !pt-0 !text-base" />}
       <Textarea bare ref={box} autoFocus={autoFocus} rows={4} value={dictation.value} readOnly={dictation.active} onChange={(e) => setText(e.target.value)} onKeyDown={onKeyDown} disabled={save.isPending} aria-label="Nueva idea"
         placeholder="Apunta una idea; queda en el inbox de tareas."
@@ -88,10 +86,11 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
         </div>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           <div className="flex items-center gap-2">
+            {attach.attachButton}
             <DictationMic dictation={dictation} disabled={save.isPending} />
-            <Button type="button" disabled={!text.trim() || save.isPending || dictating} onClick={() => submit(false)} title="Guardar en inbox">Guardar en inbox<Kbd inverse>Ctrl ↵</Kbd></Button>
+            <Button type="button" disabled={!canSubmit} onClick={() => submit(false)} title="Guardar en inbox">Guardar en inbox<Kbd inverse>Ctrl ↵</Kbd></Button>
           </div>
-          <Button type="button" variant="ghost" disabled={!text.trim() || save.isPending || dictating} onClick={() => submit(true)} title="Guardar y definir">Guardar y definir<Kbd>Ctrl ⇧ ↵</Kbd></Button>
+          <Button type="button" variant="ghost" disabled={!canSubmit} onClick={() => submit(true)} title="Guardar y definir">Guardar y definir<Kbd>Ctrl ⇧ ↵</Kbd></Button>
         </div>
       </div>
       <ErrorText error={save.error ?? dictation.error} />

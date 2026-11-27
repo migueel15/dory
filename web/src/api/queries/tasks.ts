@@ -23,5 +23,8 @@ export const useLaunchTask = <V = void>(id: string, body: (v: V) => Parameters<t
 export const useAcceptPlan = (task: string, o?: MOpts<Of<typeof api.acceptPlan>, void>) => useCall(() => api.acceptPlan(task), o);
 export const useIssueTask = (repo: string, number: number, body: Parameters<typeof api.issueTask>[2], o?: MOpts<Of<typeof api.issueTask>, void>) =>
   useCall(() => api.issueTask(repo, number, body), o);
-export const useCreateIdea = <V extends { id: string; raw: string }>(project: string, o?: MOpts<Of<typeof api.createIdea>, V>) =>
-  useCall(({ id, raw }: V) => api.createIdea({ id, text: raw, project_id: project || null }), o);
+export const useCreateIdea = <V extends { id: string; raw: string; files?: File[] }>(project: string, o?: MOpts<Of<typeof api.createIdea>, V>) =>
+  useCall(async ({ id, raw, files }: V) => {
+    const attachments = files?.length ? await Promise.all(files.map((file) => api.uploadTaskAttachment(id, file))) : undefined;
+    return api.createIdea({ id, text: raw, project_id: project || null, attachments });
+  }, o);

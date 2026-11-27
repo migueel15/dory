@@ -1,13 +1,18 @@
-import { get, post, put, del, resource } from "./http";
-import type { Card, Column, Dependency, Hit, Task } from "./types.gen";
+import { get, post, put, del, resource, upload } from "./http";
+import type { Attachment, Card, Column, Dependency, Hit, Task } from "./types.gen";
 import type { Launch } from "./threads";
 
 export type TaskInput = Partial<Task> & { title?: string };
 
 export const tasksApi = {
   tasks: resource<Task, TaskInput>("/tasks"),
-  // createIdea saves the text of «Nueva idea»; the server may retitle it in the background.
-  createIdea: (body: { id: string; text: string; project_id: string | null }) => post<Task>("/ideas", body),
+  // createIdea saves the text (and optional attachments) of «Nueva idea»; the server may retitle it in the background.
+  createIdea: (body: { id: string; text: string; project_id: string | null; attachments?: Attachment[] }) => post<Task>("/ideas", body),
+  uploadTaskAttachment: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return upload<Attachment>(`/tasks/${id}/attachments`, form);
+  },
   board: (project?: string) => get<{ columns: Column[]; cards: Card[] }>(`/board${project ? `?project=${project}` : ""}`),
   card: (id: string) => get<Card>(`/tasks/${id}/card`),
   dependencies: (id: string) => get<Dependency[]>(`/tasks/${id}/dependencies`),

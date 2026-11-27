@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/harness/kit"
 	"github.com/migueel15/dory/internal/runtime"
 )
 
@@ -32,10 +34,10 @@ type Ideas struct {
 // Create saves an idea with a provisional title and, if a title model is
 // set, asks it in the background for a concise title. Saving the same id
 // again returns the task already saved.
-func (a *Ideas) Create(ctx context.Context, id, text string, projectID *string) (data.Task, error) {
+func (a *Ideas) Create(ctx context.Context, id, text string, projectID *string, attachments []runtime.Attachment) (data.Task, error) {
 	text = strings.TrimSpace(text)
-	if id == "" || text == "" {
-		return data.Task{}, apperr.New(apperr.Invalid, "the idea needs an id and text").With("reason", "idea_incomplete")
+	if id == "" || (text == "" && len(attachments) == 0) {
+		return data.Task{}, apperr.New(apperr.Invalid, "the idea needs an id and text or attachments").With("reason", "idea_incomplete")
 	}
 	if _, busy := a.inFlight.LoadOrStore(id, true); busy {
 		return data.Task{}, apperr.New(apperr.InProgress, "the idea is already being saved")
@@ -49,7 +51,15 @@ func (a *Ideas) Create(ctx context.Context, id, text string, projectID *string) 
 	if projectID != nil && *projectID == "" {
 		projectID = nil
 	}
-	t, err := a.Store.Tasks().Create(ctx, data.Task{ID: id, ProjectID: projectID, Title: provisionalTitle(text), Description: text, Stage: "inbox"})
+	title := provisionalTitle(text)
+	if title == "" && len(attachments) > 0 {
+		title = provisionalTitle(attachments[0].Name)
+		if title == "" {
+			title = "Adjunto"
+		}
+	}
+	description := ideaDescription(id, text, attachments)
+	t, err := a.Store.Tasks().Create(ctx, data.Task{ID: id, ProjectID: projectID, Title: title, Description: description, Stage: "inbox"})
 	if errors.Is(err, data.ErrConflict) {
 		if existing, getErr := a.Store.Tasks().Get(ctx, id); getErr == nil {
 			return existing, nil
@@ -58,18 +68,52 @@ func (a *Ideas) Create(ctx context.Context, id, text string, projectID *string) 
 	if err != nil {
 		return data.Task{}, err
 	}
-	if m := a.Titles.TitleModel(); m.Provider != "" {
-		go a.title(context.WithoutCancel(ctx), t, m)
+	if text != "" {
+		if m := a.Titles.TitleModel(); m.Provider != "" {
+			go a.title(context.WithoutCancel(ctx), t, text, m)
+		}
 	}
 	return t, nil
 }
 
+// ideaDescription combines the idea text with its attachments so both the UI
+// (inline image previews and download links) and agents (local file paths) get
+// full context.
+func ideaDescription(taskID, text string, attachments []runtime.Attachment) string {
+	if len(attachments) == 0 {
+		return text
+	}
+	var b strings.Builder
+	if text != "" {
+		b.WriteString(text)
+		b.WriteString("\n\n")
+	}
+	b.WriteString(kit.AttachmentFooter)
+	for _, f := range attachments {
+		url := fmt.Sprintf("/api/tasks/%s/attachments/%s", taskID, f.ID)
+		if f.Path != "" {
+			fmt.Fprintf(&b, "\n- %s (%s)", f.Path, f.Name)
+		} else {
+			fmt.Fprintf(&b, "\n- [%s](%s)", f.Name, url)
+		}
+	}
+	for _, f := range attachments {
+		url := fmt.Sprintf("/api/tasks/%s/attachments/%s", taskID, f.ID)
+		if strings.HasPrefix(f.Mime, "image/") {
+			fmt.Fprintf(&b, "\n\n![%s](%s)", f.Name, url)
+		} else if f.Path != "" {
+			fmt.Fprintf(&b, "\n\n[%s](%s)", f.Name, url)
+		}
+	}
+	return b.String()
+}
+
 // titleIdea asks the title model for a title and applies it only if it is
 // valid, arrives in time and the title was not edited meanwhile.
-func (a *Ideas) title(ctx context.Context, t data.Task, m runtime.TitleModel) {
+func (a *Ideas) title(ctx context.Context, t data.Task, sourceText string, m runtime.TitleModel) {
 	ctx, cancel := context.WithTimeout(ctx, titleTimeout)
 	defer cancel()
-	answer, err := a.Titles.OneShot(ctx, m.Provider, m.Model, titlePrompt(t.Description))
+	answer, err := a.Titles.OneShot(ctx, m.Provider, m.Model, titlePrompt(sourceText))
 	if err != nil {
 		log.Printf("ideas: title of %s: %v", t.ID, err)
 		return

@@ -25,7 +25,18 @@ const maxAttachment = 25 << 20
 
 // SaveAttachment stores an uploaded file of a thread.
 func (m *Manager) SaveAttachment(threadID, name, mime string, r io.Reader) (Attachment, error) {
-	dir := filepath.Join(m.dataDir, "attachments", threadID)
+	return m.saveAttachment(filepath.Join(m.dataDir, "attachments", threadID), name, mime, r)
+}
+
+// SaveTaskAttachment stores an uploaded file of a task or idea.
+func (m *Manager) SaveTaskAttachment(taskID, name, mime string, r io.Reader) (Attachment, error) {
+	if strings.ContainsAny(taskID, `/\.`) || taskID == "" {
+		return Attachment{}, apperr.New(apperr.Invalid, "invalid task id")
+	}
+	return m.saveAttachment(filepath.Join(m.dataDir, "attachments", "tasks", taskID), name, mime, r)
+}
+
+func (m *Manager) saveAttachment(dir, name, mime string, r io.Reader) (Attachment, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return Attachment{}, err
 	}
@@ -54,10 +65,22 @@ func (m *Manager) SaveAttachment(threadID, name, mime string, r io.Reader) (Atta
 
 // AttachmentPath finds a stored file of a thread by its id.
 func (m *Manager) AttachmentPath(threadID, id string) (string, error) {
+	return m.attachmentPath(filepath.Join(m.dataDir, "attachments", threadID), id)
+}
+
+// TaskAttachmentPath finds a stored file of a task by its id.
+func (m *Manager) TaskAttachmentPath(taskID, id string) (string, error) {
+	if strings.ContainsAny(taskID, `/\.`) || taskID == "" {
+		return "", ErrNotFound
+	}
+	return m.attachmentPath(filepath.Join(m.dataDir, "attachments", "tasks", taskID), id)
+}
+
+func (m *Manager) attachmentPath(dir, id string) (string, error) {
 	if strings.ContainsAny(id, `/\.`) || id == "" {
 		return "", ErrNotFound
 	}
-	files, _ := filepath.Glob(filepath.Join(m.dataDir, "attachments", threadID, id+"-*"))
+	files, _ := filepath.Glob(filepath.Join(dir, id+"-*"))
 	if len(files) == 0 {
 		return "", ErrNotFound
 	}
