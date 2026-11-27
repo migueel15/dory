@@ -25,12 +25,14 @@ type Repository struct {
 	ArchivedAt    *string `json:"archived_at"`
 }
 
-// Task is one piece of work with its branch and pull request. Stage keeps what
-// the user decides before work starts: inbox, ready or cancelled.
+// Task is one piece of work, either internal or backed by an external issue.
+// Stage keeps manual decisions: inbox, ready, done or cancelled (or "" for external).
 type Task struct {
 	ID           string  `json:"id"`
+	Source       string  `json:"source"`
 	ProjectID    *string `json:"project_id"`
 	RepositoryID *string `json:"repository_id"`
+	Number       *int64  `json:"number"`
 	Title        string  `json:"title"`
 	Description  string  `json:"description"`
 	Stage        string  `json:"stage"`
@@ -38,6 +40,18 @@ type Task struct {
 	IssueNumber  *int64  `json:"issue_number"`
 	PRNumber     *int64  `json:"pr_number"`
 	Position     string  `json:"position"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
+	ArchivedAt   *string `json:"archived_at"`
+}
+
+// ThreadPull links a thread to a pull request in a repository.
+type ThreadPull struct {
+	ThreadID     string  `json:"thread_id"`
+	RepositoryID string  `json:"repository_id"`
+	Number       int64   `json:"number"`
+	Branch       string  `json:"branch"`
+	LinkedBy     string  `json:"linked_by"`
 	CreatedAt    string  `json:"created_at"`
 	UpdatedAt    string  `json:"updated_at"`
 	ArchivedAt   *string `json:"archived_at"`

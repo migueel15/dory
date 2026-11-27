@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"strconv"
 	"strings"
 
 	"github.com/migueel15/dory/internal/data"
@@ -157,11 +156,7 @@ func (a *Projects) IssueTask(ctx context.Context, repo string, number int, title
 	}
 	for _, rp := range repos {
 		if name, ok := github.ParseRemote(rp.RemoteURL); ok && strings.EqualFold(name, repo) {
-			n := int64(number)
-			if title == "" {
-				title = "Issue #" + strconv.Itoa(number)
-			}
-			return a.Store.Tasks().Create(ctx, data.Task{ProjectID: &rp.ProjectID, RepositoryID: &rp.ID, IssueNumber: &n, Title: title, Description: description})
+			return a.Store.EnsureExternalTask(ctx, &rp.ProjectID, rp.ID, int64(number))
 		}
 	}
 	return data.Task{}, data.ErrNotFound.Msgf("repository not registered: %s", repo)

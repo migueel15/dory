@@ -8,8 +8,7 @@ import (
 	"github.com/migueel15/dory/internal/schema"
 )
 
-// AcceptPlan marks the supplied plan version accepted and moves its task
-// from inbox to ready in the same transaction.
+// AcceptPlan marks the supplied plan version accepted without modifying task.stage.
 func (s *Store) AcceptPlan(ctx context.Context, p Plan) (Task, Plan, error) {
 	var task Task
 	var plan Plan
@@ -21,13 +20,7 @@ func (s *Store) AcceptPlan(ctx context.Context, p Plan) (Task, Plan, error) {
 		if err != nil {
 			return err
 		}
-		tasks := s.Tasks()
-		task, err = tasks.get(ctx, tx, plan.TaskID, false)
-		if err != nil || task.Stage != "inbox" {
-			return err
-		}
-		taskSpec, _ := schema.Lookup("task")
-		task, err = tasks.patchTx(ctx, tx, taskSpec, task.ID, nil, Fields{"stage": "ready"})
+		task, err = s.Tasks().get(ctx, tx, plan.TaskID, false)
 		return err
 	})
 	if err != nil {

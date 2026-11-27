@@ -98,13 +98,13 @@ func TestFinishTask(t *testing.T) {
 		if _, err := s.Tasks.Patch(ctx, task.ID, nil, data.Fields{"stage": task.Stage}); err != nil {
 			t.Fatal(err)
 		}
-		if got := archived(t, s, th.ID); got != on {
-			t.Errorf("opción %v: archivado = %v", on, got)
+		// Auto-archiving on finish is disabled (archiving is manual only).
+		if got := archived(t, s, th.ID); got {
+			t.Errorf("opción %v: archivado = %v, expected false", on, got)
 		}
-		// Idempotente: una segunda llamada no falla ni duplica trabajo.
 		s.Tasks.FinishTask(ctx, task.ID)
-		if got := archived(t, s, th.ID); got != on {
-			t.Errorf("opción %v tras repetir: archivado = %v", on, got)
+		if got := archived(t, s, th.ID); got {
+			t.Errorf("opción %v tras repetir: archivado = %v, expected false", on, got)
 		}
 	}
 }

@@ -51,10 +51,18 @@ func (m *Manager) threadContext(ctx context.Context, t data.Thread, dir string) 
 		return strings.Join(lines, "\n")
 	}
 	line := fmt.Sprintf("- Task %s: %s. Stage %s", task.ID, task.Title, task.Stage)
-	if task.IssueNumber != nil {
+	if task.Number != nil {
+		line += fmt.Sprintf(", issue #%d", *task.Number)
+	} else if task.IssueNumber != nil {
 		line += fmt.Sprintf(", issue #%d", *task.IssueNumber)
 	}
-	if task.PRNumber != nil {
+	if pulls, err := m.store.ThreadPulls().ListByThread(ctx, t.ID); err == nil && len(pulls) > 0 {
+		nums := make([]string, 0, len(pulls))
+		for _, p := range pulls {
+			nums = append(nums, fmt.Sprintf("#%d", p.Number))
+		}
+		line += ", pull requests " + strings.Join(nums, ", ")
+	} else if task.PRNumber != nil {
 		line += fmt.Sprintf(", pull request #%d", *task.PRNumber)
 	}
 	if task.Branch != "" {

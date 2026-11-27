@@ -89,6 +89,9 @@ func TaskBranch(t data.Task) string {
 	if slug == "" {
 		slug = "tarea"
 	}
+	if t.Number != nil {
+		return fmt.Sprintf("feat/%d-%s", *t.Number, slug)
+	}
 	if t.IssueNumber != nil {
 		return fmt.Sprintf("feat/%d-%s", *t.IssueNumber, slug)
 	}

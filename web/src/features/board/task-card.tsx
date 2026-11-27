@@ -184,6 +184,14 @@ export function ThreadRow({ threads }: { threads: Thread[] }) {
   );
 }
 
+const NEEDS_YOU_REASON: Record<string, string> = {
+  waiting_thread: "Hilo esperando respuesta",
+  error_thread: "Hilo con error",
+  ci_failed: "CI fallido",
+  changes_requested: "Cambios pedidos",
+  issue_open_pulls_merged: "Issue abierta con PRs mergeadas",
+};
+
 // TaskCard has the height its content needs. Every row is separated by the same gap, and the footer divider uses the card's border color.
 export function TaskCard({ c, onOpen, onDrag, onMenu }: { c: Card; onOpen: () => void; onDrag: () => void; onMenu: (x: number, y: number) => void }) {
   const s = slot(c);
@@ -193,26 +201,56 @@ export function TaskCard({ c, onOpen, onDrag, onMenu }: { c: Card; onOpen: () =>
   const activity = useThreadActivity(working?.id);
   const merge = c.column === "ready_to_merge" && !!c.pull;
   const repo = c.pull?.repo ?? c.repo;
+  const issueNum = c.number ?? c.issue_number;
+  const pulls = c.pulls ?? [];
+  const mergedCount = pulls.filter((p) => p.state === "merged").length;
+  const reasonText = c.column === "needs_you" && c.reason ? NEEDS_YOU_REASON[c.reason] : undefined;
   return (
     <div draggable onDragStart={onDrag} onClick={onOpen} onContextMenu={(e) => { e.preventDefault(); onMenu(e.clientX, e.clientY); }}
       className={`flex shrink-0 cursor-grab flex-col overflow-hidden rounded-lg border border-slate-300 text-sm shadow-sm dark:border-white/10 dark:shadow-black/40 ${c.column === "needs_you" ? "bg-red-50 dark:bg-red-950/30" : "bg-white dark:bg-raised"}`}>
       <div className="flex flex-col gap-2 p-2.5">
         <div className="flex items-start gap-2">
           <span className="mt-0.5 grid size-4 shrink-0 place-items-center" title={s.label} aria-label={s.label}>{s.icon}</span>
-          <span className="line-clamp-2 min-w-0 font-semibold leading-tight">{c.title}</span>
+          <span className="line-clamp-2 min-w-0 font-semibold leading-tight">
+            {c.source === "github" && issueNum ? <span className="mr-1 font-mono text-xs font-normal text-slate-500 dark:text-muted">#{issueNum}</span> : null}
+            {c.title}
+          </span>
         </div>
         {where && <p className="flex items-center gap-2 text-xs text-slate-500 dark:text-muted"><GitBranch aria-hidden="true" className="size-4 shrink-0" /><span className="truncate">{where}</span></p>}
-        {(c.issue_number || c.pr_number) && (
-          <div className="flex items-center gap-3 text-xs" onClick={(e) => e.stopPropagation()}>
-            {c.issue_number && <RefLink repo={repo} kind="issues" number={c.issue_number} />}
-            {c.pr_number && <RefLink repo={repo} kind="pulls" number={c.pr_number} />}
-            {c.pr_number && c.pull && <Reviewers pull={c.pull} />}
+        {((c.labels && c.labels.length > 0) || c.plan_accepted) && (
+          <div className="flex flex-wrap items-center gap-1 text-[11px]">
+            {c.plan_accepted && <span className="rounded bg-indigo-100 px-1.5 py-0.5 font-medium text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">Plan listo</span>}
+            {(c.labels ?? []).slice(0, 3).map((lbl) => {
+              const hex = c.label_colors?.[lbl];
+              return (
+                <span key={lbl} style={hex ? { borderColor: `#${hex}55`, backgroundColor: `#${hex}18` } : undefined}
+                  className="rounded border border-slate-200 px-1.5 py-0.5 text-slate-700 dark:border-white/10 dark:text-text-secondary">
+                  {lbl}
+                </span>
+              );
+            })}
+          </div>
+        )}
+        {(issueNum || c.pr_number || pulls.length > 0) && (
+          <div className="flex flex-wrap items-center gap-2 text-xs" onClick={(e) => e.stopPropagation()}>
+            {issueNum && <RefLink repo={repo} kind="issues" number={issueNum} />}
+            {pulls.length > 1 ? (
+              <span className="inline-flex items-center gap-1 text-slate-600 dark:text-text-secondary">
+                <GitPullRequest aria-hidden="true" className="size-3.5" />
+                {mergedCount}/{pulls.length} mergeadas
+              </span>
+            ) : pulls.length === 1 ? (
+              <RefLink repo={pulls[0].repo || repo} kind="pulls" number={pulls[0].number} />
+            ) : c.pr_number ? (
+              <RefLink repo={repo} kind="pulls" number={c.pr_number} />
+            ) : null}
+            {c.pull && <Reviewers pull={c.pull} />}
           </div>
         )}
         {c.threads.length > 0 && <ThreadRow threads={c.threads} />}
       </div>
       <div className={`flex shrink-0 items-center gap-2 border-t border-slate-300 px-2.5 text-xs dark:border-white/10 ${merge ? "py-2.5" : "py-2"}`}>
-        <span key={working ? activity ?? st.text : st.text} className={`notif-in inline-flex min-w-0 flex-1 items-center gap-1.5 font-medium ${st.cls}`} title={working ? activity ?? st.text : st.text}>{st.busy && !working && <CircleNotch aria-hidden="true" className="size-3 shrink-0 animate-spin" />}<span className="truncate">{working ? activity ?? st.text : st.text}</span></span>
+        <span key={working ? activity ?? st.text : reasonText ?? st.text} className={`notif-in inline-flex min-w-0 flex-1 items-center gap-1.5 font-medium ${st.cls}`} title={working ? activity ?? st.text : reasonText ?? st.text}>{st.busy && !working && <CircleNotch aria-hidden="true" className="size-3 shrink-0 animate-spin" />}<span className="truncate">{working ? activity ?? st.text : reasonText ?? st.text}</span></span>
         <span className="shrink-0 text-slate-500 dark:text-muted">{ago(lastActivity(c))}</span>
         {merge && c.pull && <MergeButton c={c} pull={c.pull} />}
       </div>

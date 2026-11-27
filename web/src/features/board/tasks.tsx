@@ -37,6 +37,7 @@ export function Tasks() {
   const board = useBoard(project, { // Faster while a pull request has checks running, so CI progress shows up soon.
     refetchInterval: (q) => (q.state.data?.cards.some((c) => c.pull && ((c.pull.ci_pending ?? 0) > 0 || c.pull.ci === "PENDING")) ? 15_000 : 30_000) });
   const [adding, setAdding] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<"all" | "internal" | "github">("all");
   const [drag, setDrag] = useState<string>();
   const [quick, setQuick] = useState<{ c: Card; x: number; y: number }>();
   const [quickError, setQuickError] = useState<unknown>();
@@ -48,7 +49,9 @@ export function Tasks() {
     onSettled: () => qc.invalidateQueries({ queryKey: qk.board() }),
   });
   // Newest activity first, in every column.
-  const cards = [...(board.data?.cards ?? [])].sort((x, y) => lastActivity(y).localeCompare(lastActivity(x)));
+  const cards = [...(board.data?.cards ?? [])]
+    .filter((c) => sourceFilter === "all" || (c.source || "internal") === sourceFilter)
+    .sort((x, y) => lastActivity(y).localeCompare(lastActivity(x)));
   const open = (id?: string, launch?: QuickLaunch) => { setPanel(undefined); navigate({ to: "/tasks", search: (id ? { task: id, ...(launch && { launch }) } : {}) as never }); };
   const cardEl = (c: Card) => <TaskCard key={c.id} c={c} onOpen={() => open(c.id)} onDrag={() => { setQuick(undefined); setDrag(c.id); }} onMenu={(x, y) => { setQuickError(undefined); setQuick({ c, x, y }); }} />;
   useEffect(() => {
@@ -59,11 +62,29 @@ export function Tasks() {
     window.addEventListener("mousedown", down);
     return () => { window.removeEventListener("keydown", key); window.removeEventListener("mousedown", down); };
   }, [panel, search.task]);
-  const drop = (col: Column) => { if (drag && MANUAL[col]) move.mutate({ id: drag, stage: MANUAL[col]! }); setDrag(undefined); };
+  const drop = (col: Column) => {
+    if (drag && MANUAL[col]) {
+      const dragged = board.data?.cards.find((c) => c.id === drag);
+      if (col === "inbox" && dragged?.plan_accepted && !window.confirm("Al mover a Inbox se deshará la aceptación del plan. ¿Continuar?")) {
+        setDrag(undefined);
+        return;
+      }
+      move.mutate({ id: drag, stage: MANUAL[col]! });
+    }
+    setDrag(undefined);
+  };
   return (
     <div className="flex flex-col gap-3 sm:h-[calc(100dvh-3rem-2px)]">
       <div className={`flex shrink-0 items-center gap-2 ${windowCloseInset}`}>
         <h2 className="font-semibold">Kanban</h2>
+        <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-0.5 text-xs dark:border-border dark:bg-surface">
+          {(["all", "internal", "github"] as const).map((src) => (
+            <button key={src} type="button" onClick={() => setSourceFilter(src)}
+              className={`rounded-md px-2 py-1 font-medium ${sourceFilter === src ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "text-slate-600 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised"}`}>
+              {src === "all" ? "Todas" : src === "internal" ? "Internas" : "GitHub"}
+            </button>
+          ))}
+        </div>
         <Button className="ml-auto" onClick={() => setAdding(true)}><Plus weight="regular" className="size-4" />Nueva idea</Button>
       </div>
       <ErrorText error={board.error ?? move.error ?? quickError} />

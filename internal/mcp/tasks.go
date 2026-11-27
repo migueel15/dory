@@ -2,10 +2,12 @@ package mcp
 
 import (
 	"context"
+	"strings"
 
 	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
+	"github.com/migueel15/dory/internal/github"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -17,12 +19,39 @@ type sessionInput struct {
 
 type taskListInput struct {
 	ProjectID   string `json:"project_id,omitempty"`
+	Source      string `json:"source,omitempty" jsonschema:"internal, github or all"`
+	Scope       string `json:"scope,omitempty" jsonschema:"all, mine or mine_or_unassigned"`
 	IssueNumber int64  `json:"issue_number,omitempty" jsonschema:"Only the tasks of this issue"`
 	Open        bool   `json:"open,omitempty" jsonschema:"Leave out done and cancelled tasks"`
 }
 
 type idInput struct {
-	ID string `json:"id"`
+	ID     string `json:"id,omitempty" jsonschema:"Task UUID"`
+	Repo   string `json:"repo,omitempty" jsonschema:"owner/repo for a GitHub issue"`
+	Number int64  `json:"number,omitempty" jsonschema:"GitHub issue number"`
+}
+
+func resolveTaskID(ctx context.Context, store *data.Store, id, repo string, number int64) (string, error) {
+	if id != "" {
+		return id, nil
+	}
+	if repo == "" || number <= 0 {
+		return "", apperr.New(apperr.Invalid, "id or repo + number required")
+	}
+	repos, err := store.Repositories().ListAll(ctx, data.Filter{})
+	if err != nil {
+		return "", err
+	}
+	for _, r := range repos {
+		if name, ok := github.ParseRemote(r.RemoteURL); ok && strings.EqualFold(name, repo) {
+			t, err := store.EnsureExternalTask(ctx, &r.ProjectID, r.ID, number)
+			if err != nil {
+				return "", err
+			}
+			return t.ID, nil
+		}
+	}
+	return "", data.ErrNotFound.Msgf("repository not registered: %s", repo)
 }
 
 type taskInput struct {
@@ -50,15 +79,68 @@ func addTaskTools(srv *sdk.Server, s *Deps) {
 	add(srv, "list_projects", "List projects with id, slug and name.", func(ctx context.Context, _ struct{}) (any, error) {
 		return s.Projects.List(ctx)
 	})
-	add(srv, "list_tasks", "Index of tasks: id, title, column, branch, issue, pull request and blockers. Filter by project, issue or open. Read one with get_task.", func(ctx context.Context, in taskListInput) (any, error) {
-		cards, err := s.Tasks.ListCards(ctx, app.ListInput{ProjectID: in.ProjectID, IssueNumber: in.IssueNumber, Open: in.Open})
+	add(srv, "list_tasks", "Index of tasks (internal and GitHub issues): id, source, title, column, reason, PR summary and blockers. Filter by project_id, source, scope or open.", func(ctx context.Context, in taskListInput) (any, error) {
+		if in.IssueNumber != 0 {
+			cards, err := s.Tasks.ListCards(ctx, app.ListInput{ProjectID: in.ProjectID, IssueNumber: in.IssueNumber, Open: in.Open})
+			if err != nil {
+				return nil, err
+			}
+			return app.TaskIndex(cards), nil
+		}
+		viewer := ""
+		if s.GitHub != nil {
+			viewer, _ = s.GitHub.Viewer(ctx)
+		}
+		cards, err := s.Tasks.BoardMulti(ctx, app.TaskFilter{
+			ProjectID: in.ProjectID,
+			Source:    in.Source,
+			Scope:     in.Scope,
+			Open:      in.Open,
+			Viewer:    viewer,
+		})
 		if err != nil {
 			return nil, err
 		}
 		return app.TaskIndex(cards), nil
 	})
-	add(srv, "get_task", "Read one task: description, column, branch, pull request state, threads, current plan and dependencies.", func(ctx context.Context, in idInput) (any, error) {
-		return s.Tasks.Detail(ctx, in.ID)
+	add(srv, "get_task", "Read one task by id or repo+number: description, column, PRs, threads, current plan and dependencies.", func(ctx context.Context, in idInput) (any, error) {
+		tid, err := resolveTaskID(ctx, store, in.ID, in.Repo, in.Number)
+		if err != nil {
+			return nil, err
+		}
+		return s.Tasks.Detail(ctx, tid)
+	})
+	add(srv, "set_task_state", "Change a task's state (open, done or cancelled, with optional reason for GitHub issues).", func(ctx context.Context, in struct {
+		ID     string `json:"id,omitempty"`
+		Repo   string `json:"repo,omitempty"`
+		Number int64  `json:"number,omitempty"`
+		State  string `json:"state" jsonschema:"open, done or cancelled"`
+		Reason string `json:"reason,omitempty" jsonschema:"COMPLETED or NOT_PLANNED for GitHub issues"`
+	}) (any, error) {
+		tid, err := resolveTaskID(ctx, store, in.ID, in.Repo, in.Number)
+		if err != nil {
+			return nil, err
+		}
+		stateIn := app.TaskStateInput{State: in.State, Reason: in.Reason}
+		gp := &app.GitHubProvider{Store: store, GitHub: s.GitHub}
+		if _, err := gp.Get(ctx, tid); err == nil {
+			return gp.SetState(ctx, tid, stateIn)
+		}
+		ip := &app.InternalProvider{Store: store}
+		return ip.SetState(ctx, tid, stateIn)
+	})
+	add(srv, "comment_task", "Add a comment to an external task (GitHub issue).", func(ctx context.Context, in struct {
+		ID     string `json:"id,omitempty"`
+		Repo   string `json:"repo,omitempty"`
+		Number int64  `json:"number,omitempty"`
+		Body   string `json:"body"`
+	}) (any, error) {
+		tid, err := resolveTaskID(ctx, store, in.ID, in.Repo, in.Number)
+		if err != nil {
+			return nil, err
+		}
+		gp := &app.GitHubProvider{Store: store, GitHub: s.GitHub}
+		return gp.Comment(ctx, tid, in.Body)
 	})
 	add(srv, "save_task", "Create a task, or change its title, description, issue, pull request or stage. stage done only without an unmerged pull request.", func(ctx context.Context, in taskInput) (any, error) {
 		return s.Tasks.Save(ctx, app.SaveInput{ID: in.ID, ProjectID: in.ProjectID, RepositoryID: in.RepositoryID, Title: in.Title, Description: in.Description,
