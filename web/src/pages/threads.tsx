@@ -132,7 +132,7 @@ export function Threads() {
   const mobileTranslate = swipeProgress !== null ? `${(swipeProgress - 1) * 100}%` : mobileOpen ? "0%" : "-100%";
   return (
     <div ref={containerRef} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={() => { touchRef.current = null; setSwipeProgress(null); }}
-      className="relative flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] min-h-0 overflow-hidden sm:h-[calc(100dvh-3rem-2px)] sm:overflow-visible"
+      className="keyboard-follow relative flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] min-h-0 overflow-hidden sm:h-[calc(100dvh-3rem-2px)] sm:overflow-visible"
       style={{ "--list-w": `${listWidth}px`, "--mobile-x": mobileTranslate } as CSSProperties}>
       <div className="absolute left-0 top-0 z-40 bg-slate-50 pr-1 dark:bg-canvas sm:-left-4 sm:-top-2 sm:z-30 sm:pl-2">
         <button type="button" onClick={() => { if (window.innerWidth < 640) setMobileOpen((v) => !v); else foldList(!folded); }}
@@ -219,8 +219,8 @@ export function ThreadsHome() {
   const navigate = useNavigate();
   // The main frame pads the right edge too: drop it here so the chat sits centred between the list and the window edge.
   return (
-    <div className="grid h-full place-items-center p-4 sm:-mr-4">
-      <div className="w-full max-w-3xl">
+    <div className="flex h-full flex-col sm:-mr-4 sm:grid sm:place-items-center sm:p-4">
+      <div className="flex w-full min-h-0 flex-1 flex-col sm:block sm:max-w-3xl sm:flex-none">
         <NewThread onCreated={(id) => navigate({ to: "/threads/$threadId", params: { threadId: id } })} />
       </div>
     </div>

@@ -25,6 +25,7 @@ import { Environments,Memories,memorySearch } from "./pages/crud";
 import { Threads,ThreadsHome } from "./pages/threads";
 import { applyUiFont } from "./lib/fonts";
 import { applyScale,listenZoomKeys } from "./scale";
+import "./lib/native-keyboard";
 import { applyTheme,useTheme } from "./theme";
 
 applyTheme();
@@ -61,7 +62,7 @@ function Login() {
     : errMsg(login.error);
   const inputClass = "h-11 px-3";
   return (
-    <main className="grid min-h-dvh place-items-center bg-[radial-gradient(ellipse_at_top,var(--color-indigo-100),transparent_60%)] px-4 py-8 dark:bg-[radial-gradient(ellipse_at_top,var(--color-accent-subtle),transparent_60%)]">
+    <main className="grid min-h-dvh place-items-center bg-[radial-gradient(ellipse_at_top,var(--color-indigo-100),transparent_60%)] px-4 py-8 dark:bg-[radial-gradient(ellipse_at_top,var(--color-accent-subtle),transparent_60%)]" data-keyboard="pad">
       <section aria-labelledby="login-title" className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-900/5 sm:p-8 dark:border-white/10 dark:bg-surface dark:shadow-black/25">
         <header className="space-y-4">
           <div className="flex items-center gap-2.5 font-semibold">

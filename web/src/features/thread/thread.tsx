@@ -107,7 +107,7 @@ export function ThreadView() {
   const deviceView = (k: string, floating = false) => <DevicePanel key={k} node={thread?.node_id ?? "local"} serial={panel.meta[k]?.serial ?? null} floating={floating} onFloat={(v) => panel.setMeta(k, { floating: v })}
     onSerial={(serial, name) => panel.setMeta(k, serial ? { serial, ...(panel.meta[k]?.name ? {} : { name }) } : { serial: undefined })} />;
   return (
-    <div className="relative flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
+    <div className="keyboard-follow relative flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
       {/* The panel toggle is pinned to the page corner, so opening the panel never moves it. */}
       <div className={`absolute right-1 top-0 z-30 sm:-top-2 ${hasWindowClose ? "sm:right-14" : "sm:-right-1"}`}><SidePanelToggle panel={panel} /></div>
       <div onPointerEnter={toComposer} className="flex min-h-0 min-w-0 flex-1 flex-col">
