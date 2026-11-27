@@ -18,6 +18,7 @@ type Tasks struct {
 	Threads         *Threads
 	Plans           *Plans
 	Node            string
+	Providers       []TaskProvider
 	ArchiveOnFinish func() bool
 	GitHub          interface {
 		Configured(context.Context) bool
@@ -78,7 +79,36 @@ func (a *Tasks) List(ctx context.Context, f data.Filter) ([]data.Task, error) {
 	return a.Store.Tasks().ListAll(ctx, f)
 }
 
+func (a *Tasks) providers() []TaskProvider {
+	if len(a.Providers) > 0 {
+		return a.Providers
+	}
+	return []TaskProvider{
+		&InternalProvider{Store: a.Store},
+		&GitHubProvider{Store: a.Store},
+	}
+}
+
+// ProviderFor finds the TaskProvider that owns taskID and returns its UnifiedTask.
+func (a *Tasks) ProviderFor(ctx context.Context, taskID string) (TaskProvider, UnifiedTask, error) {
+	for _, p := range a.providers() {
+		if u, err := p.Get(ctx, taskID); err == nil {
+			return p, u, nil
+		}
+	}
+	return nil, UnifiedTask{}, data.ErrNotFound
+}
+
 func (a *Tasks) Card(ctx context.Context, id string) (Card, error) {
+	if _, u, err := a.ProviderFor(ctx, id); err == nil {
+		cards, err := a.cardsFromUnified(ctx, []UnifiedTask{u})
+		if err != nil {
+			return Card{}, err
+		}
+		if len(cards) > 0 {
+			return cards[0], nil
+		}
+	}
 	t, err := a.Get(ctx, id)
 	if err != nil {
 		return Card{}, err
@@ -121,17 +151,11 @@ func taskRepo(t data.Task, names map[string]string) string {
 // using only local SQLite tables (no GitHub calls, no N+1 queries).
 func (a *Tasks) BoardMulti(ctx context.Context, filter TaskFilter) ([]Card, error) {
 	var unified []UnifiedTask
-	if filter.Source == "" || filter.Source == "all" || filter.Source == "internal" {
-		ip := &InternalProvider{Store: a.Store}
-		list, err := ip.List(ctx, filter)
-		if err != nil {
-			return nil, err
+	for _, p := range a.providers() {
+		if filter.Source != "" && filter.Source != "all" && p.Source() != filter.Source {
+			continue
 		}
-		unified = append(unified, list...)
-	}
-	if filter.Source == "" || filter.Source == "all" || filter.Source == "github" {
-		gp := &GitHubProvider{Store: a.Store}
-		list, err := gp.List(ctx, filter)
+		list, err := p.List(ctx, filter)
 		if err != nil {
 			return nil, err
 		}

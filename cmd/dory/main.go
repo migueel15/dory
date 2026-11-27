@@ -217,7 +217,16 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	srv.Memories = &app.Memories{Store: store}
 	srv.Projects = &app.Projects{Store: store}
 	srv.Ideas = &app.Ideas{Store: store, Titles: rt}
-	srv.Tasks = &app.Tasks{Store: store, Threads: srv.Threads, Plans: srv.Plans, Node: log_.Node()}
+	srv.Tasks = &app.Tasks{
+		Store:   store,
+		Threads: srv.Threads,
+		Plans:   srv.Plans,
+		Node:    log_.Node(),
+		Providers: []app.TaskProvider{
+			&app.InternalProvider{Store: store},
+			&app.GitHubProvider{Store: store, GitHub: gh, OnChanged: func() { events.Changed("board", "") }},
+		},
+	}
 	if err := srv.Tasks.MigrateLegacyTasks(ctx); err != nil {
 		log.Printf("migrate legacy tasks: %v", err)
 	}

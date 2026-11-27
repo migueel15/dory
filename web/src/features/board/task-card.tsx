@@ -1,4 +1,4 @@
-import { CircleDashed,CircleNotch,GitBranch,GitMerge,GitPullRequest } from "@phosphor-icons/react";
+import { ArrowUpRight,CircleDashed,CircleNotch,GitBranch,GitMerge,GitPullRequest,GithubLogo } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useId,useLayoutEffect,useRef,useState } from "react";
@@ -202,9 +202,14 @@ export function TaskCard({ c, onOpen, onDrag, onMenu }: { c: Card; onOpen: () =>
   const merge = c.column === "ready_to_merge" && !!c.pull;
   const repo = c.pull?.repo ?? c.repo;
   const issueNum = c.number ?? c.issue_number;
+  const isGitHub = c.source === "github";
+  const repoMatch = repo?.match(/^([\w.-]+)\/([\w.-]+)$/);
   const pulls = c.pulls ?? [];
   const mergedCount = pulls.filter((p) => p.state === "merged").length;
   const reasonText = c.column === "needs_you" && c.reason ? NEEDS_YOU_REASON[c.reason] : undefined;
+  const ghTooltip = issueNum
+    ? `Sincronizada con la issue #${issueNum} de GitHub · Abrir vista de issue`
+    : "Sincronizada con una issue de GitHub";
   return (
     <div draggable onDragStart={onDrag} onClick={onOpen} onContextMenu={(e) => { e.preventDefault(); onMenu(e.clientX, e.clientY); }}
       className={`flex shrink-0 cursor-grab flex-col overflow-hidden rounded-lg border border-slate-300 text-sm shadow-sm dark:border-white/10 dark:shadow-black/40 ${c.column === "needs_you" ? "bg-red-50 dark:bg-red-950/30" : "bg-white dark:bg-raised"}`}>
@@ -212,7 +217,6 @@ export function TaskCard({ c, onOpen, onDrag, onMenu }: { c: Card; onOpen: () =>
         <div className="flex items-start gap-2">
           <span className="mt-0.5 grid size-4 shrink-0 place-items-center" title={s.label} aria-label={s.label}>{s.icon}</span>
           <span className="line-clamp-2 min-w-0 font-semibold leading-tight">
-            {c.source === "github" && issueNum ? <span className="mr-1 font-mono text-xs font-normal text-slate-500 dark:text-muted">#{issueNum}</span> : null}
             {c.title}
           </span>
         </div>
@@ -231,9 +235,34 @@ export function TaskCard({ c, onOpen, onDrag, onMenu }: { c: Card; onOpen: () =>
             })}
           </div>
         )}
-        {(issueNum || c.pr_number || pulls.length > 0) && (
+        {(isGitHub || issueNum || c.pr_number || pulls.length > 0) && (
           <div className="flex flex-wrap items-center gap-2 text-xs" onClick={(e) => e.stopPropagation()}>
-            {issueNum && <RefLink repo={repo} kind="issues" number={issueNum} />}
+            {isGitHub ? (
+              repoMatch && issueNum ? (
+                <Link
+                  to="/github/$owner/$repo/$kind/$number"
+                  params={{ owner: repoMatch[1], repo: repoMatch[2], kind: "issues", number: String(issueNum) }}
+                  draggable={false}
+                  title={ghTooltip}
+                  aria-label={ghTooltip}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-300/80 bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 no-underline hover:bg-slate-200 dark:border-white/15 dark:bg-white/10 dark:text-text-secondary dark:hover:bg-white/15"
+                >
+                  <GithubLogo weight="fill" aria-hidden="true" className="size-3 shrink-0" />
+                  <span>#{issueNum}</span>
+                  <ArrowUpRight aria-hidden="true" className="size-3 shrink-0 opacity-70" />
+                </Link>
+              ) : (
+                <span
+                  title={ghTooltip}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-300/80 bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:border-white/15 dark:bg-white/10 dark:text-text-secondary"
+                >
+                  <GithubLogo weight="fill" aria-hidden="true" className="size-3 shrink-0" />
+                  {issueNum ? <span>#{issueNum}</span> : null}
+                </span>
+              )
+            ) : (
+              issueNum && <RefLink repo={repo} kind="issues" number={issueNum} />
+            )}
             {pulls.length > 1 ? (
               <span className="inline-flex items-center gap-1 text-slate-600 dark:text-text-secondary">
                 <GitPullRequest aria-hidden="true" className="size-3.5" />

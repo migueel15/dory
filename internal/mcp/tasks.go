@@ -121,13 +121,11 @@ func addTaskTools(srv *sdk.Server, s *Deps) {
 		if err != nil {
 			return nil, err
 		}
-		stateIn := app.TaskStateInput{State: in.State, Reason: in.Reason}
-		gp := &app.GitHubProvider{Store: store, GitHub: s.GitHub}
-		if _, err := gp.Get(ctx, tid); err == nil {
-			return gp.SetState(ctx, tid, stateIn)
+		p, _, err := s.Tasks.ProviderFor(ctx, tid)
+		if err != nil {
+			return nil, err
 		}
-		ip := &app.InternalProvider{Store: store}
-		return ip.SetState(ctx, tid, stateIn)
+		return p.SetState(ctx, tid, app.TaskStateInput{State: in.State, Reason: in.Reason})
 	})
 	add(srv, "comment_task", "Add a comment to an external task (GitHub issue).", func(ctx context.Context, in struct {
 		ID     string `json:"id,omitempty"`
@@ -139,8 +137,11 @@ func addTaskTools(srv *sdk.Server, s *Deps) {
 		if err != nil {
 			return nil, err
 		}
-		gp := &app.GitHubProvider{Store: store, GitHub: s.GitHub}
-		return gp.Comment(ctx, tid, in.Body)
+		p, _, err := s.Tasks.ProviderFor(ctx, tid)
+		if err != nil {
+			return nil, err
+		}
+		return p.Comment(ctx, tid, in.Body)
 	})
 	add(srv, "save_task", "Create a task, or change its title, description, issue, pull request or stage. stage done only without an unmerged pull request.", func(ctx context.Context, in taskInput) (any, error) {
 		return s.Tasks.Save(ctx, app.SaveInput{ID: in.ID, ProjectID: in.ProjectID, RepositoryID: in.RepositoryID, Title: in.Title, Description: in.Description,

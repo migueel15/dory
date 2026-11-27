@@ -155,19 +155,12 @@ func (s *Server) setTaskState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	in := app.TaskStateInput{State: body.State, Reason: body.Reason}
-	gp := &app.GitHubProvider{Store: s.Store, GitHub: s.GitHub, OnChanged: s.emitBoardChanged}
-	if _, err := gp.Get(r.Context(), id); err == nil {
-		u, err := gp.SetState(r.Context(), id, in)
-		if err != nil {
-			writeErr(w, r, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, u)
+	p, _, err := s.Tasks.ProviderFor(r.Context(), id)
+	if err != nil {
+		writeErr(w, r, err)
 		return
 	}
-	ip := &app.InternalProvider{Store: s.Store}
-	u, err := ip.SetState(r.Context(), id, in)
+	u, err := p.SetState(r.Context(), id, app.TaskStateInput{State: body.State, Reason: body.Reason})
 	if err != nil {
 		writeErr(w, r, err)
 		return
@@ -177,8 +170,13 @@ func (s *Server) setTaskState(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listTaskComments(w http.ResponseWriter, r *http.Request) {
-	gp := &app.GitHubProvider{Store: s.Store, GitHub: s.GitHub}
-	comments, err := gp.ListComments(r.Context(), r.PathValue("id"))
+	id := r.PathValue("id")
+	p, _, err := s.Tasks.ProviderFor(r.Context(), id)
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	comments, err := p.ListComments(r.Context(), id)
 	if err != nil {
 		writeErr(w, r, err)
 		return
@@ -193,12 +191,18 @@ func (s *Server) commentTask(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	gp := &app.GitHubProvider{Store: s.Store, GitHub: s.GitHub, OnChanged: s.emitBoardChanged}
-	c, err := gp.Comment(r.Context(), r.PathValue("id"), body.Body)
+	id := r.PathValue("id")
+	p, _, err := s.Tasks.ProviderFor(r.Context(), id)
 	if err != nil {
 		writeErr(w, r, err)
 		return
 	}
+	c, err := p.Comment(r.Context(), id, body.Body)
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	s.emitBoardChanged()
 	writeJSON(w, http.StatusCreated, c)
 }
 
