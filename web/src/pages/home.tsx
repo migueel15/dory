@@ -176,7 +176,7 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
           {projectName && <button type="button" onClick={() => setProject("")} className="text-sm font-medium text-slate-500 dark:text-muted">o empieza sin proyecto</button>}
         </div>
         <div className="px-3 pb-3">
-        <MobileComposer
+        <MobileComposer active={dictation.active || !!text}
           form={{ "data-dictation-panel": true, "data-unsaved-draft": !!text.trim() || files.length > 0 || dictation.active, onSubmit: (e) => { e.preventDefault(); submit(); }, ...attach.formProps }}
           extras={() => <>{attach.attachButton}{planToggle}{workspaceChips}</>}
           top={<>{!dictation.active && suggest.menu}{attach.tray}</>}

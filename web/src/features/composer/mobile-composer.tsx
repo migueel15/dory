@@ -8,18 +8,25 @@ const plusButton = "[-webkit-tap-highlight-color:transparent] grid size-9 shrink
 
 // MobileComposer is the phone message box shared by the start screen and the
 // threads: one line pinned to the bottom with +, the field and the actions.
-// The + opens the extras floating above it, so nothing else moves.
-export function MobileComposer({ form, extras, top, field, actions, below }: {
+// The + opens the extras floating above it, so nothing else moves. While
+// writing or dictating, the field takes its own full-width line above the
+// buttons and grows upward; the same node moves, so focus and keyboard stay.
+export function MobileComposer({ form, extras, top, field, actions, below, active }: {
   form: FormHTMLAttributes<HTMLFormElement> & Record<`data-${string}`, unknown>;
   extras: (close: () => void) => ReactNode;
   top?: ReactNode;
   field: ReactNode;
   actions: ReactNode;
   below?: ReactNode;
+  // active keeps the field on its own line without focus: a draft or a dictation.
+  active?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  // Like a pop-up: a tap anywhere else closes the extras.
-  const box = useOutside(open, () => setOpen(false));
+  const [focused, setFocused] = useState(false);
+  // Like a pop-up: a tap anywhere else closes the extras and folds the field.
+  // Folding on blur instead would move the buttons under a finger mid-tap.
+  const box = useOutside(open || focused, () => { setOpen(false); setFocused(false); });
+  const expanded = focused || !!active;
   return (
     <div ref={box} className="relative">
       {open && (
@@ -29,12 +36,12 @@ export function MobileComposer({ form, extras, top, field, actions, below }: {
       )}
       <form {...form} className={composerFrame}>
         {top}
-        <div className="flex items-end gap-0.5 p-1.5">
+        <div className="flex flex-wrap items-end gap-x-0.5 gap-y-1 p-1.5">
           <button type="button" aria-label="Más opciones" aria-expanded={open} onClick={() => setOpen(!open)} className={plusButton}>
             <Plus weight="regular" className={`size-5 transition-transform duration-200 ${open ? "rotate-45" : ""}`} />
           </button>
-          <div className="relative min-w-0 flex-1" onFocus={() => setOpen(false)}>{field}</div>
-          {actions}
+          <div className={`relative min-w-0 ${expanded ? "order-first basis-full px-2" : "flex-1"}`} onFocus={() => { setOpen(false); setFocused(true); }}>{field}</div>
+          <div className="ml-auto flex items-end gap-0.5">{actions}</div>
         </div>
         {below}
       </form>
