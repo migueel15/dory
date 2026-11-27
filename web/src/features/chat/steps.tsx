@@ -277,20 +277,26 @@ function actionLabel(m: Message): string {
   return m.title || "Herramienta";
 }
 
-type WorkBlock =
+export type WorkBlock =
+  | { kind: "reasoning"; items: Message[] }
   | { kind: "note"; m: Message }
   | { kind: "question"; m: Message }
   | { kind: "todo"; m: Message }
-  | { kind: "group"; items: Message[] };
+  | { kind: "actions"; items: Message[] };
 
-// workBlocks groups consecutive reasoning and tool calls into a single work
-// group; assistant notes, questions and todo lists break the group.
-function workBlocks(rawItems: Message[]): WorkBlock[] {
+// workBlocks splits a turn's work at every transition between reasoning and
+// actions (tool calls); assistant notes, questions and todo lists stay as
+// standalone blocks.
+export function workBlocks(rawItems: Message[]): WorkBlock[] {
   const items = settleSupersededReasoning(rawItems);
   const out: WorkBlock[] = [];
   for (const m of items) {
-    if (m.role === "reasoning" && !m.text.trim()) continue;
-    if (m.role === "assistant") {
+    if (m.role === "reasoning") {
+      if (!m.text.trim()) continue;
+      const last = out.at(-1);
+      if (last?.kind === "reasoning") last.items.push(m);
+      else out.push({ kind: "reasoning", items: [m] });
+    } else if (m.role === "assistant") {
       out.push({ kind: "note", m });
     } else if (isQuestion(m)) {
       out.push({ kind: "question", m });
@@ -298,8 +304,8 @@ function workBlocks(rawItems: Message[]): WorkBlock[] {
       out.push({ kind: "todo", m });
     } else {
       const last = out.at(-1);
-      if (last?.kind === "group") last.items.push(m);
-      else out.push({ kind: "group", items: [m] });
+      if (last?.kind === "actions") last.items.push(m);
+      else out.push({ kind: "actions", items: [m] });
     }
   }
   return out;
@@ -371,90 +377,68 @@ function ReasoningScroll({ items }: { items: Message[] }) {
   );
 }
 
-// WorkGroup renders a group of consecutive reasoning and tool calls.
-// When live, it renders at most two flat lines (last thought + current tool)
-// instead of a growing list. When closed, it collapses into a single summary line.
-function WorkGroup({ items, isLive }: { items: Message[]; isLive: boolean }) {
+// ReasoningGroup renders a block of consecutive reasoning items as a single
+// preview line. Clicking it toggles only the full reasoning text.
+function ReasoningGroup({ items, isLive }: { items: Message[]; isLive: boolean }) {
   const [open, setOpen] = useState(false);
-  const thoughts = items.filter((m) => m.role === "reasoning" && m.text.trim());
-  const tools = items.filter((m) => m.role !== "reasoning");
-  const lastThought = thoughts.at(-1);
-  const lastTool = tools.at(-1);
-  const time = formatTime(items.at(-1)?.created_at);
+  const lastThought = items.at(-1);
+  const label = (lastThought && thoughtPreview(lastThought.text)) || (isLive ? "Pensando" : "Pensó");
+  const time = formatTime(lastThought?.created_at);
 
-  if (isLive) {
-    const toolFailed = lastTool ? failed(lastTool) : false;
-    const thoughtActive = !lastTool;
-    return (
-      <div className="text-[0.8125rem] leading-relaxed text-slate-500 dark:text-muted">
-        <button type="button" onClick={() => items.length > 0 && setOpen(!open)} aria-expanded={open}
-          className="flex w-full flex-col gap-0.5 text-left">
-          {(lastThought || !lastTool) && (
-            <span className="flex min-h-6 w-full min-w-0 items-center gap-2 hover:text-slate-900 dark:hover:text-white">
-              <Brain weight="regular" className="size-4 shrink-0" />
-              <span className={`min-w-0 max-w-full truncate ${thoughtActive ? "shimmer-text" : ""}`}>
-                {(lastThought && thoughtPreview(lastThought.text)) || "Pensando"}
-              </span>
-            </span>
-          )}
-          {lastTool && (
-            <span className="flex min-h-6 w-full min-w-0 items-center gap-2 hover:text-slate-900 dark:hover:text-white">
-              {toolFailed
-                ? <XCircle weight="regular" className="size-4 shrink-0 text-red-500" />
-                : actionIcon(lastTool)}
-              <span className={`min-w-0 max-w-full truncate shimmer-text ${toolFailed ? "text-red-600 dark:text-red-400" : ""}`}>
-                {toolFailed ? "Pensando" : actionLabel(lastTool)}
-              </span>
-            </span>
-          )}
-        </button>
-        {open && (
-          tools.length === 0
-            ? <ReasoningScroll items={thoughts} />
-            : (
-              <div className="mb-1 ml-6 mt-1 space-y-1 border-l border-slate-200 pl-3 dark:border-border">
-                {stepRuns(items).map((r) => <StepLine key={r[0].id} run={r} />)}
-              </div>
-            )
-        )}
-      </div>
-    );
-  }
+  return (
+    <div className="text-[0.8125rem] leading-relaxed text-slate-500 dark:text-muted">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
+        className="flex min-h-6 w-full min-w-0 items-center gap-2 text-left hover:text-slate-900 dark:hover:text-white">
+        <Brain weight="regular" className="size-4 shrink-0" />
+        <span className={`min-w-0 flex-1 truncate ${isLive ? "shimmer-text" : ""}`}>{label}</span>
+        {!isLive && time && <span className="shrink-0 text-[0.6875rem] tabular-nums opacity-60">{time}</span>}
+        {open ? <CaretDown weight="regular" className="size-3 shrink-0 opacity-70" /> : <CaretRight weight="regular" className="size-3 shrink-0 opacity-70" />}
+      </button>
+      {open && <ReasoningScroll items={items} />}
+    </div>
+  );
+}
 
-  // Closed group: single summary row with caret, icon, summary and time.
-  const onlyReasoning = tools.length === 0;
-  const hasError = tools.some(failed);
-  const label = onlyReasoning
-    ? (thoughts.length > 1 ? `Pensó (×${thoughts.length})` : thoughtPreview(lastThought?.text) || "Pensó")
-    : tools.length === 1
-      ? actionLabel(tools[0])
-      : groupSummary(tools);
-  const sameCategory = tools.length > 0 && tools.every((m) => actionCategory(m) === actionCategory(tools[0]));
-  const icon = onlyReasoning
-    ? <Brain weight="regular" className="size-4 shrink-0" />
+// ActionGroup renders a block of consecutive tool calls. While any tool in the
+// group is running it shows the latest action with a shimmer; once settled it
+// collapses to a summary line. Clicking toggles the actions in this group.
+function ActionGroup({ items, isLive }: { items: Message[]; isLive: boolean }) {
+  const [open, setOpen] = useState(false);
+  const lastTool = items[items.length - 1];
+  const active = isLive && items.some(running);
+  const hasError = items.some(failed);
+  const time = formatTime(lastTool?.created_at);
+
+  const label = active
+    ? actionLabel(lastTool)
+    : items.length === 1
+      ? actionLabel(items[0])
+      : groupSummary(items);
+  const sameCategory = items.every((m) => actionCategory(m) === actionCategory(items[0]));
+  const icon = active
+    ? (failed(lastTool) ? <XCircle weight="regular" className="size-4 shrink-0 text-red-500" /> : actionIcon(lastTool))
     : hasError
       ? <XCircle weight="regular" className="size-4 shrink-0 text-red-500" />
-      : tools.length === 1 || sameCategory
-        ? actionIcon(tools[0])
+      : items.length === 1 || sameCategory
+        ? actionIcon(items[0])
         : <Wrench weight="regular" className="size-4 shrink-0" />;
 
   return (
     <div className="text-[0.8125rem] leading-relaxed text-slate-500 dark:text-muted">
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
         className="flex min-h-6 w-full min-w-0 items-center gap-2 text-left hover:text-slate-900 dark:hover:text-white">
-        {open ? <CaretDown weight="regular" className="size-3 shrink-0 opacity-70" /> : <CaretRight weight="regular" className="size-3 shrink-0 opacity-70" />}
         {icon}
-        <span className={`min-w-0 flex-1 truncate ${hasError ? "text-red-600 dark:text-red-400" : ""}`}>{label}</span>
-        {time && <span className="shrink-0 text-[0.6875rem] tabular-nums opacity-60">{time}</span>}
+        <span className={`min-w-0 flex-1 truncate ${active ? "shimmer-text" : ""} ${!active && hasError ? "text-red-600 dark:text-red-400" : ""}`}>{label}</span>
+        {active && items.length > 1 && (
+          <span className="shrink-0 text-[0.6875rem] tabular-nums opacity-60">{items.length}</span>
+        )}
+        {!active && time && <span className="shrink-0 text-[0.6875rem] tabular-nums opacity-60">{time}</span>}
+        {open ? <CaretDown weight="regular" className="size-3 shrink-0 opacity-70" /> : <CaretRight weight="regular" className="size-3 shrink-0 opacity-70" />}
       </button>
       {open && (
-        onlyReasoning
-          ? <ReasoningScroll items={thoughts} />
-          : (
-            <div className="mb-1 ml-6 mt-1 space-y-1 border-l border-slate-200 pl-3 dark:border-border">
-              {stepRuns(items).map((r) => <StepLine key={r[0].id} run={r} />)}
-            </div>
-          )
+        <div className="mb-1 ml-6 mt-1 space-y-1 border-l border-slate-200 pl-3 dark:border-border">
+          {stepRuns(items).map((r) => <StepLine key={r[0].id} run={r} />)}
+        </div>
       )}
     </div>
   );
@@ -502,19 +486,24 @@ export function WorkedBlock({
   const renderBlock = (b: WorkBlock, index: number) => {
     const isLastLive = live && index === blocks.length - 1;
     switch (b.kind) {
+      case "reasoning":
+        return <ReasoningGroup key={b.items[0].id} items={b.items} isLive={isLastLive} />;
       case "note":
         return <NoteText key={b.m.id} m={b.m} />;
       case "question":
         return <QuestionStep key={b.m.id} m={b.m} />;
       case "todo":
         return <TodoCard key={b.m.id} m={b.m} />;
-      case "group":
-        return <WorkGroup key={isLastLive ? "live-group" : b.items[0].id} items={b.items} isLive={isLastLive} />;
+      case "actions":
+        return <ActionGroup key={b.items[0].id} items={b.items} isLive={isLastLive} />;
     }
   };
   if (live) {
     const lastBlock = blocks.at(-1);
-    const showIdleThinking = !lastBlock || lastBlock.kind !== "group";
+    const hasActiveBlock =
+      lastBlock?.kind === "reasoning" ||
+      (lastBlock?.kind === "actions" && lastBlock.items.some(running));
+    const showIdleThinking = !hasActiveBlock;
     return (
       <div className="space-y-1.5">
         <div role="status" className="space-y-1">
@@ -526,7 +515,12 @@ export function WorkedBlock({
           <div className="h-px w-full bg-slate-200 dark:bg-border" />
         </div>
         {blocks.map(renderBlock)}
-        {showIdleThinking && <WorkGroup key="live-group" items={[]} isLive />}
+        {showIdleThinking && (
+          <div className="flex min-h-6 items-center gap-2 text-[0.8125rem] leading-relaxed text-slate-500 dark:text-muted">
+            <Brain weight="regular" className="size-4 shrink-0" />
+            <span className="shimmer-text">Pensando</span>
+          </div>
+        )}
       </div>
     );
   }
