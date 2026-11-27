@@ -26,7 +26,7 @@ func TestSystemSkillsParse(t *testing.T) {
 			t.Fatalf("bad system skill %+v", s)
 		}
 	}
-	if !names["dory-workflow"] || !names["single-test-run"] {
+	if !names["dory-workflow"] || !names["single-test-run"] || !names["dory-issue"] {
 		t.Fatalf("missing system skills: %v", names)
 	}
 }
