@@ -74,9 +74,18 @@ func (s *Plans) latest(ctx context.Context, taskID string) (p data.Plan, ok bool
 
 // Document is the current plan of a task with its document filled in. A
 // task without a plan gives an empty document at revision 0.
+func (s *Plans) hasExternalTask(ctx context.Context, taskID string) (repoID string, number int64, ok bool) {
+	err := s.Store.LocalDB().QueryRowContext(ctx,
+		`SELECT repository_id, number FROM external_tasks_cache WHERE task_id = ?`, taskID,
+	).Scan(&repoID, &number)
+	return repoID, number, err == nil && repoID != "" && number > 0
+}
+
 func (s *Plans) Document(ctx context.Context, taskID string) (data.Plan, error) {
 	if _, err := s.Store.Tasks().Get(ctx, taskID); err != nil {
-		return data.Plan{}, err
+		if _, _, ok := s.hasExternalTask(ctx, taskID); !ok {
+			return data.Plan{}, err
+		}
 	}
 	p, ok, err := s.latest(ctx, taskID)
 	if err != nil || !ok {

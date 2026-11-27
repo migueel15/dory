@@ -99,6 +99,26 @@ func (a *Tasks) ProviderFor(ctx context.Context, taskID string) (TaskProvider, U
 	return nil, UnifiedTask{}, data.ErrNotFound
 }
 
+// EnsureTaskRow returns the local tasks row for taskID, materializing a
+// lightweight row via EnsureExternalTask if taskID belongs to an external provider.
+func (a *Tasks) EnsureTaskRow(ctx context.Context, taskID string) (data.Task, UnifiedTask, error) {
+	_, u, provErr := a.ProviderFor(ctx, taskID)
+	if t, err := a.Store.Tasks().Get(ctx, taskID); err == nil {
+		return t, u, nil
+	}
+	if provErr != nil {
+		return data.Task{}, UnifiedTask{}, provErr
+	}
+	if u.RepositoryID != nil && u.Number != nil {
+		t, err := a.Store.EnsureExternalTask(ctx, u.ProjectID, *u.RepositoryID, *u.Number)
+		if err != nil {
+			return data.Task{}, UnifiedTask{}, err
+		}
+		return t, u, nil
+	}
+	return data.Task{}, UnifiedTask{}, data.ErrNotFound
+}
+
 func (a *Tasks) Card(ctx context.Context, id string) (Card, error) {
 	if _, u, err := a.ProviderFor(ctx, id); err == nil {
 		cards, err := a.cardsFromUnified(ctx, []UnifiedTask{u})

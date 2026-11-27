@@ -24,9 +24,15 @@ type LaunchInput struct {
 // Launch starts an implementation thread for a task on this node, in its own
 // worktree and branch. It returns the thread id and the branch.
 func (a *Tasks) Launch(ctx context.Context, taskID string, in LaunchInput) (threadID, branch string, err error) {
-	t, err := a.Store.Tasks().Get(ctx, taskID)
+	t, u, err := a.EnsureTaskRow(ctx, taskID)
 	if err != nil {
 		return "", "", err
+	}
+	if t.Title == "" && u.Title != "" {
+		t.Title = u.Title
+	}
+	if t.Description == "" && u.Description != "" {
+		t.Description = u.Description
 	}
 	if pending, err := a.Plans.Pending(ctx, t.ID); err != nil {
 		return "", "", err
