@@ -140,6 +140,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	}
 	go rt.WatchUsage(ctx, 10*time.Minute)
 	go rt.SweepSecrets(ctx)
+	go rt.Providers(ctx)
 	events := api.NewEvents(rt)
 	id, err := mesh.LoadIdentity(cfg.DataDir)
 	if err != nil {

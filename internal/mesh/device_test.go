@@ -2,7 +2,11 @@ package mesh
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -45,5 +49,50 @@ func TestDevicePairing(t *testing.T) {
 	}
 	if resp = post(code); resp.StatusCode != 403 {
 		t.Fatalf("pairing must close after wrong codes, got %d", resp.StatusCode)
+	}
+}
+
+// Phones and browsers negotiate HTTP/2 over the mesh TLS port while still
+// receiving the ECDSA certificate pinned at pairing time.
+func TestDeviceHTTP2(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a := start(t, ctx, "a")
+	a.m.Web = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+	client := &http.Client{
+		Transport: &http.Transport{
+			ForceAttemptHTTP2: true,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+				NextProtos:         []string{"h2", "http/1.1"},
+			},
+		},
+	}
+	resp, err := client.Get(fmt.Sprintf("https://127.0.0.1:%d/", a.m.port))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.ProtoMajor != 2 {
+		t.Fatalf("expected HTTP/2, got %s", resp.Proto)
+	}
+	if resp.TLS == nil || len(resp.TLS.PeerCertificates) == 0 {
+		t.Fatal("missing peer certificate")
+	}
+	cert := resp.TLS.PeerCertificates[0]
+	if _, ok := cert.PublicKey.(*ecdsa.PublicKey); !ok {
+		t.Fatalf("expected ECDSA certificate, got %T", cert.PublicKey)
+	}
+	spki, err := x509.MarshalPKIXPublicKey(cert.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(spki)
+	gotPin := base64.RawURLEncoding.EncodeToString(sum[:])
+	if gotPin != a.m.id.DevicePin {
+		t.Fatalf("pin mismatch: got %q, want %q", gotPin, a.m.id.DevicePin)
 	}
 }

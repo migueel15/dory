@@ -1,7 +1,8 @@
 import { ArrowCounterClockwise,CaretDown,Check,Copy,ListChecks,Stop,WarningCircle } from "@phosphor-icons/react";
 import { memo,useEffect,useMemo,useRef,useState } from "react";
 import { api,type Message } from "../../api/client";
-import { Md,copyText } from "../../components/ui";
+import { Md } from "../../components/markdown";
+import { copyText } from "../../components/ui";
 import { messageText,t } from "../../i18n/es";
 import { events } from "../../lib/store";
 import { HtmlCard,htmlRef } from "./html-card";

@@ -11,7 +11,8 @@ import { Arrow,Badge,Button,Card,ErrorText,Input,Modal,keepAboveKeyboard,pill,to
 import { DefineIssueDialog } from "../../pages/define-issue";
 import { useLaunchForm } from "../composer/launch-picker";
 import { useDictationInProgress } from "../composer/local-dictation";
-import { ResizeHandle,ThreadChat } from "../thread/thread";
+import { ResizeHandle } from "../../components/resize-handle";
+import { ThreadChat } from "../thread/thread";
 import { Assignees,IssueActions,MilestonePicker,PullActions,ReviewPicker } from "./detail-actions";
 import { useActionQueue } from "./detail-optimistic";
 import { Act,canApprove,labels,reviewStates } from "./detail-shared";

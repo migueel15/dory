@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { GitMerge, GitPullRequest, Lightning, Rocket, CaretDown, CaretRight, ClipboardText, FileText, ListChecks, X } from "@phosphor-icons/react";
 import { api, type Attachment } from "../../api/client";
-import { Md } from "../../components/ui";
+import { Md } from "../../components/markdown";
 import { splitMessageQuotes } from "./message-quotes";
 import { Link } from "@tanstack/react-router";
 import { parseAutoMessage, type AutoMessage } from "../../lib/auto-message";

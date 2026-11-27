@@ -10,7 +10,8 @@ import { useCheckMeshUpdates,usePair,usePairCode,useRevokeDevice,useRevokePeer,u
 import { askConfirm } from "../components/confirm";
 import { EnvIconPicker } from "../components/env-icon";
 import { useMeshUpdates } from "../components/mesh-update";
-import { Badge,Button,Card,ErrorText,Input,Label,Md,Modal,PageHeader,Select,StatusPill,csv } from "../components/ui";
+import { Md } from "../components/markdown";
+import { Badge,Button,Card,ErrorText,Input,Label,Modal,PageHeader,Select,StatusPill,csv } from "../components/ui";
 import { DictationField } from "../features/composer/dictation-field";
 import { useDictationInProgress } from "../features/composer/local-dictation";
 import { useProject } from "../project";

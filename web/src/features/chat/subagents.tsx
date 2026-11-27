@@ -5,7 +5,7 @@ import { useState } from "react";
 import { type Message,type Thread } from "../../api/client";
 import { qk } from "../../api/queries/keys";
 import { useInterrupt,useThreadChildren,useThreadRelated,useThreadSummary } from "../../api/queries/threads";
-import { Md } from "../../components/ui";
+import { Md } from "../../components/markdown";
 import { ProviderIcon } from "../composer/launch-picker";
 
 // useSubagents lists the children of a thread, archived ones included: they
