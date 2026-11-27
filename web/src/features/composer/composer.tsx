@@ -195,11 +195,15 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   // While this box is dictating, sending finishes the dictation first and then sends it.
   const canSend = (!!outgoing || files.some((file) => file.done) || dictation.active) && readyToSend && (!dictating || dictation.active) && dictation.phase !== "finishing";
   // answerDraft gives what the box holds (typed, dictated, files) as the free
-  // answer of the current question.
+  // answer of the current question; submitting empty leaves it unanswered.
   const answerDraft = (draft: string) => {
     const fileIds = files.flatMap((file) => file.done ? [file.done.id] : []);
     const answer = draft.trim();
-    if (reply.isPending || uploading || (!answer && !fileIds.length)) return;
+    if (reply.isPending || uploading) return;
+    if (!answer && !fileIds.length) {
+      flow.answer(flow.multi ? flow.picked : [], []);
+      return;
+    }
     flow.answer(answer || "(ver adjuntos)", fileIds);
     setText("");
     setTokens({});
@@ -315,7 +319,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
               <Stop weight="fill" className="size-3.5" />
             </button>
           ) : (
-            <button type="submit" disabled={asking ? (!text.trim() && !files.some((file) => file.done) && !dictation.active) || reply.isPending || uploading || (dictating && !dictation.active) || dictation.phase === "finishing" : !canSend} title={asking ? "Responder (Enter)" : busy ? "Encolar (Enter) · Mandar ya (Ctrl+Enter)" : "Enviar (Enter)"} aria-label={asking ? "Responder" : "Enviar"}
+            <button type="submit" disabled={asking ? reply.isPending || uploading || (dictating && !dictation.active) || dictation.phase === "finishing" : !canSend} title={asking ? "Responder (Enter)" : busy ? "Encolar (Enter) · Mandar ya (Ctrl+Enter)" : "Enviar (Enter)"} aria-label={asking ? "Responder" : "Enviar"}
               className={mobile ? mobileSendButton : iconButton}>
               {send.isPending || reply.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : busy && !asking ? <ListBullets weight="regular" className="block size-4" /> : <ArrowUp weight="regular" className="block size-4" />}
             </button>
@@ -414,7 +418,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
               <Stop weight="fill" className="size-3.5" />
             </button>
           ) : (
-            <button type="submit" disabled={asking ? (!text.trim() && !files.some((file) => file.done) && !dictation.active) || reply.isPending || uploading || (dictating && !dictation.active) || dictation.phase === "finishing" : !canSend} title={asking ? "Responder (Enter)" : busy ? "Encolar (Enter) · Mandar ya (Ctrl+Enter)" : "Enviar (Enter)"} aria-label={asking ? "Responder" : "Enviar"}
+            <button type="submit" disabled={asking ? reply.isPending || uploading || (dictating && !dictation.active) || dictation.phase === "finishing" : !canSend} title={asking ? "Responder (Enter)" : busy ? "Encolar (Enter) · Mandar ya (Ctrl+Enter)" : "Enviar (Enter)"} aria-label={asking ? "Responder" : "Enviar"}
               className={mobile ? mobileSendButton : iconButton}>
               {send.isPending || reply.isPending ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : busy && !asking ? <ListBullets weight="regular" className="block size-4" /> : <ArrowUp weight="regular" className="block size-4" />}
             </button>

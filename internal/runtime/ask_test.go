@@ -24,7 +24,11 @@ func (asker) Start(ctx context.Context, t Turn) (Session, error) {
 		s.events <- harness.RequestOpened{Request: Request{ID: "req-1", Kind: "question", Questions: []Question{{Question: "¿Color?"}}}}
 		select {
 		case a := <-s.answers:
-			s.events <- harness.TextDone{ItemID: "m1", Kind: harness.Assistant, Text: a[0][0], Meta: harness.ItemMeta{RunID: t.RunID}}
+			reply := "(sin respuesta)"
+			if len(a) > 0 && len(a[0]) > 0 {
+				reply = a[0][0]
+			}
+			s.events <- harness.TextDone{ItemID: "m1", Kind: harness.Assistant, Text: reply, Meta: harness.ItemMeta{RunID: t.RunID}}
 			s.events <- harness.TurnEnded{Reason: harness.Completed}
 		case <-ctx.Done():
 		}
@@ -77,6 +81,24 @@ func TestManagerWaitsForAnswer(t *testing.T) {
 		t.Fatalf("messages: %+v", msgs)
 	}
 	if reqs, _ = m.Requests(ctx, th.ID); len(reqs) != 0 {
+		t.Fatalf("requests left: %+v", reqs)
+	}
+}
+
+func TestManagerAllowsEmptyAnswer(t *testing.T) {
+	ctx := context.Background()
+	m, store := manager(t, 0)
+	m.registry.Register(asker{})
+	th, _ := registerTestThread(ctx, m, data.Thread{Provider: "asker"})
+	if err := m.Send(ctx, th.ID, "pregunta"); err != nil {
+		t.Fatal(err)
+	}
+	wait(t, store, th.ID, "waiting")
+	if err := m.Answer(ctx, th.ID, "req-1", [][]string{{}}); err != nil {
+		t.Fatalf("empty answer failed: %v", err)
+	}
+	wait(t, store, th.ID, "idle")
+	if reqs, _ := m.Requests(ctx, th.ID); len(reqs) != 0 {
 		t.Fatalf("requests left: %+v", reqs)
 	}
 }

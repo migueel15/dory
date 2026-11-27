@@ -12,6 +12,7 @@ import { askQuestions, isAsk } from "./tool-card";
 // The chat only shows the questions read-only, with their answers.
 
 const primary = "inline-flex h-8 items-center rounded-full bg-slate-900 px-4 text-sm font-medium text-white transition hover:bg-slate-700 disabled:bg-slate-200 disabled:text-slate-400 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 dark:disabled:bg-raised dark:disabled:text-muted";
+const ghost = "inline-flex h-8 items-center rounded-full px-3 text-sm text-slate-600 transition hover:bg-slate-100 disabled:opacity-50 dark:text-text-secondary dark:hover:bg-raised";
 const card = "rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm dark:border-border dark:bg-surface";
 
 type Answer = string | string[];
@@ -33,14 +34,15 @@ function Header({ text, q, step, total }: { text: string; q?: Question; step?: n
 }
 
 // AnsweredQuestions lists the questions with the answers given, if any.
-function AnsweredQuestions({ questions, waiting }: { questions: Question[]; waiting?: boolean }) {
+function AnsweredQuestions({ questions, waiting, done }: { questions: Question[]; waiting?: boolean; done?: boolean }) {
   return (
     <ul className="space-y-2 text-sm">
       {questions.map((x, i) => (
         <li key={i}>
           <p className="text-slate-700 dark:text-text-secondary">{x.question}</p>
           {x.answer?.length ? <p className="mt-0.5 flex items-start gap-1.5 font-medium text-slate-900 dark:text-white"><Check weight="bold" className="mt-1 size-3.5 shrink-0" />{x.answer.join(", ")}</p>
-            : waiting && <p className="mt-0.5 text-xs text-slate-500 dark:text-muted">Esperando tu respuesta</p>}
+            : waiting ? <p className="mt-0.5 text-xs text-slate-500 dark:text-muted">Esperando tu respuesta</p>
+              : done && <p className="mt-0.5 text-xs italic text-slate-500 dark:text-muted">Sin respuesta</p>}
         </li>
       ))}
     </ul>
@@ -52,10 +54,11 @@ function AnsweredQuestions({ questions, waiting }: { questions: Question[]; wait
 export function NativeQuestionCard({ m }: { m: Message }) {
   const questions = m.tool?.questions ?? [];
   const answered = questions.some((q) => q.answer?.length);
+  const waiting = !answered && (m.status === "running" || m.status === "waiting");
   return (
     <div className={card}>
       <Header text="Pregunta del agente" q={questions.length === 1 ? questions[0] : undefined} />
-      <AnsweredQuestions questions={questions} waiting={!answered && m.status === "running"} />
+      <AnsweredQuestions questions={questions} waiting={waiting} done={m.status === "done"} />
     </div>
   );
 }
@@ -74,7 +77,7 @@ export function openAsk(messages: Message[]): { id: string; questions: Question[
 
 // askAnswerText writes the answers to an ask_user call as one user message.
 export const askAnswerText = (questions: Question[], answers: string[][]) =>
-  questions.map((q, i) => `${questions.length > 1 ? `**${q.header || q.question}**\n` : ""}${answers[i].join(", ")}`).join("\n\n");
+  questions.map((q, i) => `${questions.length > 1 ? `**${q.header || q.question}**\n` : ""}${answers[i]?.length ? answers[i].join(", ") : "(sin respuesta)"}`).join("\n\n");
 
 // QuestionFlow walks the questions of a pending request one by one. The
 // composer owns it: its text box writes the free answer of the current one.
@@ -100,17 +103,22 @@ export function useQuestionFlow(id: string, questions: Question[], onDone: (answ
       onDone(questions.map((_, i) => { const a = next[i]; return Array.isArray(a) ? a : a ? [a] : []; }), questions.map((_, i) => nextFiles[i] ?? []));
     } else go(step + 1, next, nextFiles);
   };
+  // cancel resolves the whole question panel with empty answers so the
+  // conversation can continue without answering.
+  const cancel = () => {
+    onDone(questions.map(() => []), questions.map(() => []));
+  };
   const toggle = (label: string) => {
     const next = [...answers];
     next[step] = picked.includes(label) ? picked.filter((x) => x !== label) : [...picked, label];
     go(step, next);
   };
   return {
-    q, step, total: questions.length, last, picked, multi: !!q?.multi_select, answer, toggle,
-    // An answered question can be revisited; the next one opens once this one has an answer.
+    q, step, total: questions.length, last, picked, multi: !!q?.multi_select, answer, cancel, toggle,
+    // Any question can be revisited or skipped freely.
     back: () => step > 0 && go(step - 1),
-    forward: () => !last && current !== undefined && go(step + 1),
-    canForward: !last && current !== undefined,
+    forward: () => !last && go(step + 1),
+    canForward: !last,
   };
 }
 
@@ -162,11 +170,18 @@ export function QuestionPanel({ flow, busy, error }: { flow: QuestionFlow; busy:
           })}
         </div>
       )}
-      {multi && (
-        <div className="mt-2 flex justify-end">
-          <button type="button" className={primary} disabled={busy || picked.length === 0} onClick={() => flow.answer(picked)}>{last ? "Responder" : "Siguiente"}</button>
-        </div>
-      )}
+      <div className="mt-2 flex items-center justify-end gap-2">
+        <button type="button" className={ghost} disabled={busy} onClick={flow.cancel}>Cancelar</button>
+        {multi ? (
+          <button type="button" className={primary} disabled={busy} onClick={() => flow.answer(picked)}>
+            {picked.length > 0 ? (last ? "Responder" : "Siguiente") : (last ? "Enviar sin responder" : "Omitir")}
+          </button>
+        ) : total > 1 && (
+          <button type="button" className={ghost} disabled={busy} onClick={() => flow.answer([])}>
+            {last ? "Enviar sin responder" : "Omitir"}
+          </button>
+        )}
+      </div>
       <ErrorText error={error} />
     </div>
   );
