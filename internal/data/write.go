@@ -30,7 +30,7 @@ func (r Resource[T]) Create(ctx context.Context, v T) (T, error) {
 // repository locations, skill states, settings and task dependencies.
 func (r Resource[T]) Upsert(ctx context.Context, v T) (T, error) {
 	switch r.entity {
-	case "repository", "repository_location", "skill_state", "setting", "task_dependency":
+	case "repository", "repository_location", "skill_state", "setting", "task_dependency", "thread_pull":
 		return r.save(ctx, v, true, nil)
 	default:
 		var zero T

@@ -9,8 +9,10 @@ export type Attachment = {
 
 export type Card = {
   "id": string;
+  "source": string;
   "project_id": string | null;
   "repository_id": string | null;
+  "number": number | null;
   "title": string;
   "description": string;
   "stage": Stage;
@@ -22,12 +24,39 @@ export type Card = {
   "updated_at": string;
   "archived_at": string | null;
   "column": Column;
+  "reason"?: string;
   "repo"?: string;
+  "url"?: string;
+  "external_state"?: string;
+  "state_reason"?: string;
+  "author"?: string;
+  "assignees"?: string[];
+  "labels"?: string[];
+  "label_colors"?: Record<string, string>;
+  "milestone"?: string;
+  "comments"?: number;
   "threads": Thread[];
   "pull"?: GithubPull | null;
+  "pulls": CardPull[];
   "pr_state"?: "open" | "draft" | "merged" | "closed";
   "blockers": string[];
   "has_plan": boolean;
+  "plan_accepted": boolean;
+};
+
+export type CardPull = {
+  "repo": string;
+  "repository_id"?: string;
+  "number": number;
+  "title"?: string;
+  "url"?: string;
+  "state": string;
+  "ci"?: string;
+  "review_decision"?: string;
+  "review_requests"?: string[];
+  "thread_ids"?: string[];
+  "external"?: boolean;
+  "updated_at"?: string;
 };
 
 export type Column = "inbox" | "ready" | "working" | "needs_you" | "in_review" | "ready_to_merge" | "done" | "cancelled";
@@ -581,8 +610,10 @@ export type Step = {
 
 export type Task = {
   "id": string;
+  "source": string;
   "project_id": string | null;
   "repository_id": string | null;
+  "number": number | null;
   "title": string;
   "description": string;
   "stage": Stage;

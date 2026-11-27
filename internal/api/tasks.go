@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/data"
@@ -94,19 +95,153 @@ func (s *Server) mountTasks(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, map[string]any{"task": t, "plan": p})
 	})
 	mux.HandleFunc("POST /api/tasks/{id}/launch", s.launch)
+	mux.HandleFunc("PATCH /api/tasks/{id}/stage", s.moveTaskStage)
+	mux.HandleFunc("POST /api/tasks/{id}/state", s.setTaskState)
+	mux.HandleFunc("GET /api/tasks/{id}/comments", s.listTaskComments)
+	mux.HandleFunc("POST /api/tasks/{id}/comments", s.commentTask)
+	mux.HandleFunc("GET /api/threads/{id}/pulls", s.listThreadPulls)
+	mux.HandleFunc("POST /api/threads/{id}/pulls", s.linkThreadPull)
+	mux.HandleFunc("DELETE /api/threads/{id}/pulls/{repository_id}/{number}", s.unlinkThreadPull)
 }
 
 func (s *Server) board(w http.ResponseWriter, r *http.Request) {
-	f := data.Filter{}
-	if p := r.URL.Query().Get("project"); p != "" {
-		f.Fields = map[string]any{"project_id": p}
+	q := r.URL.Query()
+	viewer := ""
+	if s.GitHub != nil {
+		viewer, _ = s.GitHub.Viewer(r.Context())
 	}
-	cards, err := s.Tasks.Board(r.Context(), f)
+	cards, err := s.Tasks.BoardMulti(r.Context(), app.TaskFilter{
+		ProjectID: q.Get("project"),
+		Source:    q.Get("source"),
+		Scope:     q.Get("scope"),
+		Open:      q.Get("open") == "true" || q.Get("open") == "1",
+		Viewer:    viewer,
+	})
 	if err != nil {
 		writeErr(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"columns": Columns, "cards": cards})
+	writeJSON(w, http.StatusOK, map[string]any{"columns": Columns, "cards": cards, "viewer": viewer})
+}
+
+func (s *Server) emitBoardChanged() {
+	if s.Events != nil {
+		s.Events.Changed("board", "")
+	}
+}
+
+func (s *Server) moveTaskStage(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Stage string `json:"stage"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	t, err := s.Store.MoveStage(r.Context(), r.PathValue("id"), body.Stage)
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	s.emitBoardChanged()
+	writeJSON(w, http.StatusOK, t)
+}
+
+func (s *Server) setTaskState(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		State  string `json:"state"`
+		Reason string `json:"reason"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	id := r.PathValue("id")
+	in := app.TaskStateInput{State: body.State, Reason: body.Reason}
+	gp := &app.GitHubProvider{Store: s.Store, GitHub: s.GitHub, OnChanged: s.emitBoardChanged}
+	if _, err := gp.Get(r.Context(), id); err == nil {
+		u, err := gp.SetState(r.Context(), id, in)
+		if err != nil {
+			writeErr(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, u)
+		return
+	}
+	ip := &app.InternalProvider{Store: s.Store}
+	u, err := ip.SetState(r.Context(), id, in)
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	s.emitBoardChanged()
+	writeJSON(w, http.StatusOK, u)
+}
+
+func (s *Server) listTaskComments(w http.ResponseWriter, r *http.Request) {
+	gp := &app.GitHubProvider{Store: s.Store, GitHub: s.GitHub}
+	comments, err := gp.ListComments(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, comments)
+}
+
+func (s *Server) commentTask(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Body string `json:"body"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	gp := &app.GitHubProvider{Store: s.Store, GitHub: s.GitHub, OnChanged: s.emitBoardChanged}
+	c, err := gp.Comment(r.Context(), r.PathValue("id"), body.Body)
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, c)
+}
+
+func (s *Server) listThreadPulls(w http.ResponseWriter, r *http.Request) {
+	list, err := s.Store.ThreadPulls().ListByThread(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) linkThreadPull(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		RepositoryID string `json:"repository_id"`
+		Number       int64  `json:"number"`
+		Branch       string `json:"branch"`
+		LinkedBy     string `json:"linked_by"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	tp, err := s.Store.ThreadPulls().Link(r.Context(), r.PathValue("id"), body.RepositoryID, body.Number, body.Branch, body.LinkedBy)
+	if err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	s.emitBoardChanged()
+	writeJSON(w, http.StatusCreated, tp)
+}
+
+func (s *Server) unlinkThreadPull(w http.ResponseWriter, r *http.Request) {
+	num, err := strconv.ParseInt(r.PathValue("number"), 10, 64)
+	if err != nil || num <= 0 {
+		writeErr(w, r, data.ErrInvalid.Msgf("invalid pull number"))
+		return
+	}
+	if err := s.Store.ThreadPulls().Unlink(r.Context(), r.PathValue("id"), r.PathValue("repository_id"), num); err != nil {
+		writeErr(w, r, err)
+		return
+	}
+	s.emitBoardChanged()
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Cards adds to each task its threads, pull request, blockers and column.

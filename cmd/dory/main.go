@@ -208,20 +208,25 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	srv.Memories = &app.Memories{Store: store}
 	srv.Projects = &app.Projects{Store: store}
 	srv.Ideas = &app.Ideas{Store: store, Titles: rt}
-	srv.Tasks = &app.Tasks{Store: store, Threads: srv.Threads, Plans: srv.Plans, Node: log_.Node(), ArchiveOnFinish: func() bool { return srv.Settings.Get().ArchiveThreadsOnFinish }}
+	srv.Tasks = &app.Tasks{Store: store, Threads: srv.Threads, Plans: srv.Plans, Node: log_.Node()}
+	if err := srv.Tasks.MigrateLegacyTasks(ctx); err != nil {
+		log.Printf("migrate legacy tasks: %v", err)
+	}
 	srv.PullReviews = &app.PullReviews{Store: store, Threads: srv.Threads}
-	finish := func() { srv.Tasks.FinishSoon(ctx) }
-	finishSoon.Store(&finish)
 	go gh.Watch(ctx, func() {
 		for {
 			changed, more, err := srv.Tasks.RefreshPulls(ctx, gh)
 			if err != nil {
 				log.Printf("refresh pull requests: %v", err)
 			}
+			if err := srv.Tasks.DetectThreadPullsByBranch(ctx, log_.Node()); err != nil {
+				log.Printf("detect thread pulls: %v", err)
+			}
 			events.Changed("github", "")
+			events.Changed("board", "")
 			notices.Github()
 			if changed {
-				srv.Tasks.Finish(ctx)
+				events.Changed("board", "")
 			}
 			if !more || err != nil {
 				return
@@ -303,7 +308,7 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		Store: store, Node: mcp.Node{ID: srv.Node.ID, Name: srv.Node.Name},
 		Threads: srv.Threads, Tasks: srv.Tasks, Plans: srv.Plans, Memories: srv.Memories, Projects: srv.Projects,
 		Session: &app.Session{Node: srv.Node.ID, Tasks: srv.Tasks, Memories: srv.Memories, Projects: srv.Projects},
-		Runtime: rt, Peers: net, PeerClient: srv.PeerClient, Devices: srv.Devices, Browser: srv.Browser, Terminals: srv.Terminals,
+		Runtime: rt, GitHub: gh, Peers: net, PeerClient: srv.PeerClient, Devices: srv.Devices, Browser: srv.Browser, Terminals: srv.Terminals,
 		AgentsUseDevices: func() bool { return srv.Settings.Get().AgentsUseDevices },
 		AgentsUseBrowser: func() bool { return srv.Settings.Get().AgentsUseBrowser },
 		Notify:           func(entity, id string, data any) { events.Notify(api.Change{Entity: entity, ID: id, Data: data}) },

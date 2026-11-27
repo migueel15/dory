@@ -17,6 +17,7 @@ import (
 	"github.com/migueel15/dory/internal/browser"
 	"github.com/migueel15/dory/internal/data"
 	"github.com/migueel15/dory/internal/devices"
+	"github.com/migueel15/dory/internal/github"
 	"github.com/migueel15/dory/internal/mesh"
 	"github.com/migueel15/dory/internal/runtime"
 	"github.com/migueel15/dory/internal/terminal"
@@ -122,6 +123,7 @@ type Deps struct {
 	Projects *app.Projects
 	Session  *app.Session
 	Runtime  *runtime.Manager
+	GitHub   *github.Client
 	// Peers lists the mesh nodes; nil when there is no mesh.
 	Peers PeerLister
 	// PeerClient calls another node.
@@ -169,6 +171,7 @@ func b2i(b bool) int {
 func build(s *Deps, devices, browser bool) *sdk.Server {
 	srv := sdk.NewServer(&sdk.Implementation{Name: "dory", Version: "2.0.0"}, nil)
 	addTaskTools(srv, s)
+	addPullTools(srv, s)
 	addPlanTools(srv, s)
 	addMemoryTools(srv, s)
 	addUITools(srv, s)

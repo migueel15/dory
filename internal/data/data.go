@@ -40,6 +40,7 @@ func New(db *sql.DB, log *oplog.Log) *Store {
 func (s *Store) Projects() Resource[Project]        { return Resource[Project]{s, "project"} }
 func (s *Store) Repositories() Resource[Repository] { return Resource[Repository]{s, "repository"} }
 func (s *Store) Tasks() Resource[Task]              { return Resource[Task]{s, "task"} }
+func (s *Store) ThreadPulls() ThreadPullStore       { return ThreadPullStore{Resource[ThreadPull]{s, "thread_pull"}} }
 func (s *Store) Dependencies() Resource[Dependency] {
 	return Resource[Dependency]{s, "task_dependency"}
 }
@@ -140,7 +141,12 @@ func (r Resource[T]) identity(row map[string]any, key []string) (string, error) 
 	}
 	parts := make([]string, len(key))
 	for i, k := range key {
-		parts[i], _ = row[k].(string)
+		switch v := row[k].(type) {
+		case string:
+			parts[i] = v
+		case json.Number:
+			parts[i] = v.String()
+		}
 		if parts[i] == "" || strings.Contains(parts[i], "/") {
 			return "", ErrInvalid.Msgf("%s required", k)
 		}
