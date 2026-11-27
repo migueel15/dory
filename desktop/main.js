@@ -150,11 +150,15 @@ function stopCoreAndWait(timeout = 15_000) {
 
 let coreURL;
 let win;
+let opening;
+let updatesStarted = false;
+const hasWin = () => Boolean(win && !win.isDestroyed());
 
 // The core downloads the desktop release of its channel when the mesh updates
 // (ADR-016); the app installs it from there as soon as it lands and restarts.
 async function followUpdates(url) {
-  if (!app.isPackaged) return;
+  if (!app.isPackaged || updatesStarted) return;
+  updatesStarted = true;
   let dataDir;
   try {
     ({ data_dir: dataDir } = await (await fetch(`${url}/api/health`)).json());
@@ -223,39 +227,49 @@ function attachContextMenu(wc) {
   });
 }
 
-async function open() {
-  if (!devURL) {
-    await migrateCore().catch((err) => console.error("dory: migrate core:", err.message));
-    installCLI().catch((err) => console.error("dory: install cli:", err.message));
-  }
-  const url = devURL || await run(doryBin(), ["url"]).catch(() => "http://127.0.0.1:7700");
-  coreURL = url;
-  if (!devURL) await startCore(url);
-  win = new BrowserWindow({
-    width: 1400, height: 900, minWidth: 380, minHeight: 500, show: !hidden,
-    title: devURL ? "Dory (dev)" : "Dory", backgroundColor: "#0f0f11", autoHideMenuBar: true,
-    icon: iconPath,
-    webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true },
-  });
-  attachContextMenu(win.webContents);
-  // Links to other sites open in the system browser.
-  win.webContents.setWindowOpenHandler(({ url: target }) => {
-    if (!target.startsWith(url)) { shell.openExternal(target); return { action: "deny" }; }
-    return { action: "allow" };
-  });
-  win.webContents.on("will-navigate", (e, target) => {
-    if (!target.startsWith(url)) { e.preventDefault(); shell.openExternal(target); }
-  });
-  win.webContents.on("before-input-event", (e, input) => {
-    if (input.type === "keyDown" && (input.control || input.meta) && !input.alt && !input.shift && input.key.toLowerCase() === "r") {
-      e.preventDefault();
-      win.webContents.reload();
+function open({ show: showWindow = !hidden } = {}) {
+  if (opening) return opening;
+  opening = (async () => {
+    if (!devURL) {
+      await migrateCore().catch((err) => console.error("dory: migrate core:", err.message));
+      installCLI().catch((err) => console.error("dory: install cli:", err.message));
     }
-  });
-  // Closing the window hides it: the app and its core stay in the tray.
-  win.on("close", (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
-  await win.loadURL(url);
-  if (!devURL) followUpdates(url);
+    const url = devURL || await run(doryBin(), ["url"]).catch(() => "http://127.0.0.1:7700");
+    coreURL = url;
+    if (!devURL) await startCore(url);
+    win = new BrowserWindow({
+      width: 1400, height: 900, minWidth: 380, minHeight: 500, show: showWindow,
+      title: devURL ? "Dory (dev)" : "Dory", backgroundColor: "#0f0f11", autoHideMenuBar: true,
+      icon: iconPath,
+      webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true },
+    });
+    attachContextMenu(win.webContents);
+    // Links to other sites open in the system browser.
+    win.webContents.setWindowOpenHandler(({ url: target }) => {
+      if (!target.startsWith(url)) { shell.openExternal(target); return { action: "deny" }; }
+      return { action: "allow" };
+    });
+    win.webContents.on("will-navigate", (e, target) => {
+      if (!target.startsWith(url)) { e.preventDefault(); shell.openExternal(target); }
+    });
+    win.webContents.on("before-input-event", (e, input) => {
+      if (input.type === "keyDown" && (input.control || input.meta) && !input.alt && !input.shift && input.key.toLowerCase() === "r") {
+        e.preventDefault();
+        win.webContents.reload();
+      }
+    });
+    // Closing the window hides it: the app and its core stay in the tray.
+    win.on("close", (e) => {
+      if (!quitting) {
+        e.preventDefault();
+        if (hasWin()) win.hide();
+      }
+    });
+    win.on("closed", () => { win = undefined; });
+    await win.loadURL(url);
+    if (!devURL) followUpdates(url);
+  })().finally(() => { opening = undefined; });
+  return opening;
 }
 
 // Thread browser: each visible tab of a thread's browser is a native view
@@ -263,7 +277,11 @@ async function open() {
 // gets no preload and no Node; the interface drives it through its debugger,
 // which the core of the thread's node reaches over the panel channel.
 const views = new Map();
-const fromUI = (e) => win && e.sender === win.webContents;
+const fromUI = (e) => hasWin() && e.sender === win.webContents;
+
+ipcMain.on("window:hide", (e) => {
+  if (fromUI(e)) win.hide();
+});
 
 // The browser session presents itself as plain Chrome: sign-in pages such as
 // Google's refuse browsers whose user agent names Electron.
@@ -289,9 +307,9 @@ function browserView(tab, target) {
   // new windows become tabs of the same thread; the page stays here.
   wc.setWindowOpenHandler(({ url: next, disposition, features }) => {
     if (disposition === "new-window" || features) {
-      return { action: "allow", overrideBrowserWindowOptions: { parent: win, width: 520, height: 680, autoHideMenuBar: true } };
+      return { action: "allow", overrideBrowserWindowOptions: { parent: hasWin() ? win : undefined, width: 520, height: 680, autoHideMenuBar: true } };
     }
-    if (win) win.webContents.send("browser:open", tab, next);
+    if (hasWin()) win.webContents.send("browser:open", tab, next);
     return { action: "deny" };
   });
   // Browser shortcuts typed in the page belong to the panel.
@@ -300,11 +318,11 @@ function browserView(tab, target) {
     const key = String(input.key).toLowerCase();
     if (!["t", "w", "l"].includes(key)) return;
     e.preventDefault();
-    if (win) win.webContents.send("browser:key", tab, key);
+    if (hasWin()) win.webContents.send("browser:key", tab, key);
   });
   wc.debugger.attach("1.3");
-  wc.debugger.on("message", (_e, method, params) => { if (win) win.webContents.send("browser:event", tab, method, params); });
-  wc.debugger.on("detach", () => { if (win) win.webContents.send("browser:gone", tab); });
+  wc.debugger.on("message", (_e, method, params) => { if (hasWin()) win.webContents.send("browser:event", tab, method, params); });
+  wc.debugger.on("detach", () => { if (hasWin()) win.webContents.send("browser:gone", tab); });
   // A new tab is an empty black page until the user goes somewhere; real
   // pages keep the white default under their own background.
   const paint = (url) => view.setBackgroundColor(!url || url === "about:blank" ? "#000000" : "#ffffff");
@@ -320,7 +338,7 @@ function dropView(tab) {
   if (!v) return;
   views.delete(tab);
   try { v.view.webContents.debugger.detach(); } catch {}
-  if (win) win.contentView.removeChildView(v.view);
+  if (hasWin()) win.contentView.removeChildView(v.view);
   v.view.webContents.close();
 }
 
@@ -384,9 +402,9 @@ ipcMain.handle("tunnel:listen", (e, port) => new Promise((resolve) => {
   const server = net.createServer((sock) => {
     const id = ++nextSocket;
     sockets.set(id, sock);
-    if (win) win.webContents.send("tunnel:open", id, port);
-    sock.on("data", (chunk) => { if (win) win.webContents.send("tunnel:data", id, chunk); });
-    sock.on("close", () => { sockets.delete(id); if (win) win.webContents.send("tunnel:close", id); });
+    if (hasWin()) win.webContents.send("tunnel:open", id, port);
+    sock.on("data", (chunk) => { if (hasWin()) win.webContents.send("tunnel:data", id, chunk); });
+    sock.on("close", () => { sockets.delete(id); if (hasWin()) win.webContents.send("tunnel:close", id); });
     sock.on("error", () => {});
   });
   server.once("error", () => resolve(false));
@@ -401,7 +419,10 @@ let quitting = false;
 let tray;
 
 function show() {
-  if (!win) return;
+  if (!hasWin()) {
+    if (!quitting) open({ show: true }).catch((err) => console.error("dory: reopen:", err.message));
+    return;
+  }
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
