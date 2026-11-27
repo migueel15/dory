@@ -227,8 +227,9 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 			&app.GitHubProvider{Store: store, GitHub: gh, OnChanged: func() { events.Changed("board", "") }},
 		},
 	}
-	if err := srv.Tasks.MigrateLegacyTasks(ctx); err != nil {
-		log.Printf("migrate legacy tasks: %v", err)
+	srv.Plans.Tasks = srv.Tasks
+	if err := srv.Tasks.ArchiveImportedTasks(ctx); err != nil {
+		log.Printf("archive imported tasks: %v", err)
 	}
 	srv.PullReviews = &app.PullReviews{Store: store, Threads: srv.Threads}
 	go gh.Watch(ctx, func() {
@@ -242,6 +243,9 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 			}
 			if err := srv.Tasks.DetectThreadPullsByBranch(ctx, log_.Node()); err != nil {
 				log.Printf("detect thread pulls: %v", err)
+			}
+			if err := srv.Tasks.DetectIssueLinks(ctx, log_.Node()); err != nil {
+				log.Printf("detect issue links: %v", err)
 			}
 			events.Changed("github", "")
 			events.Changed("board", "")

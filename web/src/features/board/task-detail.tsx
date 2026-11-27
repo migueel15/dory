@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link,useNavigate } from "@tanstack/react-router";
 import { Suspense,lazy,useEffect,useId,useRef,useState } from "react";
 import { COLUMN_LABELS,repoName,type Column } from "../../api/client";
+import type { Card } from "../../api/types.gen";
 import { useBoard,useCard,usePlan,useRepositories } from "../../api/queries/hooks";
 import { qk } from "../../api/queries/keys";
 import { useArchiveTask,useDependencies,useLaunchTask,usePlans,useTaskDependency,useTaskStage,useUpdateTask } from "../../api/queries/tasks";
@@ -36,6 +37,9 @@ export const COLUMN_TONE: Record<Column, string> = {
 
 // TaskDetail is the task card. The board shows it as a wide modal; a thread shows
 // it as a narrow side card (layout "side") with the same content and actions.
+// issueOf is the issue of a task: the item of a GitHub task, or the issue noted on an internal one.
+const issueOf = (c: Card) => (c.source === "github" ? c.number : c.issue_number) ?? undefined;
+
 export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal" }: { id: string; launch?: QuickLaunch; onClose: () => void; layout?: "modal" | "side" }) {
   const side = layout === "side";
   const qc = useQueryClient();
@@ -96,7 +100,7 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
   // mode is what the launch popover opens: a thread to define the plan or one to implement.
   const [mode, setMode] = useState<"define" | "implement">("define");
   const c = card.data;
-  useEffect(() => { if (c && !draft) setDraft({ title: c.title, description: c.description, issue: c.issue_number?.toString() ?? "", pr: c.pr_number?.toString() ?? "", repo: c.repository_id ?? "" }); }, [c]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (c && !draft) setDraft({ title: c.title, description: c.description, issue: issueOf(c)?.toString() ?? "", pr: c.pr_number?.toString() ?? "", repo: c.repository_id ?? "" }); }, [c]); // eslint-disable-line react-hooks/exhaustive-deps
   const refresh = () => { qc.invalidateQueries({ queryKey: qk.card(id) }); qc.invalidateQueries({ queryKey: qk.board() }); };
   const save = useUpdateTask(id, () => ({ title: draft!.title, description: draft!.description, issue_number: draft!.issue ? Number(draft!.issue) : null, pr_number: draft!.pr ? Number(draft!.pr) : null, repository_id: draft!.repo || null }), {
     onSuccess: () => { refresh(); setEditing(false); },
@@ -154,7 +158,7 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
     </div>
   ) : <Modal title={title} onClose={onClose} className="!max-w-5xl sm:!p-6 [&>div:first-child>h2]:text-2xl [&>div:first-child>h2]:leading-tight">{children}</Modal>;
   if (!c || !draft) return frame("Tarea", <ErrorText error={card.error} />);
-  const dirty = draft.title !== c.title || draft.description !== c.description || draft.issue !== (c.issue_number?.toString() ?? "") || draft.pr !== (c.pr_number?.toString() ?? "") || draft.repo !== (c.repository_id ?? "");
+  const dirty = draft.title !== c.title || draft.description !== c.description || draft.issue !== (issueOf(c)?.toString() ?? "") || draft.pr !== (c.pr_number?.toString() ?? "") || draft.repo !== (c.repository_id ?? "");
   const others = (board.data?.cards ?? []).filter((o) => o.id !== id && (!c.project_id || o.project_id === c.project_id));
   const latest = [...(plans.data ?? [])].sort((a, b) => b.version - a.version)[0];
   // The latest plan has to be accepted before the task is implemented.
@@ -169,6 +173,8 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
   const environment = form.nodes.find((node) => node.value === form.value.node)?.label ?? "Este nodo";
   const projectRepos = (repos.data ?? []).filter((r) => !c.project_id || r.project_id === c.project_id);
   const githubRepo = c.repo && /^[\w.-]+\/[\w.-]+$/.test(c.repo) ? `https://github.com/${c.repo}` : undefined;
+  const issueNumber = issueOf(c);
+  const issueRoute = githubRoute(githubRepo && issueNumber ? `${githubRepo}/issues/${issueNumber}` : undefined);
   const pullNumber = c.pull?.number ?? c.pr_number;
   const pullRoute = githubRoute(c.pull?.url) ?? githubRoute(githubRepo && pullNumber ? `${githubRepo}/pull/${pullNumber}` : undefined);
   const openLaunch = (anchor: HTMLElement | null, next: "define" | "implement") => {
@@ -210,6 +216,8 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
   const prLink = pullRoute && <Link to="/github/$owner/$repo/$kind/$number" params={pullRoute} className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:bg-accent dark:hover:bg-accent-hover"><GitPullRequest className="size-4" />Abrir PR</Link>;
   // The pull request decides the column; stage only counts without one.
   const doneByHand = c.column === "done" && c.stage === "done" && !pullNumber;
+  // An external task is closed by its provider; reopening it reopens the item.
+  const closedExternal = c.source !== "internal" && (c.column === "done" || c.column === "cancelled");
   const next: Next =
     c.column === "cancelled" ? { tone: tones.idle, title: "Tarea cancelada", detail: "No se trabajará en ella salvo que la reabras.", action: <Button variant="ghost" onClick={() => stage.mutate("ready")}>Reabrir</Button> }
     : doneByHand ? { tone: tones.ok, title: "Completada", detail: "Marcada como hecha sin pull request.", action: <Button variant="ghost" onClick={() => stage.mutate("ready")}>Reabrir</Button> }
@@ -238,7 +246,8 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
       <div className="flex flex-wrap items-center gap-2">
         <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${COLUMN_TONE[c.column]}`}>{COLUMN_LABELS[c.column]}</span>
         {c.repo && (githubRepo ? <a className={chip} href={githubRepo} target="_blank" rel="noreferrer"><GithubLogo className="size-3.5 shrink-0" /><span className="truncate">{c.repo}</span></a> : <span className={chip}>{c.repo}</span>)}
-        {c.issue_number && (githubRepo ? <a className={chip} href={`${githubRepo}/issues/${c.issue_number}`} target="_blank" rel="noreferrer">Issue #{c.issue_number}</a> : <span className={chip}>Issue #{c.issue_number}</span>)}
+        {issueNumber && (issueRoute ? <Link className={chip} to="/github/$owner/$repo/$kind/$number" params={issueRoute}><GithubLogo className="size-3.5 shrink-0" />Issue #{issueNumber}</Link> : <span className={chip}>Issue #{issueNumber}</span>)}
+        {!c.adopted && <span className={chip} title="Se ve desde la caché de este nodo; se convierte en tarea de Dory al editarla, planificarla o lanzarla">Sincronizada</span>}
         {pullNumber && (pullRoute ? <Link className={chip} to="/github/$owner/$repo/$kind/$number" params={pullRoute}><GitPullRequest className="size-3.5" />PR #{pullNumber}{(c.pull?.draft || c.pr_state === "draft") && " · borrador"}</Link> : <span className={chip}>PR #{pullNumber}</span>)}
         {c.branch && <span className={`${chip} font-mono`} title={c.branch}><GitBranch className="size-3.5 shrink-0" /><span className="truncate">{c.branch}</span></span>}
         <button ref={menuTrigger} type="button" popoverTarget={menuId} onClick={openMenu} aria-label="Más acciones" className={`${iconButton} ml-auto`}><DotsThree weight="bold" className="size-5" /></button>
@@ -248,7 +257,7 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
           {c.stage !== "ready" && c.column === "inbox" && <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("ready")}>Marcar como lista</button>}
           {c.stage === "ready" && c.column === "ready" && <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("inbox")}>Volver a inbox</button>}
           {!pullNumber && c.column !== "done" && c.column !== "cancelled" && <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("done")}>Marcar como hecha</button>}
-          {c.stage === "cancelled" || doneByHand ? <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("ready")}>Reabrir</button> : <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("cancelled")}>Cancelar tarea</button>}
+          {c.stage === "cancelled" || doneByHand || closedExternal ? <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("ready")}>Reabrir</button> : <button type="button" role="menuitem" className={menuItem} onClick={() => stage.mutate("cancelled")}>Cancelar tarea</button>}
           <div className="my-1 border-t border-slate-200 dark:border-border" />
           <button type="button" role="menuitem" className={`${menuItem} text-red-700 dark:text-red-400`} onClick={() => { menu.current?.hidePopover(); askConfirm("¿Archivar la tarea?", "Archivar").then((ok) => ok && archive.mutate()); }}>Archivar</button>
         </div>
@@ -339,7 +348,7 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
                 </div>
                 <div className="flex gap-2">
                   <Button onClick={() => save.mutate()} disabled={!dirty || dictating || save.isPending}>Guardar cambios</Button>
-                  <Button variant="ghost" onClick={() => { setDraft({ title: c.title, description: c.description, issue: c.issue_number?.toString() ?? "", pr: c.pr_number?.toString() ?? "", repo: c.repository_id ?? "" }); setEditing(false); }}>Descartar</Button>
+                  <Button variant="ghost" onClick={() => { setDraft({ title: c.title, description: c.description, issue: issueOf(c)?.toString() ?? "", pr: c.pr_number?.toString() ?? "", repo: c.repository_id ?? "" }); setEditing(false); }}>Descartar</Button>
                 </div>
                 <ErrorText error={save.error} />
               </div>

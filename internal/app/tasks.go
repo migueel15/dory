@@ -50,6 +50,9 @@ type CardPull struct {
 // Card is the wire representation of a task with its derived board state.
 type Card struct {
 	data.Task
+	// Adopted says a Dory task holds the card; an external item that is not
+	// adopted shows from this node's cache and becomes a task on its first write.
+	Adopted       bool              `json:"adopted"`
 	Column        string            `json:"column"`
 	Reason        string            `json:"reason,omitempty"`
 	Repo          string            `json:"repo,omitempty"`
@@ -99,53 +102,16 @@ func (a *Tasks) ProviderFor(ctx context.Context, taskID string) (TaskProvider, U
 	return nil, UnifiedTask{}, data.ErrNotFound
 }
 
-// EnsureTaskRow returns the local tasks row for taskID, materializing a
-// lightweight row via EnsureExternalTask if taskID belongs to an external provider.
-func (a *Tasks) EnsureTaskRow(ctx context.Context, taskID string) (data.Task, UnifiedTask, error) {
-	_, u, provErr := a.ProviderFor(ctx, taskID)
-	if t, err := a.Store.Tasks().Get(ctx, taskID); err == nil {
-		return t, u, nil
-	}
-	if provErr != nil {
-		return data.Task{}, UnifiedTask{}, provErr
-	}
-	if u.RepositoryID != nil && u.Number != nil {
-		t, err := a.Store.EnsureExternalTask(ctx, u.ProjectID, *u.RepositoryID, *u.Number)
-		if err != nil {
-			return data.Task{}, UnifiedTask{}, err
-		}
-		return t, u, nil
-	}
-	return data.Task{}, UnifiedTask{}, data.ErrNotFound
-}
-
 func (a *Tasks) Card(ctx context.Context, id string) (Card, error) {
-	if _, u, err := a.ProviderFor(ctx, id); err == nil {
-		cards, err := a.cardsFromUnified(ctx, []UnifiedTask{u})
-		if err != nil {
-			return Card{}, err
-		}
-		if len(cards) > 0 {
-			return cards[0], nil
-		}
-	}
-	t, err := a.Get(ctx, id)
+	_, u, err := a.ProviderFor(ctx, id)
 	if err != nil {
 		return Card{}, err
 	}
-	cards, err := a.cards(ctx, []data.Task{t})
+	cards, err := a.cardsFromUnified(ctx, []UnifiedTask{u})
 	if err != nil {
 		return Card{}, err
 	}
 	return cards[0], nil
-}
-
-func (a *Tasks) Board(ctx context.Context, f data.Filter) ([]Card, error) {
-	tasks, err := a.List(ctx, f)
-	if err != nil {
-		return nil, err
-	}
-	return a.cards(ctx, tasks)
 }
 
 func (a *Tasks) repositoryNames(ctx context.Context) (map[string]string, error) {
@@ -197,42 +163,26 @@ func (a *Tasks) BoardMulti(ctx context.Context, filter TaskFilter) ([]Card, erro
 	return cards, nil
 }
 
+// cards is the board cards of the given tasks, in their order.
 func (a *Tasks) cards(ctx context.Context, tasks []data.Task) ([]Card, error) {
 	if len(tasks) == 0 {
 		return []Card{}, nil
 	}
-	names, err := a.repositoryNames(ctx)
+	all, err := a.BoardMulti(ctx, TaskFilter{})
 	if err != nil {
 		return nil, err
 	}
-	// Load external cache for any github tasks in the list.
-	extByID := map[string]UnifiedTask{}
-	gp := &GitHubProvider{Store: a.Store}
-	if extList, err := gp.List(ctx, TaskFilter{}); err == nil {
-		for _, u := range extList {
-			extByID[u.ID] = u
-		}
+	byID := make(map[string]Card, len(all))
+	for _, c := range all {
+		byID[c.ID] = c
 	}
-	unified := make([]UnifiedTask, 0, len(tasks))
+	out := make([]Card, 0, len(tasks))
 	for _, t := range tasks {
-		if u, ok := extByID[t.ID]; ok {
-			u.Stage = t.Stage
-			u.Position = t.Position
-			unified = append(unified, u)
-			continue
+		if c, ok := byID[t.ID]; ok {
+			out = append(out, c)
 		}
-		u := internalToUnified(t)
-		u.Source = t.Source
-		if u.Source == "" {
-			u.Source = "internal"
-		}
-		u.Number = t.Number
-		u.Repo = taskRepo(t, names)
-		u.legacyBranch = t.Branch
-		u.legacyPRNumber = t.PRNumber
-		unified = append(unified, u)
 	}
-	return a.cardsFromUnified(ctx, unified)
+	return out, nil
 }
 
 func (a *Tasks) cardsFromUnified(ctx context.Context, unified []UnifiedTask) ([]Card, error) {
@@ -287,6 +237,7 @@ func (a *Tasks) cardsFromUnified(ctx context.Context, unified []UnifiedTask) ([]
 		t := data.Task{
 			ID:           u.ID,
 			Source:       u.Source,
+			ExternalID:   u.ExternalID,
 			ProjectID:    u.ProjectID,
 			RepositoryID: u.RepositoryID,
 			Number:       u.Number,
@@ -305,6 +256,7 @@ func (a *Tasks) cardsFromUnified(ctx context.Context, unified []UnifiedTask) ([]
 		}
 		c := Card{
 			Task:          t,
+			Adopted:       u.Adopted,
 			Repo:          repo,
 			URL:           u.URL,
 			ExternalState: u.State,
@@ -441,12 +393,23 @@ func (a *Tasks) cardsFromUnified(ctx context.Context, unified []UnifiedTask) ([]
 		c.Column = string(res.Column)
 		c.Reason = res.Reason
 
-		for _, b := range deps[u.ID] {
-			if !board.Finished(localBoardCard(Card{Task: b, Repo: taskRepo(b, names)}, pulls)) {
-				c.Blockers = append(c.Blockers, b.ID)
+		cards = append(cards, c)
+	}
+	// A blocker is finished by its own column when it is among these cards.
+	column := make(map[string]string, len(cards))
+	for _, c := range cards {
+		column[c.ID] = c.Column
+	}
+	for i := range cards {
+		for _, b := range deps[cards[i].ID] {
+			finished := board.Finished(localBoardCard(Card{Task: b, Repo: taskRepo(b, names)}, pulls))
+			if col, ok := column[b.ID]; ok {
+				finished = col == string(board.Done) || col == string(board.Cancelled)
+			}
+			if !finished {
+				cards[i].Blockers = append(cards[i].Blockers, b.ID)
 			}
 		}
-		cards = append(cards, c)
 	}
 	return cards, nil
 }
@@ -458,7 +421,7 @@ func localBoardCard(c Card, pulls map[pullKey]cachedPull) board.Card {
 }
 
 func (a *Tasks) Columns(ctx context.Context) (map[string]notify.Column, error) {
-	cards, err := a.Board(ctx, data.Filter{})
+	cards, err := a.BoardMulti(ctx, TaskFilter{})
 	if err != nil {
 		return nil, err
 	}

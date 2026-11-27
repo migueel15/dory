@@ -31,19 +31,18 @@ type ListInput struct {
 // ListCards is the board cards of a project or issue; Open leaves out done
 // and cancelled tasks.
 func (a *Tasks) ListCards(ctx context.Context, in ListInput) ([]Card, error) {
-	fields := map[string]any{}
-	if in.ProjectID != "" {
-		fields["project_id"] = in.ProjectID
-	}
-	if in.IssueNumber != 0 {
-		fields["issue_number"] = in.IssueNumber
-	}
-	cards, err := a.Board(ctx, data.Filter{Fields: fields})
+	cards, err := a.BoardMulti(ctx, TaskFilter{ProjectID: in.ProjectID, Open: in.Open})
 	if err != nil {
 		return nil, err
 	}
-	if in.Open {
-		cards = slices.DeleteFunc(cards, func(c Card) bool { return c.Column == "done" || c.Column == "cancelled" })
+	if in.IssueNumber != 0 {
+		cards = slices.DeleteFunc(cards, func(c Card) bool {
+			n := c.Number
+			if c.Source != "github" {
+				n = c.IssueNumber
+			}
+			return n == nil || *n != in.IssueNumber
+		})
 	}
 	return cards, nil
 }
@@ -54,7 +53,7 @@ func (a *Tasks) Save(ctx context.Context, in SaveInput) (data.Task, error) {
 	var t data.Task
 	if in.ID != "" {
 		var err error
-		if t, err = a.Store.Tasks().Get(ctx, in.ID); err != nil {
+		if t, err = a.Adopt(ctx, in.ID); err != nil {
 			return t, err
 		}
 	} else if in.Title == "" {
@@ -99,7 +98,12 @@ func (a *Tasks) Save(ctx context.Context, in SaveInput) (data.Task, error) {
 	}
 	var err error
 	if t.ID == "" {
-		t, err = a.Create(ctx, t)
+		// The issue of a new task is linked once the task exists.
+		issue := t.IssueNumber
+		t.IssueNumber = nil
+		if t, err = a.Create(ctx, t); err == nil && issue != nil {
+			t, err = a.Patch(ctx, t.ID, nil, data.Fields{"issue_number": *issue})
+		}
 	} else {
 		t, err = a.Patch(ctx, t.ID, expected, fields)
 	}
@@ -107,7 +111,7 @@ func (a *Tasks) Save(ctx context.Context, in SaveInput) (data.Task, error) {
 		return t, err
 	}
 	for _, dep := range in.DependsOn {
-		if _, err = a.Store.AddDependency(ctx, t.ID, dep); err != nil {
+		if _, err = a.AddDependency(ctx, t.ID, dep); err != nil {
 			return t, err
 		}
 	}

@@ -24,15 +24,9 @@ type LaunchInput struct {
 // Launch starts an implementation thread for a task on this node, in its own
 // worktree and branch. It returns the thread id and the branch.
 func (a *Tasks) Launch(ctx context.Context, taskID string, in LaunchInput) (threadID, branch string, err error) {
-	t, u, err := a.EnsureTaskRow(ctx, taskID)
+	t, err := a.Adopt(ctx, taskID)
 	if err != nil {
 		return "", "", err
-	}
-	if t.Title == "" && u.Title != "" {
-		t.Title = u.Title
-	}
-	if t.Description == "" && u.Description != "" {
-		t.Description = u.Description
 	}
 	if pending, err := a.Plans.Pending(ctx, t.ID); err != nil {
 		return "", "", err
@@ -84,9 +78,12 @@ func (a *Tasks) Prompt(ctx context.Context, t data.Task) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Implementa esta tarea de Dory (id %s) en la rama %s.\n\n# %s\n\n%s\n", t.ID, t.Branch, t.Title, t.Description)
 	issue := ""
-	if t.IssueNumber != nil {
-		issue = fmt.Sprint(*t.IssueNumber)
-		fmt.Fprintf(&b, "\nIssue de GitHub: #%d.\n", *t.IssueNumber)
+	if n := t.IssueNumber; t.Source == "github" && t.Number != nil {
+		issue = fmt.Sprint(*t.Number)
+		fmt.Fprintf(&b, "\nIssue de GitHub: #%d. La pull request debe cerrarla con «Closes #%d».\n", *t.Number, *t.Number)
+	} else if n != nil {
+		issue = fmt.Sprint(*n)
+		fmt.Fprintf(&b, "\nIssue de GitHub: #%d.\n", *n)
 	}
 	plans, _ := a.Store.Plans().List(ctx, data.Filter{Fields: map[string]any{"task_id": t.ID}})
 	var accepted *data.Plan

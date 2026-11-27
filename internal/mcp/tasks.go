@@ -2,12 +2,10 @@ package mcp
 
 import (
 	"context"
-	"strings"
 
 	"github.com/migueel15/dory/internal/app"
 	"github.com/migueel15/dory/internal/apperr"
 	"github.com/migueel15/dory/internal/data"
-	"github.com/migueel15/dory/internal/github"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -31,27 +29,14 @@ type idInput struct {
 	Number int64  `json:"number,omitempty" jsonschema:"GitHub issue number"`
 }
 
-func resolveTaskID(ctx context.Context, store *data.Store, id, repo string, number int64) (string, error) {
+func resolveTaskID(ctx context.Context, tasks *app.Tasks, id, repo string, number int64) (string, error) {
 	if id != "" {
 		return id, nil
 	}
 	if repo == "" || number <= 0 {
 		return "", apperr.New(apperr.Invalid, "id or repo + number required")
 	}
-	repos, err := store.Repositories().ListAll(ctx, data.Filter{})
-	if err != nil {
-		return "", err
-	}
-	for _, r := range repos {
-		if name, ok := github.ParseRemote(r.RemoteURL); ok && strings.EqualFold(name, repo) {
-			t, err := store.EnsureExternalTask(ctx, &r.ProjectID, r.ID, number)
-			if err != nil {
-				return "", err
-			}
-			return t.ID, nil
-		}
-	}
-	return "", data.ErrNotFound.Msgf("repository not registered: %s", repo)
+	return tasks.IssueTaskID(ctx, repo, number)
 }
 
 type taskInput struct {
@@ -104,7 +89,7 @@ func addTaskTools(srv *sdk.Server, s *Deps) {
 		return app.TaskIndex(cards), nil
 	})
 	add(srv, "get_task", "Read one task by id or repo+number: description, column, PRs, threads, current plan and dependencies.", func(ctx context.Context, in idInput) (any, error) {
-		tid, err := resolveTaskID(ctx, store, in.ID, in.Repo, in.Number)
+		tid, err := resolveTaskID(ctx, s.Tasks, in.ID, in.Repo, in.Number)
 		if err != nil {
 			return nil, err
 		}
@@ -117,15 +102,11 @@ func addTaskTools(srv *sdk.Server, s *Deps) {
 		State  string `json:"state" jsonschema:"open, done or cancelled"`
 		Reason string `json:"reason,omitempty" jsonschema:"COMPLETED or NOT_PLANNED for GitHub issues"`
 	}) (any, error) {
-		tid, err := resolveTaskID(ctx, store, in.ID, in.Repo, in.Number)
+		tid, err := resolveTaskID(ctx, s.Tasks, in.ID, in.Repo, in.Number)
 		if err != nil {
 			return nil, err
 		}
-		p, _, err := s.Tasks.ProviderFor(ctx, tid)
-		if err != nil {
-			return nil, err
-		}
-		return p.SetState(ctx, tid, app.TaskStateInput{State: in.State, Reason: in.Reason})
+		return s.Tasks.SetState(ctx, tid, app.TaskStateInput{State: in.State, Reason: in.Reason})
 	})
 	add(srv, "comment_task", "Add a comment to an external task (GitHub issue).", func(ctx context.Context, in struct {
 		ID     string `json:"id,omitempty"`
@@ -133,15 +114,11 @@ func addTaskTools(srv *sdk.Server, s *Deps) {
 		Number int64  `json:"number,omitempty"`
 		Body   string `json:"body"`
 	}) (any, error) {
-		tid, err := resolveTaskID(ctx, store, in.ID, in.Repo, in.Number)
+		tid, err := resolveTaskID(ctx, s.Tasks, in.ID, in.Repo, in.Number)
 		if err != nil {
 			return nil, err
 		}
-		p, _, err := s.Tasks.ProviderFor(ctx, tid)
-		if err != nil {
-			return nil, err
-		}
-		return p.Comment(ctx, tid, in.Body)
+		return s.Tasks.Comment(ctx, tid, in.Body)
 	})
 	add(srv, "save_task", "Create a task, or change its title, description, issue, pull request or stage. stage done only without an unmerged pull request.", func(ctx context.Context, in taskInput) (any, error) {
 		return s.Tasks.Save(ctx, app.SaveInput{ID: in.ID, ProjectID: in.ProjectID, RepositoryID: in.RepositoryID, Title: in.Title, Description: in.Description,
@@ -151,6 +128,9 @@ func addTaskTools(srv *sdk.Server, s *Deps) {
 		TaskID    string `json:"task_id"`
 		ProjectID string `json:"project_id,omitempty" jsonschema:"Project id or slug; empty to unlink the task from its project"`
 	}) (any, error) {
+		if _, err := s.Tasks.Adopt(ctx, in.TaskID); err != nil {
+			return nil, err
+		}
 		return s.Projects.SetTaskProject(ctx, in.TaskID, in.ProjectID)
 	})
 	add(srv, "ensure_thread_task", "Get this conversation's task, creating and linking one if it has none. Use it before writing a plan. Safe to retry.", func(ctx context.Context, in struct {
@@ -163,7 +143,7 @@ func addTaskTools(srv *sdk.Server, s *Deps) {
 			return nil, apperr.New(apperr.Invalid, "ensure_thread_task only works inside a Dory thread")
 		}
 		if in.TaskID != "" {
-			if _, err := store.LinkThread(ctx, id, in.TaskID, false); err != nil {
+			if _, err := s.Tasks.LinkThread(ctx, id, in.TaskID, false); err != nil {
 				return nil, err
 			}
 			return store.Tasks().Get(ctx, in.TaskID)
@@ -179,7 +159,7 @@ func addTaskTools(srv *sdk.Server, s *Deps) {
 		if err != nil {
 			return nil, err
 		}
-		return store.LinkThread(ctx, id, in.TaskID, in.Replace)
+		return s.Tasks.LinkThread(ctx, id, in.TaskID, in.Replace)
 	})
 	add(srv, "unlink_thread", "Unlink a thread (this one by default) from its task.", func(ctx context.Context, in struct {
 		ThreadID string `json:"thread_id,omitempty" jsonschema:"Thread to unlink; empty for this conversation"`
@@ -202,7 +182,7 @@ func addTaskTools(srv *sdk.Server, s *Deps) {
 		return out, nil
 	})
 	add(srv, "add_task_dependency", "Make a task wait until another finishes.", func(ctx context.Context, in dependencyInput) (any, error) {
-		return store.AddDependency(ctx, in.TaskID, in.DependsOnID)
+		return s.Tasks.AddDependency(ctx, in.TaskID, in.DependsOnID)
 	})
 	add(srv, "remove_task_dependency", "Remove a blocker from a task.", func(ctx context.Context, in dependencyInput) (any, error) {
 		if err := store.RemoveDependency(ctx, in.TaskID, in.DependsOnID); err != nil {

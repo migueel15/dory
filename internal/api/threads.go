@@ -429,6 +429,11 @@ func (s *Server) ThreadAction(ctx context.Context, id, action, title, until, tas
 	case "unsnooze":
 		fields["snoozed_until"] = nil
 	case "link":
+		if taskID != "" {
+			if _, err := s.Tasks.Adopt(ctx, taskID); err != nil {
+				return t, err
+			}
+		}
 		if taskID == "" {
 			fields["task_id"] = nil
 			fields["task_linked_at"] = nil
