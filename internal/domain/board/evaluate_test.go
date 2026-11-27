@@ -26,6 +26,12 @@ func TestEvaluate(t *testing.T) {
 			wantReason: "waiting_thread",
 		},
 		{
+			name:       "idle thread without PR or accepted plan needs you",
+			in:         CardInput{Source: "internal", Stage: "inbox", Threads: []string{"idle"}},
+			wantCol:    NeedsYou,
+			wantReason: "idle_thread",
+		},
+		{
 			name: "1 of 2 PRs merged keeps task active in review",
 			in: CardInput{
 				Source: "internal",

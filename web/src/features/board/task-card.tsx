@@ -187,6 +187,7 @@ export function ThreadRow({ threads }: { threads: Thread[] }) {
 const NEEDS_YOU_REASON: Record<string, string> = {
   waiting_thread: "Hilo esperando respuesta",
   error_thread: "Hilo con error",
+  idle_thread: "Requiere tu acción",
   ci_failed: "CI fallido",
   changes_requested: "Cambios pedidos",
   issue_open_pulls_merged: "Issue abierta con PRs mergeadas",
