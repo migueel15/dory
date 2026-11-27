@@ -66,9 +66,14 @@ function release(session: Session) {
   session.releaseMic();
 }
 
-// Downsample to the 16 kHz WAV format shared with the existing dictation API.
+const dictationSampleRate = 16000;
+const batchMaxDurationMs = 5 * 60 * 1000;
+const streamingMaxDurationMs = 30 * 60 * 1000;
+
+// Downsample to the 16 kHz PCM/WAV format shared with the dictation API.
 function resample(input: Float32Array, sampleRate: number) {
-  const ratio = sampleRate / 16000;
+  if (sampleRate === dictationSampleRate) return input.slice();
+  const ratio = sampleRate / dictationSampleRate;
   return Float32Array.from({ length: Math.floor(input.length / ratio) }, (_, index) => input[Math.floor(index * ratio)]);
 }
 
@@ -263,7 +268,7 @@ export function useLocalDictation(text: string, setText: (text: string) => void,
             reject(new Error("Dictado cancelado."));
           }, { once: true });
           socket.onopen = () => socket.send(JSON.stringify({
-            type: "session.update", session: { sample_rate: context.sampleRate, language: "es-ES" },
+            type: "session.update", session: { sample_rate: dictationSampleRate, language: "es-ES" },
           }));
           socket.onmessage = ({ data }) => {
             if (current.current !== session) return;
@@ -300,7 +305,7 @@ export function useLocalDictation(text: string, setText: (text: string) => void,
             end(session, undefined, new Error("El modelo no puede seguir el ritmo del micrófono."));
             return;
           }
-          session.socket.send(pcm16(samples));
+          session.socket.send(pcm16(resample(samples, context.sampleRate)));
         } else {
           session.recording.push(resample(samples, context.sampleRate));
         }
@@ -308,7 +313,7 @@ export function useLocalDictation(text: string, setText: (text: string) => void,
       };
       source.connect(processor);
       processor.connect(context.destination);
-      session.timeout = window.setTimeout(() => void finish(session), 5 * 60 * 1000);
+      session.timeout = window.setTimeout(() => void finish(session), model.streaming ? streamingMaxDurationMs : batchMaxDurationMs);
       session.phase = "recording";
       setPhase("recording");
       playDictationSound("start");

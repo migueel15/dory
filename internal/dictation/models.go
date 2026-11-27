@@ -210,6 +210,15 @@ func (m *LocalModels) worker(ctx context.Context, model localModel) (*nemoWorker
 	}
 }
 
+func workerArgs(modelPath, port, token string, streaming bool) []string {
+	args := []string{"serve", "--host", "127.0.0.1", "--port", port,
+		"--asr-model", modelPath, "--no-ui", "--api-key", token}
+	if !streaming {
+		args = append(args, "--max-upload-mb", "12")
+	}
+	return args
+}
+
 func (m *LocalModels) startWorker(bin string, model localModel, worker *nemoWorker) {
 	defer close(worker.ready)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -221,8 +230,7 @@ func (m *LocalModels) startWorker(bin string, model localModel, worker *nemoWork
 	port := fmt.Sprint(listener.Addr().(*net.TCPAddr).Port)
 	listener.Close()
 	worker.address = &url.URL{Scheme: "http", Host: "127.0.0.1:" + port}
-	cmd := cmdexec.CommandContext(m.ctx, bin, "serve", "--host", "127.0.0.1", "--port", port,
-		"--asr-model", m.path(model), "--no-ui", "--max-upload-mb", "12", "--api-key", worker.token)
+	cmd := cmdexec.CommandContext(m.ctx, bin, workerArgs(m.path(model), port, worker.token, model.Streaming)...)
 	cmd.Stderr = os.Stderr
 	if err = cmd.Start(); err != nil {
 		worker.err = err
