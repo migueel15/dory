@@ -485,7 +485,7 @@ func (a *Tasks) RefreshExternalTasks(ctx context.Context, source TaskPullSource)
 	if err != nil {
 		return 0, err
 	}
-	if overview == nil {
+	if overview == nil || (overview.Refreshing && len(overview.Issues) == 0) {
 		return 0, nil
 	}
 	repos, err := a.Store.Repositories().ListAll(ctx, data.Filter{})

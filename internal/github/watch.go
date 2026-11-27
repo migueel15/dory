@@ -144,6 +144,28 @@ func (c *Client) watchOnce(ctx context.Context, changed func()) time.Duration {
 		c.initialSynced = true
 	}
 	c.mu.Unlock()
+	if firstSync {
+		for repo, project := range repos {
+			if _, already := dirty[repo]; already {
+				continue
+			}
+			c.mu.Lock()
+			_, loaded := c.byRepo[repo]
+			c.mu.Unlock()
+			if loaded {
+				continue
+			}
+			if data, err := c.fetchRepo(ctx, repo, project); err == nil {
+				c.mu.Lock()
+				c.byRepo[repo] = data
+				c.ciChecked[repo] = time.Now()
+				if c.fetched.IsZero() {
+					c.fetched = time.Now()
+				}
+				c.mu.Unlock()
+			}
+		}
+	}
 	if notified || firstSync {
 		changed()
 	}
