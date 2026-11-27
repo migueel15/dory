@@ -8,6 +8,7 @@ import { useProjectBranches,useProjectWorktrees } from "../api/queries/threads";
 import { useCommand,useShortcuts } from "../components/shortcuts";
 import { ErrorText,iconButton } from "../components/ui";
 import { modelEffort,modelId } from "../effort";
+import { autosizeTextarea } from "../features/composer/composer-styles";
 import { composerArea,composerFrame } from "../features/composer/composer";
 import { MobileComposer,mobileSendButton } from "../features/composer/mobile-composer";
 import { useComposerFiles } from "../features/composer/composer-files";
@@ -56,7 +57,7 @@ export function NewThread({ onCreated, centered = false }: { onCreated: (threadI
   // workspace is where the first message starts the thread: the checkout,
   // switched to branch, or a new worktree with its own branch made from it.
   const workspace = !project ? {} : mode === "existing" ? (chosen ? { worktree_path: chosen.path } : {}) : !branch ? {} : worktree ? { worktree: true, base_branch: branch } : { branch };
-  useLayoutEffect(() => { const el = box.current; if (el && !showingDictation) { el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 240)}px`; } }, [dictation.value, showingDictation]);
+  useLayoutEffect(() => { const el = box.current; if (el && !showingDictation) autosizeTextarea(el, 240); }, [dictation.value, showingDictation]);
   const start = useMutation({
     mutationFn: async (draft: string) => {
       form.remember();

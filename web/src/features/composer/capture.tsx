@@ -7,6 +7,7 @@ import { qk } from "../../api/queries/keys";
 import { useCreateIdea } from "../../api/queries/tasks";
 import { Button,ErrorText,Modal,Select,Textarea,uuid } from "../../components/ui";
 import { useProject } from "../../project";
+import { autosizeTextarea } from "./composer-styles";
 import { DictationMic,DictationPreview,useEnterFinishesDictation } from "./dictation-ui";
 import { useDictationInProgress,useLocalDictation } from "./local-dictation";
 
@@ -53,7 +54,7 @@ export function IdeaCapture({ onDone, focusOnSlash = false, autoFocus = false, p
   // Grow with the content.
   useLayoutEffect(() => {
     const el = box.current;
-    if (el && !showingDictation) { el.style.height = "auto"; el.style.height = `${el.scrollHeight}px`; }
+    if (el && !showingDictation) autosizeTextarea(el);
   }, [dictation.value, showingDictation]);
   useEffect(() => {
     if (!focusOnSlash) return;

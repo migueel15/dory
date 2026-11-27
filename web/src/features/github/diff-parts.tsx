@@ -1,6 +1,7 @@
 import { memo, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, Lightning, X, CaretDown, CaretRight, ChatCircle, File as FileIcon, Folder, FolderOpen } from "@phosphor-icons/react";
 import { useLocalDictation } from "../composer/local-dictation";
+import { autosizeTextarea } from "../composer/composer-styles";
 import { DictationMic, DictationPreview, useEnterFinishesDictation } from "../composer/dictation-ui";
 import { ErrorText, keepAboveKeyboard } from "../../components/ui";
 import { PublishButton } from "./diff-review";
@@ -166,8 +167,7 @@ export function CommentForm({ draft, placeholder, suggest, steerable = true, ran
   useLayoutEffect(() => {
     const area = input.current;
     if (!area || showingDictation) return;
-    area.style.height = "auto";
-    area.style.height = `${area.scrollHeight}px`;
+    autosizeTextarea(area);
   }, [body, showingDictation]);
   const empty = !body.trim();
   // A reference to code can go into the message box without a comment.
