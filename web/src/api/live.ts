@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient,type QueryClient } from "@tanstack/react-query";
 import { noteThreadUpdate } from "./activity";
 import type { ThreadView } from "./types.gen";
 import { qk } from "./queries/keys";
@@ -34,6 +34,7 @@ export function queriesFor(entity: string, id: string): unknown[][] {
     case "terminal": return [qk.threadTerminals(id)];
     case "notice": return [qk.notices()];
     case "github": return [qk.board(), qk.card(), qk.github(), qk.githubDetail()];
+    case "providers": return [qk.node(), qk.providers()];
     default: return [];
   }
 }
@@ -66,6 +67,12 @@ function checkVersion() {
     .catch(() => {});
 }
 
+// stable lists the query families that only change by this user's own
+// actions or come with their own event: a gap in the stream does not make
+// them doubtful, so they are not fetched again after it.
+const stable = new Set(["setup", "version", "me", "node-settings", "node-defaults", "node-providers", "title-model", "skills", "github-auth", "notice-settings", "speech-models"]);
+const afterGap = (qc: QueryClient) => qc.invalidateQueries({ predicate: (q) => !stable.has(String(q.queryKey[0])) });
+
 // useLiveUpdates subscribes to the node event stream and invalidates the
 // affected queries, batching bursts so a sync triggers one refetch.
 export function useLiveUpdates(enabled: boolean) {
@@ -87,7 +94,9 @@ export function useLiveUpdates(enabled: boolean) {
     });
     source.addEventListener("open", () => {
       checkVersion();
-      if (opened) qc.invalidateQueries();
+      // Changes sent while the stream was down are lost: refetch what may
+      // have moved. The first open needs nothing, the queries just loaded.
+      if (opened) void afterGap(qc);
       opened = true;
     });
     source.addEventListener("change", (e) => {
@@ -109,8 +118,10 @@ export function useLiveUpdates(enabled: boolean) {
     source.addEventListener("thread", (e) => noteThreadUpdate(JSON.parse((e as MessageEvent).data)));
     return () => { clearTimeout(timer); source.close(); };
   }, [enabled, visible, qc]);
+  // Back on screen: the stream was closed meanwhile, refetch what may have
+  // moved. Only the queries on screen go out; the rest wait to be used.
   const [seen, setSeen] = useState(visible);
-  useEffect(() => { if (visible && !seen) qc.invalidateQueries(); setSeen(visible); }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (visible && !seen) void afterGap(qc); setSeen(visible); }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 // useThreadLive follows the stream of one thread: durable events (numbered)

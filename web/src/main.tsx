@@ -1,9 +1,12 @@
 import { ChartBar,DotsThreeCircle,Gear,GitPullRequest,House,IconContext,Kanban,Moon,SignOut,Sun,X } from "@phosphor-icons/react";
-import { QueryClient,QueryClientProvider,useQueryClient } from "@tanstack/react-query";
+import { QueryClient,useQueryClient } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { Link,Outlet,RouterProvider,createRootRoute,createRoute,createRouter,lazyRouteComponent,redirect,useLocation,useNavigate } from "@tanstack/react-router";
 import { StrictMode,useEffect,useRef,useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ApiError } from "./api/client";
+import { ApiError,api } from "./api/client";
+import { qk } from "./api/queries/keys";
+import { forget,persistOptions,setCacheDefaults } from "./lib/query-cache";
 import { useLiveUpdates } from "./api/live";
 import { useLogin,useLogout,useMe,useSetupNeeded,useVersion } from "./api/queries/session";
 import { useThreadsAttention } from "./api/queries/threads";
@@ -38,6 +41,11 @@ const queryClient = new QueryClient({
   // page shows it at once, and the live stream invalidates whatever changes.
   defaultOptions: { queries: { retry: (n, e) => !(e instanceof ApiError && e.status === 401) && n < 2, refetchOnWindowFocus: false, staleTime: 30_000, gcTime: 30 * 60_000 } },
 });
+setCacheDefaults(queryClient);
+// The session and this node's state (with its models) go out at once, in
+// parallel with the code and the saved cache, instead of one after the other.
+void queryClient.prefetchQuery({ queryKey: qk.me(), queryFn: api.me, retry: false });
+void queryClient.prefetchQuery({ queryKey: qk.node(), queryFn: api.node, retry: false });
 
 function Login() {
   const qc = useQueryClient();
@@ -158,7 +166,10 @@ function VersionBadge() {
 function Layout() {
   const qc = useQueryClient();
   const me = useMe({ retry: false });
-  const logout = useLogout({ onSuccess: () => qc.clear() });
+  const logout = useLogout({ onSuccess: () => forget(qc) });
+  // A saved session that the node no longer accepts: drop everything saved.
+  const expired = !!me.data && me.error instanceof ApiError && me.error.status === 401;
+  useEffect(() => { if (expired) forget(qc); }, [expired, qc]);
   useLiveUpdates(!!me.data);
   // The board, threads and pull requests need the full width.
   const wide = useLocation({ select: (l) => l.pathname.startsWith("/threads") || /^\/github\/[^/]+\/[^/]+\/(pulls|issues)\//.test(l.pathname) || l.pathname === "/tasks" });
@@ -384,14 +395,19 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     {/* Every icon uses the duotone style (tinted background) unless it sets its own weight. The context replaces Phosphor's defaults as a whole, so it repeats size and color: without them icons with no class lose their 1em size. */}
     <IconContext.Provider value={{ color: "currentColor", size: "1em", mirrored: false, weight: "duotone" }}>
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
         <RouterProvider router={router} />
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </IconContext.Provider>
   </StrictMode>,
 );
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  // The worker served a saved page and found a newer one: load it, so the
+  // interface never runs against a newer node.
+  navigator.serviceWorker.addEventListener("message", (e) => { if ((e.data as { type?: string })?.type === "shell-updated") window.location.reload(); });
+}
 
 function DoryLogo({ className = "size-7" }: { className?: string }) {
   return (

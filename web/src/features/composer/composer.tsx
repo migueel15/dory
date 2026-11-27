@@ -42,7 +42,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
   const qc = useQueryClient();
   const getShortcut = useShortcuts();
   const key = qk.thread(t.id);
-  const providers = useNodeProviders(t.node_id, { staleTime: 60_000 });
+  const providers = useNodeProviders(t.node_id);
   const [text, setText] = useState("");
   const mobile = useMobile();
   useEmitter(events.fillComposer, (d) => { if (d.threadId === t.id) { setText(d.text); area.current?.focus(); } });
