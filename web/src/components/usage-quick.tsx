@@ -18,7 +18,7 @@ const usedOf = (w: UsageWindow) => Math.round(w.utilization * 100);
 
 // Dial draws remaining allowance on one split circle: the top 40 % is the
 // shortest window and the bottom 60 % the weekly one. Empty tracks mean no data.
-function Dial({ short, long }: { short?: number; long?: number }) {
+function Dial({ short, long, className = "size-5" }: { short?: number; long?: number; className?: string }) {
   const r = 9, gap = 26;
   const pt = (deg: number) => { const t = (deg - 90) * Math.PI / 180; return `${(12 + r * Math.cos(t)).toFixed(2)} ${(12 + r * Math.sin(t)).toFixed(2)}`; };
   const path = (from: number, to: number) => `M ${pt(from)} A ${r} ${r} 0 ${to - from > 180 ? 1 : 0} 1 ${pt(to)}`;
@@ -33,7 +33,7 @@ function Dial({ short, long }: { short?: number; long?: number }) {
       </>
     );
   };
-  return <svg viewBox="0 0 24 24" className="size-5" aria-hidden="true">{seg(top, short, true)}{seg(bottom, long, false)}</svg>;
+  return <svg viewBox="0 0 24 24" className={className} aria-hidden="true">{seg(top, short, true)}{seg(bottom, long, false)}</svg>;
 }
 
 // until formats the time to reset: minutes for short windows, days and hours for long ones.
@@ -49,7 +49,7 @@ function until(iso: string | null, short: boolean) {
 
 // UsageQuick is a sidebar button with the remaining limits of the pinned
 // provider; it opens the limits of every provider of this node.
-export function UsageQuick() {
+export function UsageQuick({ tab = false }: { tab?: boolean }) {
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState(false);
   const [pos, setPos] = useState<CSSProperties>({});
@@ -89,8 +89,11 @@ export function UsageQuick() {
       <button ref={trigger} type="button" aria-haspopup="dialog" aria-expanded={open} aria-label={summary}
         onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onFocus={() => setHover(true)} onBlur={() => setHover(false)}
         onClick={() => { setHover(false); setOpen(!open); }}
-        className={`grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-slate-200 sm:min-h-0 sm:min-w-0 sm:px-3 sm:py-1.5 dark:hover:bg-raised ${open ? "bg-slate-200 dark:bg-raised" : ""}`}>
-        <Dial short={inner && usedOf(inner)} long={outer && usedOf(outer)} />
+        className={tab
+          ? `outline-none flex h-14 flex-col items-center justify-center gap-0.5 text-[0.6875rem] font-medium ${open ? "text-slate-900 dark:text-white" : "text-slate-500 dark:text-muted"}`
+          : `grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-slate-200 sm:min-h-0 sm:min-w-0 sm:px-3 sm:py-1.5 dark:hover:bg-raised ${open ? "bg-slate-200 dark:bg-raised" : ""}`}>
+        <Dial short={inner && usedOf(inner)} long={outer && usedOf(outer)} className={tab ? "size-6" : "size-5"} />
+        {tab && "Uso"}
       </button>
       {hover && !open && (
         <HoverCard anchor={trigger.current}>

@@ -15,7 +15,6 @@ export const commands = [
   { id: "plan", label: "Modo plan", default: chord("P", true) },
   { id: "branch", label: "Selector de rama", default: chord("B", true) },
   { id: "project", label: "Selector de proyecto", default: chord("O", true) },
-  { id: "sidebar", label: "Barra lateral principal", default: chord("L", true) },
   { id: "thread-list", label: "Lista lateral de hilos", default: chord("H", true) },
   { id: "thread-panel", label: "Panel lateral del hilo", default: chord("J", true) },
   { id: "dictation", label: "Dictado", default: { code: "KeyD", ctrl: true, meta: false, alt: false, shift: false } },

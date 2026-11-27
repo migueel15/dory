@@ -23,8 +23,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import javax.net.ssl.HttpsURLConnection;
@@ -112,67 +110,67 @@ public class DoryPlugin extends Plugin {
     }
 
     private static final long SESSION_FRESH_MS = 6L * 60 * 60 * 1000;
-    private static final long SESSION_REFRESH_MS = 3L * 60 * 60 * 1000;
-    /** address|pin|token → timestamp when the web session cookie was issued. */
     private static final ConcurrentHashMap<String, Long> sessionAt = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Object> sessionLocks = new ConcurrentHashMap<>();
+
+    private static boolean isSessionFresh(String address, String pin) {
+        if (address == null || pin == null) return false;
+        Long at = sessionAt.get(address);
+        return at != null
+            && System.currentTimeMillis() - at < SESSION_FRESH_MS
+            && pin.equals(Pin.byHost.get(address));
+    }
 
     /** Trades the device token for a web session cookie and returns the node origin. */
     static String session(String address, String pin, String token) throws Exception {
-        String origin = "https://" + address;
-        String key = address + "|" + pin + "|" + token;
-        long now = System.currentTimeMillis();
-        Long issued = sessionAt.get(key);
-        if (issued != null && (now - issued) < SESSION_FRESH_MS) {
-            String existing = CookieManager.getInstance().getCookie(origin);
-            if (existing != null && existing.contains("dory_session=")) {
+        Object lock = sessionLocks.computeIfAbsent(address, k -> new Object());
+        synchronized (lock) {
+            if (isSessionFresh(address, pin)) return "https://" + address;
+            HttpsURLConnection c = Pin.open("https://" + address + "/device/v1/session", pin, null);
+            try {
+                send(c, "POST", token, "");
+                String origin = "https://" + address;
+                CookieManager cm = CookieManager.getInstance();
+                Map<String, List<String>> headers = c.getHeaderFields();
+                List<String> cookies = headers.get("Set-Cookie");
+                if (cookies == null) cookies = headers.get("set-cookie");
+                if (cookies != null) for (String v : cookies) cm.setCookie(origin, v);
                 Pin.byHost.put(address, pin);
-                if ((now - issued) > SESSION_REFRESH_MS) {
-                    Thread t = new Thread(() -> {
-                        try {
-                            refreshSession(address, pin, token, key);
-                        } catch (Exception ignored) {
-                        }
-                    }, "dory-session-refresh");
-                    t.setDaemon(true);
-                    t.start();
-                }
+                sessionAt.put(address, System.currentTimeMillis());
+                // setCookie is immediately visible to the WebView; persist to disk asynchronously.
+                new Thread(cm::flush, "cookie-flush").start();
                 return origin;
+            } finally {
+                c.disconnect();
             }
         }
-        return refreshSession(address, pin, token, key);
     }
 
-    private static String refreshSession(String address, String pin, String token, String key) throws Exception {
-        HttpsURLConnection c = Pin.open("https://" + address + "/device/v1/session", pin, null);
-        send(c, "POST", token, "");
-        String origin = "https://" + address;
-        CookieManager cm = CookieManager.getInstance();
-        Map<String, List<String>> headers = c.getHeaderFields();
-        List<String> cookies = headers.get("Set-Cookie");
-        if (cookies == null) cookies = headers.get("set-cookie");
-        if (cookies != null && !cookies.isEmpty()) {
-            CountDownLatch latch = new CountDownLatch(cookies.size());
-            for (String v : cookies) {
-                cm.setCookie(origin, v, ignored -> latch.countDown());
-            }
+    /** Pre-warms a node's session cookie in the background so tapping it opens immediately. */
+    @PluginMethod
+    public void warm(PluginCall call) {
+        String address = call.getString("address"), pin = call.getString("pin"), token = call.getString("token");
+        if (isSessionFresh(address, pin)) { call.resolve(); return; }
+        new Thread(() -> {
             try {
-                latch.await(2, TimeUnit.SECONDS);
-            } catch (InterruptedException ignored) {
-                Thread.currentThread().interrupt();
+                session(address, pin, token);
+                call.resolve();
+            } catch (Exception e) {
+                call.reject(message(e));
             }
-            Thread flush = new Thread(cm::flush, "dory-cookie-flush");
-            flush.setDaemon(true);
-            flush.start();
-        }
-        Pin.byHost.put(address, pin);
-        sessionAt.put(key, System.currentTimeMillis());
-        return origin;
+        }, "session-warm").start();
     }
 
     /** Trades the token for a session and shows the node in the web view. */
     @PluginMethod
     public void open(PluginCall call) {
         String address = call.getString("address"), pin = call.getString("pin"), token = call.getString("token");
+        if (isSessionFresh(address, pin)) {
+            String origin = "https://" + address;
+            getActivity().runOnUiThread(() -> getBridge().getWebView().loadUrl(origin + "/"));
+            call.resolve();
+            return;
+        }
         new Thread(() -> {
             try {
                 String origin = session(address, pin, token);
@@ -181,7 +179,7 @@ public class DoryPlugin extends Plugin {
             } catch (Exception e) {
                 call.reject(message(e));
             }
-        }).start();
+        }, "session-open").start();
     }
 
     @PluginMethod
@@ -189,8 +187,7 @@ public class DoryPlugin extends Plugin {
         String address = call.getString("address");
         if (address != null) {
             Pin.byHost.remove(address);
-            String prefix = address + "|";
-            sessionAt.keySet().removeIf(k -> k.startsWith(prefix));
+            sessionAt.remove(address);
         }
         call.resolve();
     }

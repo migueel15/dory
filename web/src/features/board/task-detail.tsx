@@ -1,7 +1,7 @@
 import { CaretDown,CaretRight,Chats,Check,ClipboardText,DotsThree,GitBranch,GitPullRequest,GithubLogo,LinkSimple,PencilSimple,Rocket,X } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link,useNavigate } from "@tanstack/react-router";
-import { useEffect,useId,useRef,useState } from "react";
+import { Suspense,lazy,useEffect,useId,useRef,useState } from "react";
 import { COLUMN_LABELS,repoName,type Column } from "../../api/client";
 import { useBoard,useCard,usePlan,useRepositories } from "../../api/queries/hooks";
 import { qk } from "../../api/queries/keys";
@@ -9,7 +9,6 @@ import { useArchiveTask,useDependencies,useLaunchTask,usePlans,useTaskDependency
 import { useCreateThread } from "../../api/queries/threads";
 import { askConfirm } from "../../components/confirm";
 import { ModelLogo } from "../../components/model-logo";
-import { PlanDoc } from "../../components/plan-doc";
 import { githubRoute } from "../../components/refs";
 import { Md } from "../../components/markdown";
 import { Button,ErrorText,Input,Label,Modal,Select,iconButton } from "../../components/ui";
@@ -20,6 +19,9 @@ import { useDictationInProgress } from "../composer/local-dictation";
 import { slot } from "./card-status";
 import { ThreadDot } from "./task-card";
 import { type QuickLaunch } from "./task-quick-menu";
+
+// The plan editor carries tiptap: it loads only when a plan is shown.
+const PlanDoc = lazy(() => import("../../components/plan-doc").then((m) => ({ default: m.PlanDoc })));
 
 export const COLUMN_TONE: Record<Column, string> = {
   inbox: "bg-slate-100 text-slate-700 dark:bg-raised dark:text-text-secondary",
@@ -361,7 +363,7 @@ export function TaskDetail({ id, launch: initialLaunch, onClose, layout = "modal
                 <CaretDown className="size-4 transition-transform group-open:rotate-180" />
               </span>
             </summary>
-            <PlanDoc taskId={id} showStatus={false} reader onAccepted={() => { if (planSection.current) planSection.current.open = false; }} />
+            <Suspense fallback={null}><PlanDoc taskId={id} showStatus={false} reader onAccepted={() => { if (planSection.current) planSection.current.open = false; }} /></Suspense>
           </details>
         </div>
 

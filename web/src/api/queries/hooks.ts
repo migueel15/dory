@@ -1,8 +1,8 @@
 // Hooks of the shared resources: one place with each key and its fetcher.
 // They take the options of useQuery (staleTime, refetchInterval, select...) so
 // each screen keeps its own refresh rhythm.
-import { useMutation,useQuery,type UseMutationOptions,type UseQueryOptions } from "@tanstack/react-query";
-import { api } from "../client";
+import { useMutation,useQuery,useQueryClient,type UseMutationOptions,type UseQueryOptions } from "@tanstack/react-query";
+import { api,type NodeStatus } from "../client";
 import { qk } from "./keys";
 
 export type Opts<D, S = D> = Omit<UseQueryOptions<D, Error, S>, "queryKey" | "queryFn">;
@@ -29,8 +29,20 @@ export const useMemories = (o?: Opts<Of<typeof api.memories.list>>) =>
   useQuery({ queryKey: qk.memories(), queryFn: () => api.memories.list(), ...o });
 export const useNodeSettings = (node: string, o?: Opts<Of<typeof api.nodeSettings>>) =>
   useQuery({ queryKey: qk.nodeSettings(node), queryFn: () => api.nodeSettings(node), ...o });
-export const useNodeProviders = <S = Of<typeof api.nodeProviders>>(node: string, o?: Opts<Of<typeof api.nodeProviders>, S>) =>
-  useQuery({ queryKey: qk.providers(node), queryFn: () => api.nodeProviders(node), ...o });
+// useNodeProviders lists a node's harnesses. This node's come with /node, so
+// they share that request and its cached answer instead of asking twice.
+export function useNodeProviders<S = Of<typeof api.nodeProviders>>(node: string, o?: Opts<Of<typeof api.nodeProviders>, S>) {
+  const qc = useQueryClient();
+  const status = () => qc.getQueryData<NodeStatus>(qk.node());
+  const self = node === "local" || node === status()?.node.id;
+  return useQuery({
+    queryKey: qk.providers(node),
+    queryFn: self ? () => qc.fetchQuery({ queryKey: qk.node(), queryFn: api.node, staleTime: 5_000 }).then((n) => n.providers) : () => api.nodeProviders(node),
+    initialData: self ? () => status()?.providers : undefined,
+    initialDataUpdatedAt: self ? () => qc.getQueryState(qk.node())?.dataUpdatedAt : undefined,
+    ...o,
+  });
+}
 export const usePairedDevices = (o?: Opts<Of<typeof api.devices>>) =>
   useQuery({ queryKey: qk.devices(), queryFn: api.devices, ...o });
 export const useBoard = (project = "", o?: Opts<Of<typeof api.board>>) =>

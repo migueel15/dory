@@ -9,7 +9,7 @@ import (
 	"github.com/migueel15/dory/internal/workspace"
 )
 
-// mountBranches lists the local branches of a project's checkout on any node.
+// mountBranches lists the local and remote branches of a project's checkout on any node.
 func (s *Server) mountBranches(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/nodes/{node}/projects/{id}/branches", s.onNode(func(w http.ResponseWriter, r *http.Request) {
 		_, path, err := s.Projects.Checkout(r.Context(), r.PathValue("id"))
@@ -19,6 +19,7 @@ func (s *Server) mountBranches(mux *http.ServeMux) {
 		}
 		out := workspace.Branches{Branches: []string{}}
 		if path != "" {
+			_ = workspace.FetchOrigin(r.Context(), path)
 			out = workspace.ListBranches(r.Context(), path)
 		}
 		writeJSON(w, http.StatusOK, out)

@@ -3,12 +3,22 @@ import { ArrowUp, CaretDown, Check, MagnifyingGlass } from "@phosphor-icons/reac
 import { claudeModelName } from "../../components/model-label";
 import { ProviderIcon } from "./launch-picker";
 import { useCommand, useShortcuts } from "../../components/shortcuts";
+import { Sheet } from "../../components/sheet";
+import { useMobile } from "../../lib/use-mobile";
 import { formatChord } from "./dictation-shortcut";
 
 export type MenuOption = { value: string; label: string; group?: string; modelId?: string; icon?: React.ReactNode };
 
 // Chip is a compact dropdown for the composer toolbar; the menu opens upwards.
-export function Chip({ value, options, onChange, title, icon, below = false, prefix, shortcutBranch = false }: { value: string; options: MenuOption[]; onChange: (v: string) => void; title: string; icon?: React.ReactNode; below?: boolean; prefix?: string; shortcutBranch?: boolean }) {
+// The trigger styles of every selector: a compact chip, a bordered pill
+// (phones) and inline text (a name inside a sentence). The menu is the same.
+const chipStyles = {
+  chip: "inline-flex h-8 max-w-[11rem] items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white",
+  pill: "inline-flex h-8 max-w-[14rem] items-center gap-1.5 rounded-full border border-slate-200 px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-border dark:text-text-secondary dark:hover:bg-raised",
+  text: "inline-flex max-w-full items-center gap-1 font-semibold underline decoration-slate-300 decoration-2 underline-offset-4 dark:decoration-border",
+};
+
+export function Chip({ value, options, onChange, title, icon, below = false, align = "left", prefix, shortcutBranch = false, variant = "chip", placeholder }: { variant?: "chip" | "pill" | "text"; placeholder?: string; value: string; options: MenuOption[]; onChange: (v: string) => void; title: string; icon?: React.ReactNode; below?: boolean; align?: "left" | "right"; prefix?: string; shortcutBranch?: boolean }) {
   const [open, setOpen] = useState(false);
   const getShortcut = useShortcuts();
   const box = useOutside(open, () => setOpen(false));
@@ -17,17 +27,18 @@ export function Chip({ value, options, onChange, title, icon, below = false, pre
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
   const filtered = options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()));
+  const mobile = useMobile();
   const close = () => { setOpen(false); setQuery(""); trigger.current?.focus(); };
   useCommand("branch", () => { if (!trigger.current?.getClientRects().length) return false; setQuery(""); setHighlight(0); setOpen(true); }, shortcutBranch);
   return (
-    <div ref={box} className="relative">
+    <div ref={box} className={variant === "text" ? "relative inline-block" : "relative"}>
       <button ref={trigger} type="button" title={shortcutBranch ? `${title} (${formatChord(getShortcut("branch"))})` : title} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}
         onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
-        className="inline-flex h-8 max-w-[11rem] items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white">
-        {current?.icon ?? icon}<span className="truncate">{prefix && `${prefix} `}{current?.label ?? value}</span><CaretDown weight="regular" className="size-3 shrink-0 opacity-60" />
+        className={chipStyles[variant]}>
+        {variant !== "text" && (current?.icon ?? icon)}<span className="truncate">{prefix && `${prefix} `}{!value && placeholder ? placeholder : current?.label ?? value}</span><CaretDown weight="regular" className="size-3 shrink-0 opacity-60" />
       </button>
-      {open && (
-        <ul role="listbox" className={`absolute left-0 z-20 max-h-72 min-w-[12rem] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-border dark:bg-surface ${below ? "top-full mt-2" : "bottom-full mb-2"}`}>
+      {open && (mobile ? <Sheet title={title} onClose={close}>
+        <ul role="listbox" className="space-y-0.5">
           {shortcutBranch && <li><input autoFocus aria-label="Buscar rama" value={query} onChange={(e) => { setQuery(e.target.value); setHighlight(0); }} onKeyDown={(e) => {
             if (e.key === "Escape") { e.stopPropagation(); close(); }
             else if (e.key === "ArrowDown") { e.preventDefault(); setHighlight((i) => Math.min(i + 1, filtered.length - 1)); }
@@ -37,13 +48,30 @@ export function Chip({ value, options, onChange, title, icon, below = false, pre
           {filtered.map((o, i) => (
             <li key={o.value}>
               <button type="button" role="option" aria-selected={o.value === value} onClick={() => { onChange(o.value); close(); }}
-                className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised ${shortcutBranch && i === highlight ? "bg-slate-100 dark:bg-raised" : ""}`}>
+                className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm max-sm:min-h-11 max-sm:px-3 max-sm:text-base hover:bg-slate-100 dark:hover:bg-raised aria-selected:bg-blue-50 aria-selected:font-medium aria-selected:text-blue-900 aria-pressed:bg-blue-50 aria-pressed:font-medium aria-pressed:text-blue-900 dark:aria-selected:bg-accent-subtle dark:aria-selected:text-white dark:aria-pressed:bg-accent-subtle dark:aria-pressed:text-white ${shortcutBranch && i === highlight ? "bg-slate-100 dark:bg-raised" : ""}`}>
                 {o.icon}<span className="min-w-0 flex-1 truncate">{o.label}</span>{o.value === value && <Check weight="regular" className="size-3.5" />}
               </button>
             </li>
           ))}
         </ul>
-      )}
+      </Sheet> : (
+        <ul role="listbox" className={`absolute ${align === "right" ? "right-0" : "left-0"} z-20 max-h-72 min-w-[12rem] max-w-[min(24rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-border dark:bg-surface ${below ? "top-full mt-2" : "bottom-full mb-2"}`}>
+          {shortcutBranch && <li><input autoFocus aria-label="Buscar rama" value={query} onChange={(e) => { setQuery(e.target.value); setHighlight(0); }} onKeyDown={(e) => {
+            if (e.key === "Escape") { e.stopPropagation(); close(); }
+            else if (e.key === "ArrowDown") { e.preventDefault(); setHighlight((i) => Math.min(i + 1, filtered.length - 1)); }
+            else if (e.key === "ArrowUp") { e.preventDefault(); setHighlight((i) => Math.max(i - 1, 0)); }
+            else if (e.key === "Enter" && filtered[highlight]) { e.preventDefault(); onChange(filtered[highlight].value); close(); }
+          }} className="w-full rounded bg-transparent px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500" /></li>}
+          {filtered.map((o, i) => (
+            <li key={o.value}>
+              <button type="button" role="option" aria-selected={o.value === value} onClick={() => { onChange(o.value); close(); }}
+                className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised aria-selected:bg-blue-50 aria-selected:font-medium aria-selected:text-blue-900 aria-pressed:bg-blue-50 aria-pressed:font-medium aria-pressed:text-blue-900 dark:aria-selected:bg-accent-subtle dark:aria-selected:text-white dark:aria-pressed:bg-accent-subtle dark:aria-pressed:text-white ${shortcutBranch && i === highlight ? "bg-slate-100 dark:bg-raised" : ""}`}>
+                {o.icon}<span className="min-w-0 flex-1 truncate">{o.label}</span>{o.value === value && <Check weight="regular" className="size-3.5" />}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ))}
     </div>
   );
 }
@@ -52,7 +80,8 @@ export function useOutside(open: boolean, close: () => void) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) close(); };
+    // Sheets live on document.body: a tap inside one is not outside.
+    const onDown = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node) && !(e.target as Element).closest?.("[data-sheet]")) close(); };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -63,7 +92,7 @@ export type ModelOption = MenuOption & { provider: string };
 export type ModelProvider = { id: string; name: string; disabled?: boolean };
 
 // ModelPicker filters the active provider's catalog and shows the selected model's reasoning levels.
-export function ModelPicker({ models, providers, selected, effort, effortsOf, onChange, modelId = selected, reportedEffort, onSelectClose }: { models: ModelOption[]; providers: ModelProvider[]; selected: string; effort: string; effortsOf: (value: string) => { values: string[]; initial: string } | undefined; onChange: (value: string, effort: string) => void; modelId?: string; reportedEffort?: string; onSelectClose?: () => void }) {
+export function ModelPicker({ models, providers, selected, effort, effortsOf, onChange, modelId = selected, reportedEffort, onSelectClose, compact = false }: { models: ModelOption[]; providers: ModelProvider[]; selected: string; effort: string; effortsOf: (value: string) => { values: string[]; initial: string } | undefined; onChange: (value: string, effort: string) => void; modelId?: string; reportedEffort?: string; onSelectClose?: () => void; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const getShortcut = useShortcuts();
   const [focus, setFocus] = useState(selected);
@@ -148,7 +177,7 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
   const modelLabel = claude ||
     (modelId === (current?.modelId ?? selected) ? current?.label : undefined) ||
     (modelId && modelId !== "default" ? modelId : "Seleccionar modelo");
-  const effortLabel = reportedEffort || effort;
+  const effortLabel = effort || reportedEffort;
   // On touch screens the search waits for a tap, so the keyboard does not cover the list.
   const touch = window.matchMedia("(pointer: coarse)").matches;
   const settingsLabel = effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel;
@@ -170,22 +199,19 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
       });
     }
   };
-  const row = "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised";
+  const row = "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-raised aria-selected:bg-blue-50 aria-selected:font-medium aria-selected:text-blue-900 aria-pressed:bg-blue-50 aria-pressed:font-medium aria-pressed:text-blue-900 dark:aria-selected:bg-accent-subtle dark:aria-selected:text-white dark:aria-pressed:bg-accent-subtle dark:aria-pressed:text-white";
   return (
     <div ref={box} className="relative flex">
       <button ref={trigger} type="button" title={`${settingsLabel}${claude ? ` (${modelId})` : ""} · ${formatChord(getShortcut("model"))}`} aria-label={`Modelo y razonamiento: ${settingsLabel}`} aria-haspopup="dialog" aria-expanded={open} onClick={toggle}
-        className="inline-flex h-8 max-w-[20rem] items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white">
-        {current?.icon}<span className="truncate text-slate-900 dark:text-white">{modelLabel}</span>
-        {effortLabel && <span className="shrink-0 text-slate-500 dark:text-muted">· {effortLabel}</span>}<CaretDown weight="regular" className="size-3 shrink-0 opacity-60" />
+        className={compact ? "grid size-9 place-items-center rounded-full bg-slate-100 text-slate-600 dark:bg-raised dark:text-text-secondary [&_svg]:size-5" : "inline-flex h-8 max-w-[20rem] items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-text-secondary dark:hover:bg-raised dark:hover:text-white"}>
+        {compact ? current?.icon ?? <CaretDown weight="regular" className="size-4" /> : <>{current?.icon}<span className="truncate text-slate-900 dark:text-white">{modelLabel}</span>
+        {effortLabel && <span className="shrink-0 text-slate-500 dark:text-muted">· {effortLabel}</span>}<CaretDown weight="regular" className="size-3 shrink-0 opacity-60" /></>}
       </button>
-      {open && (
+      {open && (compact ? (
+        <Sheet title="Modelo y razonamiento" onClose={() => close()}>
         <div ref={panel} role="dialog" aria-label="Modelo y razonamiento"
           onKeyDown={(e) => { if (e.key === "Escape" && !e.nativeEvent.isComposing) { e.stopPropagation(); close(); } }}
-          style={{
-            [placement?.above === false ? "top" : "bottom"]: `calc(100% + ${gap}px)`,
-            maxHeight: placement?.maxHeight,
-          }}
-          className="absolute left-0 z-20 w-[min(36rem,calc(100vw-4.5rem))] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-border dark:bg-surface">
+          className="w-full">
           <div className="flex items-center gap-2 border-b border-slate-200 px-3 dark:border-border">
             <MagnifyingGlass weight="regular" className="size-4 shrink-0 text-slate-500 dark:text-muted" />
             <input autoFocus={!touch} type="search" role="combobox" aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
@@ -272,7 +298,102 @@ export function ModelPicker({ models, providers, selected, effort, effortsOf, on
             )}
           </div>
         </div>
-      )}
+        </Sheet>
+      ) : (
+        <div ref={panel} role="dialog" aria-label="Modelo y razonamiento"
+          onKeyDown={(e) => { if (e.key === "Escape" && !e.nativeEvent.isComposing) { e.stopPropagation(); close(); } }}
+          style={{
+            [placement?.above === false ? "top" : "bottom"]: `calc(100% + ${gap}px)`,
+            maxHeight: placement?.maxHeight,
+          }}
+          className={`absolute z-20 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-border dark:bg-surface ${compact ? "right-0 w-[calc(100vw-1.5rem)]" : "left-0 w-[min(36rem,calc(100vw-4.5rem))]"}`}>
+          <div className="flex items-center gap-2 border-b border-slate-200 px-3 dark:border-border">
+            <MagnifyingGlass weight="regular" className="size-4 shrink-0 text-slate-500 dark:text-muted" />
+            <input autoFocus={!touch} type="search" role="combobox" aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
+              aria-activedescendant={highlightedModel ? `${listId}-${highlightedIndex}` : undefined}
+              value={search} placeholder="Buscar modelos…" aria-label="Buscar modelos"
+              onChange={(e) => {
+                setSearch(e.currentTarget.value);
+                setNavigationIndex(undefined);
+                if (modelList.current) modelList.current.scrollTop = 0;
+              }}
+              onKeyDown={(e) => {
+                if (e.nativeEvent.isComposing) return;
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (highlightedModel) pickModel(highlightedModel.value, e.shiftKey ? "focusEfforts" : "close");
+                  return;
+                }
+                if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+                e.preventDefault();
+                if (!visibleModels.length) return;
+                const lastIndex = visibleModels.length - 1;
+                const down = e.key === "ArrowDown";
+                const next = highlightedModel && highlightedIndex !== undefined
+                  ? Math.max(0, Math.min(lastIndex, highlightedIndex + (down ? 1 : -1)))
+                  : down ? 0 : lastIndex;
+                setNavigationIndex(next);
+                modelList.current?.children.item(next)?.scrollIntoView({ block: "nearest" });
+              }}
+              className="min-w-0 flex-1 appearance-none border-0 bg-transparent py-2.5 text-sm outline-none! focus-visible:outline-none!" />
+          </div>
+          <div className="grid grid-cols-[3rem_minmax(0,1fr)] sm:grid-cols-[3rem_minmax(0,1fr)_7rem]">
+            <ul aria-label="Proveedores" className="row-span-2 max-h-64 overflow-y-auto border-r border-slate-200 p-1 dark:border-border sm:row-span-1">
+              {providers.map((item) => (
+                <li key={item.id}>
+                  <button type="button" disabled={item.disabled} aria-pressed={!query && activeProvider?.id === item.id} aria-label={item.name}
+                    title={item.disabled ? "Espera a que termine el turno para cambiar de proveedor" : item.name}
+                    onClick={() => {
+                      setProvider(item.id);
+                      setSearch("");
+                      setNavigationIndex(undefined);
+                      if (modelList.current) modelList.current.scrollTop = 0;
+                    }}
+                    className="grid size-10 place-items-center rounded-lg text-base hover:bg-slate-100 disabled:opacity-50 aria-pressed:bg-slate-200 dark:hover:bg-raised dark:aria-pressed:bg-raised">
+                    <ProviderIcon driver={item.id} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <ul ref={modelList} id={listId} role="listbox" aria-label="Modelos" className="max-h-44 min-w-0 overflow-y-auto p-1 sm:max-h-64">
+              {visibleModels.map((model, index) => (
+                <li key={model.value} role="presentation">
+                  <button id={`${listId}-${index}`} type="button" role="option" onClick={() => pickModel(model.value)} title={model.label}
+                    aria-selected={model.value === selected}
+                    className={`${row} ${model === highlightedModel ? "ring-1 ring-inset ring-slate-500 dark:ring-accent-text" : ""}`}>
+                    {model.icon}<span className="min-w-0 flex-1 truncate">{model.label}</span>
+                    {model.value === selected && <Check weight="thin" className="size-3.5 shrink-0" />}
+                  </button>
+                </li>
+              ))}
+              {!visibleModels.length && <li role="presentation" className="px-2 py-1.5 text-sm text-slate-500 dark:text-muted">{search.trim() ? "Sin resultados" : "Sin modelos disponibles"}</li>}
+            </ul>
+            {efforts && (
+              <div ref={effortList} aria-label="Razonamiento"
+                onKeyDown={(e) => {
+                  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+                  e.preventDefault();
+                  const buttons = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>("button"));
+                  const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+                  if (index === -1 || !buttons.length) return;
+                  const next = Math.max(0, Math.min(buttons.length - 1, index + (e.key === "ArrowDown" ? 1 : -1)));
+                  buttons[next]?.focus();
+                }}
+                className="flex flex-wrap gap-1 border-t border-slate-200 p-1 dark:border-border sm:block sm:max-h-64 sm:overflow-y-auto sm:border-l sm:border-t-0">
+                {efforts.values.map((level) => {
+                  const active = level === (focus === selected ? effort : efforts.initial);
+                  return (
+                    <button key={level} type="button" aria-pressed={active} onClick={() => { onChange(focus, level); close(true); }}
+                      className={`${row} !w-auto outline-none! focus-visible:outline-none! focus:bg-slate-100 focus:ring-1 focus:ring-inset focus:ring-slate-500 dark:focus:bg-raised dark:focus:ring-accent-text sm:!w-full`}>
+                      <span className="min-w-0 flex-1 truncate">{level}</span>{active && <Check weight="thin" className="size-3.5 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

@@ -1,13 +1,13 @@
-import { Circle,CircleNotch,ClockCounterClockwise,GitDiff,Kanban,WarningCircle,XCircle } from "@phosphor-icons/react";
+import { Circle,CircleNotch,ClockCounterClockwise,GitDiff,Info,Kanban,WarningCircle,XCircle } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate,useParams } from "@tanstack/react-router";
-import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type MouseEvent as ReactMouseEvent,type RefObject } from "react";
+import { Suspense,lazy,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type MouseEvent as ReactMouseEvent,type RefObject } from "react";
 import { type Message } from "../../api/client";
 import { useThreadLive } from "../../api/live";
 import { useNodeProviders,usePlan,useProjects,useThreadView } from "../../api/queries/hooks";
 import { qk } from "../../api/queries/keys";
 import { useAdoptSession,useExternalSession,useThreadAction,useThreadDiff } from "../../api/queries/threads";
-import { PlanDoc } from "../../components/plan-doc";
+import { ThreadBrowserContext } from "../../components/refs";
 import { useCommand } from "../../components/shortcuts";
 import { Button,ErrorText,uuid } from "../../components/ui";
 import { setDiffBase,useDiffBase } from "../../lib/diff-base";
@@ -15,8 +15,8 @@ import { addDraftQuote,removeDraftQuotes,useDraftQuotes } from "../../lib/draft-
 import { storage,storageKeys } from "../../lib/storage";
 import { events } from "../../lib/store";
 import { useThreadsFold } from "../../lib/threads-fold";
-import { turnDiff } from "../../lib/turn-changes";
 import { hasWindowClose } from "../../lib/window-close";
+import { turnDiff } from "../../lib/turn-changes";
 import { TaskDetail } from "../board/task-detail";
 import { Messages } from "../chat/chat";
 import { ToEnd,useFollow } from "../chat/follow";
@@ -31,13 +31,16 @@ import { Chip } from "../composer/model-picker";
 import { Queue } from "../composer/queue";
 import { type Suggestion } from "../github/diff-parts";
 import { Diff } from "../github/github-diff";
-import { BrowserPanel } from "./browser-panel";
-import { TerminalPanel } from "./terminal-panel";
+import { BrowserPanel,openInThreadBrowser } from "./browser-panel";
 import { terminalApi } from "../../lib/terminal/client";
 import { DevicePanel,FloatingWindow } from "./device-panel";
 import { SidePanel,SidePanelToggle,kindOf,useSidePanel,type SidePanelState } from "./side-panel";
 import { ThreadInfo,headerButton } from "./thread-info";
 import { useThreadMenu } from "./thread-menu";
+
+// tiptap and xterm load only when a plan or a terminal tab is shown.
+const PlanDoc = lazy(() => import("../../components/plan-doc").then((m) => ({ default: m.PlanDoc })));
+const TerminalPanel = lazy(() => import("./terminal-panel").then((m) => ({ default: m.TerminalPanel })));
 
 // ThreadView is a whole thread page: header, chat and, on demand, its changes
 // and the plan of its task.
@@ -106,17 +109,17 @@ export function ThreadView() {
   const deviceView = (k: string, floating = false) => <DevicePanel key={k} node={thread?.node_id ?? "local"} serial={panel.meta[k]?.serial ?? null} floating={floating} onFloat={(v) => panel.setMeta(k, { floating: v })}
     onSerial={(serial, name) => panel.setMeta(k, serial ? { serial, ...(panel.meta[k]?.name ? {} : { name }) } : { serial: undefined })} />;
   return (
-    <div className="relative flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
+    <div className="keyboard-follow relative flex h-[calc(100dvh_-_4rem_-_1px_-_var(--tabbar))] min-h-0 sm:h-[calc(100dvh-3rem-2px)]">
       {/* The panel toggle is pinned to the page corner, so opening the panel never moves it. */}
-      <div className={`absolute right-1 top-0 z-30 sm:-top-2 ${hasWindowClose ? "sm:right-8" : "sm:-right-1"}`}><SidePanelToggle panel={panel} /></div>
+      <div className={`absolute right-1 top-0 z-30 sm:-top-2 ${hasWindowClose ? "sm:right-14" : "sm:-right-1"}`}><SidePanelToggle panel={panel} /></div>
       <div onPointerEnter={toComposer} className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Header threadId={threadId} panel={panel} />
         <ThreadChat threadId={threadId} />
       </div>
       <SidePanel panel={panel} threadId={threadId} onRename={renameTab} onCloseTab={closeTab} available={[...(local ? ["diff" as const] : []), ...(taskId ? ["plan" as const] : []), "device" as const, "terminal" as const, ...(window.doryDesktop?.browser ? ["browser" as const] : [])]}
-        render={(k) => (k === "diff" ? <Changes threadId={threadId} messages={thread?.messages} /> : k === "browser" ? <BrowserPanel threadId={threadId} remote={local === false} /> : kindOf(k) === "terminal" ? <TerminalPanel threadId={threadId} tab={k} id={panel.meta[k]?.terminal} active={panel.open && panel.active === k} onId={(id) => panel.setMeta(k, { terminal: id })} /> : kindOf(k) === "device" ? (panel.open ? (panel.meta[k]?.floating
+        render={(k) => (k === "diff" ? <Changes threadId={threadId} messages={thread?.messages} /> : k === "browser" ? <BrowserPanel threadId={threadId} remote={local === false} /> : kindOf(k) === "terminal" ? <Suspense fallback={null}><TerminalPanel threadId={threadId} tab={k} id={panel.meta[k]?.terminal} active={panel.open && panel.active === k} onId={(id) => panel.setMeta(k, { terminal: id })} /></Suspense> : kindOf(k) === "device" ? (panel.open ? (panel.meta[k]?.floating
           ? <div className="grid h-full place-items-center p-6 text-center text-sm text-slate-500 dark:text-muted"><div className="space-y-2"><p>El dispositivo flota sobre el chat.</p><Button variant="ghost" onClick={() => panel.setMeta(k, { floating: false })}>Abrir en el panel lateral</Button></div></div>
-          : deviceView(k)) : null) : taskId && <PlanDoc taskId={taskId} />)} />
+          : deviceView(k)) : null) : taskId && <Suspense fallback={null}><PlanDoc taskId={taskId} /></Suspense>)} />
       {panel.tabs.filter((k) => kindOf(k) === "device" && panel.meta[k]?.floating).map((k) => <FloatingWindow key={k} id={`${threadId}:${k}`}>{deviceView(k, true)}</FloatingWindow>)}
     </div>
   );
@@ -193,20 +196,25 @@ function Header({ threadId, panel }: { threadId: string; panel: SidePanelState }
   const [taskOpen, setTaskOpenState] = useState(readTask);
   useEffect(() => setTaskOpenState(readTask()), [taskKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const setTaskOpen = useCallback((v: boolean) => { setTaskOpenState(v); try { if (v) storage.set(taskKey, "1"); else storage.remove(taskKey); } catch { /* per-viewer only */ } }, [taskKey]);
-  if (!t) return <div className="h-12 shrink-0" />;
   return (
-    <div className={`relative z-20 flex shrink-0 flex-wrap items-center gap-2 pb-2 pl-1 pr-11 transition-[padding,margin] ${fold ? (fold.folded ? "sm:pl-10" : "sm:pl-2") : ""} duration-300 ease-out motion-reduce:transition-none sm:-mt-2 ${hasWindowClose ? "sm:pr-20" : ""} ${panel.open ? "lg:!pr-1" : ""} ${panel.open ? "lg:mr-0 sm:-mr-2" : "sm:-mr-2"}`}>
+    <div className={`relative z-20 flex shrink-0 flex-wrap items-center gap-2 pb-2 pl-10 ${hasWindowClose ? "pr-[6.5rem]" : "pr-11"} transition-[padding,margin] ${fold?.folded ? "sm:pl-10" : "sm:pl-2"} duration-[260ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none sm:-mt-2 ${panel.open ? "lg:!pr-1" : ""} ${panel.open ? "lg:mr-0 sm:-mr-2" : "sm:-mr-2"}`}>
       {projectName && <span className="flex min-w-0 max-w-[40%] shrink items-center gap-2 text-slate-500 dark:text-muted"><span className="truncate">{projectName}</span><span aria-hidden="true">/</span></span>}
-      {editing ? (
+      {!t ? (
+        <span className="min-w-0 flex-1" />
+      ) : editing ? (
         <form className="min-w-0 flex-1" onSubmit={(e) => { e.preventDefault(); setEditing(false); if (title.trim()) act.mutate({ action: "rename", title: title.trim() }); }}>
           <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => setEditing(false)} onKeyDown={(e) => { if (e.key === "Escape") setEditing(false); }} className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-sm dark:border-border-strong" />
         </form>
       ) : (
         <h1 className="min-w-0 flex-1 cursor-text truncate font-semibold" title={`${t.title} · doble clic para renombrar`} onDoubleClick={() => { setTitle(t.title); setEditing(true); }} onContextMenu={menu.open}>{t.title || "Hilo"}</h1>
       )}
-      {t.parent_id ? <ParentLink parentId={t.parent_id} /> : t.origin_id && <ParentLink parentId={t.origin_id} origin />}
-      {t.task_id && <TaskCard taskId={t.task_id} open={taskOpen} setOpen={setTaskOpen} popup={panel.open} />}
-      <ThreadInfo t={t} popup={panel.open} hidden={!!t.task_id && taskOpen} onOpen={() => setTaskOpen(false)} diff={panel.open && panel.active === "diff"} toggleDiff={() => { if (panel.open && panel.active === "diff") panel.toggle(); else { setTurnFilter(threadId, null); panel.show("diff"); } }} />
+      {t?.parent_id ? <ParentLink parentId={t.parent_id} /> : t?.origin_id && <ParentLink parentId={t.origin_id} origin />}
+      {t?.task_id && <TaskCard taskId={t.task_id} open={taskOpen} setOpen={setTaskOpen} popup={panel.open} />}
+      {t ? (
+        <ThreadInfo t={t} popup={panel.open} hidden={!!t.task_id && taskOpen} onOpen={() => setTaskOpen(false)} diff={panel.open && panel.active === "diff"} toggleDiff={() => { if (panel.open && panel.active === "diff") panel.toggle(); else { setTurnFilter(threadId, null); panel.show("diff"); } }} />
+      ) : (
+        <button type="button" disabled aria-label="Detalles del hilo" className={headerButton(false)}><Info weight="regular" className="size-4" /></button>
+      )}
       <ErrorText error={act.error ?? menu.error} />
       {menu.menu}
     </div>
@@ -273,7 +281,11 @@ function ThreadConversation({ threadId }: { threadId: string }) {
       <div ref={scroller} data-scroller onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto pt-10 pb-3 [overflow-anchor:none] [scrollbar-gutter:stable]">
         <div className="mx-auto w-full max-w-[55.2rem] space-y-4 px-3 sm:px-6">
           {t && t.messages.length === 0 && <p className="py-10 text-center text-sm text-slate-500 dark:text-muted">Sin mensajes todavía. Escribe abajo para empezar.</p>}
-          {t && <Messages key={t.id} threadId={t.id} messages={t.messages} running={t.running} />}
+          {t && (
+            <ThreadBrowserContext.Provider value={(url) => { void openInThreadBrowser(t.id, url); }}>
+              <Messages key={t.id} threadId={t.id} messages={t.messages} running={t.running} />
+            </ThreadBrowserContext.Provider>
+          )}
           {t && <Queue t={t} />}
           {t && !t.local && <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">Este hilo corre en otro nodo.</p>}
         </div>

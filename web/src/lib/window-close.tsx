@@ -35,14 +35,17 @@ declare global {
 // window to the tray, as the native button does elsewhere.
 export const hasWindowClose = window.doryDesktop?.platform === "linux";
 
-// WindowClose sits fixed at the top right of the main view, always in the
-// same place; views leave room for it.
+// windowCloseInset reserves horizontal room in top-right page headers so their
+// actions do not collide with the floating WindowClose button on Linux desktop.
+export const windowCloseInset = hasWindowClose ? "sm:pr-12" : "";
+
+// WindowClose sits at the far right of the desktop top bar.
 export function WindowClose() {
   if (!hasWindowClose) return null;
   return (
     <button type="button" onClick={() => window.close()} title="Cerrar la ventana" aria-label="Cerrar la ventana"
-      className="fixed right-[1.0625rem] top-[1.0625rem] z-40 hidden size-8 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 sm:grid dark:text-text-secondary dark:hover:bg-raised">
-      <X weight="regular" className="size-4" />
+      className="m-0.5 grid size-7 place-items-center rounded-full bg-slate-200/80 text-slate-600 transition-[background-color,color,transform] duration-150 hover:bg-slate-300/80 hover:text-slate-900 active:scale-95 dark:bg-raised dark:text-text-secondary dark:hover:bg-hover dark:hover:text-white">
+      <X weight="bold" className="size-3.5" />
     </button>
   );
 }

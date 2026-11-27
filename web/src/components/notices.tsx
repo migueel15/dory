@@ -6,16 +6,16 @@ import { req } from "../api/client";
 import { qk } from "../api/queries/keys";
 import { useNotices as useNoticeInbox,useReadNotices } from "../api/queries/settings";
 import type { Notice } from "../api/types.gen";
-import { Button } from "./ui";
+import { Button,uuid } from "./ui";
 
 const b64 = (s: string) => {
   const raw = atob((s + "=".repeat((4 - (s.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
   return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 };
 
-// subscribe asks for permission and registers this browser for push notices
-// from this node (the phone app subscribes to the server node).
-async function subscribe() {
+// subscribeNotices asks for permission and registers this browser for push
+// notices from this node (the phone app subscribes to the server node).
+export async function subscribeNotices() {
   if (!("Notification" in window)) throw new Error("Este navegador no admite avisos");
   if ((await Notification.requestPermission()) !== "granted") throw new Error("Permiso denegado");
   const reg = await navigator.serviceWorker?.ready;
@@ -33,7 +33,7 @@ export function NoticesToggle() {
   const on = perm === "granted";
   return (
     <button type="button" title={error || (on ? "Avisos activados" : "Activar avisos")} aria-label={on ? "Avisos activados" : "Activar avisos"}
-      onClick={() => { if (!on) subscribe().then(() => setPerm("granted"), (e: Error) => { setError(e.message); setPerm(Notification.permission); }); }}
+      onClick={() => { if (!on) subscribeNotices().then(() => setPerm("granted"), (e: Error) => { setError(e.message); setPerm(Notification.permission); }); }}
       className="grid min-h-11 min-w-11 place-items-center rounded-md hover:bg-slate-200 sm:min-h-0 sm:min-w-0 dark:hover:bg-raised">
       {on ? <BellRinging className="size-5" /> : <Bell className="size-5" />}
     </button>
@@ -126,7 +126,7 @@ export function NoticeInbox() {
 }
 
 // One id per loaded interface, so the mesh can tell open interfaces apart.
-const interfaceId = crypto.randomUUID();
+const interfaceId = uuid();
 
 // idleAfter is how long without input before a focused interface counts as
 // unattended.
@@ -206,7 +206,7 @@ export function NoticeAlerts() {
   }, [notices.data]);
   if (toasts.length === 0) return null;
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-80 max-w-[calc(100%-2rem)] flex-col gap-2" role="status">
+    <div className="pointer-events-none fixed inset-x-4 top-[calc(env(safe-area-inset-top)+0.5rem)] z-50 flex flex-col gap-2 sm:inset-x-auto sm:bottom-4 sm:right-4 sm:top-auto sm:w-80" role="status">
       {toasts.map((n) => (
         <Toast key={n.id} notice={n} onDismiss={() => setToasts((t) => t.filter((x) => x.id !== n.id))}
           onOpen={() => { setToasts((t) => t.filter((x) => x.id !== n.id)); if (n.url) navigate({ to: n.url as never }); }} />
@@ -223,7 +223,7 @@ function Toast({ notice: n, onOpen, onDismiss }: { notice: Notice; onOpen: () =>
   const moved = useRef(false);
   return (
     <div style={{ transform: `translateX(${dx}px)`, opacity: 1 - Math.min(Math.abs(dx) / 160, 0.8), transition: start.current === undefined ? "transform 150ms, opacity 150ms" : "none" }}
-      className="pointer-events-auto flex touch-pan-y items-start rounded-lg border border-slate-200 bg-white shadow-lg dark:border-border dark:bg-surface"
+      className="toast-in pointer-events-auto flex touch-pan-y items-start rounded-lg border border-slate-200 bg-white shadow-lg dark:border-border dark:bg-surface"
       onPointerDown={(e) => { start.current = e.clientX; moved.current = false; }}
       onPointerMove={(e) => { if (start.current === undefined) return; const d = e.clientX - start.current; if (!moved.current && Math.abs(d) > 6) { moved.current = true; e.currentTarget.setPointerCapture(e.pointerId); } if (moved.current) setDx(d); }}
       onPointerUp={() => { start.current = undefined; if (Math.abs(dx) > 80) onDismiss(); else setDx(0); }}

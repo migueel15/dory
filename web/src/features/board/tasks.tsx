@@ -8,6 +8,7 @@ import { useBoard } from "../../api/queries/hooks";
 import { qk } from "../../api/queries/keys";
 import { useMoveTask } from "../../api/queries/tasks";
 import { Button,ErrorText } from "../../components/ui";
+import { windowCloseInset } from "../../lib/window-close";
 import { useProject } from "../../project";
 import { IdeaModal } from "../composer/capture";
 import { lastActivity } from "./card-layout";
@@ -61,7 +62,7 @@ export function Tasks() {
   const drop = (col: Column) => { if (drag && MANUAL[col]) move.mutate({ id: drag, stage: MANUAL[col]! }); setDrag(undefined); };
   return (
     <div className="flex flex-col gap-3 sm:h-[calc(100dvh-3rem-2px)]">
-      <div className="flex shrink-0 items-center gap-2">
+      <div className={`flex shrink-0 items-center gap-2 ${windowCloseInset}`}>
         <h2 className="font-semibold">Kanban</h2>
         <Button className="ml-auto" onClick={() => setAdding(true)}><Plus weight="regular" className="size-4" />Nueva idea</Button>
       </div>
@@ -81,7 +82,7 @@ export function Tasks() {
                   {all && <button type="button" onClick={() => setExpanded(undefined)} className="rounded px-1.5 text-xs text-slate-500 hover:bg-slate-100 dark:text-muted dark:hover:bg-raised">Mostrar menos</button>}
                   <span className="ml-auto text-xs tabular-nums text-slate-500 dark:text-muted">{list.length}</span>
                 </header>
-                <ColumnCards list={list} all={all} onExpand={() => setExpanded(col)} card={cardEl} />
+                <ColumnCards key={project} list={list} all={all} onExpand={() => setExpanded(col)} card={cardEl} />
               </section>
             );
           })}

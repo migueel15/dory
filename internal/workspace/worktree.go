@@ -36,6 +36,15 @@ func BranchExists(ctx context.Context, repo, name string) bool {
 	return err == nil
 }
 
+// RemoteBranchExists says whether repo has a remote-tracking branch origin/name.
+func RemoteBranchExists(ctx context.Context, repo, name string) bool {
+	if repo == "" || name == "" {
+		return false
+	}
+	_, err := Run(ctx, repo, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/"+name)
+	return err == nil
+}
+
 // AddWorktree creates a worktree of repo at dir on branch. A branch that does
 // not exist is created, from base when it is given.
 func AddWorktree(ctx context.Context, repo, dir, branch, base string) error {
@@ -52,9 +61,14 @@ func addWorktree(ctx context.Context, repo, dir, branch, base string) (bool, err
 	created := !BranchExists(ctx, repo, branch)
 	if !created {
 		args = append(args, dir, branch)
+	} else if base == "" && RemoteBranchExists(ctx, repo, branch) {
+		args = append(args, "--track", "-b", branch, dir, "origin/"+branch)
 	} else {
 		args = append(args, "-b", branch, dir)
 		if base != "" {
+			if !BranchExists(ctx, repo, base) && RemoteBranchExists(ctx, repo, base) {
+				base = "origin/" + base
+			}
 			args = append(args, base)
 		}
 	}
@@ -105,17 +119,41 @@ type Branches struct {
 	Branches []string `json:"branches"`
 }
 
-// ListBranches lists the local branches of dir, the latest commit first.
+// FetchOrigin updates remote-tracking refs from origin with a short timeout.
+func FetchOrigin(ctx context.Context, dir string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_, err := Run(ctx, dir, "fetch", "--prune", "--quiet", "origin")
+	return err
+}
+
+// ListBranches lists the local and origin remote branches of dir, the latest
+// commit first, with local branches taking precedence over remote ones.
 func ListBranches(ctx context.Context, dir string) Branches {
 	out := Branches{Branches: []string{}}
 	if b, err := CurrentBranch(ctx, dir); err == nil {
 		out.Current = b
 	}
+	seen := map[string]struct{}{}
 	if b, err := Output(ctx, dir, "for-each-ref", "--sort=-committerdate", "--format=%(refname:short)", "refs/heads"); err == nil {
 		for _, line := range strings.Split(b, "\n") {
 			if line != "" {
+				seen[line] = struct{}{}
 				out.Branches = append(out.Branches, line)
 			}
+		}
+	}
+	if b, err := Output(ctx, dir, "for-each-ref", "--sort=-committerdate", "--format=%(refname:short)", "refs/remotes/origin"); err == nil {
+		for _, line := range strings.Split(b, "\n") {
+			name, ok := strings.CutPrefix(line, "origin/")
+			if !ok || name == "" || name == "HEAD" {
+				continue
+			}
+			if _, dup := seen[name]; dup {
+				continue
+			}
+			seen[name] = struct{}{}
+			out.Branches = append(out.Branches, name)
 		}
 	}
 	return out

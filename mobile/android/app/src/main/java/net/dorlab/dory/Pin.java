@@ -23,7 +23,7 @@ import javax.net.ssl.X509TrustManager;
 final class Pin {
     /** host:port → pin of the node the app is talking to. */
     static final Map<String, String> byHost = new ConcurrentHashMap<>();
-    /** pin → reusable SSLSocketFactory for TLS session resumption and keep-alive. */
+    /** pin → reusable SSLSocketFactory so TLS sessions can resume across requests. */
     private static final Map<String, SSLSocketFactory> factories = new ConcurrentHashMap<>();
 
     static String of(X509Certificate cert) throws Exception {
@@ -44,31 +44,11 @@ final class Pin {
         }
     }
 
-    /**
-     * Opens a connection that accepts only the given pin. With want == null
-     * it accepts any key and stores it in seen[0]: used only to pair, where
-     * the code proves who answered.
-     */
-    static HttpsURLConnection open(String url, String want, String[] seen) throws Exception {
-        HttpsURLConnection c = (HttpsURLConnection) new java.net.URL(url).openConnection();
-        SSLSocketFactory sf;
+    private static SSLSocketFactory socketFactory(String want, String[] seen) throws Exception {
         if (want != null && seen == null) {
-            sf = factories.get(want);
-            if (sf == null) {
-                sf = createSocketFactory(want, null);
-                factories.put(want, sf);
-            }
-        } else {
-            sf = createSocketFactory(want, seen);
+            SSLSocketFactory cached = factories.get(want);
+            if (cached != null) return cached;
         }
-        c.setSSLSocketFactory(sf);
-        c.setHostnameVerifier((h, s) -> true); // the pin, not the name, identifies the node
-        c.setConnectTimeout(4000);
-        c.setReadTimeout(15000);
-        return c;
-    }
-
-    private static SSLSocketFactory createSocketFactory(String want, String[] seen) throws Exception {
         X509TrustManager tm = new X509TrustManager() {
             public void checkClientTrusted(X509Certificate[] chain, String type) {}
             public void checkServerTrusted(X509Certificate[] chain, String type) throws CertificateException {
@@ -86,6 +66,22 @@ final class Pin {
         };
         SSLContext ctx = SSLContext.getInstance("TLS");
         ctx.init(null, new TrustManager[] { tm }, null);
-        return ctx.getSocketFactory();
+        SSLSocketFactory factory = ctx.getSocketFactory();
+        if (want != null && seen == null) factories.put(want, factory);
+        return factory;
+    }
+
+    /**
+     * Opens a connection that accepts only the given pin. With want == null
+     * it accepts any key and stores it in seen[0]: used only to pair, where
+     * the code proves who answered.
+     */
+    static HttpsURLConnection open(String url, String want, String[] seen) throws Exception {
+        HttpsURLConnection c = (HttpsURLConnection) new java.net.URL(url).openConnection();
+        c.setSSLSocketFactory(socketFactory(want, seen));
+        c.setHostnameVerifier((h, s) -> true); // the pin, not the name, identifies the node
+        c.setConnectTimeout(4000);
+        c.setReadTimeout(15000);
+        return c;
     }
 }

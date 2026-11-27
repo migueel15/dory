@@ -23,6 +23,20 @@ type stateEntry struct {
 	at  time.Time
 }
 
+// CachedPullState returns a pull request status already held in memory
+// (for instance from pollRepo) without making a network request.
+func (c *Client) CachedPullState(repo string, number *int64, branch string) (PullStatus, bool) {
+	key := repo + "#" + branch
+	if number != nil {
+		key = fmt.Sprintf("%s#%d", repo, *number)
+	}
+	e, ok := states.Load(key)
+	if !ok {
+		return PullStatus{}, false
+	}
+	return e.(stateEntry).ref, true
+}
+
 // PullState finds a pull request by number or, without one, by head branch,
 // including closed and merged ones. A merged pull request never changes, so
 // it stays cached; any other answer older than a minute is still returned at

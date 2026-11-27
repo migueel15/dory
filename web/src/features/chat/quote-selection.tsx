@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ArrowBendUpLeft, Microphone, Plus, Quotes, X } from "@phosphor-icons/react";
 import { useLocalDictation } from "../composer/local-dictation";
 import { useSpeechModel, useSpeechModels } from "../composer/speech-models";
+import { autosizeTextarea } from "../composer/composer-styles";
 import { DictationMic, DictationPreview } from "../composer/dictation-ui";
 import { hasDictationPopupOutside, isTextInput, useDictationShortcut } from "../composer/dictation-shortcut";
 import { ErrorText } from "../../components/ui";
@@ -159,10 +160,7 @@ function QuoteReply({ autoDictate, text, onCancel, onAdd }: { autoDictate: boole
   useLayoutEffect(() => {
     const area = input.current;
     if (!area || showingDictation) return;
-    const resize = () => {
-      area.style.height = "auto";
-      area.style.height = `${area.scrollHeight}px`;
-    };
+    const resize = () => autosizeTextarea(area);
     resize();
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);

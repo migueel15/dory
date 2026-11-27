@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -12,18 +13,35 @@ import (
 )
 
 type fakePulls struct {
-	open  []github.Pull
-	state github.PullStatus
-	calls int
+	open   []github.Pull
+	state  github.PullStatus
+	cached map[string]github.PullStatus
+	calls  int
 }
 
 func (f *fakePulls) Open(context.Context, bool) (*github.Overview, error) {
 	return &github.Overview{Pulls: f.open}, nil
 }
 
-func (f *fakePulls) PullState(context.Context, string, *int64, string) (github.PullStatus, error) {
+func (f *fakePulls) PullState(_ context.Context, _ string, number *int64, _ string) (github.PullStatus, error) {
 	f.calls++
-	return f.state, nil
+	s := f.state
+	if s.Number == 0 && number != nil {
+		s.Number = int(*number)
+	}
+	return s, nil
+}
+
+func (f *fakePulls) CachedPullState(repo string, number *int64, branch string) (github.PullStatus, bool) {
+	if f.cached == nil {
+		return github.PullStatus{}, false
+	}
+	key := repo + "#" + branch
+	if number != nil {
+		key = fmt.Sprintf("%s#%d", repo, *number)
+	}
+	s, ok := f.cached[key]
+	return s, ok
 }
 
 func newTasks(t *testing.T) (*Tasks, data.Repository) {
@@ -58,7 +76,7 @@ func TestBoardUsesOnlyTheLocalCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := &fakePulls{open: []github.Pull{{Repo: "o/r", Number: 4, HeadRef: "feat", Draft: true}}}
-	if _, err := a.RefreshPulls(ctx, src); err != nil {
+	if _, _, err := a.RefreshPulls(ctx, src); err != nil {
 		t.Fatal(err)
 	}
 	cards, err := a.Board(ctx, data.Filter{})
@@ -80,13 +98,13 @@ func TestRefreshPullsCachesFinalStateOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := &fakePulls{state: github.PullStatus{Number: 9, State: "merged"}}
-	changed, err := a.RefreshPulls(ctx, src)
-	if err != nil || !changed {
-		t.Fatalf("changed = %v: %v", changed, err)
+	changed, more, err := a.RefreshPulls(ctx, src)
+	if err != nil || !changed || more {
+		t.Fatalf("changed=%v more=%v err=%v", changed, more, err)
 	}
-	changed, err = a.RefreshPulls(ctx, src)
-	if err != nil || changed || src.calls != 1 {
-		t.Fatalf("second refresh: changed=%v calls=%d err=%v", changed, src.calls, err)
+	changed, more, err = a.RefreshPulls(ctx, src)
+	if err != nil || changed || more || src.calls != 1 {
+		t.Fatalf("second refresh: changed=%v more=%v calls=%d err=%v", changed, more, src.calls, err)
 	}
 	cards, _ := a.Board(ctx, data.Filter{})
 	if cards[0].Column != "done" {
@@ -113,7 +131,7 @@ func TestRecordPullStateMarksTaskDone(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := &fakePulls{open: []github.Pull{{Repo: "o/r", Number: 7, HeadRef: "feat"}}}
-	if _, err := a.RefreshPulls(ctx, src); err != nil {
+	if _, _, err := a.RefreshPulls(ctx, src); err != nil {
 		t.Fatal(err)
 	}
 	cards, err := a.Board(ctx, data.Filter{})
@@ -145,4 +163,60 @@ func TestFinishIsIdempotentWithoutThreads(t *testing.T) {
 	}
 	a.Finish(ctx)
 	a.Finish(ctx)
+}
+
+func TestRefreshPullsSeedsFromCachedPullState(t *testing.T) {
+	ctx := context.Background()
+	a, repo := newTasks(t)
+	cached := map[string]github.PullStatus{}
+	for i := 1; i <= 12; i++ {
+		n := int64(i)
+		if _, err := a.Store.Tasks().Create(ctx, data.Task{Title: fmt.Sprintf("t%d", i), RepositoryID: &repo.ID, PRNumber: &n}); err != nil {
+			t.Fatal(err)
+		}
+		cached[fmt.Sprintf("o/r#%d", i)] = github.PullStatus{Number: i, State: "merged"}
+	}
+	src := &fakePulls{cached: cached}
+	changed, more, err := a.RefreshPulls(ctx, src)
+	if err != nil || !changed || more || src.calls != 0 {
+		t.Fatalf("changed=%v more=%v calls=%d err=%v", changed, more, src.calls, err)
+	}
+	cards, err := a.Board(ctx, data.Filter{})
+	if err != nil || len(cards) != 12 {
+		t.Fatalf("cards=%d err=%v", len(cards), err)
+	}
+	for _, c := range cards {
+		if c.Column != "done" {
+			t.Fatalf("card %s column = %s", c.Title, c.Column)
+		}
+	}
+}
+
+func TestRefreshPullsReportsMoreUntilDrained(t *testing.T) {
+	ctx := context.Background()
+	a, repo := newTasks(t)
+	for i := 1; i <= 10; i++ {
+		n := int64(i)
+		if _, err := a.Store.Tasks().Create(ctx, data.Task{Title: fmt.Sprintf("t%d", i), RepositoryID: &repo.ID, PRNumber: &n}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	src := &fakePulls{state: github.PullStatus{State: "merged"}}
+	changed, more, err := a.RefreshPulls(ctx, src)
+	if err != nil || !changed || !more || src.calls != taskPullLookups {
+		t.Fatalf("first batch: changed=%v more=%v calls=%d err=%v", changed, more, src.calls, err)
+	}
+	changed, more, err = a.RefreshPulls(ctx, src)
+	if err != nil || !changed || more || src.calls != 10 {
+		t.Fatalf("second batch: changed=%v more=%v calls=%d err=%v", changed, more, src.calls, err)
+	}
+	cards, err := a.Board(ctx, data.Filter{})
+	if err != nil || len(cards) != 10 {
+		t.Fatalf("cards=%d err=%v", len(cards), err)
+	}
+	for _, c := range cards {
+		if c.Column != "done" {
+			t.Fatalf("card %s column = %s", c.Title, c.Column)
+		}
+	}
 }

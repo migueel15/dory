@@ -92,8 +92,13 @@ type Manager struct {
 	// failed catalog read never falls back to the short built-in list.
 	catalogs   map[string][]Model
 	detectedAt time.Time
-	refreshing bool
-	detectGen  uint64
+	// detecting is closed when the running detection ends; nil when none
+	// runs. detectGen counts invalidations, so an older result is dropped.
+	detecting chan struct{}
+	detectGen int
+	// OnProvidersChange runs when a background detection finds something
+	// different from what was served.
+	OnProvidersChange func()
 }
 
 func NewManager(db *sql.DB, store *data.Store, node, dataDir string, state *nodestate.Store, pool *procpool.Pool, providers ...Provider) *Manager {
@@ -179,73 +184,113 @@ func (m *Manager) Recover(ctx context.Context) error {
 	return nil
 }
 
-// Providers reports the harnesses of this machine, with their session. The
-// answer is cached for a minute: detecting runs each harness. Once warm, stale
-// entries are returned immediately while a single background goroutine refreshes.
+// providersFresh is how long a detection counts as current. An older one is
+// still served at once while a new detection runs in the background.
+const providersFresh = time.Minute
+
+// Providers reports the harnesses of this machine, with their session.
+// Detecting runs each harness, which can take seconds, so the last answer is
+// served at once and refreshed in the background when it is older than
+// providersFresh. Only the first call, or one after invalidate, waits.
 func (m *Manager) Providers(ctx context.Context) []Status {
 	m.mu.Lock()
-	if m.detected != nil {
-		out := m.detected
-		if time.Since(m.detectedAt) >= time.Minute && !m.refreshing {
-			m.refreshing = true
-			gen := m.detectGen
-			go func() {
-				rctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				defer cancel()
-				fresh := m.detectProviders(rctx)
-				m.mu.Lock()
-				if m.detectGen == gen {
-					m.detected, m.detectedAt = fresh, time.Now()
-				}
-				m.refreshing = false
-				m.mu.Unlock()
-			}()
+	out, stale := m.detected, time.Since(m.detectedAt) >= providersFresh
+	var wait chan struct{}
+	if out == nil || stale {
+		wait = m.detectLocked()
+	}
+	m.mu.Unlock()
+	if out == nil {
+		select {
+		case <-wait:
+		case <-ctx.Done():
 		}
+		m.mu.Lock()
+		out = m.detected
 		m.mu.Unlock()
-		return out
 	}
+	return m.withEnabled(out)
+}
+
+// withEnabled copies the list with the current switch of each harness, which
+// changes without a new detection.
+func (m *Manager) withEnabled(in []Status) []Status {
+	out := make([]Status, len(in))
+	for i, st := range in {
+		st.Enabled = m.Enabled(st.ID)
+		out[i] = st
+	}
+	return out
+}
+
+// detectLocked starts a detection unless one is running and returns the
+// channel closed when it ends. m.mu must be held.
+func (m *Manager) detectLocked() chan struct{} {
+	if m.detecting != nil {
+		return m.detecting
+	}
+	done := make(chan struct{})
+	m.detecting = done
 	gen := m.detectGen
-	m.mu.Unlock()
-
-	out := m.detectProviders(ctx)
-	m.mu.Lock()
-	if m.detectGen == gen {
-		m.detected, m.detectedAt = out, time.Now()
-	}
-	m.mu.Unlock()
-	return out
+	go func() {
+		out := m.detect(context.Background())
+		m.mu.Lock()
+		changed := false
+		// A detection started before invalidate may hold an old session.
+		if gen == m.detectGen {
+			before, _ := json.Marshal(m.detected)
+			after, _ := json.Marshal(out)
+			changed = m.detected != nil && string(before) != string(after)
+			m.detected, m.detectedAt = out, time.Now()
+		}
+		m.detecting = nil
+		m.mu.Unlock()
+		close(done)
+		if changed && m.OnProvidersChange != nil {
+			m.OnProvidersChange()
+		}
+	}()
+	return done
 }
 
-func (m *Manager) detectProviders(ctx context.Context) []Status {
-	out := make([]Status, 0)
+// detect runs every harness at once and keeps the registry order.
+func (m *Manager) detect(ctx context.Context) []Status {
 	home, _ := os.UserHomeDir()
-	for _, p := range m.registry.All() {
-		info := p.Info()
-		st := p.Detect(ctx)
-		st.ID, st.Driver, st.DriverName = info.ID, info.Driver, info.Name
-		st.Models = m.rememberCatalog(info.ID, st)
-		st.Enabled = m.Enabled(info.ID)
-		st.Capabilities = info.Capabilities.Names()
-		if p.Accounts != nil {
-			st.Capabilities = append(st.Capabilities, "accounts")
-			st.DefaultHome = p.Accounts.DefaultHome(home)
-			st.ConfigEnv = p.Accounts.ConfigEnv()
-		}
-		if p.Commands != nil {
-			st.Capabilities = append(st.Capabilities, "skills")
-		}
-		if p.Admin != nil && st.Installed {
-			st.LoggedIn, st.Account = p.Admin.Session(ctx)
-			st.Capabilities = append(st.Capabilities, "login", "update")
-		} else if p.Admin != nil {
-			st.Capabilities = append(st.Capabilities, "install")
-		}
-		out = append(out, st)
+	all := m.registry.All()
+	out := make([]Status, len(all))
+	var wg sync.WaitGroup
+	for i, p := range all {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			info := p.Info()
+			st := p.Detect(ctx)
+			st.ID, st.Driver, st.DriverName = info.ID, info.Driver, info.Name
+			st.Models = m.rememberCatalog(info.ID, st)
+			st.Capabilities = info.Capabilities.Names()
+			if p.Accounts != nil {
+				st.Capabilities = append(st.Capabilities, "accounts")
+				st.DefaultHome = p.Accounts.DefaultHome(home)
+				st.ConfigEnv = p.Accounts.ConfigEnv()
+			}
+			if p.Commands != nil {
+				st.Capabilities = append(st.Capabilities, "skills")
+			}
+			if p.Admin != nil && st.Installed {
+				st.LoggedIn, st.Account = p.Admin.Session(ctx)
+				st.Capabilities = append(st.Capabilities, "login", "update")
+			} else if p.Admin != nil {
+				st.Capabilities = append(st.Capabilities, "install")
+			}
+			out[i] = st
+		}()
 	}
+	wg.Wait()
 	return out
 }
 
-// invalidate forgets the cached harness state after a login, update or install.
+// invalidate forgets the cached harness state after a login, update, install
+// or account change: the next call waits for a new detection.
 func (m *Manager) invalidate() {
 	m.mu.Lock()
 	m.detected = nil

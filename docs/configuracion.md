@@ -48,7 +48,7 @@ El token se resuelve en este orden: `DORY_GITHUB_TOKEN`, el guardado desde la in
 
 ## Ficheros del nodo
 
-El entorno de desarrollo iniciado con `scripts/dev.sh` usa `~/.dory/dev`. Electron guarda su perfil en `~/.dory/desktop`. Las instalaciones con una base de datos o un perfil anterior siguen usando esas rutas hasta que su copia esté disponible en la nueva ubicación. Una ruta explícita de datos tiene prioridad.
+El entorno de desarrollo iniciado con `scripts/dev.sh` (web) o `scripts/dev-desktop.sh` (escritorio, abre Electron con `DORY_DESKTOP_URL` apuntando a Vite) usa `~/.dory/dev`. Electron guarda su perfil en `~/.dory/desktop` (y `~/.dory/desktop-dev` en modo desarrollo). Las instalaciones con una base de datos o un perfil anterior siguen usando esas rutas hasta que su copia esté disponible en la nueva ubicación. Una ruta explícita de datos tiene prioridad.
 
 En `data_dir`:
 - `dory.db`: datos. La tabla local `node_kv` contiene, entre otros, los ajustes, las cuentas de los proveedores y el manifiesto de las skills. Las tablas replicadas solo cambian por el registro de operaciones.

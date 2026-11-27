@@ -1,13 +1,16 @@
-import { ChartBar,ChatsCircle,DotsThreeCircle,Gear,GithubLogo,House,IconContext,Kanban,Moon,SidebarSimple,SignOut,Sun,X } from "@phosphor-icons/react";
-import { QueryClient,QueryClientProvider,useQueryClient } from "@tanstack/react-query";
+import { ChartBar,DotsThreeCircle,Gear,GitPullRequest,House,IconContext,Kanban,Moon,SignOut,Sun,X } from "@phosphor-icons/react";
+import { QueryClient,useQueryClient } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { Link,Outlet,RouterProvider,createRootRoute,createRoute,createRouter,lazyRouteComponent,redirect,useLocation,useNavigate } from "@tanstack/react-router";
-import { StrictMode,Suspense,lazy,useEffect,useLayoutEffect,useRef,useState } from "react";
+import { StrictMode,Suspense,lazy,useEffect,useRef,useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ApiError } from "./api/client";
+import { ApiError,api } from "./api/client";
+import { qk } from "./api/queries/keys";
+import { forget,persistOptions,setCacheDefaults } from "./lib/query-cache";
 import { useLiveUpdates } from "./api/live";
 import { useLogin,useLogout,useMe,useSetupNeeded,useVersion } from "./api/queries/session";
 import { useThreadsAttention } from "./api/queries/threads";
-import { CommandPalette,CommandsButton } from "./components/commands";
+import { CommandPalette } from "./components/commands";
 import { MeshUpdateButton } from "./components/mesh-update";
 import { NoticeAlerts,NoticeInbox,NoticesToggle } from "./components/notices";
 import { ProjectSwitcher } from "./components/project-switcher";
@@ -16,13 +19,12 @@ import { TooltipHost } from "./components/tooltip";
 import { Button,Input,Label,errMsg } from "./components/ui";
 import { UsageQuick } from "./components/usage-quick";
 import "./index.css";
-import { storage,storageKeys } from "./lib/storage";
 import { events } from "./lib/store";
-import { WindowClose,hasWindowClose } from "./lib/window-close";
-import { Home } from "./pages/home";
+import { WindowClose } from "./lib/window-close";
 import { Threads,ThreadsHome } from "./pages/threads";
 import { applyUiFont } from "./lib/fonts";
 import { applyScale,listenZoomKeys } from "./scale";
+import "./lib/native-keyboard";
 import { applyTheme,useTheme } from "./theme";
 
 applyTheme();
@@ -35,6 +37,11 @@ const queryClient = new QueryClient({
   // page shows it at once, and the live stream invalidates whatever changes.
   defaultOptions: { queries: { retry: (n, e) => !(e instanceof ApiError && e.status === 401) && n < 2, refetchOnWindowFocus: false, staleTime: 30_000, gcTime: 30 * 60_000 } },
 });
+setCacheDefaults(queryClient);
+// The session and this node's state (with its models) go out at once, in
+// parallel with the code and the saved cache, instead of one after the other.
+void queryClient.prefetchQuery({ queryKey: qk.me(), queryFn: api.me, retry: false });
+void queryClient.prefetchQuery({ queryKey: qk.node(), queryFn: api.node, retry: false });
 
 function Login() {
   const qc = useQueryClient();
@@ -59,7 +66,7 @@ function Login() {
     : errMsg(login.error);
   const inputClass = "h-11 px-3";
   return (
-    <main className="grid min-h-dvh place-items-center bg-[radial-gradient(ellipse_at_top,var(--color-indigo-100),transparent_60%)] px-4 py-8 dark:bg-[radial-gradient(ellipse_at_top,var(--color-accent-subtle),transparent_60%)]">
+    <main className="grid min-h-dvh place-items-center bg-[radial-gradient(ellipse_at_top,var(--color-indigo-100),transparent_60%)] px-4 py-8 dark:bg-[radial-gradient(ellipse_at_top,var(--color-accent-subtle),transparent_60%)]" data-keyboard="pad">
       <section aria-labelledby="login-title" className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-900/5 sm:p-8 dark:border-white/10 dark:bg-surface dark:shadow-black/25">
         <header className="space-y-4">
           <div className="flex items-center gap-2.5 font-semibold">
@@ -157,7 +164,10 @@ function VersionBadge() {
 function Layout() {
   const qc = useQueryClient();
   const me = useMe({ retry: false });
-  const logout = useLogout({ onSuccess: () => qc.clear() });
+  const logout = useLogout({ onSuccess: () => forget(qc) });
+  // A saved session that the node no longer accepts: drop everything saved.
+  const expired = !!me.data && me.error instanceof ApiError && me.error.status === 401;
+  useEffect(() => { if (expired) forget(qc); }, [expired, qc]);
   useLiveUpdates(!!me.data);
   // The board, threads and pull requests need the full width.
   const wide = useLocation({ select: (l) => l.pathname.startsWith("/threads") || /^\/github\/[^/]+\/[^/]+\/(pulls|issues)\//.test(l.pathname) || l.pathname === "/tasks" });
@@ -177,14 +187,7 @@ function Layout() {
     return () => mq.removeEventListener("change", on);
   }, []);
   const drawer = useRef<HTMLDialogElement>(null);
-  // The desktop sidebar folds to icons; the choice is remembered in this browser.
-  const [folded, setFolded] = useState(() => { try { return storage.get(storageKeys.sidebarFolded) === "1"; } catch { return false; } });
-  const fold = (v: boolean) => {
-    setFolded(v);
-    try { storage.set(storageKeys.sidebarFolded, v ? "1" : "0"); } catch { /* per-browser only */ }
-  };
 
-  useCommand("sidebar", () => fold(!folded));
   const navigateWithoutLosingDraft = async (search: boolean) => {
     if (search && path.startsWith("/threads")) {
       events.focusThreadSearch.emit();
@@ -240,7 +243,7 @@ function Layout() {
   if (me.isPending) {
     return (
       <div className="min-h-dvh bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex sm:h-screen sm:bg-white sm:dark:bg-surface" aria-busy="true">
-        {desktop && <aside className={`h-screen shrink-0 bg-white dark:bg-surface ${folded ? "w-14" : "w-56"}`} />}
+        {desktop && <aside className="h-screen w-14 shrink-0 bg-white dark:bg-surface" />}
         <div className="min-w-0 flex-1 sm:my-2 sm:mr-2 sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">
           {!desktop && (
             <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2">
@@ -256,63 +259,47 @@ function Layout() {
   }
   if (!me.data) return <Login />;
   const ico = "size-[1.125rem] shrink-0";
-  // On desktop a link is 32 px tall with the icon 7 px in, so folded (32 px wide)
-  // the selected link is a square and the icon never moves.
-  const link = "flex min-h-11 shrink-0 items-center gap-2.5 overflow-hidden rounded px-3 text-sm font-medium text-slate-800 dark:text-text sm:h-8 sm:min-h-0 sm:px-[0.4375rem] sm:py-0 hover:bg-slate-200 dark:hover:bg-raised [&.active]:bg-slate-900 dark:[&.active]:bg-accent [&.active]:text-white dark:[&.active]:text-white";
-  // Group headings share the links' left padding and a rule above, so each section reads as a block.
-  // A section heading is a divider plus its name. Folded, the name fades and its
-  // row collapses smoothly, so the links below move up and only the divider stays.
-  const group = (name: string, small = false) => (
-    <div className={`border-t border-slate-200 transition-[margin,padding] duration-200 first:mt-1 first:border-t-0 first:pt-0 dark:border-border ${small ? "mt-2 mb-1 pt-2" : "mt-3 mb-1 pt-3"}`}>
-      <div className={`grid transition-[grid-template-rows,opacity] duration-200 ${small ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]"}`}>
-        <span className="overflow-hidden whitespace-nowrap px-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-muted sm:px-[0.4375rem]">{name}</span>
-      </div>
-    </div>
-  );
-  // small: the folded sidebar shows icons only, with each name as a tooltip.
-  const navLinks = (small = false) => (
+  const railIco = "size-6 shrink-0";
+  const link = "flex min-h-11 shrink-0 items-center gap-2.5 overflow-hidden rounded px-3 text-sm font-medium text-slate-800 dark:text-text hover:bg-slate-200 dark:hover:bg-raised [&.active]:bg-slate-900 dark:[&.active]:bg-accent [&.active]:text-white dark:[&.active]:text-white";
+  // Desktop left rail: always vertical icons, darker muted gray at rest,
+  // lighter hover background + whiter border when active.
+  const railLink = "outline-none relative grid size-10 shrink-0 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-slate-200/70 hover:text-slate-900 dark:text-zinc-500 dark:hover:bg-raised dark:hover:text-text [&.active]:bg-slate-200/80 [&.active]:text-slate-900 dark:[&.active]:bg-hover dark:[&.active]:text-white";
+  const railLinks = (
     <>
-      {group("Trabajo", small)}
-      <Link to="/" activeOptions={{ exact: true }} className={link} title={small ? "Inicio" : undefined}><House weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Inicio</span></Link>
-      <Link to="/tasks" className={link} title={small ? "Tareas" : undefined}><Kanban weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Tareas</span></Link>
-      <Link to="/threads" className={`${link} relative`} title={small ? "Hilos" : undefined}><ChatsCircle weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Hilos</span>{attention > 0 && (small ? <span className="absolute right-1.5 top-1 size-2 rounded-full bg-orange-500" /> : <span className="ml-1.5 rounded-full bg-orange-500 px-1.5 text-xs font-semibold text-white" title="Te necesitan">{attention}</span>)}</Link>
-      <Link to="/github" className={link} title={small ? "GitHub" : undefined}><GithubLogo weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>GitHub</span></Link>
-      {group("Sistema", small)}
-      <Link to="/usage" className={link} title={small ? "Uso" : undefined}><ChartBar weight="duotone" className={ico} aria-hidden="true" /><span className={`whitespace-nowrap transition-opacity duration-150 ${small ? "opacity-0" : ""}`}>Uso</span></Link>
+      <Link to="/threads" className={railLink} aria-label="Inicio" title="Inicio"><House weight="duotone" className={railIco} aria-hidden="true" />{attention > 0 && <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-orange-500" />}</Link>
+      <Link to="/tasks" className={railLink} aria-label="Tareas" title="Tareas"><Kanban weight="duotone" className={railIco} aria-hidden="true" /></Link>
+      <Link to="/github" className={railLink} aria-label="GitHub" title="GitHub"><GitPullRequest weight="duotone" className={railIco} aria-hidden="true" /></Link>
+      <Link to="/usage" className={railLink} aria-label="Uso" title="Uso"><ChartBar weight="duotone" className={railIco} aria-hidden="true" /></Link>
     </>
   );
   // Phone tabs: the main sections are one tap away; the rest sits under "Más".
-  const tab = "flex h-14 flex-col items-center justify-center gap-0.5 text-[0.6875rem] font-medium text-slate-500 dark:text-muted [&.active]:text-slate-900 dark:[&.active]:text-white";
-  const moreActive = path.startsWith("/github") || path.startsWith("/usage");
+  const tab = "outline-none flex h-14 flex-col items-center justify-center gap-0.5 text-[0.6875rem] font-medium text-slate-500 dark:text-muted [&.active]:text-slate-900 dark:[&.active]:text-white";
+  const moreActive = path.startsWith("/usage");
   const moreLinks = (
     <>
-      <Link to="/github" className={link}><GithubLogo weight="duotone" className={ico} aria-hidden="true" />GitHub</Link>
       <Link to="/usage" className={link}><ChartBar weight="duotone" className={ico} aria-hidden="true" />Uso</Link>
     </>
   );
   return (
-    <div className="min-h-dvh bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex sm:h-screen sm:bg-white sm:dark:bg-surface">
+    <div className="min-h-dvh bg-slate-50 dark:bg-canvas text-slate-900 dark:text-text sm:flex sm:h-screen sm:flex-col sm:bg-white sm:dark:bg-surface">
+      <div className="min-h-0 flex-1 sm:flex">
       {desktop && (
-      <aside className={`sticky top-0 hidden h-screen shrink-0 flex-col overflow-hidden bg-white transition-[width] duration-200 ease-out dark:bg-surface sm:flex ${folded ? "w-14" : "w-56"}`}>
-        {/* The toggle sits first, centered on the icon column, so it never moves. */}
-        <div className="flex w-56 items-center pl-3 pr-2">
-          <button type="button" onClick={() => fold(!folded)} aria-label={folded ? "Expandir barra lateral" : "Plegar barra lateral"} title={folded ? "Expandir barra lateral" : "Plegar barra lateral"}
-            className="grid size-8 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-900 dark:text-muted dark:hover:bg-raised dark:hover:text-white">
-            <SidebarSimple weight="regular" className="size-[1.125rem]" aria-hidden="true" />
-          </button>
-          <div className={`flex min-w-0 flex-1 items-center transition-opacity duration-150 ${folded ? "pointer-events-none opacity-0" : ""}`}>
-            <Link to="/" tabIndex={folded ? -1 : undefined} className="flex items-center gap-2 px-2 py-3 font-bold">Dory<DevBadge /></Link>
-            <div className="ml-auto"><CommandsButton /></div>
-          </div>
+      <aside className="hidden h-full w-14 shrink-0 flex-col items-center overflow-hidden bg-white dark:bg-surface sm:flex">
+        <div className="flex shrink-0 flex-col items-center pt-3 pb-1">
+          <Link to="/threads" aria-label="Dory" title={import.meta.env.DEV ? "Dory (dev)" : "Dory"}
+            className={`grid size-10 place-items-center rounded-lg transition-colors hover:bg-slate-200/70 dark:hover:bg-raised ${import.meta.env.DEV ? "text-amber-500 dark:text-amber-400" : "text-slate-900 dark:text-white"}`}>
+            <DoryLogo className="size-7" />
+          </Link>
         </div>
-        <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-3 pb-4">{navLinks(folded)}</nav>
-        <div className="shrink-0 px-3 pb-2"><ProjectSwitcher folded={folded} /></div>
-        <SidebarFooter folded={folded} username={me.data.username} onLogout={() => logout.mutate()} update={<MeshUpdateButton />}
-          controls={[<NoticeInbox key="i" />, <NoticesToggle key="n" />, <ThemeToggle key="t" />, <SettingsLink key="settings" />, <UsageQuick key="u" />]} />
+        <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto overflow-x-hidden pt-2 pb-4">{railLinks}</nav>
+        <div className="shrink-0 pb-2"><ProjectSwitcher folded /></div>
+        <SidebarFooter username={me.data.username} onLogout={() => logout.mutate()} update={<MeshUpdateButton />}
+          controls={[<NoticeInbox key="i" />, <SettingsLink key="settings" />, <UsageQuick key="u" />]} />
       </aside>
       )}
       {/* On desktop the current view is a card framed by the sidebar background. */}
-      <div className="min-w-0 flex-1 sm:my-2 sm:mr-2 sm:overflow-auto sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">
+      <div className="relative min-w-0 flex-1 sm:my-2 sm:mr-2 sm:overflow-auto sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50 sm:dark:border-border sm:dark:bg-canvas">
+      <div className="absolute right-2 top-2 z-40 hidden sm:block"><WindowClose /></div>
       <nav className="sticky top-0 z-30 border-b border-slate-200 dark:border-border bg-white dark:bg-surface px-2 sm:hidden">
         <div className="flex h-12 items-center gap-1">
           <Link to="/" className="mr-1 flex shrink-0 items-center gap-2 font-bold">Dory<DevBadge /></Link>
@@ -355,7 +342,6 @@ function Layout() {
                 <NoticesToggle />
                 <ThemeToggle />
                 <SettingsLink />
-                <UsageQuick />
               </div>
               <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 py-1 pl-3 pr-1 dark:border-border">
                 <span className="truncate text-sm text-slate-500 dark:text-muted">{me.data.username}</span>
@@ -366,11 +352,13 @@ function Layout() {
           )}
         </div>
       </dialog>
-      <main className={`mx-auto p-2 pb-[calc(0.5rem_+_var(--tabbar))] sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"} ${hasWindowClose && !path.startsWith("/threads") ? "sm:px-14" : ""}`}><Outlet /></main><WindowClose /></div>
-      <nav aria-label="Navegación móvil" className="mobile-tabbar fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] dark:border-border dark:bg-surface sm:hidden">
-        <Link to="/" activeOptions={{ exact: true }} className={tab}><House className="size-6" aria-hidden="true" />Inicio</Link>
+      <main className={`mx-auto p-2 pb-[calc(0.5rem_+_var(--tabbar))] sm:p-4 ${wide ? "max-w-none" : "max-w-6xl"}`}><Outlet /></main></div>
+      </div>
+      <nav aria-label="Navegación móvil" className="mobile-tabbar fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] dark:border-border dark:bg-surface sm:hidden">
+        <Link to="/github" className={tab}><GitPullRequest className="size-6" aria-hidden="true" />GitHub</Link>
         <Link to="/tasks" className={tab}><Kanban className="size-6" aria-hidden="true" />Tareas</Link>
-        <Link to="/threads" className={`${tab} relative`}><ChatsCircle className="size-6" aria-hidden="true" />Hilos{attention > 0 && <span className="absolute left-1/2 top-1 ml-2 min-w-4 rounded-full bg-orange-500 px-1 text-center text-[0.625rem] font-semibold leading-4 text-white" aria-label={`${attention} te necesitan`}>{attention}</span>}</Link>
+        <Link to="/threads" className={`${tab} relative`}><House className="size-6" aria-hidden="true" />Inicio{attention > 0 && <span className="absolute left-1/2 top-1 ml-2 min-w-4 rounded-full bg-orange-500 px-1 text-center text-[0.625rem] font-semibold leading-4 text-white" aria-label={`${attention} te necesitan`}>{attention}</span>}</Link>
+        <UsageQuick tab />
         <button type="button" aria-controls="mobile-navigation" aria-expanded={menu} onClick={() => setMenu(!menu)} className={`${tab} ${menu || moreActive ? "text-slate-900 dark:text-white" : ""}`}><DotsThreeCircle className="size-6" aria-hidden="true" />Más</button>
       </nav><CommandPalette /><TooltipHost /><NoticeAlerts />
     </div>
@@ -415,7 +403,7 @@ const root = createRootRoute({ component: Layout });
 // The threads section keeps its list on the left; home and each thread fill the middle.
 const threadsRoute = createRoute({ getParentRoute: () => root, path: "/threads", component: Threads });
 const routeTree = root.addChildren([
-  createRoute({ getParentRoute: () => root, path: "/", component: Home }),
+  createRoute({ getParentRoute: () => root, path: "/", beforeLoad: () => { throw redirect({ to: "/threads" }); } }),
   createRoute({ getParentRoute: () => root, path: "/inbox", beforeLoad: () => { throw redirect({ to: "/tasks" }); } }),
   createRoute({ getParentRoute: () => root, path: "/usage", component: Usage }),
   createRoute({ getParentRoute: () => root, path: "/skills", component: Skills }),
@@ -441,77 +429,47 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     {/* Every icon uses the duotone style (tinted background) unless it sets its own weight. The context replaces Phosphor's defaults as a whole, so it repeats size and color: without them icons with no class lose their 1em size. */}
     <IconContext.Provider value={{ color: "currentColor", size: "1em", mirrored: false, weight: "duotone" }}>
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
         <RouterProvider router={router} />
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </IconContext.Provider>
   </StrictMode>,
 );
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  // The worker served a saved page and found a newer one: load it, so the
+  // interface never runs against a newer node.
+  navigator.serviceWorker.addEventListener("message", (e) => { if ((e.data as { type?: string })?.type === "shell-updated") window.location.reload(); });
+}
+
+function DoryLogo({ className = "size-7" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 2000 2000" className={className} aria-hidden="true">
+      <g transform="translate(0,2000) scale(0.1,-0.1)" fill="currentColor" stroke="none">
+        <path d="M9220 17273 c-320 -13 -1017 -104 -1400 -182 -1797 -367 -3231 -1417 -3759 -2752 -505 -1279 -162 -2710 829 -3456 259 -195 570 -351 850 -427 373 -100 1026 -107 1390 -16 1232 312 2074 1535 1738 2525 -57 170 -91 217 -154 217 -55 0 -73 -25 -111 -157 -117 -410 -412 -714 -793 -817 -112 -30 -364 -33 -478 -5 -217 52 -439 176 -595 330 -350 345 -449 898 -261 1457 327 972 1455 1774 2869 2039 900 168 1895 122 2828 -130 1341 -362 2615 -1196 3482 -2279 96 -120 104 -126 160 -120 34 3 67 44 67 82 0 80 -279 572 -506 892 -819 1153 -2006 2001 -3416 2441 -624 195 -1436 320 -2310 355 -234 9 -280 10 -430 3z M9990 15739 c-292 -20 -594 -71 -855 -145 -360 -102 -789 -268 -843 -327 -33 -36 -32 -91 2 -125 25 -26 28 -26 233 -33 1134 -40 1804 -288 2504 -926 744 -677 1199 -1586 1326 -2649 25 -214 25 -782 0 -1014 -180 -1629 -1151 -3074 -2552 -3796 -424 -218 -1163 -465 -1632 -544 -186 -32 -238 -22 -236 42 1 32 140 570 318 1233 47 176 110 410 140 520 29 110 71 265 93 345 22 80 77 278 122 440 161 583 260 972 364 1440 112 504 193 900 189 923 -8 38 -46 69 -87 69 -47 0 -42 5 -170 -155 -279 -349 -523 -577 -839 -785 -670 -441 -1495 -563 -2387 -351 -261 62 -251 71 -375 -366 -143 -504 -245 -867 -520 -1835 -46 -162 -122 -430 -169 -595 -46 -165 -132 -466 -190 -670 -538 -1895 -676 -2391 -891 -3195 -140 -522 -138 -515 -89 -561 41 -38 87 -30 334 64 1261 476 1978 522 3735 237 1193 -194 1519 -230 2072 -230 2553 -1 4881 1301 6160 3445 1095 1836 1235 4162 363 6015 -751 1594 -2202 2783 -4050 3319 -543 157 -1471 251 -2070 210z" />
+      </g>
+    </svg>
+  );
+}
 
 function DevBadge() {
   if (!import.meta.env.DEV) return null;
   return <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">dev</span>;
 }
 
-// SidebarFooter follows the sidebar width as it folds, so nothing pops: the
-// controls fold into a column one by one (theme under notifications, then
-// settings, then usage), and the user card narrows until only the sign-out
-// button is left, when its frame fades out.
-function SidebarFooter({ folded, username, onLogout, controls, update }: { folded: boolean; username: string; onLogout: () => void; controls: React.ReactElement[]; update: React.ReactElement | null }) {
-  const box = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(200);
-  useLayoutEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  // The layout is a pure function of the measured width, recomputed on every
-  // frame of the fold, with no CSS transition of its own: nothing can lag behind
-  // the bar. t runs from 1 (open) to 0 (folded). The row of controls stays on the
-  // bottom line: its leftmost control rises into a stack that grows upward
-  // (notifications first, then theme, then settings), the rest of the row slides
-  // left one place each time, and usage ends at the bottom without moving up.
-  // Every rise is one step, so no control travels further than another.
-  const cell = 32, gap = 4, n = controls.length, full = 200, row = cell + gap;
-  const t = Math.max(0, Math.min(1, (width - cell) / (full - cell)));
-  const rise = (i: number) => (i >= n - 1 ? 0 : Math.max(0, Math.min(1, (1 - i / (n - 1) - t) * (n - 1))));
-  const base = ((full / n - cell) / 2) * t;
-  // k: a control's slot in the bottom row (continuous); risen ones leave it.
-  let sum = 0;
-  const k = controls.map((_, i) => { sum += rise(i); return i - sum; });
-  const last = k[n - 1];
-  const step = last > 0.001 ? (width - 2 * base - cell) / last : 0;
-  const pos = (i: number) => {
-    let up = 0;
-    for (let j = i; j < n - 1; j++) up += rise(j); // risen controls are pushed up by each one rising after them
-    return { x: base + Math.max(0, k[i]) * step, y: -up * row };
-  };
-  const height = cell + controls.reduce((h, _, i) => h + rise(i), 0) * row;
-  const narrow = width < 56; // only the sign-out button fits
+function SidebarFooter({ username, onLogout, controls, update }: { username: string; onLogout: () => void; controls: React.ReactElement[]; update: React.ReactElement | null }) {
   return (
-    <div className="shrink-0 space-y-2 border-t border-slate-200 px-3 py-3 dark:border-border">
-      <div ref={box} className="sidebar-track relative" style={{ height }}>
-        {controls.map((c, i) => {
-          const { x, y } = pos(i);
-          return (
-            <div key={c.key} className="sidebar-track absolute bottom-0 left-0 grid size-8 place-items-center [&>*]:!min-h-0 [&>*]:!min-w-0 [&>*]:!size-8 [&>*]:!p-0 [&>*]:grid [&>*]:place-items-center"
-              style={{ transform: `translate(${x}px, ${y}px)` }}>{c}</div>
-          );
-        })}
-      </div>
-      <div className={`flex items-center justify-end gap-2 overflow-hidden rounded-md border py-1 transition-[border-color,padding] duration-200 ${narrow ? "border-transparent pl-0 pr-0" : "border-slate-200 pl-3 pr-1 dark:border-border"}`}>
-        <span className={`min-w-0 flex-1 truncate whitespace-nowrap text-sm text-slate-500 transition-opacity duration-150 dark:text-muted ${width < 110 ? "opacity-0" : ""}`}>{username}</span>
-        <Button variant="bare" aria-label="Cerrar sesión" title={`Cerrar sesión (${username})`} onClick={onLogout} className="grid size-8 shrink-0 place-items-center !p-0"><SignOut weight="regular" className="size-5" aria-hidden="true" /></Button>
-      </div>
-      {/* Below the account: the running commit and, to its right, the update button. */}
-      <div className={`flex items-center transition-[gap] duration-200 ${folded ? "gap-0" : "gap-2"}`}>
-        <div className={`grid min-w-0 flex-1 transition-[grid-template-rows,opacity] duration-200 ${folded ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]"}`}><div className="overflow-hidden whitespace-nowrap"><VersionBadge /></div></div>
-        {update}
-      </div>
+    <div className="flex w-full shrink-0 flex-col items-center gap-1 border-t border-slate-200 py-3 dark:border-border [&_svg]:size-6">
+      {controls.map((c) => (
+        <div key={c.key} className="grid size-10 place-items-center text-slate-500 dark:text-zinc-500 [&>*]:!min-h-0 [&>*]:!min-w-0 [&>*]:!size-10 [&>*]:!p-0 [&>*]:grid [&>*]:place-items-center [&>*]:!rounded-lg [&>*]:hover:text-slate-900 dark:[&>*]:hover:text-text">
+          {c}
+        </div>
+      ))}
+      {update}
+      <Button variant="bare" aria-label="Cerrar sesión" title={`Cerrar sesión (${username})`} onClick={onLogout} className="grid size-10 shrink-0 place-items-center !rounded-lg !p-0 text-slate-500 hover:text-slate-900 dark:text-zinc-500 dark:hover:text-text">
+        <SignOut weight="regular" className="size-6" aria-hidden="true" />
+      </Button>
     </div>
   );
 }

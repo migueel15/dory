@@ -20,8 +20,12 @@ const wsURL = (path: string) => `${location.protocol === "https:" ? "wss:" : "ws
 // openInThreadBrowser opens url in a new tab of the thread's browser and
 // brings the side panel to it.
 export async function openInThreadBrowser(threadId: string, url: string) {
-  await req("POST", `/threads/${threadId}/browser/tabs`, { url });
   showPanelTab(threadId, "browser");
+  try {
+    await req("POST", `/threads/${threadId}/browser/tabs`, { url });
+  } catch {
+    window.open(url, "_blank", "noreferrer");
+  }
 }
 
 // The desktop app reaches the loopback ports of a remote node through a
@@ -274,7 +278,10 @@ export function BrowserPanel({ threadId, remote }: { threadId: string; remote: b
     <div className="flex h-full min-h-0 flex-col" onKeyDownCapture={onPanelKey}>
       <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-slate-200 px-2 py-1 dark:border-border">
         {state.tabs.map((t) => (
-          <div key={t.id} className={`group flex max-w-48 shrink-0 items-center rounded-md text-xs ${t.active ? "bg-slate-100 font-medium dark:bg-raised" : "text-slate-500 hover:bg-slate-50 dark:text-muted dark:hover:bg-raised/60"}`}>
+          <div key={t.id}
+            onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+            onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); send({ t: "close", tab: t.id }); } }}
+            className={`group flex max-w-48 shrink-0 items-center rounded-md text-xs ${t.active ? "bg-slate-100 font-medium dark:bg-raised" : "text-slate-500 hover:bg-slate-50 dark:text-muted dark:hover:bg-raised/60"}`}>
             <button type="button" onClick={() => send({ t: "activate", tab: t.id })} title={t.url} className="flex min-w-0 items-center gap-1.5 py-1 pl-2 pr-1 outline-none focus-visible:outline-none">
               {agentOn(t.id) ? <Robot weight="fill" className="size-3.5 shrink-0 animate-pulse text-violet-500" aria-label="El agente está usando esta pestaña" /> : <Browser className="size-3.5 shrink-0" />}
               <span className="truncate">{isBlank(t) ? "Nueva pestaña" : t.title || t.url}</span>

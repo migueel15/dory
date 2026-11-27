@@ -178,6 +178,14 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		}
 	}
 	net.OnThreadState = func(id string) { events.Changed("thread_state", id) }
+	// A background detection found other harnesses, models or sessions:
+	// clients and peers read them again.
+	rt.OnProvidersChange = func() {
+		events.Changed("providers", log_.Node())
+		net.Changed()
+	}
+	// Detect the harnesses now, so the first page load does not wait for them.
+	go rt.Providers(ctx)
 	rt.OnStateChange = func(id string) {
 		net.OnThreadState(id)
 		notices.ThreadState(id)
@@ -214,14 +222,24 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 	finish := func() { srv.Tasks.FinishSoon(ctx) }
 	finishSoon.Store(&finish)
 	go gh.Watch(ctx, func() {
-		changed, err := srv.Tasks.RefreshPulls(ctx, gh)
-		if err != nil {
-			log.Printf("refresh pull requests: %v", err)
-		}
-		events.Changed("github", "")
-		notices.Github()
-		if changed {
-			srv.Tasks.Finish(ctx)
+		for {
+			changed, more, err := srv.Tasks.RefreshPulls(ctx, gh)
+			if err != nil {
+				log.Printf("refresh pull requests: %v", err)
+			}
+			events.Changed("github", "")
+			notices.Github()
+			if changed {
+				srv.Tasks.Finish(ctx)
+			}
+			if !more || err != nil {
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(200 * time.Millisecond):
+			}
 		}
 	})
 	srv.Tasks.StartWorktreeMaintenance(ctx)

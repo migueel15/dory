@@ -71,6 +71,10 @@ type TaskPullSource interface {
 	PullState(context.Context, string, *int64, string) (github.PullStatus, error)
 }
 
+type cachedPullStateSource interface {
+	CachedPullState(repo string, number *int64, branch string) (github.PullStatus, bool)
+}
+
 const (
 	taskPullLookups = 8
 	taskPullTTL     = time.Hour
@@ -78,29 +82,30 @@ const (
 
 // RefreshPulls is called serially by the GitHub watcher. It commits a batch
 // before reporting a change, so readers never see only one alias of a PR.
-func (a *Tasks) RefreshPulls(ctx context.Context, source TaskPullSource) (bool, error) {
+// more reports whether uncached tasks remain after this batch.
+func (a *Tasks) RefreshPulls(ctx context.Context, source TaskPullSource) (changed, more bool, err error) {
 	overview, err := source.Open(ctx, false)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	existing, err := a.cachedPulls(ctx)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	tasks, err := a.List(ctx, data.Filter{})
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	names, err := a.repositoryNames(ctx)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	now := time.Now().UTC()
 	updates := map[pullKey]cachedPull{}
 	for _, p := range overview.Pulls {
 		raw, err := json.Marshal(p)
 		if err != nil {
-			return false, err
+			return false, false, err
 		}
 		info := cachedPull{number: p.Number, state: "open", raw: string(raw), at: now}
 		if p.Draft {
@@ -115,14 +120,35 @@ func (a *Tasks) RefreshPulls(ctx context.Context, source TaskPullSource) (bool, 
 		}
 	}
 
+	// Seed task_pulls from in-memory states already fetched by pollRepo
+	// (state=all&per_page=30) without spending individual lookup quota.
+	if cached, ok := source.(cachedPullStateSource); ok {
+		for _, t := range tasks {
+			repo := taskRepo(t, names)
+			key, ok := taskPullKey(repo, t)
+			if !ok || updates[key].number != 0 {
+				continue
+			}
+			p := existing[key]
+			if p.state == "merged" || p.state == "closed" {
+				continue
+			}
+			if ref, ok := cached.CachedPullState(repo, t.PRNumber, t.Branch); ok && ref.Number != 0 {
+				updates[key] = cachedPull{number: ref.Number, state: ref.State, raw: "{}", at: now}
+			}
+		}
+	}
+
 	// Rotate even when a lookup fails so inaccessible repositories cannot
 	// starve later tasks. Successful misses are also cached for an hour.
 	if len(tasks) > 0 {
 		start := a.pullCursor % len(tasks)
 		next := start
 		remaining := taskPullLookups
+		succeeded := 0
 		seen := map[pullKey]bool{}
-		for scanned := 0; scanned < len(tasks) && remaining > 0; scanned++ {
+		scanned := 0
+		for ; scanned < len(tasks) && remaining > 0; scanned++ {
 			t := tasks[next]
 			next = (next + 1) % len(tasks)
 			repo := taskRepo(t, names)
@@ -147,15 +173,18 @@ func (a *Tasks) RefreshPulls(ctx context.Context, source TaskPullSource) (bool, 
 				log.Printf("app: refresh pull %s %s: %v", key.repo, key.ref, err)
 				continue
 			}
+			succeeded++
 			updates[key] = cachedPull{number: ref.Number, state: ref.State, raw: "{}", at: now}
 		}
 		a.pullCursor = next
+		more = remaining == 0 && scanned < len(tasks) && succeeded > 0
 	}
 
 	if len(updates) == 0 {
-		return false, nil
+		return false, more, nil
 	}
-	return a.savePulls(ctx, updates, existing)
+	changed, err = a.savePulls(ctx, updates, existing)
+	return changed, more, err
 }
 
 // RecordPullState updates the local pull request cache immediately after a

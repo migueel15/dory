@@ -9,83 +9,56 @@ import (
 	"github.com/migueel15/dory/internal/harness"
 )
 
-type slowDetectProvider struct {
-	calls   atomic.Int32
-	blockCh chan struct{}
+// slowDriver takes a while to detect and counts its detections.
+type slowDriver struct {
+	calls *atomic.Int32
+	delay time.Duration
 }
 
-func (p *slowDetectProvider) Info() harness.Info {
+func (d slowDriver) Info() harness.Info {
 	return harness.Info{ID: "slow", Driver: "slow", Name: "Slow"}
 }
+func (d slowDriver) Detect(context.Context) harness.Status {
+	n := d.calls.Add(1)
+	time.Sleep(d.delay)
+	return harness.Status{Installed: true, Version: string(rune('0' + n))}
+}
+func (d slowDriver) Start(context.Context, harness.Turn) (harness.Session, error) { return nil, nil }
 
-func (p *slowDetectProvider) Detect(ctx context.Context) Status {
-	n := p.calls.Add(1)
-	if n == 2 && p.blockCh != nil {
-		select {
-		case <-p.blockCh:
-		case <-ctx.Done():
+func TestProvidersServesStaleAndDetectsOnce(t *testing.T) {
+	calls := &atomic.Int32{}
+	m := NewManager(nil, nil, "n", t.TempDir(), testNodeState(t), nil, slowDriver{calls: calls, delay: 50 * time.Millisecond})
+	changed := make(chan struct{}, 1)
+	m.OnProvidersChange = func() { changed <- struct{}{} }
+
+	// Concurrent first calls share one detection.
+	done := make(chan []Status, 3)
+	for range 3 {
+		go func() { done <- m.Providers(context.Background()) }()
+	}
+	for range 3 {
+		if got := <-done; len(got) != 1 || got[0].Version != "1" {
+			t.Fatalf("first detection = %+v", got)
 		}
 	}
-	return Status{
-		Installed: true,
-		Version:   time.Duration(n).String(),
-	}
-}
-
-func (p *slowDetectProvider) Start(context.Context, harness.Turn) (harness.Session, error) {
-	return nil, nil
-}
-
-func TestProvidersStaleWhileRevalidateAndInvalidate(t *testing.T) {
-	state := testNodeState(t)
-
-	block := make(chan struct{})
-	prov := &slowDetectProvider{blockCh: block}
-	m := NewManager(nil, nil, "n1", t.TempDir(), state, nil, prov)
-
-	// Cold call detects synchronously.
-	first := m.Providers(context.Background())
-	if len(first) != 1 || first[0].Version != "1ns" {
-		t.Fatalf("cold Providers = %+v", first)
+	if calls.Load() != 1 {
+		t.Fatalf("detections = %d, want 1", calls.Load())
 	}
 
-	// Mark cache stale; next call must return immediately with stale data and
-	// trigger only one background refresh.
+	// A stale answer is served at once while a new detection runs.
 	m.mu.Lock()
-	m.detectedAt = time.Now().Add(-2 * time.Minute)
+	m.detectedAt = time.Now().Add(-2 * providersFresh)
 	m.mu.Unlock()
-
 	start := time.Now()
-	stale1 := m.Providers(context.Background())
-	stale2 := m.Providers(context.Background())
-	if time.Since(start) > 200*time.Millisecond {
-		t.Fatalf("stale Providers blocked for %v", time.Since(start))
+	if got := m.Providers(context.Background()); got[0].Version != "1" || time.Since(start) > 20*time.Millisecond {
+		t.Fatalf("stale call waited or changed: %+v", got)
 	}
-	if len(stale1) != 1 || stale1[0].Version != "1ns" || stale2[0].Version != "1ns" {
-		t.Fatalf("expected stale 1ns, got %+v / %+v", stale1, stale2)
+	select {
+	case <-changed:
+	case <-time.After(time.Second):
+		t.Fatal("no change notice after the background detection")
 	}
-
-	// Unblock background refresh and wait for cache update.
-	close(block)
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		got := m.Providers(context.Background())
-		if len(got) == 1 && got[0].Version == "2ns" {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if got := m.Providers(context.Background()); got[0].Version != "2ns" {
-		t.Fatalf("expected refreshed 2ns, got %+v", got)
-	}
-	if prov.calls.Load() != 2 {
-		t.Fatalf("expected exactly 2 Detect calls, got %d", prov.calls.Load())
-	}
-
-	// Explicit invalidate forces synchronous detection on next call.
-	m.invalidate()
-	after := m.Providers(context.Background())
-	if len(after) != 1 || after[0].Version != "3ns" {
-		t.Fatalf("after invalidate expected 3ns, got %+v", after)
+	if got := m.Providers(context.Background()); got[0].Version != "2" {
+		t.Fatalf("after refresh = %+v", got)
 	}
 }

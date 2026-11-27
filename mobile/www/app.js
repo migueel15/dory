@@ -7,11 +7,11 @@ const PORT = 7710;
 const CAPTURE_NODE = "dory.capture-node";
 
 let saved = JSON.parse(localStorage.getItem(KEY) || "[]");
-let openingId = null;
 const online = new Map(); // id → reachable now
 const localFound = new Map(); // id → anuncio reciente de la red local
 const meshFound = new Map(); // nodo emparejado → última lista de pares conectados
 const checkVersions = new Map();
+let openingId = null;
 const LOCAL_TTL = 30_000;
 const MESH_TTL = 60_000;
 const DISCOVERED_TTL = 75_000;
@@ -187,17 +187,14 @@ function render() {
   list.replaceChildren();
   $("none").hidden = saved.length > 0;
   for (const env of saved) {
-    const isOpening = openingId === env.id;
-    const li = el("li", isOpening ? "opening" : null);
-    li.append(el("span", isOpening ? "spinner" : "dot" + (online.get(env.id) ? " on" : "")));
+    const li = el("li", openingId === env.id ? "opening" : null);
+    li.append(el("span", "dot" + (online.get(env.id) ? " on" : "")));
     const text = el("div", "grow");
-    text.append(el("div", "name", env.name), el("div", "sub", isOpening ? "Conectando…" : env.address));
+    text.append(el("div", "name", env.name), el("div", "sub", openingId === env.id ? "Conectando…" : env.address));
     li.append(text);
     const forget = el("button", "forget", "Olvidar");
-    forget.disabled = Boolean(openingId);
     forget.onclick = (e) => {
       e.stopPropagation();
-      if (openingId) return;
       if (!confirm(`¿Olvidar ${env.name}? Tendrás que emparejarlo de nuevo.`)) return;
       Dory.forget({ address: env.address });
       saved = saved.filter((s) => s.id !== env.id);
@@ -256,8 +253,8 @@ async function open(env) {
     await Dory.open({ address: env.address, pin: env.pin, token: env.token });
   } catch (e) {
     openingId = null;
-    $("open-error").textContent = `${env.name}: ${e.message}`;
     render();
+    $("open-error").textContent = `${env.name}: ${e.message}`;
   }
 }
 
@@ -291,6 +288,8 @@ async function check(env) {
     }
     online.set(env.id, true);
     meshFound.set(env.id, { at: Date.now(), peers });
+    // Pre-warm the web session cookie in the background so tapping this node opens immediately.
+    Dory.warm({ address: env.address, pin: env.pin, token: env.token }).catch(() => {});
   } catch {
     if (checkVersions.get(env.id) !== version || !saved.some(node => node.id === env.id)) return;
     online.set(env.id, false);
