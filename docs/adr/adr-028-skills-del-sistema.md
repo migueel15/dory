@@ -9,7 +9,7 @@ El flujo de trabajo con Dory se explicaba en skills que vivían en un repositori
 
 ## Decision
 
-- Dory embebe en el binario las skills que explican su uso (`internal/skills/system`): `dory-workflow` y `single-test-run`. Las skills personales, como las convenciones de GitHub, siguen fuera.
+- Dory embebe en el binario las skills que explican su uso (`internal/skills/system`): `dory-workflow`, `single-test-run` y `dory-issue`. Las skills personales, como las convenciones de GitHub, siguen fuera.
 - Cada skill del sistema tiene un id fijo (`system-<nombre>`) y una `version` en su frontmatter que crece con cada cambio; `system.lock.json` y su test impiden cambiar el contenido sin subirla. El catálogo guarda la versión embebida en `system_version`. Al reconciliar, cada nodo la escribe si falta, si el catálogo tiene un `system_version` menor, o si con el mismo `system_version` el contenido o el nombre difieren. Un nodo con un binario antiguo nunca la degrada, así que la malla converge a la versión más nueva.
 - Un binario anterior a esta decisión no conoce `system_version`: si edita una skill del sistema, el siguiente nodo actualizado restaura el contenido embebido. Si una skill de usuario ya tenía el nombre, se renombra a `<nombre>-custom` como fork; si estaba activa, sigue activa y la del sistema queda desactivada.
 - Un nodo que recibió operaciones de columnas que su binario no conocía recupera sus valores del log al migrar.

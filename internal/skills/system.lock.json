@@ -1,4 +1,5 @@
 {
+  "dory-issue": {"version": 1, "sha256": "31ea62d26bdecf01742220f4a6a7ad2a757cff9f409535b2ade477f3b4fb2680"},
   "dory-workflow": {"version": 3, "sha256": "ccea94dfe414718610c63124272b0f13de54a0dfdf8255b79720cc821ea3df14"},
   "single-test-run": {"version": 1, "sha256": "1b5646372ef1f55b65f25c4876489c3d882990ea5684e2d47943649981aa6f30"}
 }
