@@ -475,6 +475,70 @@ func UpsertExternalTaskCache(ctx context.Context, db *sql.DB, repositoryID, repo
 	return err
 }
 
+// RefreshExternalTasks syncs open GitHub issues from the GitHub overview into
+// external_tasks_cache and marks previously open issues that disappeared as closed.
+func (a *Tasks) RefreshExternalTasks(ctx context.Context, source TaskPullSource) (int, error) {
+	if source == nil {
+		return 0, nil
+	}
+	overview, err := source.Open(ctx, false)
+	if err != nil {
+		return 0, err
+	}
+	if overview == nil {
+		return 0, nil
+	}
+	repos, err := a.Store.Repositories().ListAll(ctx, data.Filter{})
+	if err != nil {
+		return 0, err
+	}
+	repoIDByName := map[string]string{}
+	for _, r := range repos {
+		if name, ok := github.ParseRemote(r.RemoteURL); ok {
+			repoIDByName[strings.ToLower(name)] = r.ID
+		}
+	}
+	if len(repoIDByName) == 0 {
+		return 0, nil
+	}
+
+	seen := map[string]bool{}
+	count := 0
+	for _, iss := range overview.Issues {
+		repoID := repoIDByName[strings.ToLower(iss.Repo)]
+		if repoID == "" {
+			continue
+		}
+		if err := UpsertExternalTaskCache(ctx, a.Store.LocalDB(), repoID, iss.Repo, iss, ""); err != nil {
+			return count, err
+		}
+		seen[data.ExternalTaskID(repoID, int64(iss.Number))] = true
+		count++
+	}
+
+	// Mark open cached issues that are no longer in the open overview as closed.
+	rows, err := a.Store.LocalDB().QueryContext(ctx, `SELECT task_id FROM external_tasks_cache WHERE source = 'github' AND state = 'open'`)
+	if err != nil {
+		return count, err
+	}
+	var toClose []string
+	for rows.Next() {
+		var tid string
+		if err := rows.Scan(&tid); err == nil && !seen[tid] {
+			toClose = append(toClose, tid)
+		}
+	}
+	rows.Close()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, tid := range toClose {
+		if _, err := a.Store.LocalDB().ExecContext(ctx,
+			`UPDATE external_tasks_cache SET state = 'closed', cached_at = ? WHERE task_id = ?`, now, tid); err != nil {
+			return count, err
+		}
+	}
+	return count, nil
+}
+
 // DetectThreadPullsByBranch links PRs found in task_pulls whose head_ref matches
 // a local thread's branch, respecting manual unlinks (archived thread_pulls rows).
 func (a *Tasks) DetectThreadPullsByBranch(ctx context.Context, nodeID string) error {

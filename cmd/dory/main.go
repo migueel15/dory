@@ -228,6 +228,9 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 			if err != nil {
 				log.Printf("refresh pull requests: %v", err)
 			}
+			if _, err := srv.Tasks.RefreshExternalTasks(ctx, gh); err != nil {
+				log.Printf("refresh external tasks: %v", err)
+			}
 			if err := srv.Tasks.DetectThreadPullsByBranch(ctx, log_.Node()); err != nil {
 				log.Printf("detect thread pulls: %v", err)
 			}

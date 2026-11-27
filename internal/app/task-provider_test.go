@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"testing"
 
 	"github.com/migueel15/dory/internal/data"
@@ -82,5 +83,71 @@ func TestInternalAndGitHubProvidersAndBranchDetection(t *testing.T) {
 	tps, err = store.ThreadPulls().ListByThread(ctx, th.ID)
 	if err != nil || len(tps) != 0 {
 		t.Fatalf("expected unlinked PR #99 to stay unlinked, got %+v", tps)
+	}
+}
+
+type stubIssueSource struct {
+	overview *github.Overview
+}
+
+func (s *stubIssueSource) Open(context.Context, bool) (*github.Overview, error) {
+	return s.overview, nil
+}
+
+func (s *stubIssueSource) PullState(context.Context, string, *int64, string) (github.PullStatus, error) {
+	return github.PullStatus{}, nil
+}
+
+func TestRefreshExternalTasks(t *testing.T) {
+	ctx := t.Context()
+	store := openAppStore(t)
+
+	proj, err := store.Projects().Create(ctx, data.Project{Slug: "demo", Name: "Demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Repositories().Create(ctx, data.Repository{ProjectID: proj.ID, RemoteURL: "https://github.com/org/demo.git", DefaultBranch: "main"}); err != nil {
+		t.Fatal(err)
+	}
+
+	tasksApp := &Tasks{Store: store}
+	src := &stubIssueSource{
+		overview: &github.Overview{
+			Issues: []github.Issue{
+				{Repo: "org/demo", Number: 10, Title: "First issue", State: "OPEN"},
+				{Repo: "org/demo", Number: 11, Title: "Second issue", State: "OPEN"},
+			},
+		},
+	}
+
+	n, err := tasksApp.RefreshExternalTasks(ctx, src)
+	if err != nil || n != 2 {
+		t.Fatalf("RefreshExternalTasks = %d, %v; want 2, nil", n, err)
+	}
+
+	gp := &GitHubProvider{Store: store}
+	list, err := gp.List(ctx, TaskFilter{ProjectID: proj.ID})
+	if err != nil || len(list) != 2 {
+		t.Fatalf("expected 2 cached GitHub issues, got %d (%v)", len(list), err)
+	}
+
+	// Issue #11 closed on GitHub -> disappears from open overview
+	src.overview.Issues = []github.Issue{
+		{Repo: "org/demo", Number: 10, Title: "First issue", State: "OPEN"},
+	}
+	n, err = tasksApp.RefreshExternalTasks(ctx, src)
+	if err != nil || n != 1 {
+		t.Fatalf("second RefreshExternalTasks = %d, %v; want 1, nil", n, err)
+	}
+	list, err = gp.List(ctx, TaskFilter{ProjectID: proj.ID})
+	if err != nil || len(list) != 2 {
+		t.Fatalf("expected 2 rows in cache (1 open, 1 closed), got %d (%v)", len(list), err)
+	}
+	states := map[int64]string{}
+	for _, u := range list {
+		states[*u.Number] = u.State
+	}
+	if states[10] != "open" || states[11] != "closed" {
+		t.Fatalf("unexpected states after sync: %+v", states)
 	}
 }
