@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
@@ -22,6 +23,8 @@ import javax.net.ssl.X509TrustManager;
 final class Pin {
     /** host:port → pin of the node the app is talking to. */
     static final Map<String, String> byHost = new ConcurrentHashMap<>();
+    /** pin → reusable SSLSocketFactory so TLS sessions can resume across requests. */
+    private static final Map<String, SSLSocketFactory> factories = new ConcurrentHashMap<>();
 
     static String of(X509Certificate cert) throws Exception {
         byte[] sum = MessageDigest.getInstance("SHA-256").digest(cert.getPublicKey().getEncoded());
@@ -41,13 +44,11 @@ final class Pin {
         }
     }
 
-    /**
-     * Opens a connection that accepts only the given pin. With want == null
-     * it accepts any key and stores it in seen[0]: used only to pair, where
-     * the code proves who answered.
-     */
-    static HttpsURLConnection open(String url, String want, String[] seen) throws Exception {
-        HttpsURLConnection c = (HttpsURLConnection) new java.net.URL(url).openConnection();
+    private static SSLSocketFactory socketFactory(String want, String[] seen) throws Exception {
+        if (want != null && seen == null) {
+            SSLSocketFactory cached = factories.get(want);
+            if (cached != null) return cached;
+        }
         X509TrustManager tm = new X509TrustManager() {
             public void checkClientTrusted(X509Certificate[] chain, String type) {}
             public void checkServerTrusted(X509Certificate[] chain, String type) throws CertificateException {
@@ -65,7 +66,19 @@ final class Pin {
         };
         SSLContext ctx = SSLContext.getInstance("TLS");
         ctx.init(null, new TrustManager[] { tm }, null);
-        c.setSSLSocketFactory(ctx.getSocketFactory());
+        SSLSocketFactory factory = ctx.getSocketFactory();
+        if (want != null && seen == null) factories.put(want, factory);
+        return factory;
+    }
+
+    /**
+     * Opens a connection that accepts only the given pin. With want == null
+     * it accepts any key and stores it in seen[0]: used only to pair, where
+     * the code proves who answered.
+     */
+    static HttpsURLConnection open(String url, String want, String[] seen) throws Exception {
+        HttpsURLConnection c = (HttpsURLConnection) new java.net.URL(url).openConnection();
+        c.setSSLSocketFactory(socketFactory(want, seen));
         c.setHostnameVerifier((h, s) -> true); // the pin, not the name, identifies the node
         c.setConnectTimeout(4000);
         c.setReadTimeout(15000);

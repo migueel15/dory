@@ -11,6 +11,7 @@ const online = new Map(); // id → reachable now
 const localFound = new Map(); // id → anuncio reciente de la red local
 const meshFound = new Map(); // nodo emparejado → última lista de pares conectados
 const checkVersions = new Map();
+let openingId = null;
 const LOCAL_TTL = 30_000;
 const MESH_TTL = 60_000;
 const DISCOVERED_TTL = 75_000;
@@ -186,10 +187,10 @@ function render() {
   list.replaceChildren();
   $("none").hidden = saved.length > 0;
   for (const env of saved) {
-    const li = el("li");
+    const li = el("li", openingId === env.id ? "opening" : null);
     li.append(el("span", "dot" + (online.get(env.id) ? " on" : "")));
     const text = el("div", "grow");
-    text.append(el("div", "name", env.name), el("div", "sub", env.address));
+    text.append(el("div", "name", env.name), el("div", "sub", openingId === env.id ? "Conectando…" : env.address));
     li.append(text);
     const forget = el("button", "forget", "Olvidar");
     forget.onclick = (e) => {
@@ -244,13 +245,25 @@ function render() {
 }
 
 async function open(env) {
+  if (openingId) return;
+  openingId = env.id;
   $("open-error").textContent = "";
+  render();
   try {
     await Dory.open({ address: env.address, pin: env.pin, token: env.token });
   } catch (e) {
+    openingId = null;
+    render();
     $("open-error").textContent = `${env.name}: ${e.message}`;
   }
 }
+
+window.addEventListener("pageshow", () => {
+  if (openingId) {
+    openingId = null;
+    render();
+  }
+});
 
 // check sees whether a paired node answers and learns the other nodes of its
 // mesh, whose addresses also work from outside home through Tailscale.
@@ -275,6 +288,8 @@ async function check(env) {
     }
     online.set(env.id, true);
     meshFound.set(env.id, { at: Date.now(), peers });
+    // Pre-warm the web session cookie in the background so tapping this node opens immediately.
+    Dory.warm({ address: env.address, pin: env.pin, token: env.token }).catch(() => {});
   } catch {
     if (checkVersions.get(env.id) !== version || !saved.some(node => node.id === env.id)) return;
     online.set(env.id, false);

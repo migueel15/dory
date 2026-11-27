@@ -11,11 +11,14 @@ import android.webkit.JavascriptInterface;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.graphics.Color;
 import android.net.http.SslError;
 import android.os.Bundle;
 import android.webkit.PermissionRequest;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
@@ -137,6 +140,8 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(DoryPlugin.class);
         super.onCreate(savedInstanceState);
+        boolean night = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        bridge.getWebView().setBackgroundColor(night ? Color.parseColor("#0f0f11") : Color.parseColor("#f8fafc"));
         bridge.getWebView().addJavascriptInterface(new NoticeBridge(), "DoryAndroid");
         followKeyboard();
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -174,6 +179,15 @@ public class MainActivity extends BridgeActivity {
                 String want = Pin.byHost.get(u.getHost() + ":" + u.getPort());
                 if (want != null && want.equals(Pin.of(error.getCertificate()))) handler.proceed();
                 else handler.cancel();
+            }
+
+            // Serve immutable Vite /assets/* from local disk cache (WebView
+            // skips its own HTTP cache on self-signed certs).
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                WebResourceResponse cached = AssetCache.intercept(MainActivity.this, request);
+                if (cached != null) return cached;
+                return super.shouldInterceptRequest(view, request);
             }
 
             // Links inside an open node stay in the app.

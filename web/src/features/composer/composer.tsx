@@ -4,7 +4,7 @@ import { useLayoutEffect,useRef,useState } from "react";
 import { api,usable,type ThreadView } from "../../api/client";
 import { useMobile } from "../../lib/use-mobile";
 import { MobileComposer,mobileSendButton } from "./mobile-composer";
-import { composerArea,composerFrame } from "./composer-styles";
+import { autosizeTextarea,composerArea,composerFrame } from "./composer-styles";
 export { composerArea,composerFrame };
 import { useNodeProviders } from "../../api/queries/hooks";
 import { qk } from "../../api/queries/keys";
@@ -60,7 +60,7 @@ export function Composer({ t, onSent, area, quotes, onRemoveQuotes }: {
     if (list) list.scrollTop = list.scrollHeight;
   }, [latestQuote]);
   const uploading = attach.uploading;
-  useLayoutEffect(() => { const el = area.current; if (el && !showingDictation) { el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 240)}px`; } }, [dictation.value, showingDictation]);
+  useLayoutEffect(() => { const el = area.current; if (el && !showingDictation) autosizeTextarea(el, 240); }, [dictation.value, showingDictation]);
   // Picked /commands, $skills and @files are tokens in the draft text.
   // The token reference preserves the full path of a selected file.
   const [tokens, setTokens] = useState<Tokens>({});
