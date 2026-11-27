@@ -1,13 +1,12 @@
 import { Circle,CircleNotch,ClockCounterClockwise,GitDiff,Info,Kanban,WarningCircle,XCircle } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate,useParams } from "@tanstack/react-router";
-import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type MouseEvent as ReactMouseEvent,type RefObject } from "react";
+import { Suspense,lazy,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type MouseEvent as ReactMouseEvent,type RefObject } from "react";
 import { type Message } from "../../api/client";
 import { useThreadLive } from "../../api/live";
 import { useNodeProviders,usePlan,useProjects,useThreadView } from "../../api/queries/hooks";
 import { qk } from "../../api/queries/keys";
 import { useAdoptSession,useExternalSession,useThreadAction,useThreadDiff } from "../../api/queries/threads";
-import { PlanDoc } from "../../components/plan-doc";
 import { ThreadBrowserContext } from "../../components/refs";
 import { useCommand } from "../../components/shortcuts";
 import { Button,ErrorText,uuid } from "../../components/ui";
@@ -33,12 +32,15 @@ import { Queue } from "../composer/queue";
 import { type Suggestion } from "../github/diff-parts";
 import { Diff } from "../github/github-diff";
 import { BrowserPanel,openInThreadBrowser } from "./browser-panel";
-import { TerminalPanel } from "./terminal-panel";
 import { terminalApi } from "../../lib/terminal/client";
 import { DevicePanel,FloatingWindow } from "./device-panel";
 import { SidePanel,SidePanelToggle,kindOf,useSidePanel,type SidePanelState } from "./side-panel";
 import { ThreadInfo,headerButton } from "./thread-info";
 import { useThreadMenu } from "./thread-menu";
+
+// tiptap and xterm load only when a plan or a terminal tab is shown.
+const PlanDoc = lazy(() => import("../../components/plan-doc").then((m) => ({ default: m.PlanDoc })));
+const TerminalPanel = lazy(() => import("./terminal-panel").then((m) => ({ default: m.TerminalPanel })));
 
 // ThreadView is a whole thread page: header, chat and, on demand, its changes
 // and the plan of its task.
@@ -115,9 +117,9 @@ export function ThreadView() {
         <ThreadChat threadId={threadId} />
       </div>
       <SidePanel panel={panel} threadId={threadId} onRename={renameTab} onCloseTab={closeTab} available={[...(local ? ["diff" as const] : []), ...(taskId ? ["plan" as const] : []), "device" as const, "terminal" as const, ...(window.doryDesktop?.browser ? ["browser" as const] : [])]}
-        render={(k) => (k === "diff" ? <Changes threadId={threadId} messages={thread?.messages} /> : k === "browser" ? <BrowserPanel threadId={threadId} remote={local === false} /> : kindOf(k) === "terminal" ? <TerminalPanel threadId={threadId} tab={k} id={panel.meta[k]?.terminal} active={panel.open && panel.active === k} onId={(id) => panel.setMeta(k, { terminal: id })} /> : kindOf(k) === "device" ? (panel.open ? (panel.meta[k]?.floating
+        render={(k) => (k === "diff" ? <Changes threadId={threadId} messages={thread?.messages} /> : k === "browser" ? <BrowserPanel threadId={threadId} remote={local === false} /> : kindOf(k) === "terminal" ? <Suspense fallback={null}><TerminalPanel threadId={threadId} tab={k} id={panel.meta[k]?.terminal} active={panel.open && panel.active === k} onId={(id) => panel.setMeta(k, { terminal: id })} /></Suspense> : kindOf(k) === "device" ? (panel.open ? (panel.meta[k]?.floating
           ? <div className="grid h-full place-items-center p-6 text-center text-sm text-slate-500 dark:text-muted"><div className="space-y-2"><p>El dispositivo flota sobre el chat.</p><Button variant="ghost" onClick={() => panel.setMeta(k, { floating: false })}>Abrir en el panel lateral</Button></div></div>
-          : deviceView(k)) : null) : taskId && <PlanDoc taskId={taskId} />)} />
+          : deviceView(k)) : null) : taskId && <Suspense fallback={null}><PlanDoc taskId={taskId} /></Suspense>)} />
       {panel.tabs.filter((k) => kindOf(k) === "device" && panel.meta[k]?.floating).map((k) => <FloatingWindow key={k} id={`${threadId}:${k}`}>{deviceView(k, true)}</FloatingWindow>)}
     </div>
   );
