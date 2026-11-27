@@ -130,7 +130,12 @@ func Evaluate(in CardInput) Result {
 		return Result{Column: Ready}
 	}
 
-	// 11. Default: Inbox
+	// 11. Idle thread without open PR or accepted plan needs user action
+	if len(in.Threads) > 0 {
+		return Result{Column: NeedsYou, Reason: "idle_thread"}
+	}
+
+	// 12. Default: Inbox
 	return Result{Column: Inbox}
 }
 
