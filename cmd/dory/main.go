@@ -177,6 +177,14 @@ func serve(ctx context.Context, cfg config.Config, store *data.Store, log_ *oplo
 		}
 	}
 	net.OnThreadState = func(id string) { events.Changed("thread_state", id) }
+	// A background detection found other harnesses, models or sessions:
+	// clients and peers read them again.
+	rt.OnProvidersChange = func() {
+		events.Changed("providers", log_.Node())
+		net.Changed()
+	}
+	// Detect the harnesses now, so the first page load does not wait for them.
+	go rt.Providers(ctx)
 	rt.OnStateChange = func(id string) {
 		net.OnThreadState(id)
 		notices.ThreadState(id)
