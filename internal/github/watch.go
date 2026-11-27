@@ -100,6 +100,18 @@ func (c *Client) watchOnce(ctx context.Context, changed func()) time.Duration {
 		if ok {
 			dirty[repo] = project
 		}
+		if issOK, issWait, issErr := c.pollRepoIssues(ctx, repo); issErr != nil {
+			log.Printf("github: watch issues %s: %v", repo, issErr)
+			backoff = max(backoff, issWait)
+			if issWait > 0 {
+				break
+			}
+		} else {
+			backoff = max(backoff, issWait)
+			if issOK {
+				dirty[repo] = project
+			}
+		}
 	}
 	notified := len(dirty) > 0
 	for repo, project := range dirty {
@@ -216,6 +228,46 @@ func (c *Client) pollRepo(ctx context.Context, repo string) (bool, time.Duration
 	}
 	c.mu.Lock()
 	c.watched[repo] = next
+	c.mu.Unlock()
+	return seen && diff, 0, nil
+}
+
+type watchedIssue struct {
+	Number      int       `json:"number"`
+	State       string    `json:"state"`
+	UpdatedAt   string    `json:"updated_at"`
+	PullRequest *struct{} `json:"pull_request"`
+}
+
+// pollRepoIssues reports whether any issue (excluding PRs) changed since the
+// last poll using conditional ETag requests (304 Not Modified costs no quota).
+func (c *Client) pollRepoIssues(ctx context.Context, repo string) (bool, time.Duration, error) {
+	key := "issues:" + repo
+	c.mu.Lock()
+	prev, seen := c.watched[key]
+	c.mu.Unlock()
+	path := "/repos/" + repo + "/issues?state=all&sort=updated&direction=desc&per_page=30"
+	r, err := c.getTagged(ctx, path, "application/vnd.github+json", prev.etag)
+	if err != nil || r.notModified {
+		return false, r.retryAfter, err
+	}
+	var issues []watchedIssue
+	if err := json.Unmarshal(r.body, &issues); err != nil {
+		return false, 0, err
+	}
+	next := watchEntry{etag: r.etag, print: map[int]string{}}
+	diff := false
+	for _, iss := range issues {
+		if iss.PullRequest != nil {
+			continue
+		}
+		next.print[iss.Number] = iss.State + "@" + iss.UpdatedAt
+		if prev.print[iss.Number] != next.print[iss.Number] {
+			diff = true
+		}
+	}
+	c.mu.Lock()
+	c.watched[key] = next
 	c.mu.Unlock()
 	return seen && diff, 0, nil
 }
