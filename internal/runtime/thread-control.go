@@ -57,7 +57,7 @@ func (m *Manager) ResolveSettings(ctx context.Context, t data.Thread, s *ThreadS
 	}
 	model := t.Model
 	if s.Model != nil {
-		found, ok := findModel(status.Models, *s.Model)
+		found, ok := resolveModel(*status, *s.Model)
 		if !ok {
 			return data.ErrInvalid.Msgf("model %q is not offered by %s; valid: %s", *s.Model, provider, modelSlugs(status.Models))
 		}
@@ -78,6 +78,38 @@ func (m *Manager) ResolveSettings(ctx context.Context, t data.Thread, s *ThreadS
 		}
 	}
 	return nil
+}
+
+// resolveModel matches a model against the provider's catalog. When no live or
+// saved catalog is available, it accepts the requested model and normalizes it
+// for the CLI instead of rejecting it against the hardcoded fallback list.
+func resolveModel(st Status, name string) (Model, bool) {
+	if found, ok := findModel(st.Models, name); ok {
+		return found, true
+	}
+	if st.Catalog {
+		return Model{}, false
+	}
+	return fallbackModel(st.Driver, name)
+}
+
+func fallbackModel(driver, name string) (Model, bool) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Model{}, false
+	}
+	switch driver {
+	case "claude":
+		key := modelKey(name)
+		if strings.Contains(key, "-") {
+			return Model{Slug: "claude-" + key}, true
+		}
+		return Model{Slug: key}, true
+	case "codex":
+		return Model{Slug: strings.ToLower(name)}, true
+	default:
+		return Model{}, false
+	}
 }
 
 // findModel matches a slug or a display name, ignoring case. Harnesses

@@ -266,7 +266,7 @@ func (m *Manager) detect(ctx context.Context) []Status {
 			info := p.Info()
 			st := p.Detect(ctx)
 			st.ID, st.Driver, st.DriverName = info.ID, info.Driver, info.Name
-			st.Models = m.rememberCatalog(info.ID, st)
+			st.Models, st.Catalog = m.rememberCatalog(info.ID, st)
 			st.Capabilities = info.Capabilities.Names()
 			if p.Accounts != nil {
 				st.Capabilities = append(st.Capabilities, "accounts")

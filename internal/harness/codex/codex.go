@@ -40,7 +40,7 @@ func (c Codex) Detect(ctx context.Context) harness.Status {
 	version, ok := kit.Detect(ctx, c.bin())
 	efforts := []string{"low", "medium", "high", "xhigh"}
 	status := harness.Status{ID: c.ID(), Driver: "codex", Name: kit.AccountName("Codex", c.Label), Home: c.Home, Installed: ok, Version: version,
-		Models: []harness.Model{{Slug: "gpt-5.5", Name: "GPT-5.5", Efforts: efforts}},
+		Models: []harness.Model{{Slug: "gpt-6.2-sol", Name: "GPT-6.2-Sol", Efforts: efforts}},
 	}
 	if ok {
 		if models := codexModels(ctx, c.bin(), c.Environ()); len(models) > 0 {

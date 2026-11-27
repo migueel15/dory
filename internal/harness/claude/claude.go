@@ -48,9 +48,9 @@ func (c Claude) Detect(ctx context.Context) harness.Status {
 	version, ok := kit.Detect(ctx, c.bin())
 	status := harness.Status{ID: c.ID(), Driver: "claude", Name: kit.AccountName("Claude Code", c.Label), Home: c.Home, Installed: ok, Version: version,
 		Models: []harness.Model{
-			{Slug: "opus", Name: "Opus", Efforts: []string{"low", "medium", "high", "xhigh", "max"}},
-			{Slug: "sonnet", Name: "Sonnet", Efforts: []string{"low", "medium", "high", "xhigh", "max"}},
-			{Slug: "haiku", Name: "Haiku"},
+			{Slug: "opus", Name: "Opus 5.5", Efforts: []string{"low", "medium", "high", "xhigh", "max"}},
+			{Slug: "sonnet", Name: "Sonnet 5.5", Efforts: []string{"low", "medium", "high", "xhigh", "max"}},
+			{Slug: "haiku", Name: "Haiku 5.5"},
 		},
 	}
 	if ok {
