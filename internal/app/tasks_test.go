@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -218,5 +219,36 @@ func TestRefreshPullsReportsMoreUntilDrained(t *testing.T) {
 		if c.Column != "done" {
 			t.Fatalf("card %s column = %s", c.Title, c.Column)
 		}
+	}
+}
+
+func TestLaunchDelegatesToRemoteNodeWithoutLocalCheckout(t *testing.T) {
+	ctx := context.Background()
+	a, repo := newTasks(t)
+	peer := &testPeer{}
+	a.Plans = &Plans{Store: a.Store}
+	a.Threads = &Threads{Store: a.Store, Node: a.Node, Peers: peer}
+	task, err := a.Store.Tasks().Create(ctx, data.Task{
+		Title:        "Remote task",
+		ProjectID:    &repo.ProjectID,
+		RepositoryID: &repo.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Repository is NOT cloned on this node, so local launch must fail.
+	if _, _, err := a.Launch(ctx, task.ID, LaunchInput{Provider: "claude"}); !errors.Is(err, ErrRepositoryNotCloned) {
+		t.Fatalf("local launch err = %v, want ErrRepositoryNotCloned", err)
+	}
+	// Remote launch on peer node must succeed without a local checkout.
+	threadID, branch, err := a.Launch(ctx, task.ID, LaunchInput{Node: "peer-node", Provider: "claude"})
+	if err != nil {
+		t.Fatalf("remote launch err = %v", err)
+	}
+	if threadID != "remote-thread" || branch == "" {
+		t.Fatalf("threadID=%q branch=%q", threadID, branch)
+	}
+	if peer.node != "peer-node" || peer.in.RepositoryID != repo.ID || peer.in.TaskID == nil || *peer.in.TaskID != task.ID || peer.in.Branch != branch {
+		t.Fatalf("peer call = node:%q in:%+v", peer.node, peer.in)
 	}
 }

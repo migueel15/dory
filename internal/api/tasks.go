@@ -265,10 +265,11 @@ func (s *Server) Cards(ctx context.Context, tasks []data.Task) ([]Card, error) {
 	return s.Tasks.Cards(ctx, tasks)
 }
 
-// launch starts an implementation thread for a task on this node, in its own
-// worktree and branch.
+// launch starts an implementation thread for a task on this node or on the
+// chosen peer, in its own worktree and branch.
 func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 	var body struct {
+		Node        string `json:"node"`
 		Provider    string `json:"provider"`
 		Model       string `json:"model"`
 		Effort      string `json:"effort"`
@@ -279,7 +280,7 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	threadID, branch, err := s.Tasks.Launch(r.Context(), r.PathValue("id"), app.LaunchInput{Provider: body.Provider, Model: body.Model,
+	threadID, branch, err := s.Tasks.Launch(r.Context(), r.PathValue("id"), app.LaunchInput{Node: body.Node, Provider: body.Provider, Model: body.Model,
 		Effort: body.Effort, RuntimeMode: body.RuntimeMode, BaseBranch: body.BaseBranch, Text: body.Text})
 	if err != nil {
 		writeErr(w, r, err)
