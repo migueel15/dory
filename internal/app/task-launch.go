@@ -13,6 +13,7 @@ import (
 // LaunchInput chooses how an implementation thread starts; Text replaces the
 // generated first message.
 type LaunchInput struct {
+	Node        string
 	Provider    string
 	Model       string
 	Effort      string
@@ -21,8 +22,8 @@ type LaunchInput struct {
 	Text        string
 }
 
-// Launch starts an implementation thread for a task on this node, in its own
-// worktree and branch. It returns the thread id and the branch.
+// Launch starts an implementation thread for a task on this node or on in.Node,
+// in its own worktree and branch. It returns the thread id and the branch.
 func (a *Tasks) Launch(ctx context.Context, taskID string, in LaunchInput) (threadID, branch string, err error) {
 	t, err := a.Store.Tasks().Get(ctx, taskID)
 	if err != nil {
@@ -44,8 +45,13 @@ func (a *Tasks) Launch(ctx context.Context, taskID string, in LaunchInput) (thre
 	if t.RepositoryID == nil {
 		return "", "", apperr.New(apperr.NoRepository, "the task needs a repository")
 	}
-	if _, _, err := RepositoryCheckout(ctx, a.Store, t.ProjectID, *t.RepositoryID); err != nil {
-		return "", "", err
+	if in.Node == "" || in.Node == "local" {
+		in.Node = a.Node
+	}
+	if in.Node == a.Node {
+		if _, _, err := RepositoryCheckout(ctx, a.Store, t.ProjectID, *t.RepositoryID); err != nil {
+			return "", "", err
+		}
 	}
 	if t.Branch == "" {
 		t.Branch = TaskBranch(t)
@@ -63,7 +69,7 @@ func (a *Tasks) Launch(ctx context.Context, taskID string, in LaunchInput) (thre
 		prompt = a.Prompt(ctx, t)
 	}
 	worktree := true
-	th, err := a.Threads.Create(ctx, CreateThread{CreateThreadRequest: peerapi.CreateThreadRequest{
+	th, err := a.Threads.Create(ctx, CreateThread{Node: in.Node, CreateThreadRequest: peerapi.CreateThreadRequest{
 		ProjectID: t.ProjectID, RepositoryID: *t.RepositoryID, TaskID: &t.ID, Provider: in.Provider, Model: in.Model,
 		Effort: in.Effort, RuntimeMode: in.RuntimeMode, Title: t.Title, Text: prompt, Worktree: &worktree, Branch: t.Branch, BaseBranch: in.BaseBranch,
 	}})
