@@ -252,3 +252,79 @@ func TestLaunchDelegatesToRemoteNodeWithoutLocalCheckout(t *testing.T) {
 		t.Fatalf("peer call = node:%q in:%+v", peer.node, peer.in)
 	}
 }
+
+func TestRefreshPullsReconcilesMergedThreadPulls(t *testing.T) {
+	ctx := context.Background()
+	a, repo := newTasks(t)
+	// Task without legacy pr_number or branch, linked only via thread_pulls.
+	task, err := a.Store.Tasks().Create(ctx, data.Task{Title: "thread-pull task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, err := a.Store.Threads().Create(ctx, data.Thread{Title: "impl", TaskID: &task.ID, Status: "idle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Store.ThreadPulls().Link(ctx, th.ID, repo.ID, 364, "fix/close", "mcp"); err != nil {
+		t.Fatal(err)
+	}
+
+	// While open, overview populates task_pulls #364 as open -> ready_to_merge.
+	src := &fakePulls{open: []github.Pull{{Repo: "o/r", Number: 364, HeadRef: "fix/close"}}}
+	if _, _, err := a.RefreshPulls(ctx, src); err != nil {
+		t.Fatal(err)
+	}
+	cards, err := a.BoardMulti(ctx, TaskFilter{})
+	if err != nil || len(cards) != 1 || cards[0].Column != "ready_to_merge" {
+		t.Fatalf("while open: cards=%+v err=%v", cards, err)
+	}
+
+	// Once merged, #364 disappears from overview; RefreshPulls must resolve it via PullState.
+	src.open = nil
+	src.state = github.PullStatus{Number: 364, State: "merged"}
+	changed, _, err := a.RefreshPulls(ctx, src)
+	if err != nil || !changed || src.calls != 1 {
+		t.Fatalf("after merge: changed=%v calls=%d err=%v", changed, src.calls, err)
+	}
+	cards, err = a.BoardMulti(ctx, TaskFilter{})
+	if err != nil || len(cards) != 1 || cards[0].Column != "done" || cards[0].PRState != "merged" {
+		t.Fatalf("after merge board: cards=%+v err=%v", cards, err)
+	}
+}
+
+func TestRefreshPullsSeedsMergedThreadPullsFromCache(t *testing.T) {
+	ctx := context.Background()
+	a, repo := newTasks(t)
+	// Task with legacy branch (no pr_number) AND thread_pull #371.
+	task, err := a.Store.Tasks().Create(ctx, data.Task{Title: "branch + thread-pull", RepositoryID: &repo.ID, Branch: "feat/371"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, err := a.Store.Threads().Create(ctx, data.Thread{Title: "impl", TaskID: &task.ID, Status: "idle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Store.ThreadPulls().Link(ctx, th.ID, repo.ID, 371, "feat/371", "mcp"); err != nil {
+		t.Fatal(err)
+	}
+
+	src := &fakePulls{open: []github.Pull{{Repo: "o/r", Number: 371, HeadRef: "feat/371"}}}
+	if _, _, err := a.RefreshPulls(ctx, src); err != nil {
+		t.Fatal(err)
+	}
+
+	// Merged PR appears in CachedPullState (pollRepo); must update #371 without extra PullState calls.
+	src.open = nil
+	src.cached = map[string]github.PullStatus{
+		"o/r#371":      {Number: 371, State: "merged"},
+		"o/r#feat/371": {Number: 371, State: "merged"},
+	}
+	changed, _, err := a.RefreshPulls(ctx, src)
+	if err != nil || !changed || src.calls != 0 {
+		t.Fatalf("after cached merge: changed=%v calls=%d err=%v", changed, src.calls, err)
+	}
+	cards, err := a.BoardMulti(ctx, TaskFilter{})
+	if err != nil || len(cards) != 1 || cards[0].Column != "done" || cards[0].PRState != "merged" {
+		t.Fatalf("after cached merge board: cards=%+v err=%v", cards, err)
+	}
+}

@@ -251,6 +251,10 @@ func addPullTools(srv *sdk.Server, s *Deps) {
 		}); err != nil {
 			return nil, err
 		}
+		if s.Tasks != nil {
+			_ = s.Tasks.RecordPullState(ctx, repoName, in.Number, "merged")
+			s.Tasks.FinishSoon(ctx)
+		}
 		if s.Notify != nil {
 			s.Notify("board", "", nil)
 		}

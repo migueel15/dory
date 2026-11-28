@@ -96,6 +96,10 @@ func (a *Tasks) RefreshPulls(ctx context.Context, source TaskPullSource) (change
 	if err != nil {
 		return false, false, err
 	}
+	threadPulls, err := a.Store.ThreadPulls().ListAll(ctx, data.Filter{})
+	if err != nil {
+		return false, false, err
+	}
 	names, err := a.repositoryNames(ctx)
 	if err != nil {
 		return false, false, err
@@ -120,44 +124,80 @@ func (a *Tasks) RefreshPulls(ctx context.Context, source TaskPullSource) (change
 		}
 	}
 
+	type pullTarget struct {
+		key    pullKey
+		repo   string
+		number *int64
+		branch string
+	}
+	var targets []pullTarget
+	added := map[pullKey]bool{}
+	for _, tp := range threadPulls {
+		repo := names[tp.RepositoryID]
+		if repo == "" || tp.Number <= 0 {
+			continue
+		}
+		n := tp.Number
+		key := pullNumberKey(repo, n)
+		if added[key] {
+			continue
+		}
+		added[key] = true
+		targets = append(targets, pullTarget{key: key, repo: repo, number: &n})
+	}
+	for _, t := range tasks {
+		repo := taskRepo(t, names)
+		key, ok := taskPullKey(repo, t)
+		if !ok || added[key] {
+			continue
+		}
+		added[key] = true
+		targets = append(targets, pullTarget{key: key, repo: repo, number: t.PRNumber, branch: t.Branch})
+	}
+
+	recordResolved := func(target pullTarget, ref github.PullStatus) {
+		info := cachedPull{number: ref.Number, state: ref.State, raw: "{}", at: now}
+		updates[target.key] = info
+		if ref.Number != 0 {
+			numKey := pullNumberKey(target.repo, int64(ref.Number))
+			if updates[numKey].number == 0 {
+				updates[numKey] = info
+			}
+		}
+	}
+
 	// Seed task_pulls from in-memory states already fetched by pollRepo
 	// (state=all&per_page=30) without spending individual lookup quota.
 	if cached, ok := source.(cachedPullStateSource); ok {
-		for _, t := range tasks {
-			repo := taskRepo(t, names)
-			key, ok := taskPullKey(repo, t)
-			if !ok || updates[key].number != 0 {
+		for _, target := range targets {
+			if updates[target.key].number != 0 {
 				continue
 			}
-			p := existing[key]
+			p := existing[target.key]
 			if p.state == "merged" || p.state == "closed" {
 				continue
 			}
-			if ref, ok := cached.CachedPullState(repo, t.PRNumber, t.Branch); ok && ref.Number != 0 {
-				updates[key] = cachedPull{number: ref.Number, state: ref.State, raw: "{}", at: now}
+			if ref, ok := cached.CachedPullState(target.repo, target.number, target.branch); ok && ref.Number != 0 {
+				recordResolved(target, ref)
 			}
 		}
 	}
 
 	// Rotate even when a lookup fails so inaccessible repositories cannot
 	// starve later tasks. Successful misses are also cached for an hour.
-	if len(tasks) > 0 {
-		start := a.pullCursor % len(tasks)
+	if len(targets) > 0 {
+		start := a.pullCursor % len(targets)
 		next := start
 		remaining := taskPullLookups
 		succeeded := 0
-		seen := map[pullKey]bool{}
 		scanned := 0
-		for ; scanned < len(tasks) && remaining > 0; scanned++ {
-			t := tasks[next]
-			next = (next + 1) % len(tasks)
-			repo := taskRepo(t, names)
-			key, ok := taskPullKey(repo, t)
-			if !ok || seen[key] || updates[key].number != 0 {
+		for ; scanned < len(targets) && remaining > 0; scanned++ {
+			target := targets[next]
+			next = (next + 1) % len(targets)
+			if updates[target.key].number != 0 {
 				continue
 			}
-			seen[key] = true
-			p := existing[key]
+			p := existing[target.key]
 			if p.state == "merged" || p.state == "closed" {
 				continue
 			}
@@ -168,16 +208,16 @@ func (a *Tasks) RefreshPulls(ctx context.Context, source TaskPullSource) (change
 				continue
 			}
 			remaining--
-			ref, err := source.PullState(ctx, repo, t.PRNumber, t.Branch)
+			ref, err := source.PullState(ctx, target.repo, target.number, target.branch)
 			if err != nil {
-				log.Printf("app: refresh pull %s %s: %v", key.repo, key.ref, err)
+				log.Printf("app: refresh pull %s %s: %v", target.key.repo, target.key.ref, err)
 				continue
 			}
 			succeeded++
-			updates[key] = cachedPull{number: ref.Number, state: ref.State, raw: "{}", at: now}
+			recordResolved(target, ref)
 		}
 		a.pullCursor = next
-		more = remaining == 0 && scanned < len(tasks) && succeeded > 0
+		more = remaining == 0 && scanned < len(targets) && succeeded > 0
 	}
 
 	if len(updates) == 0 {
